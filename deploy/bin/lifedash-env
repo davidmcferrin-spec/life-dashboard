@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# lifedash-env — manage the encrypted app .env (systemd-creds).
+#
+#   sudo lifedash-env import /path/to/.env   encrypt an existing file (e.g. from Dreamhost)
+#   sudo lifedash-env edit                   decrypt → $EDITOR → validate → re-encrypt → apply
+#   sudo lifedash-env keys                   list key names (never values)
+#   sudo lifedash-env set KEY VALUE          set/replace one key non-interactively
+#   sudo lifedash-env apply                  re-decrypt to /run and reload services
+#
+# The plaintext only ever exists in /run (tmpfs). Encryption uses --with-key=auto:
+# TPM2 + host key when a TPM is present, host key otherwise.
+set -euo pipefail
+
+CRED=/etc/lifedash/app.env.cred
+NAME=app.env                 # must match LoadCredentialEncrypted= in lifedash-secrets.service
+REQUIRED=(APP_SECRET DB_DRIVER)
+
+die() { echo "lifedash-env: $*" >&2; exit 1; }
+[[ $EUID -eq 0 ]] || die "run as root (sudo)"
+command -v systemd-creds >/dev/null || die "systemd-creds not found"
+
+scratch() {
+    local dir
+    dir=$(mktemp -d /run/lifedash-env.XXXXXX)
+    chmod 700 "$dir"
+    echo "$dir"
+}
+
+validate() {
+    local file=$1 key missing=()
+    for key in "${REQUIRED[@]}"; do
+        grep -Eq "^[[:space:]]*${key}[[:space:]]*=[[:space:]]*[^[:space:]#]" "$file" || missing+=("$key")
+    done
+    if grep -Eq '^[[:space:]]*APP_SECRET[[:space:]]*=[[:space:]]*CHANGE_ME' "$file"; then
+        missing+=("APP_SECRET (still the placeholder)")
+    fi
+    [[ ${#missing[@]} -eq 0 ]] || die "missing/empty: ${missing[*]}"
+}
+
+encrypt() {
+    local src=$1
+    validate "$src"
+    install -d -m 0700 /etc/lifedash
+    systemd-creds encrypt --with-key=auto --name="$NAME" "$src" "$CRED.new"
+    chmod 0600 "$CRED.new"
+    mv -f "$CRED.new" "$CRED"
+}
+
+apply() {
+    systemctl restart lifedash-secrets.service
+    local fpm
+    for fpm in $(systemctl list-units --type=service --no-legend 'php*-fpm.service' | awk '{print $1}'); do
+        systemctl reload "$fpm"
+    done
+    # Python services pick up config on restart (none are long-running in Phase 0).
+    systemctl try-restart 'lifedash-*.service' 2>/dev/null || true
+    echo "applied."
+}
+
+case "${1:-}" in
+    import)
+        [[ -f "${2:-}" ]] || die "usage: lifedash-env import FILE"
+        encrypt "$2"
+        echo "encrypted → $CRED"
+        echo "Delete the plaintext copy when done: shred -u '$2'"
+        apply
+        ;;
+    edit)
+        [[ -f $CRED ]] || die "$CRED not found — use: lifedash-env import FILE"
+        dir=$(scratch); trap 'shred -u "$dir"/* 2>/dev/null; rmdir "$dir"' EXIT
+        systemd-creds decrypt --name="$NAME" "$CRED" "$dir/app.env"
+        cp "$dir/app.env" "$dir/app.env.orig"
+        "${EDITOR:-nano}" "$dir/app.env"
+        if cmp -s "$dir/app.env" "$dir/app.env.orig"; then
+            echo "no changes."
+            exit 0
+        fi
+        encrypt "$dir/app.env"
+        apply
+        ;;
+    keys)
+        [[ -f $CRED ]] || die "$CRED not found"
+        systemd-creds decrypt --name="$NAME" "$CRED" - \
+            | grep -Ev '^[[:space:]]*(#|$)' | cut -d= -f1 | sed 's/[[:space:]]//g' | sort
+        ;;
+    set)
+        [[ $# -eq 3 && $2 =~ ^[A-Z][A-Z0-9_]*$ ]] || die "usage: lifedash-env set KEY VALUE"
+        [[ -f $CRED ]] || die "$CRED not found"
+        [[ $3 != *$'\n'* ]] || die "value must be a single line"
+        dir=$(scratch); trap 'shred -u "$dir"/* 2>/dev/null; rmdir "$dir"' EXIT
+        systemd-creds decrypt --name="$NAME" "$CRED" "$dir/app.env"
+        if grep -Eq "^[[:space:]]*$2[[:space:]]*=" "$dir/app.env"; then
+            current=$(grep -E "^[[:space:]]*$2[[:space:]]*=" "$dir/app.env" | tail -1 | cut -d= -f2- | sed 's/ #.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+            if [[ $current == "$3" ]]; then
+                echo "$2 unchanged."
+                exit 0
+            fi
+            # Replace every occurrence (awk avoids sed-escaping the value).
+            awk -v k="$2" -v v="$3" 'BEGIN{re="^[[:space:]]*" k "[[:space:]]*="} $0 ~ re {print k "=" v; next} {print}' \
+                "$dir/app.env" > "$dir/app.env.new"
+            mv "$dir/app.env.new" "$dir/app.env"
+        else
+            printf '%s=%s\n' "$2" "$3" >> "$dir/app.env"
+        fi
+        encrypt "$dir/app.env"
+        echo "$2 updated."
+        apply
+        ;;
+    apply)
+        apply
+        ;;
+    *)
+        sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+        exit 64
+        ;;
+esac

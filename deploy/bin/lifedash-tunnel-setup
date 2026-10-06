@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# lifedash-tunnel-setup <public-hostname> — create the Cloudflare named tunnel.
+#
+#   sudo lifedash-tunnel-setup mcp.example.com
+#
+# Needs a domain on your Cloudflare account. Opens a browser login once
+# (cloudflared prints a URL — open it from any device).
+#
+# Exposure is deliberately narrow — only these paths reach the box:
+#   /healthz  → Apache (returns {"status":"ok"} only)
+#   /mcp…     → Python MCP server on 127.0.0.1:8765 (lifedash-mcp)
+# Everything else gets 404 at Cloudflare's edge. The dashboard UI stays on the LAN (and Teleport).
+set -euo pipefail
+
+TUNNEL_NAME=lifedash
+CONF_DIR=/etc/cloudflared
+die() { echo "lifedash-tunnel-setup: $*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "run as root (sudo)"
+[[ $# -eq 1 && $1 =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "usage: lifedash-tunnel-setup <hostname>"
+HOST=$1
+command -v cloudflared >/dev/null || die "cloudflared not installed (run deploy/provision.sh)"
+
+export TUNNEL_ORIGIN_CERT=/root/.cloudflared/cert.pem
+if [[ ! -f $TUNNEL_ORIGIN_CERT ]]; then
+    echo "Authorise cloudflared for your Cloudflare zone:"
+    cloudflared tunnel login
+fi
+
+if ! cloudflared tunnel info "$TUNNEL_NAME" >/dev/null 2>&1; then
+    cloudflared tunnel create "$TUNNEL_NAME"
+fi
+TUNNEL_ID=$(cloudflared tunnel list --output json | python3 -c \
+    "import json,sys; print(next(t['id'] for t in json.load(sys.stdin) if t['name']=='$TUNNEL_NAME'))")
+
+install -d -m 0755 "$CONF_DIR"
+install -m 0600 "/root/.cloudflared/$TUNNEL_ID.json" "$CONF_DIR/$TUNNEL_ID.json"
+
+cat > "$CONF_DIR/config.yml" <<EOF
+# Managed by lifedash-tunnel-setup — re-run it rather than editing by hand.
+tunnel: $TUNNEL_ID
+credentials-file: $CONF_DIR/$TUNNEL_ID.json
+no-autoupdate: true
+
+ingress:
+  - hostname: $HOST
+    path: ^/healthz\$
+    service: http://127.0.0.1:80
+  - hostname: $HOST
+    path: ^/mcp(/.*)?\$
+    service: http://127.0.0.1:8765
+  - service: http_status:404
+EOF
+
+cloudflared tunnel ingress validate --config "$CONF_DIR/config.yml"
+cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$HOST"
+
+if ! systemctl list-unit-files cloudflared.service >/dev/null 2>&1 || [[ ! -f /etc/systemd/system/cloudflared.service ]]; then
+    cloudflared --config "$CONF_DIR/config.yml" service install
+fi
+systemctl enable --now cloudflared
+systemctl restart cloudflared
+
+sleep 3
+if curl -fsS --max-time 15 "https://$HOST/healthz" >/dev/null; then
+    echo "✓ https://$HOST/healthz is reachable through the tunnel"
+else
+    echo "! https://$HOST/healthz not reachable yet (DNS can take a minute): journalctl -u cloudflared -n 50"
+fi

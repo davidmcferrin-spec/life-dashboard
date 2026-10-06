@@ -1,0 +1,45 @@
+# Realtime push: PostgreSQL LISTEN lifedash_events → WebSocket (127.0.0.1:8766/ws).
+# Apache proxies wss://<ui-host>/ws here (mod_proxy_wstunnel). Browsers fall back
+# to 60 s polling while this is down, so a crash degrades rather than breaks the UI.
+#   journalctl -u lifedash-push -o cat | jq
+
+[Unit]
+Description=life-dashboard realtime push (LISTEN -> WebSocket)
+After=lifedash-secrets.service postgresql.service network.target
+Requires=lifedash-secrets.service
+Wants=postgresql.service
+# Never give up restarting: the box runs unattended while David travels.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=lifedash
+Group=lifedash
+Environment=LIFEDASH_ENV_FILE=/run/lifedash/app.env
+ExecStart=/srv/lifedash/venv/bin/lifedash-push
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

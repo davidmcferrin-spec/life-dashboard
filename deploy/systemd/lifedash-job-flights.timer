@@ -1,0 +1,13 @@
+# flight polls every 30 min (offset from feeds)
+[Unit]
+Description=life-dashboard schedule: flights (flight polls every 30 min (offset from feeds))
+
+[Timer]
+OnCalendar=*:10/30
+Unit=lifedash-job@flights.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

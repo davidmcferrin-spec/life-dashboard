@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# lifedash-perms — apply the ownership/permission model to /srv/lifedash.
+# Called by provision.sh and lifedash-deploy (a fresh git clone is all root:root).
+#
+#   /srv/lifedash, app/          root:lifedash, others may traverse (o+x) only
+#   app/ (code)                  root:lifedash, group read, no access for others
+#   app/public/                  world-readable — Apache (www-data) serves static assets
+#   app/storage/                 lifedash:lifedash, writable by the app only
+#
+# www-data is deliberately NOT in the lifedash group, so it can never read code
+# outside public/, the .env symlink target, or storage/.
+set -euo pipefail
+
+BASE=${LIFEDASH_BASE_DIR:-/srv/lifedash}
+APP=$BASE/app
+USER_=lifedash
+
+[[ $EUID -eq 0 ]] || { echo "lifedash-perms: run as root" >&2; exit 1; }
+[[ -d $APP ]] || { echo "lifedash-perms: $APP not found" >&2; exit 66; }
+
+chown root:"$USER_" "$BASE"
+chmod 0751 "$BASE"
+
+# Code: read-only to the app user, invisible to everyone else…
+chown -R root:"$USER_" "$APP"
+chmod -R u+rwX,g+rX,g-w,o-rwx "$APP"
+# …except traversal to public/ and public/ itself for Apache.
+chmod o+x "$APP"
+chmod -R o+rX "$APP/public"
+chmod +x "$APP/setup.sh" "$APP/deploy/provision.sh" "$APP"/deploy/bin/*
+
+# Writable state.
+for d in storage storage/logs storage/cache storage/sessions storage/uploads; do
+    install -d "$APP/$d"
+done
+chown -R "$USER_":"$USER_" "$APP/storage"
+chmod -R u+rwX,g+rwX,o-rwx "$APP/storage"

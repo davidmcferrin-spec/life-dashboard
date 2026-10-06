@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: lifedash
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: lifedash_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lifedash" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      LIFEDASH_TEST_PG_HOST: 127.0.0.1
+      LIFEDASH_TEST_PG_DB: lifedash_ci_test
+      LIFEDASH_TEST_PG_USER: lifedash
+      LIFEDASH_TEST_PG_PASS: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.5"
+          extensions: pdo_pgsql, pdo_sqlite, mbstring
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - name: PHP syntax
+        run: find src cron scripts public tests -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: PHPUnit (unit + PostgreSQL integration)
+        run: vendor/bin/phpunit
+      - name: SQL lint against PostgreSQL
+        run: |
+          cat > .env <<EOF
+          DB_DRIVER=pgsql
+          DB_HOST=127.0.0.1
+          DB_NAME=lifedash_ci_test
+          DB_USER=lifedash
+          DB_PASS=ci
+          DB_SSLMODE=disable
+          APP_SECRET=ci0000000000000000000000000000000000000000000000000000000000000
+          EOF
+          php -r 'require "bootstrap.php"; (new Dashboard\DB\Schema(Dashboard\DB\Database::getInstance()))->migrate(true);'
+          php scripts/sql-lint-pgsql.php
+
+  python:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: lifedash
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: lifedash_ci_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U lifedash" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Enables the live LISTEN → WebSocket round-trip in tests/test_push.py.
+      LIFEDASH_TEST_PG_HOST: 127.0.0.1
+      LIFEDASH_TEST_PG_DB: lifedash_ci_test
+      LIFEDASH_TEST_PG_USER: lifedash
+      LIFEDASH_TEST_PG_PASS: ci
+    defaults:
+      run:
+        working-directory: services
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck setup.sh deploy/provision.sh deploy/bin/*
+      - name: JS syntax (app scripts, not bundles/vendor)
+        run: for f in public/assets/js/*.js; do case "$f" in *.bundle.js) continue;; esac; node --check "$f"; done

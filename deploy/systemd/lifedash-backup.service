@@ -1,0 +1,14 @@
+# Nightly backup: pg_dump + secrets + uploads → local dump dir and (when configured) restic.
+# Config: /etc/lifedash/backup.env  ·  Run now: sudo systemctl start lifedash-backup
+[Unit]
+Description=life-dashboard backup
+After=postgresql.service lifedash-secrets.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-backup run
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=yes

@@ -1,0 +1,211 @@
+/**
+ * clock.css — focus clock page (/clock)
+ */
+
+@font-face {
+    font-family: 'DSEG7-Classic';
+    src: url('/assets/fonts/dseg7/DSEG7Classic-Regular.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+.focus-clock-alarm-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ef4444;
+    line-height: 0;
+    flex-shrink: 0;
+    opacity: 0.95;
+    transition: opacity 0.15s ease;
+}
+
+.focus-clock-alarm-indicator:hover {
+    opacity: 1;
+}
+
+.focus-clock-alarm-indicator.hidden {
+    display: none;
+}
+
+.focus-clock-alarm-icon {
+    display: block;
+}
+
+.focus-clock-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 3.5rem);
+    padding: 2rem 1.5rem 3rem;
+    box-sizing: border-box;
+}
+
+.focus-clock-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    text-align: center;
+    width: 100%;
+    max-width: 100%;
+    --fc-time-color: #39ff14;
+    --fc-date-color: #64748b;
+    --focus-clock-scale: 1;
+}
+
+.focus-clock-stack[data-date-position="above"] {
+    flex-direction: column;
+}
+
+.focus-clock-stack[data-date-position="above"] .focus-clock-meta {
+    order: 0;
+}
+
+.focus-clock-stack[data-date-position="above"] .focus-clock-time-wrap {
+    order: 1;
+}
+
+.focus-clock-stack[data-date-position="below"] .focus-clock-meta {
+    order: 2;
+}
+
+.focus-clock-stack[data-date-position="below"] .focus-clock-time-wrap {
+    order: 1;
+}
+
+.focus-clock-meta {
+    font-size: calc(0.95rem * var(--focus-clock-scale));
+    line-height: 1.4;
+    color: var(--fc-date-color);
+    font-weight: 400;
+    letter-spacing: 0.02em;
+}
+
+.focus-clock-date {
+    opacity: 0.95;
+}
+
+.focus-clock-week {
+    font-size: 0.85em;
+    opacity: 0.85;
+    margin-top: 0.25rem;
+}
+
+.focus-clock-time-wrap {
+    line-height: 1;
+    transform: scale(var(--focus-clock-scale));
+    transform-origin: center center;
+}
+
+.focus-clock-time {
+    color: var(--fc-time-color);
+    font-size: clamp(3rem, 14vw, 9rem);
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.focus-clock-time.font-dseg7 {
+    font-family: 'DSEG7-Classic', 'JetBrains Mono', monospace;
+    letter-spacing: 0.08em;
+    font-weight: normal;
+}
+
+.focus-clock-time.font-inconsolata {
+    font-family: 'Inconsolata', 'JetBrains Mono', monospace;
+}
+
+.focus-clock-time.font-space_mono {
+    font-family: 'Space Mono', 'JetBrains Mono', monospace;
+}
+
+.focus-clock-time.font-ibm_plex_mono {
+    font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+}
+
+.focus-clock-time.font-source_code_pro {
+    font-family: 'Source Code Pro', 'JetBrains Mono', monospace;
+}
+
+.focus-clock-time .fc-ampm {
+    font-size: 0.35em;
+    letter-spacing: 0.05em;
+    margin-left: 0.15em;
+    vertical-align: baseline;
+}
+
+.focus-clock-time.font-dseg7 .fc-colon {
+    display: inline-block;
+}
+
+.focus-clock-time.font-dseg7[data-colon-blink="1"] .fc-colon {
+    animation: fc-colon-blink 1s step-end infinite;
+}
+
+@keyframes fc-colon-blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0.15; }
+}
+
+.focus-clock-alarm-banner {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.72);
+    padding: 1.5rem;
+}
+
+.focus-clock-alarm-banner.hidden {
+    display: none;
+}
+
+.focus-clock-alarm-panel {
+    background: var(--surface-elevated, #1e293b);
+    border: 1px solid var(--border-chrome, #334155);
+    border-radius: 0.5rem;
+    padding: 1.5rem 2rem;
+    text-align: center;
+    max-width: 20rem;
+}
+
+.focus-clock-alarm-panel h2 {
+    color: var(--text-primary, #f1f5f9);
+    font-size: 1.125rem;
+    font-weight: 500;
+    margin: 0 0 1rem;
+}
+
+.focus-clock-alarm-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.focus-clock-autoplay-hint {
+    position: fixed;
+    bottom: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 90;
+    max-width: 24rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface-elevated, #1e293b);
+    border: 1px solid var(--border-chrome, #334155);
+    border-radius: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--text-muted, #94a3b8);
+    text-align: center;
+}
+
+.focus-clock-autoplay-hint.hidden {
+    display: none;
+}

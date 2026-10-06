@@ -1,0 +1,84 @@
+.cloudpad-page {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.cloudpad-nav {
+    flex-shrink: 0;
+}
+
+.cloudpad-control-banner {
+    flex-shrink: 0;
+    background: var(--surface-hover);
+    border-bottom: 1px solid var(--surface-border);
+}
+
+.cloudpad-control-banner.is-warn {
+    background: color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent);
+}
+
+.cloudpad-control-banner.is-ok {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.cloudpad-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+}
+
+.cloudpad-root-share {
+    height: calc(100vh - 5.5rem);
+}
+
+.cloudpad-root .excalidraw {
+    --theme-filter: none;
+}
+
+.cloudpad-sharing {
+    flex-shrink: 0;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+.cloudpad-page.cloudpad-sharing-open .cloudpad-root {
+    flex: 1 1 0;
+    min-height: 12rem;
+}
+
+.cloudpad-root-embedded {
+    min-height: 45vh;
+    height: 55vh;
+    position: relative;
+}
+
+.cloudpad-embed-control-banner {
+    background: var(--surface-hover);
+    border: 1px solid var(--surface-border);
+}
+
+.cloudpad-embed-control-banner.is-warn {
+    background: color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent);
+}
+
+.cloudpad-embed-control-banner.is-ok {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+#cloudpad-tab-panel.cloudpad-embed-sharing-open .cloudpad-root-embedded {
+    min-height: 28vh;
+    height: 35vh;
+}
+
+@media (max-width: 768px) {
+    .cloudpad-root-embedded {
+        min-height: 40vh;
+        height: 45vh;
+    }
+
+    .cloudpad-nav .btn:not(#cloudpad-fit-content) {
+        display: none;
+    }
+}

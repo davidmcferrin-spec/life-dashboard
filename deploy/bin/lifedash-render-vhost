@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# lifedash-render-vhost <ui-host|""> [template] — print the Apache vhost for this install.
+#
+# With a UI host: HTTPS on :443 (Let's Encrypt), :80 redirects non-local clients.
+# Without one:   HTTP-only (development / before the certificate exists) — the
+#                @@TLS_ONLY…@@ blocks are removed and ServerName falls back to "lifedash".
+#
+# Used by provision.sh; kept separate so the rendering can be tested on its own.
+set -euo pipefail
+
+UI_HOST=${1-}
+TEMPLATE=${2:-/srv/lifedash/app/deploy/apache/lifedash.conf.template}
+[[ -f $TEMPLATE ]] || { echo "template not found: $TEMPLATE" >&2; exit 66; }
+
+if [[ -n $UI_HOST ]]; then
+    [[ $UI_HOST =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]] \
+        || { echo "invalid host name: $UI_HOST" >&2; exit 65; }
+    sed -e "s/@@UI_HOST@@/$UI_HOST/g" -e '/@@TLS_ONLY_BEGIN@@/d' -e '/@@TLS_ONLY_END@@/d' "$TEMPLATE"
+else
+    sed -e '/@@TLS_ONLY_BEGIN@@/,/@@TLS_ONLY_END@@/d' -e 's/@@UI_HOST@@/lifedash/g' "$TEMPLATE"
+fi

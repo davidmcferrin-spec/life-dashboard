@@ -1,0 +1,13 @@
+# RSS feeds every 30 min
+[Unit]
+Description=life-dashboard schedule: feeds (RSS feeds every 30 min)
+
+[Timer]
+OnCalendar=*:00/30
+Unit=lifedash-job@feeds.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lifedash"
+version = "0.1.0"
+description = "life-dashboard Python services (MCP server, sync workers, realtime push) — shared foundation"
+requires-python = ">=3.11"
+dependencies = [
+    "psycopg[binary]>=3.2,<4",
+    "websockets>=13,<16",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+lifedash-healthcheck = "lifedash.healthcheck:main"
+lifedash-push = "lifedash.push:main"
+lifedash-mcp = "lifedash.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lifedash*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,34 @@
+# /etc/postgresql/<ver>/main/conf.d/lifedash.conf — rendered by deploy/provision.sh
+# Values in @@…@@ are computed from installed RAM at provision time.
+
+listen_addresses = 'localhost'          # socket + loopback only; nothing on the LAN
+timezone = 'UTC'
+log_timezone = 'UTC'
+password_encryption = 'scram-sha-256'
+
+# Memory (@@RAM_GB@@ GB RAM detected)
+shared_buffers = @@SHARED_BUFFERS@@
+effective_cache_size = @@EFFECTIVE_CACHE@@
+work_mem = 16MB
+maintenance_work_mem = 512MB
+
+# Ubuntu 26.04 / Linux 7.0: a kernel change causes a large PostgreSQL throughput
+# regression unless shared memory uses huge pages (26.04 release notes).
+# provision.sh sets vm.nr_hugepages from `postgres -C shared_memory_size_in_huge_pages`.
+huge_pages = @@HUGE_PAGES@@
+
+# NVMe storage
+random_page_cost = 1.1
+effective_io_concurrency = 200
+
+# WAL / checkpoints — small write volume, favour fewer, smoother checkpoints
+wal_compression = on
+checkpoint_timeout = 15min
+max_wal_size = 4GB
+min_wal_size = 512MB
+
+# Observability
+log_min_duration_statement = 500ms
+log_line_prefix = '%m [%p] %q%u@%d/%a '
+log_lock_waits = on
+shared_preload_libraries = 'pg_stat_statements'

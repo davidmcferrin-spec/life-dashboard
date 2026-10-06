@@ -1,0 +1,94 @@
+# /etc/apache2/sites-available/lifedash.conf — rendered by deploy/provision.sh
+#
+# Access model
+#   You (LAN, or remote via UniFi Teleport) → https://@@UI_HOST@@ (:443, Let's Encrypt cert)
+#   AI clouds (Claude.ai, Grok)          → cloudflared → http://127.0.0.1:80 (/healthz) / :8765 (/mcp)
+#   The server itself (deploy checks)    → http://127.0.0.1:80
+# UFW admits 22/80/443 only from the LAN and any --allow-cidr ranges (e.g. the Teleport subnet).
+#
+# @@UI_HOST@@ resolves to the server's LAN IP through a local DNS record on the UDM,
+# so the name never needs to exist in public DNS.
+
+# Shared app definition, used by both vhosts.
+<Macro LifedashApp>
+    DocumentRoot /srv/lifedash/app/public
+
+    <Directory /srv/lifedash/app/public>
+        Options -Indexes -MultiViews +FollowSymLinks
+        # public/.htaccess carries the front-controller rewrite and file blocks.
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    # Everything outside public/ is never served, even if a rewrite goes wrong.
+    # (Apache merges <Directory> blocks shortest path first, so public/ above still wins.)
+    <Directory /srv/lifedash/app>
+        Require all denied
+    </Directory>
+
+    <FilesMatch "\.php$">
+        SetHandler "proxy:unix:/run/php/lifedash.sock|fcgi://lifedash-fpm"
+    </FilesMatch>
+
+    # Uploads: FILES_MAX_BYTES defaults to 50 MB.
+    LimitRequestBody 67108864
+    # Long-poll friendly (CloudPad control polling, future SSE).
+    ProxyTimeout 120
+
+    # Phase L1+: realtime push service (returns 503 until it exists).
+    ProxyPass        /ws  ws://127.0.0.1:8766/ws
+    ProxyPassReverse /ws  ws://127.0.0.1:8766/ws
+
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header unset X-Powered-By
+
+    ErrorLog  ${APACHE_LOG_DIR}/lifedash_error.log
+    CustomLog ${APACHE_LOG_DIR}/lifedash_access.log combined
+</Macro>
+
+# ---------------------------------------------------------------------------
+# :80 — local and tunnel traffic only; everyone else is sent to HTTPS.
+# ---------------------------------------------------------------------------
+<VirtualHost *:80>
+    ServerName @@UI_HOST@@
+    ServerAlias *
+
+    # cloudflared and on-box checks connect from loopback. mod_remoteip rewrites the
+    # client IP from X-Forwarded-For, so trust it only from loopback and test the real
+    # socket address (CONN_REMOTE_ADDR) for the redirect decision.
+    RemoteIPHeader X-Forwarded-For
+    RemoteIPInternalProxy 127.0.0.1 ::1
+
+    # @@TLS_ONLY_BEGIN@@
+    RewriteEngine On
+    RewriteCond expr "! (%{CONN_REMOTE_ADDR} -ipmatch '127.0.0.0/8' || %{CONN_REMOTE_ADDR} -ipmatch '::1/128')"
+    RewriteRule ^ https://@@UI_HOST@@%{REQUEST_URI} [R=301,L]
+    # @@TLS_ONLY_END@@
+
+    # Requests that came through cloudflared were HTTPS at Cloudflare's edge.
+    SetEnvIfExpr "%{CONN_REMOTE_ADDR} -ipmatch '127.0.0.0/8' && req('X-Forwarded-Proto') == 'https'" HTTPS=on
+
+    Use LifedashApp
+</VirtualHost>
+
+# @@TLS_ONLY_BEGIN@@
+# ---------------------------------------------------------------------------
+# :443 — the dashboard UI (LAN + Teleport).
+# ---------------------------------------------------------------------------
+<VirtualHost *:443>
+    ServerName @@UI_HOST@@
+
+    SSLEngine on
+    SSLCertificateFile    /etc/letsencrypt/live/@@UI_HOST@@/fullchain.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/@@UI_HOST@@/privkey.pem
+    Protocols h2 http/1.1
+
+    # Valid public certificate, so HSTS is safe; no includeSubDomains (other names may be HTTP).
+    Header always set Strict-Transport-Security "max-age=31536000"
+
+    Use LifedashApp
+</VirtualHost>
+# @@TLS_ONLY_END@@
+
+UndefMacro LifedashApp

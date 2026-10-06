@@ -1,0 +1,74 @@
+Options -Indexes -MultiViews
+ServerSignature Off
+
+# -------------------------------------------------------
+# Front controller — send everything through index.php
+# -------------------------------------------------------
+RewriteEngine On
+
+# Don't rewrite actual files or directories
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Route everything else to index.php
+RewriteRule ^ index.php [QSA,L]
+
+# -------------------------------------------------------
+# Security — block access to sensitive files/dirs
+# -------------------------------------------------------
+
+# Block web access to application code (Dreamhost: personal-dashboard/ under domain root)
+RewriteRule ^personal-dashboard(/|$) - [F,L]
+
+# Block .env files at any depth
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block composer files
+<FilesMatch "^(composer\.(json|lock)|package\.json|package-lock\.json)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Block PHP files in uploads directory (if added later)
+<FilesMatch "\.php$">
+    <If "%{REQUEST_URI} =~ m#^/uploads/#">
+        Order allow,deny
+        Deny from all
+    </If>
+</FilesMatch>
+
+# -------------------------------------------------------
+# Security headers (belt + suspenders with bootstrap.php)
+# -------------------------------------------------------
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "DENY"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Remove server fingerprinting headers
+    Header unset X-Powered-By
+    Header unset Server
+</IfModule>
+
+# -------------------------------------------------------
+# Compression (Dreamhost shared supports mod_deflate)
+# -------------------------------------------------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/javascript
+    AddOutputFilterByType DEFLATE application/json application/javascript
+</IfModule>
+
+# -------------------------------------------------------
+# Cache static assets
+# -------------------------------------------------------
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css              "access plus 1 week"
+    ExpiresByType application/javascript "access plus 1 week"
+    ExpiresByType image/png             "access plus 1 month"
+    ExpiresByType image/svg+xml         "access plus 1 month"
+    ExpiresByType image/x-icon          "access plus 1 year"
+</IfModule>

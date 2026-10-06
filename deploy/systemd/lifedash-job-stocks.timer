@@ -1,0 +1,13 @@
+# stock quotes 3x daily (Alpha Vantage free tier: 25 calls/day)
+[Unit]
+Description=life-dashboard schedule: stocks (stock quotes 3x daily (Alpha Vantage free tier: 25 calls/day))
+
+[Timer]
+OnCalendar=*-*-* 06,12,18:00:00 America/Chicago
+Unit=lifedash-job@stocks.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+# cron log retention, daily
+[Unit]
+Description=life-dashboard schedule: prune (cron log retention, daily)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 America/Chicago
+Unit=lifedash-job@prune.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# lifedash-deploy — update the running app from git.
+#
+#   sudo lifedash-deploy            pull, install deps, migrate, reload, verify
+#   sudo lifedash-deploy --no-pull  same, using the code already on disk
+#
+# Aborts before touching services if the pull is not a fast-forward or the
+# migration fails. Takes a pre-migration pg_dump so a bad migration can be undone.
+set -euo pipefail
+
+APP_DIR=/srv/lifedash/app
+VENV=/srv/lifedash/venv
+PULL=true
+[[ ${1:-} == "--no-pull" ]] && PULL=false
+
+log() { echo "[lifedash-deploy] $*"; }
+die() { echo "[lifedash-deploy] ERROR: $*" >&2; exit 1; }
+[[ $EUID -eq 0 ]] || die "run as root (sudo)"
+cd "$APP_DIR"
+
+if $PULL; then
+    log "git pull --ff-only"
+    git -c safe.directory="$APP_DIR" pull --ff-only || die "pull failed (local changes or diverged history)"
+fi
+log "revision $(git -c safe.directory="$APP_DIR" rev-parse --short HEAD)"
+
+# Ownership/permissions (code read-only to the app, storage writable, public/ for Apache).
+bash "$APP_DIR/deploy/bin/lifedash-perms"
+
+if command -v composer >/dev/null && [[ -f composer.lock ]]; then
+    log "composer install --no-dev"
+    COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --no-interaction --quiet
+fi
+
+log "python services"
+"$VENV/bin/pip" install --quiet --upgrade -e "$APP_DIR/services"
+
+log "pre-migration backup"
+install -d -m 0700 /var/backups/lifedash
+runuser -u postgres -- pg_dump --format=custom lifedash > "/var/backups/lifedash/pre-deploy-$(date +%Y%m%d-%H%M%S).dump"
+find /var/backups/lifedash -name 'pre-deploy-*.dump' -mtime +14 -delete
+
+log "migrate"
+if [[ -t 0 ]]; then
+    runuser -u lifedash -- php scripts/migrate.php
+else
+    # Non-interactive: fine unless this is the very first run (admin prompt).
+    runuser -u lifedash -- php scripts/migrate.php </dev/null || die "migration failed (first run? run interactively once)"
+fi
+
+log "reload php-fpm"
+for fpm in $(systemctl list-units --type=service --no-legend 'php*-fpm.service' | awk '{print $1}'); do
+    systemctl reload "$fpm"   # also flushes OPcache (validate_timestamps=0)
+done
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-push.service" /etc/systemd/system/
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-mcp.service" /etc/systemd/system/
+systemctl daemon-reload
+
+log "restart realtime push and MCP"
+systemctl enable lifedash-push.service >/dev/null
+systemctl restart lifedash-push.service
+systemctl enable lifedash-mcp.service >/dev/null
+systemctl restart lifedash-mcp.service
+
+log "verify"
+sleep 1
+curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null || die "/healthz failed — check journalctl -u 'php*-fpm' and storage/logs/php-error.log"
+runuser -u lifedash -- "$VENV/bin/lifedash-healthcheck" >/dev/null || log "WARNING: lifedash-healthcheck reported warn/fail (run it for details)"
+systemctl is-active --quiet lifedash-push.service || log "WARNING: lifedash-push is not running — journalctl -u lifedash-push (dashboard falls back to polling)"
+systemctl is-active --quiet lifedash-mcp.service || log "WARNING: lifedash-mcp is not running — journalctl -u lifedash-mcp (/mcp stays 502 until it is)"
+log "ok"

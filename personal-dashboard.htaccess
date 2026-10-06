@@ -1,0 +1,4 @@
+# Copy to personal-dashboard/.htaccess on Dreamhost (deny all HTTP access).
+# The app must only be loaded via PHP require from index.php, not browsed directly.
+
+Require all denied

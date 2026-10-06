@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# lifedash-job <name> — run one scheduled PHP job, appending output to its log.
+# Called by lifedash-job@<name>.service (as the lifedash user). Safe to run by hand:
+#   sudo -u lifedash /srv/lifedash/app/deploy/bin/lifedash-job feeds
+set -euo pipefail
+
+APP_DIR="${LIFEDASH_APP_DIR:-/srv/lifedash/app}"
+LOG_DIR="$APP_DIR/storage/logs"
+PHP_BIN="${PHP_BIN:-$(command -v php)}"
+
+usage() {
+    echo "usage: lifedash-job {feeds|flights|packages|pings|stocks|shares|prune}" >&2
+    exit 64
+}
+
+[[ $# -eq 1 ]] || usage
+
+# name → script, log file (log names match SystemHealthService::JOBS)
+case "$1" in
+    feeds)    script=cron/fetch_feeds.php;        log=feeds.log ;;
+    flights)  script=cron/fetch_flights.php;      log=flights.log ;;
+    packages) script=cron/fetch_packages.php;     log=packages.log ;;
+    pings)    script=cron/ping_targets.php;       log=ping.log ;;
+    stocks)   script=cron/fetch_stocks.php;       log=stocks.log ;;
+    shares)   script=cron/prune_share_links.php;  log=shares.log ;;
+    prune)    script=scripts/prune_cron_logs.php; log=prune.log ;;
+    *) usage ;;
+esac
+
+[[ -f "$APP_DIR/$script" ]] || { echo "lifedash-job: missing $APP_DIR/$script" >&2; exit 66; }
+mkdir -p "$LOG_DIR"
+
+set +e
+"$PHP_BIN" "$APP_DIR/$script" >>"$LOG_DIR/$log" 2>&1
+rc=$?
+set -e
+
+if [[ $rc -ne 0 ]]; then
+    # Also surfaces in `systemctl status` / journalctl for alerting.
+    echo "lifedash-job $1: $script exited $rc (see $LOG_DIR/$log)" >&2
+fi
+exit "$rc"

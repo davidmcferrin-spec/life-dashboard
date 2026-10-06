@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# lifedash-backup — database + secrets + uploads backup.
+#
+#   sudo lifedash-backup run      (what the nightly timer calls)
+#   sudo lifedash-backup init     initialise the restic repository from backup.env
+#   sudo lifedash-backup snapshots
+#
+# Always: pg_dump (custom format) to /var/backups/lifedash, keeping LOCAL_KEEP_DAYS.
+# Offsite (optional until you pick S3 or Dropbox): restic, configured in
+# /etc/lifedash/backup.env (root, 0600) — see deploy/backup.env.example.
+# The snapshot includes the DECRYPTED app.env: the TPM-bound .cred file is
+# useless on any other machine, and APP_SECRET is required to decrypt stored
+# Dropbox/S3 credentials after a restore. restic encrypts everything client-side.
+set -euo pipefail
+
+APP_DIR=/srv/lifedash/app
+CONF=/etc/lifedash/backup.env
+LOCAL_DIR=/var/backups/lifedash
+STATUS=/var/lib/lifedash/backup-status.json
+DB_NAME=lifedash
+
+log() { echo "[lifedash-backup] $*"; }
+die() { echo "[lifedash-backup] ERROR: $*" >&2; write_status false "$*"; exit 1; }
+
+write_status() {
+    local ok=$1 msg=${2:-}
+    install -d -m 0755 "$(dirname "$STATUS")"
+    printf '{"at":"%s","ok":%s,"offsite":%s,"message":"%s"}\n' \
+        "$(date -u +%FT%TZ)" "$ok" "${OFFSITE:-false}" "${msg//\"/\'}" > "$STATUS"
+}
+
+[[ $EUID -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+
+OFFSITE=false
+if [[ -f $CONF ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    . "$CONF"
+    set +a
+    [[ -n "${RESTIC_REPOSITORY:-}" ]] && OFFSITE=true
+fi
+LOCAL_KEEP_DAYS=${LOCAL_KEEP_DAYS:-7}
+
+restic_env_ok() {
+    [[ $OFFSITE == true ]] || die "RESTIC_REPOSITORY not set in $CONF"
+    [[ -n "${RESTIC_PASSWORD_FILE:-}${RESTIC_PASSWORD:-}" ]] || die "set RESTIC_PASSWORD_FILE in $CONF"
+    command -v restic >/dev/null || die "restic not installed"
+}
+
+run() {
+    install -d -m 0700 "$LOCAL_DIR"
+    local stamp dump stage
+    stamp=$(date +%Y%m%d-%H%M%S)
+    dump="$LOCAL_DIR/$DB_NAME-$stamp.dump"
+
+    log "pg_dump → $dump"
+    runuser -u postgres -- pg_dump --format=custom --compress=6 --no-owner "$DB_NAME" > "$dump.partial" \
+        || die "pg_dump failed"
+    mv "$dump.partial" "$dump"
+    chmod 0600 "$dump"
+    # A dump that pg_restore cannot list is not a backup.
+    pg_restore --list "$dump" >/dev/null || die "pg_restore could not read $dump"
+
+    find "$LOCAL_DIR" -name "$DB_NAME-*.dump" -mtime +"$LOCAL_KEEP_DAYS" -delete
+
+    if [[ $OFFSITE != true ]]; then
+        log "WARNING: offsite backup not configured ($CONF) — local dump only"
+        write_status true "local only — offsite not configured"
+        return 0
+    fi
+    restic_env_ok
+
+    stage=$(mktemp -d /run/lifedash-backup.XXXXXX)
+    chmod 700 "$stage"
+    trap 'rm -rf "$stage"' RETURN
+    cp "$dump" "$stage/lifedash.dump"
+    if [[ -f /run/lifedash/app.env ]]; then
+        install -m 0600 /run/lifedash/app.env "$stage/app.env"
+    else
+        log "WARNING: /run/lifedash/app.env missing — secrets not in this snapshot"
+    fi
+
+    local paths=("$stage" "$APP_DIR/storage/uploads" /etc/lifedash)
+    [[ -d /srv/lifedash/vault ]] && paths+=(/srv/lifedash/vault)   # Phase 4 second brain
+
+    log "restic backup → $RESTIC_REPOSITORY"
+    restic backup --tag lifedash --host lifedash --exclude "$CONF" --exclude /etc/lifedash/restic.pass "${paths[@]}" || die "restic backup failed"
+    restic forget --tag lifedash --host lifedash --prune \
+        --keep-daily 14 --keep-weekly 8 --keep-monthly 12 || die "restic forget/prune failed"
+
+    if [[ $(date +%u) -eq 7 ]]; then
+        log "weekly integrity check (5% of data)"
+        restic check --read-data-subset=5% || die "restic check failed"
+    fi
+
+    write_status true "ok"
+    log "done"
+}
+
+case "${1:-}" in
+    run)       run ;;
+    init)      restic_env_ok; restic init ;;
+    snapshots) restic_env_ok; restic snapshots --tag lifedash ;;
+    *)         sed -n '2,6p' "$0" | sed 's/^# \{0,1\}//'; exit 64 ;;
+esac

@@ -1,0 +1,13 @@
+# expired share-link purge, daily
+[Unit]
+Description=life-dashboard schedule: shares (expired share-link purge, daily)
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 America/Chicago
+Unit=lifedash-job@shares.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

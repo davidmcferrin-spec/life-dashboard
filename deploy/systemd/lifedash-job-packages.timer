@@ -1,0 +1,13 @@
+# package polls every 2 h
+[Unit]
+Description=life-dashboard schedule: packages (package polls every 2 h)
+
+[Timer]
+OnCalendar=00/2:05
+Unit=lifedash-job@packages.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
