@@ -12,6 +12,7 @@ use Dashboard\Knowledge\PageService;
 use Dashboard\Life\LifeService;
 use Dashboard\Media\MediaService;
 use Dashboard\Money\MoneyService;
+use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
 use Dashboard\Support\Clock;
 use Dashboard\Widgets\WidgetDataService;
@@ -34,6 +35,7 @@ final class Services
     public readonly MoneyService $money;
     public readonly InvestService $invest;
     public readonly SearchService $search;
+    public readonly RedditService $reddit;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -48,6 +50,7 @@ final class Services
         $this->money   = new MoneyService($db, $clock, $this->pages);
         $this->invest  = new InvestService($db);
         $this->search  = new SearchService($db);
+        $this->reddit  = new RedditService($db);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,
@@ -59,6 +62,7 @@ final class Services
             $this->invest,
             $this->pages,
             new MediaService($db),
+            $this->reddit,
         );
     }
 

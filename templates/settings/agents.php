@@ -32,6 +32,7 @@ require __DIR__ . '/_shell-top.php';
                         <select name="access" class="input w-full">
                             <option value="all">Read and write</option>
                             <option value="read">Read only</option>
+                            <option value="reddit">Reddit only</option>
                         </select>
                     </label>
                 </div>

@@ -254,6 +254,14 @@ final class SearchIndex
             $add((string) $row['dataset'], (string) $row['id'], (string) $row['source_key'] . ': ' . $row['title'], (string) $row['body'], (string) $row['url']);
         }
 
+        foreach ($this->db->fetchAll(
+            'SELECT id, subreddit, title, selftext, flair, permalink FROM reddit_posts WHERE user_id = ? ORDER BY created_utc DESC LIMIT 400',
+            [$userId]
+        ) as $row) {
+            $body = trim((string) $row['selftext'] . ' ' . (string) ($row['flair'] ?? ''));
+            $add('reddit', 'post-' . $row['id'], 'r/' . $row['subreddit'] . ': ' . $row['title'], $body, (string) $row['permalink']);
+        }
+
         return array_values($chunks);
     }
 

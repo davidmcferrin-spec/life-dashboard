@@ -157,6 +157,39 @@ final class ExtendedApi
             'wallet' => $this->svc->invest->saveWallet($u, (string) ($this->runner->body()['address'] ?? '')),
         ], 200, true));
         $r->post('/api/v1/invest/polymarket/refresh', fn () => $this->run(fn (int $u) => $this->svc->invest->refreshPolymarket($u), 200, true));
+
+        $r->get('/api/v1/reddit/subs', fn () => $this->run(fn (int $u) => [
+            'subs' => $this->svc->reddit->list($u),
+        ]));
+        $r->post('/api/v1/reddit/subs', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            return ['sub' => $this->svc->reddit->add(
+                $u,
+                (string) ($b['name'] ?? ''),
+                (string) ($b['sort'] ?? 'hot'),
+                (string) ($b['include'] ?? ''),
+                (string) ($b['exclude'] ?? ''),
+            )];
+        }, 200, true));
+        $r->post('/api/v1/reddit/subs/remove', fn () => $this->run(function (int $u): array {
+            $this->svc->reddit->remove($u, (string) ($this->runner->body()['name'] ?? ''));
+            return ['ok' => true];
+        }, 200, true));
+        $r->get('/api/v1/reddit/posts', fn () => $this->run(fn (int $u) => [
+            'posts' => $this->svc->reddit->posts($u, [
+                'subreddit' => self::strParam('subreddit') ?? '',
+                'since'     => self::strParam('since') ?? '',
+                'min_score' => (int) ($_GET['min_score'] ?? 0),
+                'keyword'   => self::strParam('keyword') ?? '',
+                'limit'     => (int) ($_GET['limit'] ?? 25),
+            ]),
+        ]));
+        $r->get('/api/v1/reddit/posts/{post}/comments', fn (array $p) => $this->run(fn (int $u) => $this->svc->reddit->comments(
+            $u,
+            (string) ($p['post'] ?? ''),
+            null,
+            (int) ($_GET['limit'] ?? 20),
+        )));
     }
 
     /**

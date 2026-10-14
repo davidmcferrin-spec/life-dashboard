@@ -35,7 +35,9 @@
         e.preventDefault();
         const data = new FormData(e.target);
         const access = String(data.get('access'));
-        const scopes = access === 'read' ? ['read'] : ['read', 'write'];
+        const scopes = access === 'reddit'
+            ? ['reddit:read', 'reddit:write']
+            : (access === 'read' ? ['read'] : ['read', 'write']);
         const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
         const once = document.getElementById('agent-token-once');
         once.hidden = false;

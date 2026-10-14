@@ -568,6 +568,25 @@
         arm();
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, custom };
+    function redditFeed(ctx) {
+        tools(ctx, '<a href="/reddit" class="nav-link">Reader</a>');
+        const posts = ctx.data.posts || [];
+        if (!posts.length) {
+            ctx.body.innerHTML = `<p class="empty-state mono text-xs">${esc(ctx.data.empty || 'No posts yet.')}</p>`;
+            return;
+        }
+        ctx.body.innerHTML = posts.map((post) => {
+            const meta = [
+                post.subreddit ? 'r/' + post.subreddit : '',
+                post.author ? 'u/' + post.author : '',
+                (post.score ?? 0) + ' pts',
+                (post.num_comments ?? 0) + ' comments',
+            ].filter(Boolean).join(' · ');
+            return `<a class="ld-life-row" href="${esc(post.permalink)}" target="_blank" rel="noopener noreferrer">
+                <span>${esc(post.title)}</span><span class="ld-meta">${esc(meta)}</span></a>`;
+        }).join('');
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

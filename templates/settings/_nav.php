@@ -19,6 +19,7 @@ $userNav = [
     'stocks'     => ['Stocks', '/settings/stocks'],
     'bookmarks'  => ['Bookmarks', '/settings/bookmarks'],
     'feeds'      => ['News feeds', '/settings/feeds'],
+    'reddit'     => ['Reddit', '/settings/reddit'],
     'tokens'     => ['Auto-login tokens', '/settings/tokens'],
     'flights'    => ['Flight watches', '/settings/flights'],
     'packages'   => ['Package tracking', '/settings/packages'],
@@ -36,6 +37,7 @@ $userNav = [
         <a href="/brain" class="text-accent hover:underline px-2 py-1 block">Knowledge vault →</a>
         <a href="/brain/graph" class="text-accent hover:underline px-2 py-1 block">Brain view →</a>
         <a href="/news" class="text-accent hover:underline px-2 py-1 block">News reader →</a>
+        <a href="/reddit" class="text-accent hover:underline px-2 py-1 block">Reddit reader →</a>
         <a href="/todos" class="text-accent hover:underline px-2 py-1 block">Todo lists →</a>
 
         <?php if ($showAdminNav): ?>

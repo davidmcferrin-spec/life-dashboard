@@ -1,0 +1,13 @@
+# Tracked subreddits every 30 min, offset from the media-card timer.
+[Unit]
+Description=life-dashboard schedule: reddit (tracked subreddits every 30 min)
+
+[Timer]
+OnCalendar=*:05/30
+Unit=lifedash-job@reddit.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

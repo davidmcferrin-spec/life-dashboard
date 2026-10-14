@@ -15,6 +15,7 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **Search** — Google, DuckDuckGo, Bing, Grok, Claude (per-user preference)
 - **4 US Timezone Clocks** — ET / CT / MT / PT, live; optional broadcast week (EPOCH)
 - **RSS News Feed** — 30+ built-in sources across tech, developer, mobile, hardware, enterprise, Microsoft, broadcast, and news categories; merged timeline; `/news` reader
+- **Reddit** — track subreddits on Settings → Reddit (hot/new/top, keyword filters). Posts are saved on the server and shown at `/reddit` and on the Reddit reader widget. An assistant reads them through MCP. A token can be limited to Reddit only. The rotating Reddit card is separate and still uses the list typed into that widget
 - **Weather Widget** — OpenWeatherMap free tier, browser geolocation
 - **Bookmarks** — per-user folders with favicons, bookmarklet capture, collapsible links
 - **Flight Watches** — OpenSky ADS-B (optional FlightAware); polls 24h before departure via cron

@@ -183,6 +183,64 @@ TOOLS: list[dict[str, Any]] = [
         "description": "Read-only positions and unrealized result. Do not place trades.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "list_tracked_subreddits",
+        "description": "Subreddits this person tracks, with sort and keyword filters.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "add_tracked_subreddit",
+        "description": "Track a subreddit. sort is hot, new, or top. include and exclude are optional comma-separated words.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "sort": {"type": "string"},
+                "include": {"type": "string"},
+                "exclude": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "remove_tracked_subreddit",
+        "description": "Stop tracking a subreddit and delete the posts saved from it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_reddit_posts",
+        "description": "Posts saved locally. Filter by subreddit, since (YYYY-MM-DD), min_score, keyword, and limit.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subreddit": {"type": "string"},
+                "since": {"type": "string"},
+                "min_score": {"type": "integer"},
+                "keyword": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_reddit_post_comments",
+        "description": "Top-level comments for a stored post. Fetched when asked, not stored.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "post_id": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["post_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -232,6 +290,27 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/money/summary" + suffix, None
     if name == "invest_scorecard":
         return "GET", "/api/v1/invest/scorecard", None
+    if name == "list_tracked_subreddits":
+        return "GET", "/api/v1/reddit/subs", None
+    if name == "add_tracked_subreddit":
+        body = {k: args[k] for k in ("name", "sort", "include", "exclude") if k in args}
+        return "POST", "/api/v1/reddit/subs", body
+    if name == "remove_tracked_subreddit":
+        return "POST", "/api/v1/reddit/subs/remove", {"name": args["name"]}
+    if name == "get_reddit_posts":
+        query = {}
+        for key in ("subreddit", "since", "keyword"):
+            if args.get(key):
+                query[key] = args[key]
+        if "min_score" in args and args["min_score"] is not None:
+            query["min_score"] = int(args["min_score"])
+        if args.get("limit"):
+            query["limit"] = int(args["limit"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/reddit/posts" + suffix, None
+    if name == "get_reddit_post_comments":
+        query = ("?limit=" + str(int(args["limit"]))) if args.get("limit") else ""
+        return "GET", f"/api/v1/reddit/posts/{args['post_id']}/comments" + query, None
     if name == "search":
         query = {"q": args["q"]}
         if args.get("include"):

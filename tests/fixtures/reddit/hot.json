@@ -1,0 +1,51 @@
+{
+  "kind": "Listing",
+  "data": {
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "abc123",
+          "subreddit": "programming",
+          "title": "Postgres and PHP",
+          "author": "ada",
+          "score": 128,
+          "num_comments": 14,
+          "url": "https://example.com/postgres-php",
+          "permalink": "/r/programming/comments/abc123/postgres_and_php/",
+          "created_utc": 1760000000,
+          "link_flair_text": "Article",
+          "selftext": "A short note about quarkspindle indexes.",
+          "stickied": false
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "def456",
+          "subreddit": "programming",
+          "title": "Showoff weekend",
+          "author": "grace",
+          "score": 12,
+          "num_comments": 2,
+          "url": "https://www.reddit.com/r/programming/comments/def456/showoff_weekend/",
+          "permalink": "/r/programming/comments/def456/showoff_weekend/",
+          "created_utc": 1750000000,
+          "link_flair_text": null,
+          "selftext": "What did you ship?",
+          "stickied": true
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "no",
+          "title": "Dropped because the id is too short",
+          "permalink": "/r/programming/comments/no/x/",
+          "created_utc": 1760000000,
+          "url": "https://example.com/x"
+        }
+      }
+    ]
+  }
+}

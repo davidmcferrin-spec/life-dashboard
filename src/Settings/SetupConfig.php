@@ -177,6 +177,15 @@ final class SetupConfig
                     ['key' => 'X_BEARER_TOKEN', 'label' => 'Bearer token', 'secret' => true],
                 ],
             ],
+            'reddit' => [
+                'label' => 'Reddit',
+                'blurb' => 'Optional. Public JSON works with no keys. Add a script app if Reddit starts refusing requests.',
+                'fields' => [
+                    ['key' => 'REDDIT_CLIENT_ID', 'label' => 'App id', 'secret' => true],
+                    ['key' => 'REDDIT_CLIENT_SECRET', 'label' => 'App secret', 'secret' => true],
+                    ['key' => 'REDDIT_USER_AGENT', 'label' => 'User-Agent', 'type' => 'text', 'placeholder' => 'web:life-dashboard:1.0 (by /u/yourname)'],
+                ],
+            ],
             'ollama' => [
                 'label' => 'Local model',
                 'blurb' => 'Ollama embeddings',

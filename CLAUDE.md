@@ -66,6 +66,12 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] Positions, Robinhood activity CSV, public Polymarket data-API refresh, scorecard widget. No trade placement
 - [x] Widget type `custom`: sandboxed srcdoc, `window.__DATA__.metrics`
 
+**Reddit tracking**
+- Settings `/settings/reddit` holds the tracked list (name, hot/new/top, include/exclude words). The rotating `reddit` card still reads its own widget sources via RSS into `media_cards`.
+- `reddit_subs` / `reddit_posts` (migration `0011`) store title, author, score, comment count, url, permalink, created time, subreddit, flair, and a selftext snippet. Dedupe is `(user_id, external_id)`. Search indexes those rows as dataset `reddit`.
+- Fetch: `cron/fetch_reddit.php` on `lifedash-job-reddit.timer` (public JSON, or OAuth when `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` are set on Setup). User-Agent `REDDIT_USER_AGENT`. One request a second; a 429 stops the run.
+- Reader `/reddit` and widget `reddit_feed`. MCP: `list_tracked_subreddits`, `add_tracked_subreddit`, `remove_tracked_subreddit`, `get_reddit_posts`, `get_reddit_post_comments`. Scope area `reddit`.
+
 ## Conventions (life-dashboard)
 
 - **New schema changes go in `database/pgsql/NNNN_snake_case.sql`** (next free number, one transaction per file). Never edit an applied file. The legacy `Schema::migrations()` array is frozen (SQLite path only).
