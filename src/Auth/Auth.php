@@ -13,6 +13,8 @@ use DateInterval;
  * Auth — session-based authentication with auto-login token support.
  *
  * Auto-login URL pattern: /auto/{64-char hex token}
+ * The database stores SHA-256 of that token (same idea as API tokens). The
+ * plaintext is returned once at creation and is what the URL still carries.
  * Tokens are per-user, have optional expiry, and can be revoked.
  */
 class Auth
@@ -67,23 +69,22 @@ class Auth
             return null;
         }
 
+        $hash = self::hashToken($token);
         $record = $this->db->fetchOne(
-            "SELECT t.*, u.* FROM autologin_tokens t
-             JOIN users u ON u.id = t.user_id
-             WHERE t.token = ?
+            "SELECT t.user_id FROM autologin_tokens t
+             WHERE t.token_hash = ?
                AND t.revoked = 0
                AND (t.expires_at IS NULL OR t.expires_at > CURRENT_TIMESTAMP)",
-            [$token]
+            [$hash]
         );
 
         if ($record === null) {
             return null;
         }
 
-        // Update last used timestamp
         $this->db->execute(
-            'UPDATE autologin_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token = ?',
-            [$token]
+            'UPDATE autologin_tokens SET last_used_at = CURRENT_TIMESTAMP WHERE token_hash = ?',
+            [$hash]
         );
 
         // Build user array (avoid key collisions from JOIN)
@@ -254,8 +255,8 @@ class Auth
         }
 
         $this->db->execute(
-            'INSERT INTO autologin_tokens (user_id, token, label, expires_at) VALUES (?, ?, ?, ?)',
-            [$userId, $token, $label, $expiresAt]
+            'INSERT INTO autologin_tokens (user_id, token_hash, label, expires_at) VALUES (?, ?, ?, ?)',
+            [$userId, self::hashToken($token), $label, $expiresAt]
         );
 
         return $token;
@@ -402,6 +403,15 @@ class Auth
     private function sessionHash(int $userId): string
     {
         return hash_hmac('sha256', (string) $userId, Config::get('APP_SECRET'));
+    }
+
+    /**
+     * SHA-256 hex of an auto-login token. Matches pgcrypto
+     * encode(digest(token, 'sha256'), 'hex') used by migration 0011.
+     */
+    public static function hashToken(string $token): string
+    {
+        return hash('sha256', $token);
     }
 
     private function isValidTokenFormat(string $token): bool

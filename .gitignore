@@ -1,0 +1,24 @@
+# Secrets. .env.example is the template and stays in git.
+.env
+.env.*
+!.env.example
+
+# PHP dependencies and PHPUnit's local cache
+/vendor/
+.phpunit.result.cache
+
+# Python bytecode and editable-install metadata
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Node (CloudPad and Tailwind are built on a dev machine; the server does not run npm)
+/node_modules/
+
+# Runtime data under storage/. Keep the access rule and empty-directory markers.
+storage/**
+!storage/**/
+!storage/.htaccess
+!storage/**/.gitkeep
+!storage/**/.htaccess
