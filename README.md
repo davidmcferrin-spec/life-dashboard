@@ -4,7 +4,7 @@ A self-hosted live dashboard for one person's life — widgets, news, travel, to
 
 Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/personal-dashboard) (Dreamhost, SQLite). life-dashboard runs on a home server: **Ubuntu 26.04 LTS · Apache · PHP 8.5 · PostgreSQL 18 · Python**.
 
-> **Status:** Phase L0 (foundation) — everything personal-dashboard did, now on PostgreSQL with a home-server deploy kit. See [Roadmap](#roadmap).
+> **Status:** Phases L0–L7 are in the tree (foundation through custom widgets). See [Roadmap](#roadmap).
 
 ## Features
 

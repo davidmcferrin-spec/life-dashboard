@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Widgets;
 
+use Dashboard\Media\MediaSources;
 use Dashboard\Support\ValidationException;
 
 /**
@@ -136,6 +137,28 @@ final class WidgetTypeRegistry
                     'limit' => ['type' => 'int', 'label' => 'Pages', 'min' => 3, 'max' => 20, 'default' => 8],
                 ],
             ],
+            'youtube' => [
+                'label' => 'YouTube', 'category' => 'media', 'singleton' => false,
+                'description' => 'Latest videos from channels you choose. Cards rotate with a wipe or push. No embedded player.',
+                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => self::carouselFields(
+                    'Channels',
+                    "One per line\n@handle\nhttps://www.youtube.com/channel/UC…",
+                    true
+                ),
+            ],
+            'reddit' => [
+                'label' => 'Reddit', 'category' => 'media', 'singleton' => false,
+                'description' => 'Latest posts from subreddits you choose. Cards rotate with a wipe or push.',
+                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => self::carouselFields('Subreddits', "One per line\nnews\nr/programming", false),
+            ],
+            'x' => [
+                'label' => 'X', 'category' => 'media', 'singleton' => false,
+                'description' => 'Recent posts from accounts you choose. Needs X_BEARER_TOKEN on the server. Cards rotate with a wipe or push.',
+                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => self::carouselFields('Accounts', "One per line\n@handle", false),
+            ],
             'custom' => [
                 'label' => 'Custom', 'category' => 'custom', 'singleton' => false,
                 'description' => 'Sandboxed markup. window.__DATA__ holds the metrics you attach. Scripts cannot reach the parent page.',
@@ -174,6 +197,27 @@ final class WidgetTypeRegistry
     public static function exists(string $type): bool
     {
         return isset(self::types()[$type]);
+    }
+
+    /**
+     * Shared config for the rotating YouTube, Reddit, and X cards.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private static function carouselFields(string $sourcesLabel, string $placeholder, bool $shorts): array
+    {
+        $fields = [
+            'sources'  => ['type' => 'string', 'label' => $sourcesLabel, 'max' => 4000, 'default' => '', 'setup' => true, 'placeholder' => $placeholder],
+            'include'  => ['type' => 'string', 'label' => 'Only items containing', 'max' => 200, 'default' => '', 'placeholder' => 'apple, keynote'],
+            'exclude'  => ['type' => 'string', 'label' => 'Hide items containing', 'max' => 200, 'default' => '', 'placeholder' => 'giveaway'],
+            'interval' => ['type' => 'enum', 'label' => 'Rotate every', 'options' => ['8' => '8 seconds', '12' => '12 seconds', '20' => '20 seconds'], 'default' => '12'],
+            'motion'   => ['type' => 'enum', 'label' => 'Motion', 'options' => ['wipe' => 'Wipe', 'push' => 'Push'], 'default' => 'wipe'],
+            'limit'    => ['type' => 'int', 'label' => 'Cards in rotation', 'min' => 1, 'max' => 20, 'default' => 8],
+        ];
+        if ($shorts) {
+            $fields['hide_shorts'] = ['type' => 'bool', 'label' => 'Hide Shorts when the feed marks them', 'default' => false];
+        }
+        return $fields;
     }
 
     public static function isLegacy(string $type): bool
@@ -290,6 +334,9 @@ final class WidgetTypeRegistry
         // Cross-field rules.
         if ($type === 'gauge' && ($out['max'] ?? 100) <= ($out['min'] ?? 0)) {
             throw ValidationException::withFields(['config.max' => 'Max must be greater than min.']);
+        }
+        if (in_array($type, ['youtube', 'reddit', 'x'], true)) {
+            MediaSources::parse($type, (string) ($out['sources'] ?? ''));
         }
 
         return $out;

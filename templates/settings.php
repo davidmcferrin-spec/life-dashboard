@@ -90,7 +90,7 @@ require __DIR__ . '/settings/_shell-top.php';
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono mt-1">Grok and Claude open a new chat/search with your query.</p>
+                        <p class="text-faint text-xs mono mt-1">This dashboard searches stored text on this server. The others open in a new tab.</p>
                     </div>
 
                     <div>

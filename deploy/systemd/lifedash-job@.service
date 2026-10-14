@@ -1,5 +1,5 @@
 # One scheduled PHP job (replaces the Dreamhost crontab). Instance = job name:
-#   feeds flights packages pings stocks shares prune
+#   feeds flights packages pings stocks shares prune media
 # Run by hand: sudo systemctl start lifedash-job@feeds
 # Output is appended to storage/logs/<job>.log (read by /settings/system).
 

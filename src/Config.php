@@ -16,6 +16,10 @@ class Config
 {
     /** @var array<string, string> */
     private static array $values = [];
+
+    /** @var array<string, string|null> Environment values kept so an overlay can be removed. */
+    private static array $beforeOverlay = [];
+
     private static bool $loaded = false;
 
     /**
@@ -102,6 +106,43 @@ class Config
     {
         $value = self::$values[$key] ?? $_ENV[$key] ?? getenv($key) ?: null;
         return ($value !== null && $value !== '') ? (string) $value : null;
+    }
+
+    /**
+     * The environment-file value, ignoring a later setup overlay.
+     */
+    public static function envValue(string $key): ?string
+    {
+        if (array_key_exists($key, self::$beforeOverlay)) {
+            $value = self::$beforeOverlay[$key];
+            return ($value !== null && $value !== '') ? $value : null;
+        }
+        return self::maybe($key);
+    }
+
+    /**
+     * Replace one key for this process. Null clears the overlay and restores the environment value.
+     */
+    public static function overlay(string $key, ?string $value): void
+    {
+        if (!array_key_exists($key, self::$beforeOverlay)) {
+            self::$beforeOverlay[$key] = array_key_exists($key, self::$values) ? self::$values[$key] : null;
+        }
+        if ($value === null || $value === '') {
+            $original = self::$beforeOverlay[$key];
+            if ($original === null || $original === '') {
+                unset(self::$values[$key], $_ENV[$key]);
+                putenv($key);
+            } else {
+                self::$values[$key] = $original;
+                $_ENV[$key] = $original;
+                putenv($key . '=' . $original);
+            }
+            return;
+        }
+        self::$values[$key] = $value;
+        $_ENV[$key] = $value;
+        putenv($key . '=' . $value);
     }
 
     /**

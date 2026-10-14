@@ -1,0 +1,42 @@
+# MCP for Claude / Grok. Cloudflare Tunnel sends /mcp to 127.0.0.1:8765.
+# Tool calls are forwarded to the PHP /api/v1 app with the caller's bearer token.
+#   journalctl -u lifedash-mcp -o cat
+
+[Unit]
+Description=life-dashboard MCP server
+After=lifedash-secrets.service network.target
+Requires=lifedash-secrets.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=lifedash
+Group=lifedash
+Environment=LIFEDASH_ENV_FILE=/run/lifedash/app.env
+ExecStart=/srv/lifedash/venv/bin/lifedash-mcp
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

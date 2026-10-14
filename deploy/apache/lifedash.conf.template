@@ -17,6 +17,7 @@
         Options -Indexes -MultiViews +FollowSymLinks
         # public/.htaccess carries the front-controller rewrite and file blocks.
         AllowOverride All
+        CGIPassAuth On
         Require all granted
     </Directory>
 

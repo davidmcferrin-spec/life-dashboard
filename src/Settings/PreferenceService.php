@@ -51,7 +51,7 @@ final class PreferenceService
     ];
 
     /** @var list<string> */
-    public const SEARCH_ENGINES = ['google', 'ddg', 'bing', 'grok', 'claude'];
+    public const SEARCH_ENGINES = ['local', 'google', 'ddg', 'bing', 'grok', 'claude'];
 
     /**
      * @return array<string, array{label: string, name: string, url: string, param: string}>
@@ -59,6 +59,12 @@ final class PreferenceService
     public static function searchEngineDefinitions(): array
     {
         return [
+            'local' => [
+                'label' => 'Local',
+                'name'  => 'This dashboard',
+                'url'   => '',
+                'param' => 'q',
+            ],
             'google' => [
                 'label' => 'G',
                 'name'  => 'Google',

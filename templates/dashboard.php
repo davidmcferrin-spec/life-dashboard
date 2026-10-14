@@ -82,6 +82,7 @@ $timezones = [
     <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
         <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
         <span id="live-date"></span>
+        <a href="/brain" class="nav-link">Vault</a>
         <a href="/settings" class="nav-link">Settings</a>
         <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
     </div>
@@ -122,7 +123,7 @@ $timezones = [
          ------------------------------------------------------- -->
     <section class="flex flex-col items-center gap-3">
 
-        <form id="search-form" method="GET" target="_blank" class="w-full max-w-2xl relative">
+        <form id="search-form" method="GET" target="_blank" class="w-full max-w-2xl relative" action="https://www.google.com/search">
             <input type="text" id="search-input" name="q" placeholder="Search..." autofocus class="search-input mono">
             <button type="submit" class="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -144,6 +145,8 @@ $timezones = [
             </button>
             <?php endforeach; ?>
         </div>
+
+        <div id="local-search" class="local-search hidden w-full max-w-2xl" aria-live="polite"></div>
 
     </section>
 

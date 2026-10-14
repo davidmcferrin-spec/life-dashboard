@@ -327,6 +327,32 @@ $router->post('/settings/tokens/expiry', function () use ($auth): void {
 
 $userService = new UserService($db, $auth);
 
+$router->get('/settings/setup', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $setupState = (new \Dashboard\Settings\SetupConfig($db))->view();
+    require VIEWS_DIR . '/settings/setup.php';
+});
+
+$router->post('/api/setup', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    if (!$auth->isAdmin($user)) {
+        jsonResponse(['error' => 'Admin only.'], 403);
+    }
+    $body = json_decode(file_get_contents('php://input') ?: '', true);
+    if (!is_array($body)) {
+        jsonResponse(['error' => 'Body must be a JSON object.'], 422);
+    }
+    $values = is_array($body['values'] ?? null) ? $body['values'] : [];
+    try {
+        $setup = new \Dashboard\Settings\SetupConfig($db);
+        $setup->save((string) ($body['group'] ?? ''), $values, (int) $user['id']);
+        jsonResponse(['ok' => true, 'setup' => $setup->view()]);
+    } catch (\InvalidArgumentException $e) {
+        jsonResponse(['error' => $e->getMessage()], 422);
+    }
+});
+
 $router->get('/settings/system', function () use ($auth): void {
     $user         = $auth->requireAdmin();
     $health       = new SystemHealthService();

@@ -6,6 +6,7 @@ namespace Dashboard\Widgets;
 
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
+use Dashboard\Media\MediaService;
 use Dashboard\Life\LifeService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Support\Clock;
@@ -33,6 +34,7 @@ final class WidgetDataService
         private readonly MoneyService $money,
         private readonly InvestService $invest,
         private readonly PageService $pages,
+        private readonly MediaService $media,
     ) {}
 
     /**
@@ -56,6 +58,9 @@ final class WidgetDataService
             'networth'  => $this->networthData($userId),
             'portfolio' => $this->portfolioData($userId),
             'pages'     => $this->pagesData($userId, $c),
+            'youtube'   => $this->media->payload($userId, 'youtube', $c),
+            'reddit'    => $this->media->payload($userId, 'reddit', $c),
+            'x'         => $this->media->payload($userId, 'x', $c),
             'custom'    => $this->customData($userId, $c),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };

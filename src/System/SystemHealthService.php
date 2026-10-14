@@ -44,6 +44,12 @@ class SystemHealthService
             'staleMinutes'  => 720,
             'scheduleHint'  => '3× daily',
         ],
+        'media' => [
+            'label'         => 'YouTube, Reddit, X',
+            'log'           => 'media.log',
+            'staleMinutes'  => 45,
+            'scheduleHint'  => 'Every ~30 min',
+        ],
         'shares' => [
             'label'         => 'Share link purge',
             'log'           => 'shares.log',

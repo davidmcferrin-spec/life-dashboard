@@ -280,7 +280,7 @@
 
     function needsSetup(t) {
         return Object.values(t.fields || {}).some((f) =>
-            (f.type === 'metric' && f.required) || (f.type === 'metrics' && (f.min_items || 0) > 0));
+            (f.type === 'metric' && f.required) || (f.type === 'metrics' && (f.min_items || 0) > 0) || f.setup);
     }
 
     // ---- Add widget --------------------------------------------------
@@ -293,7 +293,7 @@
             const present = new Set([...widgets.values()].map((e) => e.widget.type));
             const groups = {
                 tracking: 'Tracking', data: 'Data', life: 'Life', money: 'Money',
-                knowledge: 'Knowledge', custom: 'Custom', dashboard: 'Dashboard',
+                knowledge: 'Knowledge', media: 'Media', custom: 'Custom', dashboard: 'Dashboard',
             };
             list.innerHTML = Object.entries(groups).map(([cat, label]) => {
                 const items = all.filter((t) => t.category === cat);
@@ -398,11 +398,12 @@
                 }</div>${err}</div>`;
             }
             default: {
+                const ph = esc(placeholder || f.placeholder || '');
                 if ((f.max || 255) > 2000) {
-                    return `<div class="ld-field">${label}<textarea id="${id}" class="input text-sm ld-markup" name="${esc(name)}" maxlength="${f.max}" rows="8">${esc(value ?? '')}</textarea>${err}</div>`;
+                    return `<div class="ld-field">${label}<textarea id="${id}" class="input text-sm ld-markup" name="${esc(name)}" maxlength="${f.max}" rows="6" placeholder="${ph}">${esc(value ?? '')}</textarea>${err}</div>`;
                 }
                 return `<div class="ld-field">${label}<input id="${id}" class="input text-sm" type="text" name="${esc(name)}"
-                    maxlength="${f.max || 255}" value="${esc(value ?? '')}" placeholder="${esc(placeholder || '')}" autocomplete="off">${err}</div>`;
+                    maxlength="${f.max || 255}" value="${esc(value ?? '')}" placeholder="${ph}" autocomplete="off">${err}</div>`;
             }
         }
     }
@@ -539,6 +540,12 @@
         });
     }
 
+    function refreshTypes(types) {
+        widgets.forEach((entry, id) => {
+            if (entry.body && types.includes(entry.widget.type)) loadData(id);
+        });
+    }
+
     function refreshForMetric(metricId, alsoAllHabits) {
         widgets.forEach((entry, id) => {
             if (!entry.body) return;
@@ -592,6 +599,18 @@
                 break;
             case 'dashboard_widgets':
                 onWidgetEvent(evt);
+                break;
+            case 'pages':
+                refreshTypes(['pages']);
+                break;
+            case 'money_accounts':
+            case 'money_transactions':
+            case 'money_snapshots':
+                refreshTypes(['spending', 'networth']);
+                break;
+            case 'invest_positions':
+            case 'invest_activity':
+                refreshTypes(['portfolio']);
                 break;
             default:
                 break;

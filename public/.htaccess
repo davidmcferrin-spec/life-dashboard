@@ -6,6 +6,10 @@ ServerSignature Off
 # -------------------------------------------------------
 RewriteEngine On
 
+# PHP-FPM does not see Authorization unless it is copied into the environment.
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
 # Don't rewrite actual files or directories
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

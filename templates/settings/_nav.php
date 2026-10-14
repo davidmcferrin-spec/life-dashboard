@@ -41,6 +41,7 @@ $userNav = [
         <?php if ($showAdminNav): ?>
         <hr class="my-2 border-chrome">
         <p class="settings-nav-group-label px-2 pt-1 pb-1">Administration</p>
+        <a href="/settings/setup" class="<?= $active === 'setup' ? 'is-active' : '' ?>">Setup</a>
         <a href="/settings/system" class="<?= $active === 'system' ? 'is-active' : '' ?>">System health</a>
         <a href="/settings/cloud-storage" class="<?= $active === 'cloud-storage' ? 'is-active' : '' ?>">Cloud file defaults</a>
         <a href="/settings/users" class="<?= $active === 'users' ? 'is-active' : '' ?>">Users</a>

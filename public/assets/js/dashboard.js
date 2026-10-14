@@ -198,6 +198,10 @@ function getActiveEngine() {
     return localStorage.getItem(STORAGE_KEY_ENGINE) ?? 'google';
 }
 
+function escHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
 function applyEngine(engineKey) {
     const btn  = $(`.search-engine-btn[data-engine="${engineKey}"]`);
     if (!btn) return;
@@ -205,12 +209,22 @@ function applyEngine(engineKey) {
     const url   = btn.dataset.url;
     const param = btn.dataset.param;
     const form  = document.getElementById('search-form');
+    const input = document.getElementById('search-input');
 
     if (form) {
-        form.action = url;
-        // Rename input to match engine param
-        const input = document.getElementById('search-input');
+        if (engineKey === 'local') {
+            form.removeAttribute('action');
+            form.target = '';
+            if (input) input.placeholder = 'Search this dashboard…';
+        } else {
+            form.action = url;
+            form.target = '_blank';
+            if (input) input.placeholder = 'Search...';
+        }
         if (input) input.name = param;
+    }
+    if (engineKey !== 'local') {
+        document.getElementById('local-search')?.classList.add('hidden');
     }
 
     // Update button styles
@@ -233,6 +247,45 @@ $$('.search-engine-btn').forEach(btn => {
 });
 
 applyEngine(getActiveEngine());
+
+document.getElementById('search-form')?.addEventListener('submit', async (e) => {
+    if (getActiveEngine() !== 'local') return;
+    e.preventDefault();
+    const input = document.getElementById('search-input');
+    const box = document.getElementById('local-search');
+    const q = (input?.value || '').trim();
+    if (!box) return;
+    if (q.length < 2) {
+        box.classList.remove('hidden');
+        box.innerHTML = '<p class="empty-state mono text-xs">Enter at least two letters.</p>';
+        return;
+    }
+    box.classList.remove('hidden');
+    box.innerHTML = '<p class="text-faint text-xs mono">Searching…</p>';
+    try {
+        const res = await fetch('/api/v1/search?' + new URLSearchParams({ q }), { headers: { Accept: 'application/json' } });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Search failed.');
+        const hits = data.hits || [];
+        if (!hits.length) {
+            box.innerHTML = '<p class="empty-state mono text-xs">No matches.</p>';
+            return;
+        }
+        box.innerHTML = hits.map((hit) => {
+            const rawUrl = String(hit.url || '');
+            const safe = /^(https?:\/\/|\/)/i.test(rawUrl);
+            const extra = /^https?:/i.test(rawUrl) ? ' target="_blank" rel="noopener noreferrer"' : '';
+            const kind = hit.match === 'similar' ? ' · similar' : '';
+            return `<a class="local-hit" href="${escHtml(safe ? rawUrl : '#')}"${extra}>
+                <span class="local-hit-kicker">${escHtml(hit.dataset || '')}${escHtml(kind)}</span>
+                <strong>${escHtml(hit.title || '')}</strong>
+                <span>${escHtml(hit.snippet || '')}</span>
+            </a>`;
+        }).join('');
+    } catch (err) {
+        box.innerHTML = `<p class="text-danger text-xs mono">${escHtml(err.message || 'Search failed.')}</p>`;
+    }
+});
 
 // -------------------------------------------------------
 // Bookmark Folder Toggle

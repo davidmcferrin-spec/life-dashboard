@@ -153,6 +153,11 @@ class Database
     {
         if (self::$instance === null) {
             self::$instance = new self();
+            try {
+                \Dashboard\Settings\SetupConfig::apply(self::$instance);
+            } catch (\Throwable $e) {
+                error_log('[Dashboard][setup] ' . $e->getMessage());
+            }
         }
         return self::$instance;
     }

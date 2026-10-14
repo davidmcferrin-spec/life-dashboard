@@ -312,7 +312,7 @@ ln -sfn "$APP_DIR/deploy/bin/lifedash-deploy" /usr/local/sbin/lifedash-deploy
 ln -sfn "$APP_DIR/deploy/bin/lifedash-tunnel-setup" /usr/local/sbin/lifedash-tunnel-setup
 [[ -f /etc/lifedash/backup.env ]] || install -m 0600 "$APP_DIR/deploy/backup.env.example" /etc/lifedash/backup.env.example
 systemctl daemon-reload
-for t in feeds flights packages pings stocks shares prune; do
+for t in feeds flights packages pings stocks shares prune media; do
     systemctl enable --now "lifedash-job-$t.timer" >/dev/null
 done
 systemctl enable --now lifedash-backup.timer >/dev/null

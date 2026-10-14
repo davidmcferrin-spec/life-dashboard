@@ -1,0 +1,13 @@
+# YouTube, Reddit, and X cards every 30 min
+[Unit]
+Description=life-dashboard schedule: media (YouTube, Reddit, and X every 30 min)
+
+[Timer]
+OnCalendar=*:15/30
+Unit=lifedash-job@media.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

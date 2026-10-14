@@ -470,6 +470,104 @@
         ctx.body.replaceChildren(frame);
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, custom };
+    const carouselTimers = new WeakMap();
+
+    function carousel(ctx) {
+        const prev = carouselTimers.get(ctx.body);
+        if (prev) clearInterval(prev);
+        carouselTimers.delete(ctx.body);
+
+        const d = ctx.data || {};
+        const cards = d.cards || [];
+        const noun = d.dataset === 'reddit' ? 'posts' : (d.dataset === 'x' ? 'posts' : 'videos');
+        tools(ctx, cards.length ? `<span class="ld-meta">${cards.length} ${noun}</span>` : '');
+
+        if (!cards.length) {
+            const errs = (d.errors || []).map((e) => `<p class="ld-error">${esc(e)}</p>`).join('');
+            ctx.body.innerHTML = `${errs}<p class="empty-state mono text-xs">${esc(d.empty || 'Nothing to show yet.')}</p>`;
+            return;
+        }
+
+        const motion = d.motion === 'push' ? 'push' : 'wipe';
+        const slides = cards.map((card, i) => {
+            const when = card.published_at ? esc(String(card.published_at).slice(0, 10)) : '';
+            const thumb = card.thumb
+                ? `<img class="ld-card-thumb" alt="" referrerpolicy="no-referrer" src="${esc(card.thumb)}">`
+                : '';
+            return `<article class="ld-card${i === 0 ? ' is-on is-enter' : ''}" data-i="${i}">
+                <div class="ld-card-kicker"><span>${esc(card.source || '')}</span><span>${when}</span></div>
+                <a class="ld-card-title" href="${esc(card.url)}" target="_blank" rel="noopener noreferrer">${esc(card.title)}</a>
+                ${card.body ? `<p class="ld-card-body">${esc(card.body)}</p>` : ''}
+                ${thumb}
+            </article>`;
+        }).join('');
+        const dots = cards.length > 1 ? `<div class="ld-card-nav">
+            <button type="button" class="ld-icon-btn" data-step="-1" aria-label="Previous">‹</button>
+            <div class="ld-card-dots">${cards.map((_, i) => `<button type="button" class="ld-card-dot${i === 0 ? ' is-on' : ''}" data-go="${i}" aria-label="Show item ${i + 1}"></button>`).join('')}</div>
+            <button type="button" class="ld-icon-btn" data-step="1" aria-label="Next">›</button>
+        </div>` : '';
+        const errs = (d.errors || []).map((e) => `<p class="ld-error">${esc(e)}</p>`).join('');
+        ctx.body.innerHTML = `${errs}<div class="ld-carousel is-${motion}" tabindex="0">
+            <div class="ld-card-stack">${slides}</div>${dots}<div class="ld-carousel-bar"></div></div>`;
+
+        const root = ctx.body.querySelector('.ld-carousel');
+        if (!root || cards.length < 2) return;
+        let index = 0;
+        const bar = root.querySelector('.ld-carousel-bar');
+        const ms = (Number(d.interval) || 12) * 1000;
+        if (bar) bar.style.animationDuration = `${ms}ms`;
+
+        function show(next) {
+            const slides = [...root.querySelectorAll('.ld-card')];
+            index = (next + slides.length) % slides.length;
+            slides.forEach((el, n) => {
+                const on = n === index;
+                el.classList.toggle('is-on', on);
+                el.classList.remove('is-enter');
+                if (on) {
+                    void el.offsetWidth;
+                    el.classList.add('is-enter');
+                }
+            });
+            root.querySelectorAll('.ld-card-dot').forEach((dot, n) => dot.classList.toggle('is-on', n === index));
+            if (bar) {
+                bar.style.animation = 'none';
+                void bar.offsetWidth;
+                bar.style.animation = '';
+                bar.style.animationDuration = `${ms}ms`;
+            }
+        }
+
+        function arm() {
+            const existing = carouselTimers.get(ctx.body);
+            if (existing) clearInterval(existing);
+            const timer = setInterval(() => {
+                if (!root.isConnected) {
+                    clearInterval(timer);
+                    carouselTimers.delete(ctx.body);
+                    return;
+                }
+                if (document.hidden || root.classList.contains('is-paused')) return;
+                show(index + 1);
+            }, ms);
+            carouselTimers.set(ctx.body, timer);
+        }
+
+        root.addEventListener('mouseenter', () => root.classList.add('is-paused'));
+        root.addEventListener('mouseleave', () => root.classList.remove('is-paused'));
+        root.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight') { e.preventDefault(); show(index + 1); }
+            if (e.key === 'ArrowLeft') { e.preventDefault(); show(index - 1); }
+        });
+        root.addEventListener('click', (e) => {
+            const step = e.target.closest('[data-step]');
+            const go = e.target.closest('[data-go]');
+            if (step) show(index + Number(step.dataset.step));
+            if (go) show(Number(go.dataset.go));
+        });
+        arm();
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();
