@@ -9,6 +9,62 @@
     font-style: normal;
     font-display: swap;
 }
+@font-face {
+    font-family: 'Inconsolata';
+    src: url('/assets/fonts/inconsolata-latin-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Inconsolata';
+    src: url('/assets/fonts/inconsolata-latin-600.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Space Mono';
+    src: url('/assets/fonts/space-mono-latin-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Space Mono';
+    src: url('/assets/fonts/space-mono-latin-700.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBM Plex Mono';
+    src: url('/assets/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBM Plex Mono';
+    src: url('/assets/fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Source Code Pro';
+    src: url('/assets/fonts/source-code-pro-latin-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'Source Code Pro';
+    src: url('/assets/fonts/source-code-pro-latin-600.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
 
 .focus-clock-alarm-indicator {
     display: inline-flex;

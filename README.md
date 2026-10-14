@@ -30,7 +30,7 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **Focus Clock** — `/clock` full-viewport clock with alarm (`Alt+Shift+C` from dashboard)
 - **Auth** — session login + auto-login tokens (`/auto/{64-char token}`) with per-token expiry and revoke/regenerate. The database stores SHA-256 of the token.
 - **Multi-user ready** — per-user preferences, feed toggles, bookmarks
-- **Appearance** — light, dark, or system theme (per-user, synced across devices)
+- **Appearance** — JARVIS is the default. Light, Dark, and Auto stay available. The accent color is per user under Settings → Dashboard → Appearance (synced across devices)
 
 ## Stack
 

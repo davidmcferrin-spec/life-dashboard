@@ -2,8 +2,11 @@ Self-hosted faces for the LAN dashboard. Each font is SIL Open Font License 1.1.
 
 - Orbitron, Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron)
 - Rajdhani, Copyright 2014 Indian Type Foundry (https://github.com/itfoundry/rajdhani)
-- IBM Plex Sans, Copyright 2017 IBM Corp. (https://github.com/IBM/plex)
+- IBM Plex Sans and IBM Plex Mono, Copyright 2017 IBM Corp. (https://github.com/IBM/plex)
 - JetBrains Mono, Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
+- Inconsolata, Copyright 2006 The Inconsolata Project Authors (https://github.com/cyrealtype/Inconsolata)
+- Space Mono, Copyright 2016 The Space Mono Project Authors (https://github.com/googlefonts/spacemono)
+- Source Code Pro, Copyright 2010, 2012 Adobe Systems Incorporated, with Reserved Font Name 'Source'
 
 The license text below is the SIL Open Font License.
 

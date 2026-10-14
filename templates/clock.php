@@ -16,15 +16,12 @@ $starfieldPref = $prefService->getStarfield($userId);
 $focusClock    = $prefService->getFocusClock($userId);
 $fcAlarm       = $focusClock['alarm'] ?? [];
 $pageTitle     = 'Clock';
-$loadClockFonts = true;
 $focusClockJson = json_encode($focusClock, JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $datePos       = (string) ($focusClock['date_position'] ?? 'below');
 $alarmOn       = !empty($fcAlarm['enabled']);
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <link rel="stylesheet" href="/assets/css/clock.css?v=<?= e($assetVer) ?>">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inconsolata:wght@400;600&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;600&family=Source+Code+Pro:wght@400;600&display=swap" rel="stylesheet">
 <body class="page min-h-screen" data-page="clock">
 
 <nav class="chrome flex items-center justify-between px-6 py-3">
@@ -74,7 +71,6 @@ $alarmOn       = !empty($fcAlarm['enabled']);
 <script type="application/json" id="focus-clock-config"><?= $focusClockJson ?></script>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
-<script src="/assets/js/broadcast-week.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/focus-clock-tz.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/clock-alarm.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/clock-page.js?v=<?= e($assetVer) ?>"></script>
