@@ -6,6 +6,7 @@ namespace Dashboard\Settings;
 
 use Dashboard\Clock\AlarmSoundService;
 use Dashboard\DB\Database;
+use Dashboard\Support\JarvisAccent;
 
 final class PreferenceService
 {
@@ -13,6 +14,7 @@ final class PreferenceService
     public const KEY_WIDGET_VISIBILITY = 'widget_visibility';
     public const KEY_WIDGET_ORDER = 'widget_order';
     public const KEY_THEME = 'theme';
+    public const KEY_JARVIS_ACCENT = 'jarvis_accent';
     public const KEY_STARFIELD = 'starfield_background';
     public const KEY_WIDGET_HEIGHT = 'widget_height';
     public const KEY_WIDGET_COLUMNS = 'widget_columns';
@@ -113,7 +115,7 @@ final class PreferenceService
     }
 
     /** @var list<string> */
-    public const THEMES = ['light', 'dark', 'system'];
+    public const THEMES = ['jarvis', 'light', 'dark', 'system'];
 
     /** @var list<string> */
     public const CLOCK_FORMATS = ['12h', '24h'];
@@ -203,9 +205,9 @@ final class PreferenceService
 
     public function getTheme(int $userId): string
     {
-        $theme = $this->get($userId, self::KEY_THEME, 'system') ?? 'system';
+        $theme = $this->get($userId, self::KEY_THEME, 'jarvis') ?? 'jarvis';
 
-        return in_array($theme, self::THEMES, true) ? $theme : 'system';
+        return in_array($theme, self::THEMES, true) ? $theme : 'jarvis';
     }
 
     public function setTheme(int $userId, string $theme): void
@@ -215,6 +217,20 @@ final class PreferenceService
         }
 
         $this->set($userId, self::KEY_THEME, $theme);
+    }
+
+    public function getJarvisAccent(int $userId): string
+    {
+        return JarvisAccent::normalize($this->get($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::DEFAULT));
+    }
+
+    public function setJarvisAccent(int $userId, string $hex): void
+    {
+        if (!JarvisAccent::isValid($hex)) {
+            throw new \InvalidArgumentException('Invalid accent color.');
+        }
+
+        $this->set($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::normalize($hex));
     }
 
     public function getClockFormat(int $userId): string

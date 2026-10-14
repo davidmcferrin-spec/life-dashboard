@@ -87,6 +87,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - **Widget config is versioned:** change it only through `WidgetService::update()` / `rollback()` (writes `widget_revisions`); positions (`saveLayout`) do not create revisions.
 - **Realtime:** anything that should refresh open dashboards must change a table with the `lifedash_notify` trigger (metrics, datapoints, dashboard_widgets); add the trigger to new tables that widgets display. Ticket format is pinned by `tests/Unit/RealtimeTokenTest.php` and `services/tests/test_push.py` (same golden vector).
 - New UI styles for the grid/widgets go in `public/assets/css/lifedash.css` (plain CSS with theme tokens) — Tailwind is prebuilt, so classes not already in `tailwind.css` won't exist. Bump `$assetVer` in `templates/partials/head.php` when shipping JS/CSS changes.
+- Themes are `jarvis` (default when unset), `light`, `dark`, and `system`. `data-theme="jarvis"` is its own palette (not an alias of dark). The HUD accent is per-user `jarvis_accent` (`#rrggbb`, default `#00e5ff`) and is applied as `--hud-accent` / `--hud-rgb` / `--hud-bright` / `--hud-dim` / `--hud-ink` on `<html>` (`Support\JarvisAccent`). Faces are self-hosted in `public/assets/fonts/` (OFL). Rebuild Tailwind with `npm run build:css`.
 - Scheduled work = a `lifedash-job` case + a `deploy/systemd/lifedash-job-<name>.timer`; logs go to `storage/logs/<name>.log` (listed in `SystemHealthService::JOBS`).
 
 ## Testing
