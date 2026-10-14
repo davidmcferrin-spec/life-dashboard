@@ -24,10 +24,6 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <?php if (!empty($flash)): ?>
-            <p class="surface p-3 mb-4 text-sm"><?= e($flash) ?></p>
-            <?php endif; ?>
-
             <form method="post" action="/settings/reddit/add" class="surface p-4 space-y-3 mb-4">
                 <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                 <h2 class="section-title">Add a subreddit</h2>
