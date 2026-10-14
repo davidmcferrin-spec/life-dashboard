@@ -27,7 +27,7 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **CloudPad** — Excalidraw infinite canvas on clipboards **CloudPad** tab + full-screen editor; sharing, PNG export
 - **Todo Lists** — dashboard widget, full page at `/todos`, sharing and assignment
 - **Focus Clock** — `/clock` full-viewport clock with alarm (`Alt+Shift+C` from dashboard)
-- **Auth** — session login + auto-login tokens (`/auto/{64-char-hash}`) with per-token expiry and revoke/regenerate
+- **Auth** — session login + auto-login tokens (`/auto/{64-char token}`) with per-token expiry and revoke/regenerate. The database stores SHA-256 of the token.
 - **Multi-user ready** — per-user preferences, feed toggles, bookmarks
 - **Appearance** — light, dark, or system theme (per-user, synced across devices)
 
@@ -306,7 +306,7 @@ This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at
    sudo -u lifedash php /srv/lifedash/app/scripts/migrate.php     # re-apply feed seeds/repairs
    sudo rsync -a /tmp/uploads/ /srv/lifedash/app/storage/uploads/ && sudo chown -R lifedash:lifedash /srv/lifedash/app/storage/uploads
    ```
-4. Log in with your existing account. Auto-login tokens and shares carry over (same `APP_SECRET`).
+4. Log in with your existing account. Auto-login links still work: import stores only a SHA-256 of each existing token, and the same link you already have matches that hash. Shared boards and files still need the same `APP_SECRET`.
 5. Update any Dropbox app redirect URI to `{APP_URL}/api/storage/oauth/callback/dropbox`.
 
 ## Local development
@@ -475,7 +475,7 @@ Metric kinds: `habit` (0/1, one per local day), `scale` (integers min–max, def
 
 ## Security Notes
 
-- Auto-login tokens are 64-char cryptographically random hex strings
+- Auto-login tokens are 64-character random hex strings. The database stores only their SHA-256, the same way API tokens are stored. A link you already have keeps working.
 - All sessions are HMAC-validated against `APP_SECRET`
 - CSRF tokens on all state-mutating forms
 - Secrets are encrypted at rest with `systemd-creds` (TPM2 when available); plaintext exists only in `/run` (tmpfs)

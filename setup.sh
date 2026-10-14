@@ -196,11 +196,17 @@ else
             echo "  'Edit zone DNS' template, limited to your domain's zone. Input is hidden."
             read -r -s -p "  Token: " token </dev/tty; echo
             [[ -n $token ]] || die "empty token"
-            TOKEN_TMP=$(mktemp /run/lifedash-cftoken.XXXXXX)
-            chmod 600 "$TOKEN_TMP"
-            printf '%s\n' "$token" > "$TOKEN_TMP"
-            unset token
-            CF_TOKEN_FILE=$TOKEN_TMP
+            if $DRY_RUN; then
+                note "dry run — the Cloudflare token would be saved to a temp file; nothing is written"
+                unset token
+                CF_TOKEN_FILE=/run/lifedash-cftoken.dry-run
+            else
+                TOKEN_TMP=$(mktemp /run/lifedash-cftoken.XXXXXX)
+                chmod 600 "$TOKEN_TMP"
+                printf '%s\n' "$token" > "$TOKEN_TMP"
+                unset token
+                CF_TOKEN_FILE=$TOKEN_TMP
+            fi
         fi
         PROVISION_ARGS+=(--ui-host "$UI_HOST" --acme-email "$ACME_EMAIL")
         [[ -n $CF_TOKEN_FILE ]] && PROVISION_ARGS+=(--cf-token-file "$CF_TOKEN_FILE")
@@ -235,31 +241,36 @@ elif [[ -f $CRED ]]; then
     ok "existing encrypted secrets kept ($CRED) — edit later with: sudo lifedash-env edit"
 else
     note "no .env yet — building one from .env.example"
-    GENERATED_ENV=$(mktemp /root/lifedash-env.XXXXXX)
-    chmod 600 "$GENERATED_ENV"
-    cp "$TARGET/.env.example" "$GENERATED_ENV" 2>/dev/null || cp "$SRC/.env.example" "$GENERATED_ENV"
+    if $DRY_RUN; then
+        note "dry run — a temporary env file would be created under /root; nothing is written"
+        PROVISION_ARGS+=(--env-file /root/lifedash-env.dry-run)
+    else
+        GENERATED_ENV=$(mktemp /root/lifedash-env.XXXXXX)
+        chmod 600 "$GENERATED_ENV"
+        cp "$TARGET/.env.example" "$GENERATED_ENV" 2>/dev/null || cp "$SRC/.env.example" "$GENERATED_ENV"
 
-    echo "  Migrating from personal-dashboard? Reuse its APP_SECRET — it encrypts stored"
-    echo "  Dropbox/S3 credentials and signs existing sessions and auto-login tokens."
-    secret=$(ask "Existing APP_SECRET (blank = generate new)" "")
-    if [[ -z $secret ]]; then
-        secret=$(openssl rand -hex 32)
-        ok "generated a new APP_SECRET"
-    elif [[ ! $secret =~ ^[A-Za-z0-9]{32,}$ ]]; then
-        die "APP_SECRET looks wrong (expected 32+ alphanumeric characters)"
+        echo "  Migrating from personal-dashboard? Reuse its APP_SECRET — it encrypts stored"
+        echo "  Dropbox/S3 credentials and signs existing sessions and share links."
+        secret=$(ask "Existing APP_SECRET (blank = generate new)" "")
+        if [[ -z $secret ]]; then
+            secret=$(openssl rand -hex 32)
+            ok "generated a new APP_SECRET"
+        elif [[ ! $secret =~ ^[A-Za-z0-9]{32,}$ ]]; then
+            die "APP_SECRET looks wrong (expected 32+ alphanumeric characters)"
+        fi
+        app_url=$(ask "Dashboard URL" "https://${UI_HOST:-$(hostname -s)}")
+        app_tz=$(ask "Time zone" "America/Chicago")
+
+        sed -i -e "s|^APP_SECRET=.*|APP_SECRET=$secret|" \
+               -e "s|^APP_URL=.*|APP_URL=$app_url|" \
+               -e "s|^APP_TIMEZONE=.*|APP_TIMEZONE=$app_tz|" "$GENERATED_ENV"
+        unset secret
+
+        if interactive && confirm "Open the .env in ${EDITOR:-nano} to add API keys now? (can do later)" n; then
+            "${EDITOR:-nano}" "$GENERATED_ENV" </dev/tty >/dev/tty
+        fi
+        PROVISION_ARGS+=(--env-file "$GENERATED_ENV")
     fi
-    app_url=$(ask "Dashboard URL" "https://${UI_HOST:-$(hostname -s)}")
-    app_tz=$(ask "Time zone" "America/Chicago")
-
-    sed -i -e "s|^APP_SECRET=.*|APP_SECRET=$secret|" \
-           -e "s|^APP_URL=.*|APP_URL=$app_url|" \
-           -e "s|^APP_TIMEZONE=.*|APP_TIMEZONE=$app_tz|" "$GENERATED_ENV"
-    unset secret
-
-    if interactive && confirm "Open the .env in ${EDITOR:-nano} to add API keys now? (can do later)" n; then
-        "${EDITOR:-nano}" "$GENERATED_ENV" </dev/tty >/dev/tty
-    fi
-    PROVISION_ARGS+=(--env-file "$GENERATED_ENV")
 fi
 
 # --- 3. provision ---------------------------------------------------------------
