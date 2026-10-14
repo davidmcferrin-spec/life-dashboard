@@ -63,12 +63,14 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 
 **L5 — Money ✅** · **L6 — Investing (read-only) ✅** · **L7 — Custom widgets ✅**
 - [x] Accounts, signed transactions, Monarch-style CSV, spending + net-worth widgets, weekly review page
+- [x] Budget, debts, sinking funds, Baby Step, credit score, retirement rate (migration `0013_money_plan.sql`). Nine money widgets. One-time CSV import `scripts/import-budget-csvs.php` (see `docs/money-import.md`). No full account numbers. One payee is stored only as `Creator subscription`
+- [x] MCP money tools on the existing server, money-only token expiry (90 days), ~60 req/min per token in `lifedash-mcp`, read+write audit without sensitive values. Tunnel + Access: `docs/deploy/cloudflare-access.md`
 - [x] Positions, Robinhood activity CSV, public Polymarket data-API refresh, scorecard widget. No trade placement
 - [x] Widget type `custom`: sandboxed srcdoc, `window.__DATA__.metrics`
 
 **Reddit tracking**
 - Settings `/settings/reddit` holds the tracked list (name, hot/new/top, include/exclude words). The rotating `reddit` card still reads its own widget sources via RSS into `media_cards`.
-- `reddit_subs` / `reddit_posts` (migration `0011`) store title, author, score, comment count, url, permalink, created time, subreddit, flair, and a selftext snippet. Dedupe is `(user_id, external_id)`. Search indexes those rows as dataset `reddit`.
+- `reddit_subs` / `reddit_posts` (migration `0012`) store title, author, score, comment count, url, permalink, created time, subreddit, flair, and a selftext snippet. Dedupe is `(user_id, external_id)`. Search indexes those rows as dataset `reddit`.
 - Fetch: `cron/fetch_reddit.php` on `lifedash-job-reddit.timer` (public JSON, or OAuth when `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` are set on Setup). User-Agent `REDDIT_USER_AGENT`. One request a second; a 429 stops the run.
 - Reader `/reddit` and widget `reddit_feed`. MCP: `list_tracked_subreddits`, `add_tracked_subreddit`, `remove_tracked_subreddit`, `get_reddit_posts`, `get_reddit_post_comments`. Scope area `reddit`.
 

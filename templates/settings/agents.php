@@ -33,6 +33,7 @@ require __DIR__ . '/_shell-top.php';
                             <option value="all">Read and write</option>
                             <option value="read">Read only</option>
                             <option value="reddit">Reddit only</option>
+                            <option value="money">Money only (90 days)</option>
                         </select>
                     </label>
                 </div>

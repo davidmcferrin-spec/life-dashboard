@@ -7,6 +7,7 @@ namespace Dashboard\Api\V1;
 use Dashboard\Audit\AuditLog;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\Auth\Auth;
+use Dashboard\Money\AccountNumberGuard;
 use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\UnauthorizedException;
@@ -46,6 +47,8 @@ final class ApiRunner
             $payload = $fn($userId);
             if ($mutating) {
                 $this->auditCall($userId);
+            } elseif ($this->isMoneyRead()) {
+                $this->auditRead($userId);
             }
             jsonResponse($payload, $status);
         } catch (UnauthorizedException $e) {
@@ -115,16 +118,61 @@ final class ApiRunner
 
     private function auditCall(int $userId): void
     {
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-        $path = is_string($path) ? $path : '/';
         $actor = $this->actor();
         $this->audit->record(
             $userId,
             $actor->kind,
             $actor->tool,
             'POST',
-            mb_substr($path, 0, 160)
+            self::safePath()
         );
+    }
+
+    private function auditRead(int $userId): void
+    {
+        $actor = $this->actor();
+        $filter = self::moneyFilter($_GET);
+        $this->audit->record(
+            $userId,
+            $actor->kind,
+            $actor->tool,
+            'GET',
+            self::safePath(),
+            $filter === '' ? [] : ['filter' => $filter]
+        );
+    }
+
+    private function isMoneyRead(): bool
+    {
+        return str_contains(self::safePath(), '/api/v1/money/');
+    }
+
+    public static function safePath(): string
+    {
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+        $path = is_string($path) ? $path : '/';
+        return mb_substr(AccountNumberGuard::redact($path) ?? $path, 0, 160);
+    }
+
+    /**
+     * Tool name and filter only. Values that look like account numbers are removed.
+     *
+     * @param array<string, mixed> $query
+     */
+    public static function moneyFilter(array $query): string
+    {
+        $keep = [];
+        foreach (['from', 'to', 'year', 'month', 'category', 'account', 'limit'] as $key) {
+            if (!isset($query[$key]) || $query[$key] === '') {
+                continue;
+            }
+            $value = AccountNumberGuard::redact(trim((string) $query[$key])) ?? '';
+            if ($value === '' || str_contains($value, '[redacted]')) {
+                continue;
+            }
+            $keep[$key] = mb_substr($value, 0, 80);
+        }
+        return http_build_query($keep);
     }
 
     private static function bearerToken(): ?string

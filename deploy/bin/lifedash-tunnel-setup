@@ -10,6 +10,7 @@
 #   /healthz  → Apache (returns {"status":"ok"} only)
 #   /mcp…     → Python MCP server on 127.0.0.1:8765 (lifedash-mcp)
 # Everything else gets 404 at Cloudflare's edge. The dashboard UI stays on the LAN (and Teleport).
+# Put a Cloudflare Access service token in front of /mcp. See docs/deploy/cloudflare-access.md.
 set -euo pipefail
 
 TUNNEL_NAME=lifedash

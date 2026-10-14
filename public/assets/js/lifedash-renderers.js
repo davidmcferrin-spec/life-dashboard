@@ -428,14 +428,79 @@
         const accounts = (d.accounts || []).map((a) =>
             `<div class="ld-life-row"><span>${esc(a.name)}</span><strong>${esc(fmt.money(a.kind === 'credit' ? -a.balance : a.balance))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.net_worth))}</div><div class="ld-meta">net worth</div>${accounts}`;
+        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.net_worth))}</div><div class="ld-meta">net worth trend</div>${accounts}`;
         const el = document.createElement('div');
-        el.style.height = '3.25rem';
+        el.style.height = '7rem';
         ctx.body.appendChild(el);
         const snaps = d.snapshots || [];
         if (snaps.length > 1) {
             drawLineChart(el, snaps.map((s) => s.date), [{ name: 'Net worth', color: PALETTE[0], values: snaps.map((s) => s.net) }], { compact: true, format: fmt.money });
         }
+    }
+
+    function babyStep(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        if (!d.step) {
+            ctx.body.innerHTML = '<p class="empty-state mono text-xs">No Baby Step recorded yet.</p>';
+            return;
+        }
+        ctx.body.innerHTML = `<div class="ld-stat-value">Step ${esc(String(d.step))}</div><div class="ld-meta">${esc(d.name || '')}</div>${d.note ? `<p class="text-sm">${esc(d.note)}</p>` : ''}`;
+    }
+
+    function debtSnowball(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.debts || []).map((d) => {
+            const dates = [d.target_payoff_on ? 'target ' + d.target_payoff_on : '', d.estimated_payoff_on ? 'estimate ' + d.estimated_payoff_on : 'estimate unavailable'].filter(Boolean).join(' · ');
+            return `<div class="ld-life-row"><span>${esc(d.name)}${d.last4 ? ' · ' + esc(d.last4) : ''}<span class="ld-meta">${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</span></span><strong>${esc(fmt.money(d.balance))}</strong></div>`;
+        }).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No debts recorded.</p>';
+    }
+
+    function foodWeek(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const klass = d.over ? 'text-danger' : '';
+        ctx.body.innerHTML = `<div class="ld-stat-value ${klass}">${esc(fmt.money(d.spent))}</div><div class="ld-meta ${klass}">of ${esc(fmt.money(d.cap))} this week</div>`;
+    }
+
+    function budgetActual(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (d.lines || []).map((line) =>
+            `<div class="ld-life-row"><span>${esc(line.category)}<span class="ld-meta">planned ${esc(fmt.money(line.planned))}</span></span><strong class="${line.actual > line.planned ? 'text-danger' : ''}">${esc(fmt.money(line.actual))}</strong></div>`
+        ).join('');
+        ctx.body.innerHTML = `<div class="ld-meta">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || '<p class="empty-state mono text-xs">No budget lines this month.</p>'}`;
+    }
+
+    function sinkingFunds(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.funds || []).map((f) =>
+            `<div class="ld-life-row"><span>${esc(f.name)}<span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></span><strong>${esc(String(f.percent))}%</strong></div>`
+        ).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No sinking funds yet.</p>';
+    }
+
+    function billsDue(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.bills || []).map((b) =>
+            `<div class="ld-life-row"><span>${esc(b.name)}<span class="ld-meta">${esc(b.due_on)}</span></span><strong>${esc(fmt.money(b.amount))}</strong></div>`
+        ).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">Nothing due in the next 10 days.</p>';
+    }
+
+    function retirement(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const pct = d.contribution_rate == null ? '—' : Math.round(d.contribution_rate * 1000) / 10 + '%';
+        ctx.body.innerHTML = `<div class="ld-stat-value ${d.on_track ? '' : 'text-danger'}">${esc(String(pct))}</div><div class="ld-meta">of a 15% target</div>`;
+    }
+
+    function credit(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const util = d.utilization_percent == null ? '—' : d.utilization_percent + '%';
+        ctx.body.innerHTML = `<div class="ld-stat-value">${d.score == null ? '—' : esc(String(d.score))}</div><div class="ld-meta">utilization ${esc(String(util))}${d.as_of ? ' · ' + esc(d.as_of) : ''}</div>`;
     }
 
     function portfolio(ctx) {
@@ -587,6 +652,6 @@
         }).join('');
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

@@ -42,6 +42,8 @@ final class ApiTokenService
                 throw ValidationException::withFields(['expires_at' => 'Use YYYY-MM-DD.']);
             }
             $expiresAt = $dt->format('Y-m-d') . ' 23:59:59';
+        } elseif (self::isMoneyOnly($scopes)) {
+            $expiresAt = (new \DateTimeImmutable('now', new \DateTimeZone('UTC')))->modify('+90 days')->format('Y-m-d') . ' 23:59:59';
         } else {
             $expiresAt = null;
         }
@@ -141,6 +143,24 @@ final class ApiTokenService
             'revoked'      => $row['revoked_at'] !== null,
             'created_at'   => (string) $row['created_at'],
         ];
+    }
+
+    /**
+     * A money-only token expires in 90 days unless the caller picked a date.
+     *
+     * @param list<string> $scopes
+     */
+    public static function isMoneyOnly(array $scopes): bool
+    {
+        if ($scopes === [] || in_array('*', $scopes, true)) {
+            return false;
+        }
+        foreach ($scopes as $scope) {
+            if ($scope !== 'money:read' && $scope !== 'money:write') {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

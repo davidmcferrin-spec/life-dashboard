@@ -11,6 +11,7 @@ use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Life\LifeService;
 use Dashboard\Media\MediaService;
+use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
@@ -33,6 +34,7 @@ final class Services
     public readonly PageService $pages;
     public readonly LifeService $life;
     public readonly MoneyService $money;
+    public readonly MoneyPlanService $plan;
     public readonly InvestService $invest;
     public readonly SearchService $search;
     public readonly RedditService $reddit;
@@ -48,6 +50,7 @@ final class Services
         $this->pages   = new PageService($db, $this->audit);
         $this->life    = new LifeService($db, $this->metrics, $this->points, $clock, $this->audit);
         $this->money   = new MoneyService($db, $clock, $this->pages);
+        $this->plan    = new MoneyPlanService($db, $clock, $this->money);
         $this->invest  = new InvestService($db);
         $this->search  = new SearchService($db);
         $this->reddit  = new RedditService($db);
@@ -59,6 +62,7 @@ final class Services
             $clock,
             $this->life,
             $this->money,
+            $this->plan,
             $this->invest,
             $this->pages,
             new MediaService($db),

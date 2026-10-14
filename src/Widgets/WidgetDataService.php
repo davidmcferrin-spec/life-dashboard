@@ -9,6 +9,7 @@ use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Life\LifeService;
+use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
@@ -34,6 +35,7 @@ final class WidgetDataService
         private readonly Clock $clock,
         private readonly LifeService $life,
         private readonly MoneyService $money,
+        private readonly MoneyPlanService $plan,
         private readonly InvestService $invest,
         private readonly PageService $pages,
         private readonly MediaService $media,
@@ -58,7 +60,15 @@ final class WidgetDataService
             'streak'    => $this->streakData($userId, $c),
             'life'      => $this->lifeData($userId),
             'spending'  => $this->spendingData($userId, $c),
-            'networth'  => $this->networthData($userId),
+            'networth'       => $this->networthData($userId),
+            'baby_step'      => $this->planCard($this->plan->babyStep($userId)),
+            'debt_snowball'  => $this->planCard(['debts' => $this->plan->debts($userId)]),
+            'food_week'      => $this->planCard($this->plan->foodWeek($userId)),
+            'budget_actual'  => $this->planCard($this->plan->budget($userId, (int) substr($this->clock->today(), 0, 4), (int) substr($this->clock->today(), 5, 2))),
+            'sinking_funds'  => $this->planCard(['funds' => $this->plan->sinkingFunds($userId)]),
+            'bills_due'      => $this->planCard(['bills' => $this->plan->billsDue($userId)]),
+            'retirement'     => $this->planCard($this->plan->retirement($userId)),
+            'credit'         => $this->planCard($this->plan->credit($userId)),
             'portfolio' => $this->portfolioData($userId),
             'pages'     => $this->pagesData($userId, $c),
             'youtube'   => $this->media->payload($userId, 'youtube', $c),
@@ -339,13 +349,23 @@ final class WidgetDataService
     private function networthData(int $userId): array
     {
         $today = $this->clock->today();
-        $summary = $this->money->summary($userId, Clock::shiftDate($today, 89), $today);
+        $summary = $this->money->summary($userId, Clock::shiftDate($today, 364), $today);
         return [
             'metric_ids' => [],
             'net_worth'  => $summary['net_worth'],
             'accounts'   => $summary['accounts'],
             'snapshots'  => $summary['snapshots'],
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function planCard(array $payload): array
+    {
+        $payload['metric_ids'] = [];
+        return $payload;
     }
 
     /** @return array<string, mixed> */
