@@ -1287,6 +1287,79 @@ $router->get('/settings/investing', function () use ($auth): void {
     require VIEWS_DIR . '/settings/investing.php';
 });
 
+$router->get('/settings/reddit', function () use ($auth, $lifedash): void {
+    $user = $auth->requireAuth();
+    $subs = $lifedash->reddit->list((int) $user['id']);
+    $flash = $_SESSION['settings_flash'] ?? null;
+    unset($_SESSION['settings_flash']);
+    require VIEWS_DIR . '/settings/reddit.php';
+});
+
+$router->post('/settings/reddit/add', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->add(
+            (int) $user['id'],
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['sort'] ?? 'hot'),
+            (string) ($_POST['include'] ?? ''),
+            (string) ($_POST['exclude'] ?? ''),
+        );
+        $_SESSION['settings_flash'] = 'Subreddit saved. Fetch now, or wait for the half-hour job.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/update', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->add(
+            (int) $user['id'],
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['sort'] ?? 'hot'),
+            (string) ($_POST['include'] ?? ''),
+            (string) ($_POST['exclude'] ?? ''),
+        );
+        $_SESSION['settings_flash'] = 'Saved.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/remove', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->remove((int) $user['id'], (string) ($_POST['name'] ?? ''));
+        $_SESSION['settings_flash'] = 'Removed.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/refresh', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $errors = $lifedash->reddit->refresh((int) $user['id']);
+    $_SESSION['settings_flash'] = $errors === []
+        ? 'Fetched.'
+        : 'Fetched with errors: ' . implode('; ', $errors);
+    redirect('/settings/reddit');
+});
+
+$router->get('/reddit', function () use ($auth, $lifedash): void {
+    $user = $auth->requireAuth();
+    $subs = $lifedash->reddit->list((int) $user['id']);
+    $posts = $lifedash->reddit->posts((int) $user['id'], ['limit' => 60]);
+    require VIEWS_DIR . '/reddit.php';
+});
+
 // -------------------------------------------------------
 // Dispatch
 // -------------------------------------------------------

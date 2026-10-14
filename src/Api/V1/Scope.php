@@ -13,7 +13,7 @@ use Dashboard\Support\ValidationException;
  */
 final class Scope
 {
-    public const AREAS = ['metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search'];
+    public const AREAS = ['metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit'];
 
     /**
      * @param list<string> $requested

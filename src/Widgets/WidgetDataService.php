@@ -7,10 +7,12 @@ namespace Dashboard\Widgets;
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
+use Dashboard\Reddit\RedditService;
 use Dashboard\Life\LifeService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
+use Dashboard\Support\ValidationException;
 use Dashboard\Tracking\DatapointService;
 use Dashboard\Tracking\HabitService;
 use Dashboard\Tracking\MetricService;
@@ -35,6 +37,7 @@ final class WidgetDataService
         private readonly InvestService $invest,
         private readonly PageService $pages,
         private readonly MediaService $media,
+        private readonly RedditService $reddit,
     ) {}
 
     /**
@@ -59,11 +62,37 @@ final class WidgetDataService
             'portfolio' => $this->portfolioData($userId),
             'pages'     => $this->pagesData($userId, $c),
             'youtube'   => $this->media->payload($userId, 'youtube', $c),
-            'reddit'    => $this->media->payload($userId, 'reddit', $c),
+            'reddit'      => $this->media->payload($userId, 'reddit', $c),
+            'reddit_feed' => $this->redditFeed($userId, $c),
             'x'         => $this->media->payload($userId, 'x', $c),
             'custom'    => $this->customData($userId, $c),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };
+    }
+
+    /**
+     * Recent posts from the tracked-subreddit list. The fetch timer fills the table.
+     *
+     * @param array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private function redditFeed(int $userId, array $config): array
+    {
+        $filter = ['limit' => (int) ($config['limit'] ?? 12)];
+        $sub = trim((string) ($config['subreddit'] ?? ''));
+        if ($sub !== '') {
+            $filter['subreddit'] = $sub;
+        }
+        try {
+            $posts = $this->reddit->posts($userId, $filter);
+        } catch (ValidationException $e) {
+            return ['metric_ids' => [], 'posts' => [], 'empty' => $e->getMessage()];
+        }
+        return [
+            'metric_ids' => [],
+            'posts'      => $posts,
+            'empty'      => 'No posts yet. Add subreddits under Settings → Reddit.',
+        ];
     }
 
     /**

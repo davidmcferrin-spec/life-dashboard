@@ -153,6 +153,15 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
                 'fields' => self::carouselFields('Subreddits', "One per line\nnews\nr/programming", false),
             ],
+            'reddit_feed' => [
+                'label' => 'Reddit reader', 'category' => 'media', 'singleton' => false,
+                'description' => 'Recent posts from the subreddits you track on Settings → Reddit.',
+                'size' => ['w' => 6, 'h' => 6], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => [
+                    'subreddit' => ['type' => 'string', 'label' => 'One subreddit (blank = all tracked)', 'max' => 21, 'default' => '', 'placeholder' => 'programming'],
+                    'limit'     => ['type' => 'int', 'label' => 'Posts', 'min' => 3, 'max' => 40, 'default' => 12],
+                ],
+            ],
             'x' => [
                 'label' => 'X', 'category' => 'media', 'singleton' => false,
                 'description' => 'Recent posts from accounts you choose. Needs X_BEARER_TOKEN on the server. Cards rotate with a wipe or push.',

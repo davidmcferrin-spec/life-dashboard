@@ -20,6 +20,26 @@ def test_resolve_record_and_page_update():
     assert (method, path, body["title"]) == ("POST", "/api/v1/pages/9/update", "Notes")
 
 
+def test_reddit_tools_stay_on_the_reddit_api():
+    method, path, body = resolve("list_tracked_subreddits", {})
+    assert (method, path, body) == ("GET", "/api/v1/reddit/subs", None)
+    method, path, body = resolve("add_tracked_subreddit", {"name": "r/programming", "sort": "new", "include": "php"})
+    assert (method, path) == ("POST", "/api/v1/reddit/subs")
+    assert body["name"] == "r/programming"
+    assert body["sort"] == "new"
+    method, path, body = resolve("remove_tracked_subreddit", {"name": "programming"})
+    assert (method, path, body) == ("POST", "/api/v1/reddit/subs/remove", {"name": "programming"})
+    method, path, body = resolve("get_reddit_posts", {"subreddit": "programming", "since": "2026-10-01", "min_score": 10, "keyword": "php", "limit": 5})
+    assert method == "GET"
+    assert body is None
+    assert path.startswith("/api/v1/reddit/posts?")
+    assert "subreddit=programming" in path
+    assert "min_score=10" in path
+    assert "keyword=php" in path
+    method, path, body = resolve("get_reddit_post_comments", {"post_id": "abc123", "limit": 5})
+    assert (method, path, body) == ("GET", "/api/v1/reddit/posts/abc123/comments?limit=5", None)
+
+
 def test_search_forwards_include_and_exclude():
     method, path, body = resolve("search", {"q": "Apple", "include": ["pages", "feeds"], "exclude": ["money"]})
     assert method == "GET"
