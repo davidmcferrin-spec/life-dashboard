@@ -10,7 +10,7 @@ final class ShareDeniedResponse
     {
         http_response_code(403);
         $pageTitle      = 'Access denied';
-        $themePref      = 'system';
+        $themePref      = 'jarvis';
         $themeLocalOnly = true;
         require VIEWS_DIR . '/share/denied.php';
         exit;

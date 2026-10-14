@@ -30,6 +30,7 @@ final class PreferencesHandler
             'widget_height'        => $this->prefs->getWidgetHeight($userId),
             'widget_columns'       => $this->prefs->getWidgetColumns($userId),
             'theme'                => $this->prefs->getTheme($userId),
+            'jarvis_accent'        => $this->prefs->getJarvisAccent($userId),
             'clock_format'         => $this->prefs->getClockFormat($userId),
             'show_broadcast_week'  => $this->prefs->getShowBroadcastWeek($userId),
             'show_bookmark_icons'  => $this->prefs->getShowBookmarkIcons($userId),
@@ -84,6 +85,14 @@ final class PreferencesHandler
             }
         }
 
+        if (isset($body['jarvis_accent'])) {
+            try {
+                $this->prefs->setJarvisAccent($userId, (string) $body['jarvis_accent']);
+            } catch (\InvalidArgumentException $e) {
+                jsonResponse(['error' => $e->getMessage()], 422);
+            }
+        }
+
         if (isset($body['clock_format'])) {
             try {
                 $this->prefs->setClockFormat($userId, (string) $body['clock_format']);
@@ -129,6 +138,12 @@ final class PreferencesHandler
             if ($key === PreferenceService::KEY_THEME) {
                 try {
                     $this->prefs->setTheme($userId, (string) $body['value']);
+                } catch (\InvalidArgumentException $e) {
+                    jsonResponse(['error' => $e->getMessage()], 422);
+                }
+            } elseif ($key === PreferenceService::KEY_JARVIS_ACCENT) {
+                try {
+                    $this->prefs->setJarvisAccent($userId, (string) $body['value']);
                 } catch (\InvalidArgumentException $e) {
                     jsonResponse(['error' => $e->getMessage()], 422);
                 }

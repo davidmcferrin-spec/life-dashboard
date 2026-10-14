@@ -594,3 +594,47 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
     .ld-card.is-enter,
     .ld-carousel-bar { animation: none; }
 }
+
+/* Arc meters — food cap, sinking funds, retirement, Baby Step, gauges. */
+.ld-arc {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+.ld-arc-svg { display: block; height: auto; max-width: 11rem; overflow: visible; width: 100%; }
+.ld-arc-track { fill: none; stroke: var(--surface-hover); stroke-linecap: butt; stroke-width: 7; }
+.ld-arc-ticks { fill: none; stroke: var(--text-faint); stroke-width: 2; opacity: 0.55; }
+.ld-arc-value { fill: none; stroke: var(--accent); stroke-linecap: round; stroke-width: 7; }
+.ld-arc.is-warn .ld-arc-value { stroke: var(--warn); }
+.ld-arc-copy { margin-top: -2.35rem; text-align: center; }
+.ld-arc-sm .ld-arc-svg { max-width: 4.6rem; }
+.ld-arc-sm .ld-arc-copy { margin-top: -1.45rem; }
+.ld-arc-sm .ld-stat-value { font-size: 0.72rem; letter-spacing: 0; }
+.ld-fund {
+    align-items: center;
+    display: grid;
+    gap: 0.45rem;
+    grid-template-columns: 4.6rem minmax(0, 1fr);
+    margin-bottom: 0.35rem;
+}
+.ld-fund-copy { display: flex; flex-direction: column; min-width: 0; }
+.ld-fund-copy span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+html[data-theme="jarvis"] .ld-arc-value {
+    filter: drop-shadow(0 0 5px rgba(var(--hud-rgb), 0.8));
+}
+html[data-theme="jarvis"] .ld-arc.is-warn .ld-arc-value {
+    filter: drop-shadow(0 0 5px rgba(240, 193, 77, 0.75));
+}
+html[data-theme="jarvis"] .ld-arc-ticks { stroke: rgba(var(--hud-rgb), 0.55); opacity: 1; }
+html[data-theme="jarvis"] .ld-stat-value {
+    font-family: 'Orbitron', 'Rajdhani', sans-serif;
+    font-size: 1.35rem;
+    letter-spacing: 0.04em;
+    text-shadow: 0 0 10px rgba(var(--hud-rgb), 0.4);
+}
+html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
+    font-size: 0.68rem;
+    text-shadow: none;
+}

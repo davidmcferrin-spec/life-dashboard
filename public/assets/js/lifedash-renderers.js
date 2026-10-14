@@ -243,7 +243,7 @@
                 <svg class="ld-svg" viewBox="0 0 100 58" style="max-height:8rem" role="img"
                      aria-label="${esc(d.metric.name)} ${esc(fmt.value(d.metric, d.value))} of ${esc(d.max)}">
                     <path class="ld-track" d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}" stroke-width="9" stroke-linecap="round"/>
-                    ${frac > 0 ? `<path d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${vx.toFixed(2)} ${vy.toFixed(2)}" fill="none" style="stroke:${color}" stroke-width="9" stroke-linecap="round"/>` : ''}
+                    ${frac > 0 ? `<path class="ld-arc-value" d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${vx.toFixed(2)} ${vy.toFixed(2)}" fill="none" style="stroke:${color}" stroke-width="9" stroke-linecap="round"/>` : ''}
                     <text x="50" y="47" text-anchor="middle" class="ld-label" style="font-size:13px;fill:var(--text-primary)">${esc(fmt.value(d.metric, d.value))}</text>
                 </svg>
                 <div class="ld-sub">${Math.round(frac * 100)}% of ${esc(fmt.value(d.metric, d.max))} · ${esc(PERIOD_LABEL[d.period] || d.period)}</div>
@@ -438,6 +438,26 @@
         }
     }
 
+    function arcMeter(percent, opts) {
+        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        const shown = pct >= 0.8;
+        const dash = pct.toFixed(1);
+        const size = opts.small ? ' ld-arc-sm' : '';
+        const warn = opts.warn ? ' is-warn' : '';
+        const tone = opts.warn ? 'text-warn' : '';
+        const value = `<div class="ld-stat-value ${tone}">${esc(opts.value || '')}</div>`;
+        const sub = opts.sub ? `<div class="ld-meta ${tone}">${esc(opts.sub)}</div>` : '';
+        const note = opts.note ? `<p class="text-sm">${esc(opts.note)}</p>` : '';
+        return `<div class="ld-arc${size}${warn}" role="img" aria-label="${esc(opts.label || opts.value || 'progress')}">
+            <svg class="ld-arc-svg" viewBox="0 0 120 74" aria-hidden="true">
+                <path class="ld-arc-track" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100"></path>
+                <path class="ld-arc-ticks" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100" stroke-dasharray="0.6 7.6"></path>
+                ${shown ? `<path class="ld-arc-value" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100" stroke-dasharray="${dash} 100"></path>` : ''}
+            </svg>
+            <div class="ld-arc-copy">${value}${sub}${note}</div>
+        </div>`;
+    }
+
     function babyStep(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
@@ -445,7 +465,13 @@
             ctx.body.innerHTML = '<p class="empty-state mono text-xs">No Baby Step recorded yet.</p>';
             return;
         }
-        ctx.body.innerHTML = `<div class="ld-stat-value">Step ${esc(String(d.step))}</div><div class="ld-meta">${esc(d.name || '')}</div>${d.note ? `<p class="text-sm">${esc(d.note)}</p>` : ''}`;
+        const step = Number(d.step) || 0;
+        ctx.body.innerHTML = arcMeter((step / 7) * 100, {
+            label: 'Baby Step ' + step,
+            value: 'Step ' + step,
+            sub: d.name || '',
+            note: d.note || '',
+        });
     }
 
     function debtSnowball(ctx) {
@@ -460,8 +486,14 @@
     function foodWeek(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const klass = d.over ? 'text-danger' : '';
-        ctx.body.innerHTML = `<div class="ld-stat-value ${klass}">${esc(fmt.money(d.spent))}</div><div class="ld-meta ${klass}">of ${esc(fmt.money(d.cap))} this week</div>`;
+        const cap = Number(d.cap) || 0;
+        const spent = Number(d.spent) || 0;
+        ctx.body.innerHTML = arcMeter(cap > 0 ? (spent / cap) * 100 : 0, {
+            warn: !!d.over,
+            label: 'Food this week',
+            value: fmt.money(d.spent),
+            sub: 'of ' + fmt.money(d.cap) + ' this week',
+        });
     }
 
     function budgetActual(ctx) {
@@ -475,9 +507,10 @@
 
     function sinkingFunds(ctx) {
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const rows = (ctx.data.funds || []).map((f) =>
-            `<div class="ld-life-row"><span>${esc(f.name)}<span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></span><strong>${esc(String(f.percent))}%</strong></div>`
-        ).join('');
+        const rows = (ctx.data.funds || []).map((f) => {
+            const pct = Number(f.percent) || 0;
+            return `<div class="ld-fund">${arcMeter(pct, { small: true, label: f.name, value: Math.round(pct) + '%' })}<div class="ld-fund-copy"><span>${esc(f.name)}</span><span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></div></div>`;
+        }).join('');
         ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No sinking funds yet.</p>';
     }
 
@@ -492,8 +525,14 @@
     function retirement(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const pct = d.contribution_rate == null ? '—' : Math.round(d.contribution_rate * 1000) / 10 + '%';
-        ctx.body.innerHTML = `<div class="ld-stat-value ${d.on_track ? '' : 'text-danger'}">${esc(String(pct))}</div><div class="ld-meta">of a 15% target</div>`;
+        const rate = d.contribution_rate == null ? null : Number(d.contribution_rate);
+        const shown = rate == null ? '—' : Math.round(rate * 1000) / 10 + '%';
+        ctx.body.innerHTML = arcMeter(rate == null ? 0 : (rate / 0.15) * 100, {
+            warn: !d.on_track,
+            label: 'Retirement contribution',
+            value: shown,
+            sub: 'of a 15% target',
+        });
     }
 
     function credit(ctx) {

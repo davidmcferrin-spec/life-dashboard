@@ -115,7 +115,7 @@ $router->get('/share/clipboard/{token}', function (array $params) use ($db): voi
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared clipboard';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/clipboard.php';
 });
@@ -136,7 +136,7 @@ $router->get('/share/cloudpad/{token}', function (array $params) use ($db): void
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared CloudPad canvas';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/cloudpad.php';
 });
@@ -153,7 +153,7 @@ $router->get('/share/file/{token}', function (array $params) use ($db): void {
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared file';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/file.php';
 });
@@ -471,7 +471,10 @@ $router->post('/settings/preferences', function () use ($auth, $prefService): vo
 
     try {
         $prefService->setSearchEngine($userId, (string) ($_POST['search_engine'] ?? 'google'));
-        $prefService->setTheme($userId, (string) ($_POST['theme'] ?? 'system'));
+        $prefService->setTheme($userId, (string) ($_POST['theme'] ?? 'jarvis'));
+        if (isset($_POST['jarvis_accent'])) {
+            $prefService->setJarvisAccent($userId, (string) $_POST['jarvis_accent']);
+        }
         $prefService->setClockFormat($userId, (string) ($_POST['clock_format'] ?? '12h'));
         $prefService->setShowBroadcastWeek($userId, isset($_POST['show_broadcast_week']));
         $prefService->setShowBookmarkIcons($userId, isset($_POST['show_bookmark_icons']));

@@ -1,7 +1,86 @@
 /*
- * dashboard.css — minimal theme system + component styles
- * Themes: light | dark (resolved from pref: light | dark | system)
+ * dashboard.css — theme tokens + component styles
+ * Themes: jarvis (default) | light | dark | system
+ * Faces are self-hosted (OFL) in /assets/fonts — the UI is LAN-only.
  */
+
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-sans-latin-300.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-sans-latin-400.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-sans-latin-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Sans';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-sans-latin-600.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/assets/fonts/jetbrains-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/assets/fonts/jetbrains-mono-latin-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/assets/fonts/rajdhani-latin-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/assets/fonts/rajdhani-latin-600.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/assets/fonts/rajdhani-latin-700.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/assets/fonts/orbitron-latin-500.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'Orbitron';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/assets/fonts/orbitron-latin-600.woff2') format('woff2');
+}
 
 /* -------------------------------------------------------
    Theme tokens
@@ -75,6 +154,41 @@ html[data-theme="dark"] {
     --row-hover: rgba(255, 255, 255, 0.04);
     --editor-bg: #0c0c0e;
     --nav-active-bg: rgba(59, 130, 246, 0.12);
+}
+
+html[data-theme="jarvis"] {
+    color-scheme: dark;
+    --page-bg: transparent;
+    --page-text: #e7f6ff;
+    --chrome-border: rgba(var(--hud-rgb), 0.32);
+    --surface-bg: rgba(8, 16, 32, 0.58);
+    --surface-border: rgba(var(--hud-rgb), 0.42);
+    --surface-hover: rgba(var(--hud-rgb), 0.55);
+    --text-primary: #f3fbff;
+    --text-secondary: #c5e4f2;
+    --text-muted: #8eb4c9;
+    --text-faint: #6d90a6;
+    --accent: var(--hud-accent);
+    --accent-hover: var(--hud-bright);
+    --accent-soft: rgba(var(--hud-rgb), 0.14);
+    --accent-border: rgba(var(--hud-rgb), 0.55);
+    --input-bg: rgba(5, 12, 24, 0.82);
+    --input-border: rgba(var(--hud-rgb), 0.32);
+    --input-placeholder: #6d90a6;
+    --focus-ring: rgba(var(--hud-rgb), 0.28);
+    --shadow-focus: rgba(0, 0, 0, 0.45);
+    --danger: #ff5d73;
+    --danger-soft: rgba(255, 93, 115, 0.12);
+    --warn: #f0c14d;
+    --warn-soft: rgba(240, 193, 77, 0.14);
+    --ok: #3dffb0;
+    --ok-soft: rgba(61, 255, 176, 0.12);
+    --scroll-track: #050814;
+    --scroll-thumb: rgba(var(--hud-rgb), 0.35);
+    --scroll-thumb-hover: rgba(var(--hud-rgb), 0.6);
+    --row-hover: rgba(var(--hud-rgb), 0.08);
+    --editor-bg: rgba(4, 10, 22, 0.88);
+    --nav-active-bg: rgba(var(--hud-rgb), 0.14);
 }
 
 /* -------------------------------------------------------
@@ -1319,4 +1433,229 @@ html[data-theme="dark"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35); 
 
 html[data-theme="dark"] #weather-widget img {
     filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.15));
+}
+
+/* -------------------------------------------------------
+   JARVIS — holographic glass HUD
+   Accent channels (--hud-*) are set per user on <html>.
+   ------------------------------------------------------- */
+
+html[data-theme="jarvis"] {
+    background-color: #040712;
+}
+
+html[data-theme="jarvis"] body.page {
+    background-color: transparent;
+    position: relative;
+    z-index: 0;
+}
+
+html[data-theme="jarvis"] body.page::before {
+    content: "";
+    position: fixed;
+    inset: -8%;
+    z-index: -1;
+    pointer-events: none;
+    background-color: #040712;
+    background-image:
+        radial-gradient(circle at 16% 10%, rgba(var(--hud-rgb), 0.16), transparent 34%),
+        radial-gradient(circle at 84% 6%, rgba(var(--hud-rgb), 0.09), transparent 28%),
+        radial-gradient(circle at 70% 88%, rgba(var(--hud-rgb), 0.07), transparent 26%),
+        linear-gradient(rgba(var(--hud-rgb), 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(var(--hud-rgb), 0.05) 1px, transparent 1px);
+    background-size: auto, auto, auto, 56px 56px, 56px 56px;
+    animation: hud-drift 32s linear infinite;
+}
+
+html[data-theme="jarvis"] body.page::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0.025) 0,
+        rgba(255, 255, 255, 0.025) 1px,
+        transparent 1px,
+        transparent 4px
+    );
+    opacity: 0.45;
+}
+
+@keyframes hud-drift {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-56px, -56px, 0); }
+}
+
+@keyframes hud-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes hud-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+html[data-theme="jarvis"] .chrome {
+    background: rgba(4, 10, 22, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 0 22px rgba(var(--hud-rgb), 0.12);
+}
+
+html[data-theme="jarvis"] .brand {
+    font-family: 'Orbitron', 'Rajdhani', sans-serif;
+    color: var(--hud-accent);
+    text-shadow: 0 0 12px rgba(var(--hud-rgb), 0.65);
+    letter-spacing: 0.18em;
+}
+
+html[data-theme="jarvis"] h1,
+html[data-theme="jarvis"] h2,
+html[data-theme="jarvis"] h3,
+html[data-theme="jarvis"] .section-title,
+html[data-theme="jarvis"] .ld-w-title {
+    font-family: 'Rajdhani', 'IBM Plex Sans', sans-serif;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+}
+
+html[data-theme="jarvis"] .surface,
+html[data-theme="jarvis"] #timezone-bar,
+html[data-theme="jarvis"] .search-input {
+    position: relative;
+    background: rgba(8, 18, 36, 0.55);
+    border-color: rgba(var(--hud-rgb), 0.4);
+    box-shadow:
+        0 0 18px rgba(var(--hud-rgb), 0.08),
+        inset 0 0 24px rgba(var(--hud-rgb), 0.04);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+html[data-theme="jarvis"] .surface::before,
+html[data-theme="jarvis"] #timezone-bar::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    pointer-events: none;
+    background:
+        linear-gradient(var(--hud-accent), var(--hud-accent)) left top / 12px 1px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) left top / 1px 12px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) right top / 12px 1px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) right top / 1px 12px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) left bottom / 12px 1px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) left bottom / 1px 12px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) right bottom / 12px 1px no-repeat,
+        linear-gradient(var(--hud-accent), var(--hud-accent)) right bottom / 1px 12px no-repeat;
+    filter: drop-shadow(0 0 3px rgba(var(--hud-rgb), 0.8));
+}
+
+html[data-theme="jarvis"] #timezone-bar {
+    padding: 0.85rem 1.4rem 0.7rem;
+    border-width: 1px;
+    border-style: solid;
+    border-radius: 0.35rem;
+}
+
+html[data-theme="jarvis"] #timezone-bar::after {
+    content: "";
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    top: 5px;
+    height: 5px;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        90deg,
+        rgba(var(--hud-rgb), 0.75) 0 1px,
+        transparent 1px 9px
+    );
+}
+
+html[data-theme="jarvis"] .clock-label {
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--hud-dim);
+    letter-spacing: 0.28em;
+}
+
+html[data-theme="jarvis"] .clock-time {
+    font-family: 'Orbitron', 'Rajdhani', sans-serif;
+    font-size: 1.35rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    color: var(--hud-accent);
+    text-shadow: 0 0 12px rgba(var(--hud-rgb), 0.75);
+}
+
+html[data-theme="jarvis"] .clock-ampm {
+    font-family: 'Rajdhani', sans-serif;
+    color: var(--hud-bright);
+    letter-spacing: 0.14em;
+}
+
+html[data-theme="jarvis"] .btn-primary {
+    color: var(--hud-ink);
+    box-shadow: 0 0 16px rgba(var(--hud-rgb), 0.35);
+}
+
+html[data-theme="jarvis"] .theme-switch button.is-active {
+    color: var(--hud-accent);
+    text-shadow: 0 0 8px rgba(var(--hud-rgb), 0.7);
+}
+
+html[data-theme="jarvis"] main .surface:not(.ld-w) {
+    animation: hud-enter 0.5s ease both;
+}
+
+html[data-theme="jarvis"] .grid-stack-item {
+    animation: hud-fade 0.45s ease both;
+}
+
+html[data-theme="jarvis"] #weather-widget img {
+    filter: drop-shadow(0 0 8px rgba(var(--hud-rgb), 0.35));
+}
+
+.jarvis-accent label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.jarvis-rgb { width: 4.25rem; }
+#jarvis-accent-hex { width: 7.25rem; }
+#jarvis-accent-hex.is-invalid { border-color: var(--danger); }
+
+#jarvis-accent-picker {
+    width: 2.75rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--input-border);
+    background: transparent;
+    cursor: pointer;
+}
+
+.jarvis-swatch {
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 999px;
+    background: var(--hud-accent);
+    box-shadow: 0 0 10px rgba(var(--hud-rgb), 0.85);
+    align-self: center;
+}
+
+@media (max-width: 700px) {
+    html[data-theme="jarvis"] .clock-time { font-size: 1rem; }
+    html[data-theme="jarvis"] #timezone-bar { gap: 0.75rem; padding: 0.7rem 0.6rem; }
+    .theme-switch button { padding: 0.25rem 0.32rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html[data-theme="jarvis"] body.page::before,
+    html[data-theme="jarvis"] main .surface:not(.ld-w),
+    html[data-theme="jarvis"] .grid-stack-item {
+        animation: none;
+    }
 }

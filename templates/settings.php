@@ -7,12 +7,15 @@
 
 use Dashboard\DB\Database;
 use Dashboard\Settings\PreferenceService;
+use Dashboard\Support\JarvisAccent;
 
 $db               = Database::getInstance();
 $userId           = (int) $user['id'];
 $prefs            = new PreferenceService($db);
 $searchEngine     = $prefs->getSearchEngine($userId);
 $themePref        = $prefs->getTheme($userId);
+$jarvisAccent     = $prefs->getJarvisAccent($userId);
+$jarvisRgb        = JarvisAccent::rgb($jarvisAccent);
 $clockFormat      = $prefs->getClockFormat($userId);
 $showBroadcastWeek = $prefs->getShowBroadcastWeek($userId);
 $showBookmarkIcons = $prefs->getShowBookmarkIcons($userId);
@@ -44,7 +47,7 @@ require __DIR__ . '/settings/_shell-top.php';
                     <div>
                         <h3 class="section-title mb-3">Appearance</h3>
                         <div class="flex flex-wrap gap-4 mb-1">
-                            <?php foreach (['light' => 'Light', 'dark' => 'Dark', 'system' => 'System'] as $key => $label): ?>
+                            <?php foreach (['jarvis' => 'JARVIS', 'light' => 'Light', 'dark' => 'Dark', 'system' => 'System'] as $key => $label): ?>
                             <label class="flex items-center gap-2 cursor-pointer text-sm text-muted">
                                 <input type="radio" name="theme" value="<?= e($key) ?>"
                                     <?= $themePref === $key ? 'checked' : '' ?>>
@@ -52,7 +55,36 @@ require __DIR__ . '/settings/_shell-top.php';
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono">System follows your device. Use the nav switcher for instant preview; save here to sync across devices. Starfield is toggled on the dashboard nav.</p>
+                        <p class="text-faint text-xs mono">JARVIS is the holographic default. Light, Dark, and System stay available here and on the nav switcher. System follows your device. Starfield is a Dark-mode extra on the dashboard nav.</p>
+
+                        <div id="jarvis-accent" class="jarvis-accent mt-4">
+                            <h3 class="section-title mb-2">JARVIS accent</h3>
+                            <div class="flex flex-wrap items-end gap-3">
+                                <label class="mono text-xs text-muted">
+                                    Color
+                                    <input type="color" id="jarvis-accent-picker" value="<?= e($jarvisAccent) ?>" aria-label="JARVIS accent color">
+                                </label>
+                                <label class="mono text-xs text-muted">
+                                    R
+                                    <input class="input jarvis-rgb" id="jarvis-accent-r" type="number" min="0" max="255" inputmode="numeric" value="<?= e((string) $jarvisRgb['r']) ?>" aria-label="Red">
+                                </label>
+                                <label class="mono text-xs text-muted">
+                                    G
+                                    <input class="input jarvis-rgb" id="jarvis-accent-g" type="number" min="0" max="255" inputmode="numeric" value="<?= e((string) $jarvisRgb['g']) ?>" aria-label="Green">
+                                </label>
+                                <label class="mono text-xs text-muted">
+                                    B
+                                    <input class="input jarvis-rgb" id="jarvis-accent-b" type="number" min="0" max="255" inputmode="numeric" value="<?= e((string) $jarvisRgb['b']) ?>" aria-label="Blue">
+                                </label>
+                                <label class="mono text-xs text-muted">
+                                    Hex
+                                    <input class="input mono" id="jarvis-accent-hex" name="jarvis_accent" value="<?= e($jarvisAccent) ?>" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Accent hex">
+                                </label>
+                                <button type="button" class="btn text-xs" id="jarvis-accent-reset">Reset to cyan</button>
+                                <span class="jarvis-swatch" aria-hidden="true"></span>
+                            </div>
+                            <p class="text-faint text-xs mono mt-2">Edges, glows, and gauges follow this color while JARVIS is on. The preview updates as you drag. Saving stores it on this account.</p>
+                        </div>
                     </div>
 
                     <div>
