@@ -161,7 +161,7 @@ shellcheck setup.sh deploy/provision.sh deploy/bin/*
 - `timezone_auto` — use browser IANA zone via `Intl` (`focus-clock-tz.js`); manual dropdown kept as fallback
 - Alarm: `/clock` only (visible tab); no catch-up; dismiss + snooze 5 min; `clock-alarm.js` on `/clock` (+ settings for preview)
 - Alarm sounds: built-in tone, **shared library** (`alarm_sounds` table + `storage/uploads/alarm/shared/`), or **personal** (`storage/uploads/alarm/user/{userId}.ext`); `GET /api/clock/alarm-sounds`, stream `GET /api/clock/alarm-sound/mine` or `/{id}`; uploads default to shared (`scope=shared|mine`)
-- Font: DSEG7 Classic woff2 from [npm `dseg@0.46.0`](https://www.npmjs.com/package/dseg) in `public/assets/fonts/dseg7/` (not GitHub raw — repo ships sources only); mono fonts via Google Fonts on `/clock`
+- Font: DSEG7 Classic woff2 from [npm `dseg@0.46.0`](https://www.npmjs.com/package/dseg) in `public/assets/fonts/dseg7/` (not GitHub raw — repo ships sources only). Optional faces (Inconsolata, Space Mono, IBM Plex Mono, Source Code Pro) are self-hosted woff2 in `public/assets/fonts/` and declared in `clock.css`. `/clock` does not load fonts from Google.
 
 ## Package tracking
 
