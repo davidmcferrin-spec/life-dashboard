@@ -111,11 +111,11 @@ final class MoneyPlanTest extends PgsqlTestCase
         self::assertSame(0.15, $dash['retirement']['target']);
 
         foreach (['baby_step', 'debt_snowball', 'food_week', 'budget_actual', 'sinking_funds', 'bills_due', 'retirement', 'credit', 'networth'] as $type) {
-            $widget = $this->svc->widgets->create($this->user, $type, $type);
+            $widget = $this->svc->widgets->create($this->user, $type, $type, []);
             $payload = $this->svc->widgetData->forWidget($this->user, (int) $widget['id']);
             self::assertSame([], $payload['metric_ids'], $type);
         }
-        $foodWidget = $this->svc->widgets->create($this->user, 'food_week', 'Food week');
+        $foodWidget = $this->svc->widgets->create($this->user, 'food_week', 'Food week', []);
         $foodPayload = $this->svc->widgetData->forWidget($this->user, (int) $foodWidget['id']);
         self::assertTrue($foodPayload['over']);
 
