@@ -6,8 +6,11 @@ This process does not hold a token of its own and does not place trades.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
@@ -160,6 +163,130 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "add_transactions",
+        "description": "Upsert transactions. Same date, amount to the cent, account, and description update one row. Do not send full account numbers.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"transactions": {"type": "array"}},
+            "required": ["transactions"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_transactions",
+        "description": "Transactions in a date range. Optional category and account name filters.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+                "category": {"type": "string"},
+                "account": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_budget",
+        "description": "Planned budget lines and amount spent for one month.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"year": {"type": "integer"}, "month": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_budget_line",
+        "description": "Set the planned amount for one category in one month. due_day is optional, 1-31.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "year": {"type": "integer"},
+                "month": {"type": "integer"},
+                "category": {"type": "string"},
+                "amount": {"type": "number"},
+                "due_day": {"type": "integer"},
+            },
+            "required": ["year", "month", "category", "amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_debts",
+        "description": "Debts in snowball order: balance, APR, minimum, target date, and an estimated payoff date.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "update_debt",
+        "description": "Update a debt's balance, APR, minimum payment, or snowball position.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "debt_id": {"type": "integer"},
+                "balance": {"type": "number"},
+                "apr": {"type": "number"},
+                "minimum": {"type": "number"},
+                "payoff_order": {"type": "integer"},
+            },
+            "required": ["debt_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_sinking_funds",
+        "description": "Sinking funds with target, balance, due date, and percent saved.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "update_sinking_fund",
+        "description": "Update a sinking fund's target, balance, or due date.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "sinking_fund_id": {"type": "integer"},
+                "target": {"type": "number"},
+                "balance": {"type": "number"},
+                "due_on": {"type": "string"},
+            },
+            "required": ["sinking_fund_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_net_worth_snapshot",
+        "description": "Record one day's net worth. breakdown is an optional map of label to signed amount.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string"},
+                "net_worth": {"type": "number"},
+                "breakdown": {"type": "object"},
+            },
+            "required": ["date"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_credit_score",
+        "description": "Record a credit score for a date, with optional utilization percent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string"},
+                "score": {"type": "integer"},
+                "utilization": {"type": "number"},
+            },
+            "required": ["date", "score"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_dashboard_summary",
+        "description": "Net worth, Baby Step, debts, food this week versus the cap, this month's budget, sinking funds, bills due in 10 days, retirement rate versus 15%, and credit score.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "search",
         "description": (
             "Search every stored dataset. A hit means the text contains the query letters. "
@@ -288,6 +415,46 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         query = {k: args[k] for k in ("from", "to") if k in args}
         suffix = ("?" + urlencode(query)) if query else ""
         return "GET", "/api/v1/money/summary" + suffix, None
+    if name == "add_transactions":
+        return "POST", "/api/v1/money/transactions/bulk", {"transactions": args["transactions"]}
+    if name == "list_transactions":
+        query = {}
+        for key in ("from", "to", "category", "account"):
+            if args.get(key):
+                query[key] = args[key]
+        if args.get("limit"):
+            query["limit"] = int(args["limit"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/money/transactions" + suffix, None
+    if name == "get_budget":
+        query = {}
+        if args.get("year") is not None:
+            query["year"] = int(args["year"])
+        if args.get("month") is not None:
+            query["month"] = int(args["month"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/money/budget" + suffix, None
+    if name == "set_budget_line":
+        body = {k: args[k] for k in ("year", "month", "category", "amount", "due_day") if k in args}
+        return "POST", "/api/v1/money/budget", body
+    if name == "get_debts":
+        return "GET", "/api/v1/money/debts", None
+    if name == "update_debt":
+        body = {k: args[k] for k in ("balance", "apr", "minimum", "payoff_order") if k in args}
+        return "POST", f"/api/v1/money/debts/{int(args['debt_id'])}", body
+    if name == "get_sinking_funds":
+        return "GET", "/api/v1/money/sinking-funds", None
+    if name == "update_sinking_fund":
+        body = {k: args[k] for k in ("target", "balance", "due_on") if k in args}
+        return "POST", f"/api/v1/money/sinking-funds/{int(args['sinking_fund_id'])}", body
+    if name == "add_net_worth_snapshot":
+        body = {k: args[k] for k in ("date", "net_worth", "breakdown") if k in args}
+        return "POST", "/api/v1/money/snapshots", body
+    if name == "add_credit_score":
+        body = {k: args[k] for k in ("date", "score", "utilization") if k in args}
+        return "POST", "/api/v1/money/credit-scores", body
+    if name == "get_dashboard_summary":
+        return "GET", "/api/v1/money/dashboard", None
     if name == "invest_scorecard":
         return "GET", "/api/v1/invest/scorecard", None
     if name == "list_tracked_subreddits":
@@ -325,7 +492,37 @@ def _result(text: str, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
-def handle_message(message: dict[str, Any], authorization: str | None, fetch: Fetch) -> dict[str, Any] | None:
+class RequestLimiter:
+    """Sliding window of tool calls, keyed by a hash of the bearer token.
+
+    The raw token is not stored and is not written to the log.
+    """
+
+    def __init__(self, limit: int = 60, window: float = 60.0) -> None:
+        self.limit = limit
+        self.window = window
+        self._lock = threading.Lock()
+        self._hits: dict[str, list[float]] = {}
+
+    def allow(self, authorization: str, now: float | None = None) -> bool:
+        key = hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+        moment = time.monotonic() if now is None else now
+        with self._lock:
+            hits = [stamp for stamp in self._hits.get(key, []) if moment - stamp < self.window]
+            if len(hits) >= self.limit:
+                self._hits[key] = hits
+                return False
+            hits.append(moment)
+            self._hits[key] = hits
+            return True
+
+
+def handle_message(
+    message: dict[str, Any],
+    authorization: str | None,
+    fetch: Fetch,
+    limiter: RequestLimiter | None = None,
+) -> dict[str, Any] | None:
     """One JSON-RPC message. Notifications (no id) return None."""
     method = message.get("method")
     msg_id = message.get("id")
@@ -355,6 +552,9 @@ def handle_message(message: dict[str, Any], authorization: str | None, fetch: Fe
     if method == "tools/call":
         if not authorization:
             return reply(error={"code": -32001, "message": "Authorization: Bearer is required."})
+        gate = limiter if limiter is not None else _PROCESS_LIMITER
+        if not gate.allow(authorization):
+            return reply(error={"code": -32029, "message": "Rate limit: 60 requests per minute for this token."})
         params = message.get("params") or {}
         name = str(params.get("name") or "")
         try:
@@ -399,7 +599,12 @@ def urllib_fetch(api_base: str) -> Fetch:
     return fetch
 
 
-def make_handler(fetch: Fetch) -> type[BaseHTTPRequestHandler]:
+_PROCESS_LIMITER = RequestLimiter()
+
+
+def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[BaseHTTPRequestHandler]:
+    gate = limiter or RequestLimiter()
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -417,13 +622,13 @@ def make_handler(fetch: Fetch) -> type[BaseHTTPRequestHandler]:
                 return
             auth = self.headers.get("Authorization")
             if isinstance(message, list):
-                replies = [r for item in message if isinstance(item, dict) and (r := handle_message(item, auth, fetch)) is not None]
+                replies = [r for item in message if isinstance(item, dict) and (r := handle_message(item, auth, fetch, gate)) is not None]
                 self._send(200, replies)
                 return
             if not isinstance(message, dict):
                 self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}})
                 return
-            reply = handle_message(message, auth, fetch)
+            reply = handle_message(message, auth, fetch, gate)
             if reply is None:
                 self._send(202, None)
                 return

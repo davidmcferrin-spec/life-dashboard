@@ -47,12 +47,15 @@ final class MoneyService
         $name = $this->cleanName($input['name'] ?? null);
         $kind = $this->cleanKind($input['kind'] ?? 'checking');
         $balance = $this->cleanAmount($input['balance'] ?? 0, 'balance');
+        $institution = $this->optionalInstitution($input['institution'] ?? null);
+        $last4 = AccountNumberGuard::last4($input['last4'] ?? null);
+        $limit = $this->optionalLimit($input['credit_limit'] ?? null);
         if ($this->db->fetchOne('SELECT 1 FROM money_accounts WHERE user_id = ? AND name = ?', [$userId, $name]) !== null) {
             throw ValidationException::withFields(['name' => 'An account with that name already exists.']);
         }
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO money_accounts (user_id, name, kind, balance) VALUES (?, ?, ?, ?) RETURNING id',
-            [$userId, $name, $kind, $balance]
+            'INSERT INTO money_accounts (user_id, name, kind, balance, institution, last4, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $name, $kind, $balance, $institution, $last4, $limit]
         );
         $this->touchSnapshot($userId);
         return $this->account($userId, $id);
@@ -68,12 +71,24 @@ final class MoneyService
         $name = array_key_exists('name', $input) ? $this->cleanName($input['name']) : (string) $account['name'];
         $kind = array_key_exists('kind', $input) ? $this->cleanKind($input['kind']) : (string) $account['kind'];
         $balance = array_key_exists('balance', $input) ? $this->cleanAmount($input['balance'], 'balance') : (float) $account['balance'];
+        $institution = array_key_exists('institution', $input) ? $this->optionalInstitution($input['institution']) : $account['institution'];
+        $last4 = array_key_exists('last4', $input) ? AccountNumberGuard::last4($input['last4']) : $account['last4'];
+        $limit = array_key_exists('credit_limit', $input) ? $this->optionalLimit($input['credit_limit']) : $account['credit_limit'];
         $this->db->execute(
-            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$name, $kind, $balance, $id, $userId]
+            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, institution = ?, last4 = ?, credit_limit = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$name, $kind, $balance, $institution, $last4, $limit, $id, $userId]
         );
         $this->touchSnapshot($userId);
         return $this->account($userId, $id);
+    }
+
+    public function accountByName(int $userId, string $name): ?array
+    {
+        $row = $this->db->fetchOne(
+            'SELECT * FROM money_accounts WHERE user_id = ? AND lower(name) = lower(?)',
+            [$userId, trim($name)]
+        );
+        return $row === null ? null : $this->formatAccount($row);
     }
 
     public function archiveAccount(int $userId, int $id): void
@@ -94,22 +109,29 @@ final class MoneyService
         $account = $this->account($userId, (int) ($input['account_id'] ?? 0));
         $amount = $this->cleanAmount($input['amount'] ?? null, 'amount');
         $date = $this->cleanDate($input['date'] ?? $input['posted_on'] ?? null);
-        $payee = $this->optionalText($input['payee'] ?? null, 160);
+        $payee = $this->optionalText($input['payee'] ?? $input['description'] ?? null, 160);
         $category = $this->optionalText($input['category'] ?? null, 80) ?? 'Uncategorized';
         $note = $this->optionalText($input['note'] ?? null, 2000);
+        foreach (['payee' => $payee, 'category' => $category, 'note' => $note] as $field => $text) {
+            if ($text !== null) {
+                AccountNumberGuard::assertNoFullNumber($text, $field);
+            }
+        }
+        $categoryId = $this->ensureCategory($userId, $category, $amount);
         $dedupe = isset($input['dedupe_key']) && $input['dedupe_key'] !== '' ? mb_substr((string) $input['dedupe_key'], 0, 160) : null;
         if (!in_array($source, ['manual', 'import', 'ai'], true)) {
             $source = 'manual';
         }
-        $params = [$userId, (int) $account['id'], $date, $amount, $payee, $category, $note, $dedupe, $source];
+        $params = [$userId, (int) $account['id'], $date, $amount, $payee, $category, $categoryId, $note, $dedupe, $source];
         $sql = $dedupe === null
-            ? 'INSERT INTO money_transactions (user_id, account_id, posted_on, amount, payee, category, note, dedupe_key, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id'
-            : 'INSERT INTO money_transactions (user_id, account_id, posted_on, amount, payee, category, note, dedupe_key, source)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ? 'INSERT INTO money_transactions (user_id, account_id, posted_on, amount, payee, category, category_id, note, dedupe_key, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id'
+            : 'INSERT INTO money_transactions (user_id, account_id, posted_on, amount, payee, category, category_id, note, dedupe_key, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT (user_id, dedupe_key) DO UPDATE
                   SET account_id = EXCLUDED.account_id, posted_on = EXCLUDED.posted_on, amount = EXCLUDED.amount,
-                      payee = EXCLUDED.payee, category = EXCLUDED.category, note = EXCLUDED.note, source = EXCLUDED.source
+                      payee = EXCLUDED.payee, category = EXCLUDED.category, category_id = EXCLUDED.category_id,
+                      note = EXCLUDED.note, source = EXCLUDED.source
                RETURNING id';
         $id = (int) $this->db->fetchScalar($sql, $params);
         return $this->transaction($userId, $id);
@@ -130,8 +152,8 @@ final class MoneyService
         $imported = 0;
         $created = 0;
         foreach ($rows as $row) {
-            $date = $this->flexDate($row['date'] ?? '');
-            $amount = $this->flexAmount($row['amount'] ?? '');
+            $date = self::flexDate($row['date'] ?? '');
+            $amount = self::flexAmount($row['amount'] ?? '');
             if ($date === null || $amount === null) {
                 continue;
             }
@@ -165,8 +187,14 @@ final class MoneyService
     /**
      * @return list<array<string, mixed>>
      */
-    public function transactions(int $userId, ?string $from = null, ?string $to = null, int $limit = 50): array
-    {
+    public function transactions(
+        int $userId,
+        ?string $from = null,
+        ?string $to = null,
+        int $limit = 50,
+        ?string $category = null,
+        ?string $account = null,
+    ): array {
         $limit = max(1, min(500, $limit));
         $sql = 'SELECT t.*, a.name AS account_name FROM money_transactions t
                 JOIN money_accounts a ON a.id = t.account_id
@@ -180,7 +208,19 @@ final class MoneyService
             $sql .= ' AND t.posted_on <= ?';
             $params[] = $to;
         }
-        $sql .= " ORDER BY t.posted_on DESC, t.id DESC LIMIT {$limit}";
+        if ($category !== null && $category !== '') {
+            $sql .= ' AND lower(t.category) = lower(?)';
+            $params[] = $category;
+        }
+        if ($account !== null && $account !== '') {
+            $sql .= ' AND lower(a.name) = lower(?)';
+            $params[] = $account;
+        }
+        $sql .= ' ORDER BY t.posted_on DESC, t.id DESC LIMIT 500';
+        $rows = $this->db->fetchAll($sql, $params);
+        if (count($rows) > $limit) {
+            $rows = array_slice($rows, 0, $limit);
+        }
         return array_map(static function (array $row): array {
             return [
                 'id'       => (int) $row['id'],
@@ -191,7 +231,114 @@ final class MoneyService
                 'category' => (string) $row['category'],
                 'note'     => $row['note'] !== null ? (string) $row['note'] : null,
             ];
-        }, $this->db->fetchAll($sql, $params));
+        }, $rows);
+    }
+
+    /**
+     * Bulk upsert. dedupe_key is date + cents + account + description unless the caller passes one.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return array{written: int, transactions: list<array<string, mixed>>}
+     */
+    public function addTransactions(int $userId, array $items, string $source = 'ai'): array
+    {
+        if (count($items) > 200) {
+            throw ValidationException::withFields(['transactions' => 'Send at most 200 transactions at a time.']);
+        }
+        if (!in_array($source, ['manual', 'import', 'ai'], true)) {
+            $source = 'manual';
+        }
+        $written = [];
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                throw ValidationException::withFields(['transactions' => 'Each transaction must be an object.']);
+            }
+            $accountName = trim((string) ($item['account'] ?? ''));
+            if (isset($item['account_id']) && (int) $item['account_id'] > 0) {
+                $account = $this->account($userId, (int) $item['account_id']);
+                $accountId = (int) $account['id'];
+                if ($accountName === '') {
+                    $accountName = (string) $account['name'];
+                }
+            } else {
+                if ($accountName === '') {
+                    throw ValidationException::withFields(['account' => 'Each transaction needs an account name.']);
+                }
+                $found = $this->findOrCreateAccount($userId, $accountName, (string) ($item['kind'] ?? 'checking'));
+                $accountId = $found['id'];
+            }
+            $amount = $this->cleanAmount($item['amount'] ?? null, 'amount');
+            $date = $this->cleanDate($item['date'] ?? $item['posted_on'] ?? null);
+            $description = trim((string) ($item['description'] ?? $item['payee'] ?? ''));
+            $dedupe = isset($item['dedupe_key']) && $item['dedupe_key'] !== ''
+                ? (string) $item['dedupe_key']
+                : self::dedupeKey($date, $amount, $accountName, $description);
+            $written[] = $this->addTransaction($userId, [
+                'account_id' => $accountId,
+                'date'       => $date,
+                'amount'     => $amount,
+                'payee'      => $description !== '' ? $description : null,
+                'category'   => $item['category'] ?? null,
+                'note'       => $item['note'] ?? null,
+                'dedupe_key' => $dedupe,
+            ], $source);
+        }
+        if ($written !== []) {
+            $this->touchSnapshot($userId);
+        }
+        return ['written' => count($written), 'transactions' => $written];
+    }
+
+    public static function dedupeKey(string $date, float $amount, string $account, string $description): string
+    {
+        $cents = number_format(round($amount, 2), 2, '.', '');
+        $key = $date . '|' . $cents . '|' . mb_strtolower(trim($account)) . '|' . mb_strtolower(trim($description));
+        return mb_substr($key, 0, 160);
+    }
+
+    /**
+     * @param array<string, float|int>|null $breakdown
+     * @return array<string, mixed>
+     */
+    public function addSnapshot(int $userId, string $date, ?float $netWorth, ?array $breakdown): array
+    {
+        $date = $this->cleanDate($date);
+        if ($netWorth === null) {
+            $netWorth = 0.0;
+            foreach ($this->accounts($userId) as $account) {
+                $netWorth += $account['kind'] === 'credit' ? -(float) $account['balance'] : (float) $account['balance'];
+            }
+        } else {
+            $netWorth = $this->cleanAmount($netWorth, 'net_worth');
+        }
+        $clean = [];
+        if ($breakdown !== null) {
+            if (count($breakdown) > 40) {
+                throw ValidationException::withFields(['breakdown' => 'Breakdown can have at most 40 labels.']);
+            }
+            foreach ($breakdown as $label => $amount) {
+                $name = trim((string) $label);
+                if ($name === '' || mb_strlen($name) > 80) {
+                    throw ValidationException::withFields(['breakdown' => 'Each breakdown label must be 1–80 characters.']);
+                }
+                AccountNumberGuard::assertNoFullNumber($name, 'breakdown');
+                if (!is_numeric($amount)) {
+                    throw ValidationException::withFields(['breakdown' => 'Breakdown amounts must be numbers.']);
+                }
+                $clean[$name] = round((float) $amount, 2);
+            }
+        }
+        $json = json_encode($clean, JSON_THROW_ON_ERROR);
+        $this->db->execute(
+            'INSERT INTO money_snapshots (user_id, as_of, net_worth, breakdown) VALUES (?, ?, ?, ?::jsonb)
+             ON CONFLICT (user_id, as_of) DO UPDATE SET net_worth = EXCLUDED.net_worth, breakdown = EXCLUDED.breakdown',
+            [$userId, $date, $netWorth, $json]
+        );
+        return [
+            'date'      => $date,
+            'net_worth' => $netWorth,
+            'breakdown' => $clean,
+        ];
     }
 
     /**
@@ -349,12 +496,17 @@ final class MoneyService
      */
     private function formatAccount(array $row): array
     {
+        $last4 = $row['last4'] ?? null;
+        $limit = $row['credit_limit'] ?? null;
         return [
-            'id'       => (int) $row['id'],
-            'name'     => (string) $row['name'],
-            'kind'     => (string) $row['kind'],
-            'balance'  => (float) $row['balance'],
-            'archived' => $row['archived_at'] !== null,
+            'id'           => (int) $row['id'],
+            'name'         => (string) $row['name'],
+            'kind'         => (string) $row['kind'],
+            'balance'      => (float) $row['balance'],
+            'institution'  => isset($row['institution']) && $row['institution'] !== null && $row['institution'] !== '' ? (string) $row['institution'] : null,
+            'last4'        => $last4 !== null && trim((string) $last4) !== '' ? trim((string) $last4) : null,
+            'credit_limit' => $limit !== null ? (float) $limit : null,
+            'archived'     => $row['archived_at'] !== null,
         ];
     }
 
@@ -364,7 +516,68 @@ final class MoneyService
         if ($name === '' || mb_strlen($name) > 80) {
             throw ValidationException::withFields(['name' => 'Account name must be 1–80 characters.']);
         }
+        AccountNumberGuard::assertNoFullNumber($name, 'name');
         return $name;
+    }
+
+    private function optionalInstitution(mixed $value): ?string
+    {
+        $text = $this->optionalText($value, 80);
+        if ($text !== null) {
+            AccountNumberGuard::assertNoFullNumber($text, 'institution');
+        }
+        return $text;
+    }
+
+    private function optionalLimit(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $limit = $this->cleanAmount($value, 'credit_limit');
+        if ($limit < 0) {
+            throw ValidationException::withFields(['credit_limit' => 'Credit limit cannot be negative.']);
+        }
+        return $limit;
+    }
+
+    public function ensureCategory(int $userId, string $name, float $amount = -1, ?string $kind = null, ?float $weeklyCap = null): int
+    {
+        $name = trim($name);
+        if ($name === '') {
+            $name = 'Uncategorized';
+        }
+        $name = mb_substr($name, 0, 80);
+        AccountNumberGuard::assertNoFullNumber($name, 'category');
+        $row = $this->db->fetchOne(
+            'SELECT id FROM money_categories WHERE user_id = ? AND lower(name) = lower(?)',
+            [$userId, $name]
+        );
+        if ($row !== null) {
+            if ($weeklyCap !== null) {
+                $this->db->execute(
+                    'UPDATE money_categories SET weekly_cap = ? WHERE id = ? AND user_id = ? AND weekly_cap IS NULL',
+                    [$weeklyCap, (int) $row['id'], $userId]
+                );
+            }
+            return (int) $row['id'];
+        }
+        if ($kind === null || !in_array($kind, ['income', 'expense', 'transfer'], true)) {
+            $kind = 'expense';
+            if (str_contains(mb_strtolower($name), 'transfer')) {
+                $kind = 'transfer';
+            } elseif ($amount > 0) {
+                $kind = 'income';
+            }
+        }
+        $cap = $weeklyCap;
+        if ($cap === null && strcasecmp($name, 'Food') === 0) {
+            $cap = 250.0;
+        }
+        return (int) $this->db->fetchScalar(
+            'INSERT INTO money_categories (user_id, name, kind, weekly_cap) VALUES (?, ?, ?, ?) RETURNING id',
+            [$userId, $name, $kind, $cap]
+        );
     }
 
     private function cleanKind(mixed $kind): string
@@ -376,7 +589,7 @@ final class MoneyService
         return $kind;
     }
 
-    private function cleanAmount(mixed $value, string $field): float
+    public function cleanAmount(mixed $value, string $field): float
     {
         if (!is_numeric($value)) {
             throw ValidationException::withFields([$field => 'Enter a number.']);
@@ -384,7 +597,7 @@ final class MoneyService
         return round((float) $value, 2);
     }
 
-    private function cleanDate(mixed $value): string
+    public function cleanDate(mixed $value): string
     {
         try {
             return Clock::normalizeDate((string) $value);
@@ -405,7 +618,7 @@ final class MoneyService
         return mb_substr($text, 0, $max);
     }
 
-    private function flexDate(string $raw): ?string
+    public static function flexDate(string $raw): ?string
     {
         $raw = trim($raw);
         if ($raw === '') {
@@ -420,7 +633,7 @@ final class MoneyService
         return null;
     }
 
-    private function flexAmount(string $raw): ?float
+    public static function flexAmount(string $raw): ?float
     {
         $raw = trim(str_replace([',', '$', '('], '', $raw));
         $raw = str_replace(')', '', $raw);

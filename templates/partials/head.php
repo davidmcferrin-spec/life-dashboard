@@ -18,7 +18,7 @@ if (!in_array($themePref, ['light', 'dark', 'system'], true)) {
 }
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261014b';
+$assetVer = '20261014c';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>

@@ -7,7 +7,7 @@
         const el = document.getElementById('agent-tokens');
         el.innerHTML = (tokens || []).map((t) =>
             `<div class="ld-life-row">
-                <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}</span></span>
+                <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}${t.expires_at ? ' · expires ' + esc(t.expires_at.slice(0, 10)) : ''}</span></span>
                 ${t.revoked ? '' : `<button type="button" class="btn text-xs" data-revoke="${t.id}">Revoke</button>`}
             </div>`
         ).join('') || '<p class="empty-state mono text-xs">No tokens yet.</p>';
@@ -37,7 +37,9 @@
         const access = String(data.get('access'));
         const scopes = access === 'reddit'
             ? ['reddit:read', 'reddit:write']
-            : (access === 'read' ? ['read'] : ['read', 'write']);
+            : (access === 'money'
+                ? ['money:read', 'money:write']
+                : (access === 'read' ? ['read'] : ['read', 'write']));
         const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
         const once = document.getElementById('agent-token-once');
         once.hidden = false;

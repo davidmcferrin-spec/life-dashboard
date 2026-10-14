@@ -29,6 +29,7 @@ You can:
 - search every stored dataset for a word. Pass include or exclude with dataset names (pages, feeds, metrics, todos, bookmarks, clipboards, money, invest, widgets, files, stocks, cloudpad, youtube, reddit, x). A hit means the stored text contains those letters. Hits labeled similar are extra and only appear when embeddings exist
 - search, read, and write vault pages (Markdown, [[wikilinks]])
 - read money summary (spending and net worth) and add accounts or transactions he asked for
+- with a money-only token (money:read and money:write, expires in 90 days): add and list transactions, read and set the monthly budget, read and update debts and sinking funds, add a net-worth snapshot, add a credit score, and read the money dashboard (Baby Step, food vs $250, bills due, retirement vs 15%). Do not send full account numbers. One subscription is stored only as "Creator subscription"
 - read the investing scorecard
 - list, add, and remove tracked subreddits, and read the posts saved from them (filter by subreddit, date, score, or a keyword). A token scoped to reddit:read and reddit:write can do this and nothing else
 

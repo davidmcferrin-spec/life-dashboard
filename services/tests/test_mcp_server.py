@@ -1,6 +1,6 @@
 import json
 
-from lifedash.mcp_server import TOOLS, handle_message, resolve
+from lifedash.mcp_server import TOOLS, RequestLimiter, handle_message, resolve
 
 
 def test_tools_cover_the_platform_and_never_a_trade():
@@ -47,6 +47,83 @@ def test_search_forwards_include_and_exclude():
     assert "q=Apple" in path
     assert "include=pages%2Cfeeds" in path
     assert "exclude=money" in path
+
+
+def test_money_tools_resolve_onto_the_money_api():
+    method, path, body = resolve("add_transactions", {"transactions": [{"amount": -1}]})
+    assert (method, path, body) == ("POST", "/api/v1/money/transactions/bulk", {"transactions": [{"amount": -1}]})
+    method, path, body = resolve("list_transactions", {"from": "2026-10-01", "category": "Food", "limit": 5})
+    assert method == "GET"
+    assert body is None
+    assert path.startswith("/api/v1/money/transactions?")
+    assert "from=2026-10-01" in path
+    assert "category=Food" in path
+    assert "limit=5" in path
+    method, path, body = resolve("get_budget", {"year": 2026, "month": 10})
+    assert (method, path, body) == ("GET", "/api/v1/money/budget?year=2026&month=10", None)
+    method, path, body = resolve("set_budget_line", {"year": 2026, "month": 10, "category": "Food", "amount": 400, "due_day": 15})
+    assert (method, path) == ("POST", "/api/v1/money/budget")
+    assert body["category"] == "Food"
+    method, path, body = resolve("get_debts", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/debts", None)
+    method, path, body = resolve("update_debt", {"debt_id": 4, "balance": 10, "apr": 6.99, "minimum": 50})
+    assert (method, path) == ("POST", "/api/v1/money/debts/4")
+    assert "debt_id" not in body
+    assert body["apr"] == 6.99
+    method, path, body = resolve("get_sinking_funds", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/sinking-funds", None)
+    method, path, body = resolve("update_sinking_fund", {"sinking_fund_id": 3, "target": 100, "balance": 40, "due_on": "2026-12-01"})
+    assert (method, path) == ("POST", "/api/v1/money/sinking-funds/3")
+    assert body["due_on"] == "2026-12-01"
+    method, path, body = resolve("add_net_worth_snapshot", {"date": "2026-10-01", "net_worth": 1000})
+    assert (method, path) == ("POST", "/api/v1/money/snapshots")
+    method, path, body = resolve("add_credit_score", {"date": "2026-10-01", "score": 740, "utilization": 22})
+    assert (method, path) == ("POST", "/api/v1/money/credit-scores")
+    method, path, body = resolve("get_dashboard_summary", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/dashboard", None)
+    names = [tool["name"] for tool in TOOLS]
+    for name in (
+        "add_transactions", "list_transactions", "get_budget", "set_budget_line", "get_debts",
+        "update_debt", "get_sinking_funds", "update_sinking_fund", "add_net_worth_snapshot",
+        "add_credit_score", "get_dashboard_summary", "money_summary",
+    ):
+        assert name in names
+
+
+def test_rate_limit_stops_the_next_call_without_fetching():
+    calls = {"n": 0}
+
+    def fetch(method, path, body, authorization, tool):
+        calls["n"] += 1
+        return 200, {"ok": True}
+
+    limiter = RequestLimiter(limit=2, window=60)
+    auth = "Bearer secret-token"
+
+    def call(msg_id, token):
+        return handle_message(
+            {"jsonrpc": "2.0", "id": msg_id, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}},
+            token,
+            fetch,
+            limiter,
+        )
+
+    assert call(1, auth)["result"]["isError"] is False
+    assert call(2, auth)["result"]["isError"] is False
+    blocked = call(3, auth)
+    assert blocked["error"]["code"] == -32029
+    assert calls["n"] == 2
+    assert call(4, "Bearer other-token")["result"]["isError"] is False
+    assert calls["n"] == 3
+    for i in range(5):
+        listed = handle_message(
+            {"jsonrpc": "2.0", "id": 10 + i, "method": "tools/list"},
+            auth,
+            fetch,
+            limiter,
+        )
+        assert "tools" in listed["result"]
+    assert calls["n"] == 3
 
 
 def test_initialize_and_tool_call_forward_the_bearer_token():

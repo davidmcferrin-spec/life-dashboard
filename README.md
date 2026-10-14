@@ -16,6 +16,7 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **4 US Timezone Clocks** — ET / CT / MT / PT, live; optional broadcast week (EPOCH)
 - **RSS News Feed** — 30+ built-in sources across tech, developer, mobile, hardware, enterprise, Microsoft, broadcast, and news categories; merged timeline; `/news` reader
 - **Reddit** — track subreddits on Settings → Reddit (hot/new/top, keyword filters). Posts are saved on the server and shown at `/reddit` and on the Reddit reader widget. An assistant reads them through MCP. A token can be limited to Reddit only. The rotating Reddit card is separate and still uses the list typed into that widget
+- **Money** — accounts, transactions, budget, debt snowball, sinking funds, Baby Step, food week, bills due, retirement vs 15%, and credit score. A one-time CSV import copies a spreadsheet into Postgres (`docs/money-import.md`). A money-only agent token expires in 90 days
 - **Weather Widget** — OpenWeatherMap free tier, browser geolocation
 - **Bookmarks** — per-user folders with favicons, bookmarklet capture, collapsible links
 - **Flight Watches** — OpenSky ADS-B (optional FlightAware); polls 24h before departure via cron
@@ -271,7 +272,7 @@ Until then, nightly `pg_dump`s go to `/var/backups/lifedash` only (7 days). **Sa
 sudo lifedash-tunnel-setup mcp.<your-domain>
 ```
 
-This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at Cloudflare's edge, and the dashboard UI is never public. `/mcp` answers 502 until the MCP server ships in Phase L2. Claude.ai and Grok call custom MCP servers from their own clouds, which is why a public endpoint is needed at all; Claude Code and Cursor on your own devices can use the LAN (or Teleport) directly.
+This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at Cloudflare's edge, and the dashboard UI is never public. Put a Cloudflare Access service token in front of `/mcp` (`CF-Access-Client-Id` and `CF-Access-Client-Secret`). The app bearer token is a second check. Steps: [docs/deploy/cloudflare-access.md](docs/deploy/cloudflare-access.md). Claude.ai and Grok call custom MCP servers from their own clouds, which is why a public endpoint is needed at all; Claude Code and Cursor on your own devices can use the LAN (or Teleport) directly.
 
 ## Day-to-day operations
 

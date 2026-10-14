@@ -120,7 +120,14 @@ final class ExtendedApi
             return ['ok' => true];
         }, 200, true));
         $r->get('/api/v1/money/transactions', fn () => $this->run(fn (int $u) => [
-            'transactions' => $this->svc->money->transactions($u, self::strParam('from'), self::strParam('to'), (int) ($_GET['limit'] ?? 50)),
+            'transactions' => $this->svc->money->transactions(
+                $u,
+                self::strParam('from'),
+                self::strParam('to'),
+                (int) ($_GET['limit'] ?? 50),
+                self::strParam('category'),
+                self::strParam('account'),
+            ),
         ]));
         $r->post('/api/v1/money/transactions', fn () => $this->run(function (int $u): array {
             $source = $this->runner->actor()->kind === 'ai' ? 'ai' : 'manual';
@@ -142,6 +149,70 @@ final class ExtendedApi
         $r->post('/api/v1/money/weekly-review', fn () => $this->run(fn (int $u) => [
             'page' => $this->svc->money->weeklyReview($u),
         ], 201, true));
+        $r->post('/api/v1/money/transactions/bulk', fn () => $this->run(function (int $u): array {
+            $items = $this->runner->body()['transactions'] ?? null;
+            if (!is_array($items) || !array_is_list($items)) {
+                throw ValidationException::withFields(['transactions' => 'transactions must be a list.']);
+            }
+            $source = $this->runner->actor()->kind === 'ai' ? 'ai' : 'manual';
+            return $this->svc->money->addTransactions($u, $items, $source);
+        }, 200, true));
+        $r->get('/api/v1/money/budget', fn () => $this->run(function (int $u): array {
+            $today = $this->svc->clock->today();
+            $year = (int) ($_GET['year'] ?? substr($today, 0, 4));
+            $month = (int) ($_GET['month'] ?? substr($today, 5, 2));
+            return ['budget' => $this->svc->plan->budget($u, $year, $month)];
+        }));
+        $r->post('/api/v1/money/budget', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            return ['budget' => $this->svc->plan->setBudgetLine(
+                $u,
+                (int) ($b['year'] ?? 0),
+                (int) ($b['month'] ?? 0),
+                (string) ($b['category'] ?? ''),
+                (float) ($b['amount'] ?? 0),
+                isset($b['due_day']) && $b['due_day'] !== '' ? (int) $b['due_day'] : null,
+            )];
+        }, 200, true));
+        $r->get('/api/v1/money/debts', fn () => $this->run(fn (int $u) => ['debts' => $this->svc->plan->debts($u)]));
+        $r->post('/api/v1/money/debts/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'debt' => $this->svc->plan->updateDebt($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/money/sinking-funds', fn () => $this->run(fn (int $u) => [
+            'sinking_funds' => $this->svc->plan->sinkingFunds($u),
+        ]));
+        $r->post('/api/v1/money/sinking-funds/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'sinking_fund' => $this->svc->plan->updateSinkingFund($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/snapshots', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            $breakdown = $b['breakdown'] ?? null;
+            if ($breakdown !== null && !is_array($breakdown)) {
+                throw ValidationException::withFields(['breakdown' => 'Breakdown must be an object of label to amount.']);
+            }
+            return ['snapshot' => $this->svc->money->addSnapshot(
+                $u,
+                (string) ($b['date'] ?? $b['as_of'] ?? ''),
+                isset($b['net_worth']) ? (float) $b['net_worth'] : null,
+                is_array($breakdown) ? $breakdown : null,
+            )];
+        }, 200, true));
+        $r->post('/api/v1/money/credit-scores', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            return ['credit' => $this->svc->plan->addCreditScore(
+                $u,
+                (string) ($b['date'] ?? $b['as_of'] ?? ''),
+                (int) ($b['score'] ?? 0),
+                isset($b['utilization']) && $b['utilization'] !== '' ? (float) $b['utilization'] : null,
+            )];
+        }, 200, true));
+        $r->post('/api/v1/money/baby-step', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            return ['baby_step' => $this->svc->plan->setBabyStep($u, (int) ($b['step'] ?? 0), isset($b['note']) ? (string) $b['note'] : null)];
+        }, 200, true));
+        $r->get('/api/v1/money/dashboard', fn () => $this->run(fn (int $u) => [
+            'dashboard' => $this->svc->plan->dashboard($u),
+        ]));
 
         $r->get('/api/v1/invest/scorecard', fn () => $this->run(fn (int $u) => [
             'scorecard' => $this->svc->invest->scorecard($u),
