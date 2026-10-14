@@ -84,11 +84,29 @@ final class SqliteToPgsqlImporter
             $tgtCols  = $this->targetColumns[$table];
             $common   = array_values(array_intersect(array_keys($tgtCols), $srcCols));
             $dropped  = array_values(array_diff($srcCols, array_keys($tgtCols)));
+            // Legacy auto-login rows store the secret in `token`. Hash it on
+            // the way in so the plaintext never lands in PostgreSQL.
+            $hashAutologin = $table === 'autologin_tokens'
+                && isset($tgtCols['token_hash'])
+                && in_array('token', $srcCols, true)
+                && !in_array('token_hash', $srcCols, true);
+            if ($hashAutologin) {
+                $dropped = array_values(array_diff($dropped, ['token']));
+            }
             if ($dropped !== []) {
                 $warnings[] = "{$table}: source columns not in target, ignored: " . implode(', ', $dropped);
             }
 
-            $colList = implode(', ', array_map(static fn (string $c): string => '"' . $c . '"', $common));
+            $select = $common;
+            if ($hashAutologin) {
+                $select[] = 'token';
+            }
+            if ($select === []) {
+                $this->say("  · {$table}: no shared columns — left empty");
+                continue;
+            }
+
+            $colList = implode(', ', array_map(static fn (string $c): string => '"' . $c . '"', $select));
             $stmt    = $this->source->query("SELECT {$colList} FROM \"{$table}\"");
 
             $rowNum = 0;
@@ -102,6 +120,15 @@ final class SqliteToPgsqlImporter
                         $row[$col] = self::convertValue($raw[$col], $tgtCols[$col], $this->truncateLongText);
                     } catch (\InvalidArgumentException $e) {
                         $rowErrors[] = "{$table} row {$rowNum} (id=" . ($raw['id'] ?? '?') . ") column {$col}: " . $e->getMessage();
+                    }
+                }
+
+                if ($hashAutologin) {
+                    $plain = $raw['token'] ?? null;
+                    if (!is_string($plain) || $plain === '') {
+                        $rowErrors[] = "{$table} row {$rowNum} (id=" . ($raw['id'] ?? '?') . ") column token: missing plaintext; cannot store a hash";
+                    } else {
+                        $row['token_hash'] = hash('sha256', $plain);
                     }
                 }
 
