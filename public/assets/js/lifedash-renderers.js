@@ -276,15 +276,15 @@
                 const shown = day.value === null || day.future ? '—' : `${day.percent}%`;
                 const label = day.value === null
                     ? `${day.label} no entry`
-                    : `${day.label} ${fmt.value(d.metric, day.value)}${unit}, ${day.percent}% of goal`;
+                    : `${day.label} ${fmt.value(d.metric, day.value)}, ${day.percent}% of goal`;
                 return `<div class="${cls}" style="${goalPaint(day.ratio)}" role="img" aria-label="${esc(label)}">
                     <span class="ld-goal-fill"></span>
                     <span class="ld-goal-dow">${esc(day.label)}</span>
                     <span class="ld-goal-cap">${esc(shown)}</span>
                 </div>`;
             }).join('');
-            ctx.body.innerHTML = `<div class="ld-goal-week">${cells}</div>
-                <div class="ld-sub ld-goal-legend">0 empty · 100% full · through 200%</div>`;
+            tools(ctx, '<span class="ld-sub">0 empty · 100% full · 200%</span>');
+            ctx.body.innerHTML = `<div class="ld-goal-week">${cells}</div>`;
             return;
         }
         const shown = d.value === null ? '—' : fmt.value(d.metric, d.value);
@@ -292,11 +292,11 @@
         ctx.body.innerHTML = `
             <div class="ld-goal-day">
                 <div class="ld-goal-tank${over}" style="${goalPaint(d.ratio)}" role="img"
-                     aria-label="${esc(d.metric.name)} ${esc(shown)}${esc(unit)}, ${d.percent}% of ${esc(fmt.number(d.goal, 0))}">
+                     aria-label="${esc(d.metric.name)} ${esc(shown)}, ${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}">
                     <span class="ld-goal-fill"></span>
                 </div>
                 <div class="ld-goal-readout">
-                    <div class="ld-stat-value">${esc(shown)}<span class="ld-goal-unit">${esc(unit)}</span></div>
+                    <div class="ld-stat-value">${esc(shown)}</div>
                     <div class="ld-sub">${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}</div>
                 </div>
             </div>`;

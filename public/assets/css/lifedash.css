@@ -837,13 +837,19 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
 }
 
 /* Goal progress. Fill uses the user accent; past the goal it blends toward --ok, capped at 200%. */
+.ld-w-body:has(.ld-goal-day),
+.ld-w-body:has(.ld-goal-week) {
+    display: flex;
+    flex-direction: column;
+}
 .ld-goal-day {
-    align-items: center;
+    align-items: stretch;
     display: grid;
+    flex: 1 1 auto;
     gap: 0.85rem;
     grid-template-columns: 4.25rem minmax(0, 1fr);
     min-height: 7.5rem;
-    padding: 0.35rem 0.15rem 0.15rem;
+    padding: 0.15rem 0.1rem 0.15rem;
 }
 .ld-goal-tank,
 .ld-goal-cell {
@@ -854,7 +860,7 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
     overflow: hidden;
     position: relative;
 }
-.ld-goal-tank { height: 7.25rem; }
+.ld-goal-tank { height: 100%; min-height: 7.25rem; }
 .ld-goal-fill {
     background: color-mix(
         in srgb,
@@ -876,6 +882,7 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
 }
 .ld-goal-week {
     display: grid;
+    flex: 1 1 auto;
     gap: 0.35rem;
     grid-template-columns: repeat(7, minmax(0, 1fr));
     min-height: 7.25rem;
@@ -883,6 +890,7 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
 .ld-goal-cell {
     display: flex;
     flex-direction: column;
+    height: 100%;
     min-height: 7.25rem;
 }
 .ld-goal-cell.is-today {
@@ -909,7 +917,7 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
     padding-bottom: 0.28rem;
     text-shadow: 0 0 6px var(--surface);
 }
-.ld-goal-legend { margin-top: 0.4rem; }
+.ld-w-tools .ld-sub { margin: 0; white-space: nowrap; }
 html[data-theme="jarvis"] .ld-goal-fill {
     box-shadow: 0 0 14px color-mix(in srgb, var(--hud-accent, var(--accent)) 55%, transparent);
 }
