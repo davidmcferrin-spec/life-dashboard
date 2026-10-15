@@ -1291,4 +1291,5 @@ $router->get('/settings/investing', function () use ($auth): void {
 // Dispatch
 // -------------------------------------------------------
 
+\Dashboard\Api\AgentAccess::prepare($db);
 $router->dispatch();

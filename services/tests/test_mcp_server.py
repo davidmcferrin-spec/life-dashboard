@@ -9,6 +9,10 @@ def test_tools_cover_the_platform_and_never_a_trade():
     assert "life_ingest" in names
     assert "write_page" in names
     assert "search" in names
+    assert "add_transaction" in names
+    assert "save_account" in names
+    assert "save_widget" in names
+    assert "dashboard" in names
     assert not any("order" in name or "trade" in name for name in names)
 
 
@@ -18,6 +22,36 @@ def test_resolve_record_and_page_update():
     assert body["dedupe_key"] == "day:2026-10-06"
     method, path, body = resolve("write_page", {"page_id": 9, "title": "Notes", "body": "[[Home]]"})
     assert (method, path, body["title"]) == ("POST", "/api/v1/pages/9/update", "Notes")
+
+
+def test_money_and_widget_writes():
+    method, path, body = resolve("add_transaction", {"account_id": 2, "amount": -12.5, "payee": "Cafe", "dedupe_key": "cafe-1"})
+    assert (method, path) == ("POST", "/api/v1/money/transactions")
+    assert body["amount"] == -12.5
+    method, path, body = resolve("save_account", {"account_id": 2, "name": "Checking", "balance": 40})
+    assert (method, path, body["name"]) == ("POST", "/api/v1/money/accounts/2/update", "Checking")
+    method, path, body = resolve("save_widget", {"widget_id": 7, "config": {"sources": "news\nprogramming"}})
+    assert method == "POST"
+    assert path == "/api/v1/widgets/7/update"
+    assert body["config"]["sources"] == "news\nprogramming"
+
+
+def test_dashboard_reaches_the_api_and_blocks_tokens_and_trades():
+    method, path, body = resolve("dashboard", {"method": "post", "path": "/invest/polymarket/refresh", "body": {}})
+    assert (method, path, body) == ("POST", "/api/v1/invest/polymarket/refresh", {})
+    method, path, body = resolve("dashboard", {"method": "GET", "path": "/api/v1/money/accounts"})
+    assert (method, path, body) == ("GET", "/api/v1/money/accounts", None)
+    method, path, body = resolve("dashboard", {"method": "POST", "path": "/bookmarks", "body": {"title": "Notes", "url": "https://example.com"}})
+    assert (method, path) == ("POST", "/api/bookmarks")
+    assert body["title"] == "Notes"
+    method, path, body = resolve("dashboard", {"method": "GET", "path": "/clipboards/4"})
+    assert (method, path, body) == ("GET", "/api/clipboards/4", None)
+    for blocked in ("/tokens", "/invest/orders", "../etc/passwd", "/files", "/cloudpad", "/bookmarks/2/favicon", "/clipboards/1/shares/link"):
+        try:
+            resolve("dashboard", {"method": "POST", "path": blocked, "body": {}})
+        except ValueError:
+            continue
+        raise AssertionError(blocked)
 
 
 def test_search_forwards_include_and_exclude():

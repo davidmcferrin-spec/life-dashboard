@@ -159,6 +159,11 @@ class Auth
      */
     public function requireAuth(): array
     {
+        $agent = \Dashboard\Api\AgentAccess::currentUser();
+        if ($agent !== null) {
+            return $agent;
+        }
+
         $user = $this->user();
 
         if ($user === null) {
@@ -221,13 +226,26 @@ class Auth
 
     /**
      * Destroy current session and log out.
+     * The session is not started until something reads it, so /logout must open it first.
      */
     public function logout(): void
     {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION = [];
-            session_destroy();
+        $this->initSession();
+        $_SESSION = [];
+
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', [
+                'expires'  => time() - 42000,
+                'path'     => $params['path'],
+                'domain'   => $params['domain'],
+                'secure'   => $params['secure'],
+                'httponly' => $params['httponly'],
+                'samesite' => $params['samesite'] ?? 'Lax',
+            ]);
         }
+
+        session_destroy();
     }
 
     // -------------------------------------------------------

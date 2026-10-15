@@ -13,7 +13,13 @@ use Dashboard\Support\ValidationException;
  */
 final class Scope
 {
-    public const AREAS = ['metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search'];
+    /** Areas that a full read or full write token already covered before bookmarks and the rest were added. */
+    public const CORE = ['metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search'];
+
+    public const AREAS = [
+        'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search',
+        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards',
+    ];
 
     /**
      * @param list<string> $requested
@@ -73,7 +79,10 @@ final class Scope
      */
     public static function allows(array $granted, string $required): bool
     {
-        if (in_array('*', $granted, true)) {
+        if (in_array('*', $granted, true) || self::hasCore($granted, 'write')) {
+            return true;
+        }
+        if (str_ends_with($required, ':read') && self::hasCore($granted, 'read')) {
             return true;
         }
         if (in_array($required, $granted, true)) {
@@ -85,5 +94,21 @@ final class Scope
             return in_array($write, $granted, true);
         }
         return false;
+    }
+
+    /**
+     * A token issued as full read or full write lists every core area.
+     * Those tokens keep that reach when a new area is added.
+     *
+     * @param list<string> $granted
+     */
+    private static function hasCore(array $granted, string $verb): bool
+    {
+        foreach (self::CORE as $area) {
+            if (!in_array($area . ':' . $verb, $granted, true)) {
+                return false;
+            }
+        }
+        return true;
     }
 }

@@ -28,6 +28,17 @@ final class PlatformParseTest extends TestCase
         self::assertSame('pages:write', Scope::forPath('/api/v1/pages/4/update', true));
         self::assertSame('search:read', Scope::forPath('/api/v1/search', false));
         self::assertSame('metrics:read', Scope::forPath('/api/v1/habits', false));
+        self::assertSame('bookmarks:write', Scope::forPath('/api/bookmarks', true));
+        self::assertSame('todos:read', Scope::forPath('/api/todos/3/items', false));
+        $full = Scope::normalize(['write']);
+        self::assertContains('bookmarks:write', $full);
+        self::assertTrue(Scope::allows($full, 'clipboards:read'));
+        $legacy = array_map(static fn (string $area): string => $area . ':write', Scope::CORE);
+        self::assertTrue(Scope::allows($legacy, 'bookmarks:write'));
+        self::assertTrue(Scope::allows($legacy, 'flights:read'));
+        self::assertFalse(Scope::allows(['money:write'], 'todos:write'));
+        self::assertTrue(Scope::allows(Scope::normalize(['read']), 'stocks:read'));
+        self::assertFalse(Scope::allows(Scope::normalize(['read']), 'stocks:write'));
         self::assertTrue(Scope::sessionOnly('/api/v1/tokens'));
     }
 

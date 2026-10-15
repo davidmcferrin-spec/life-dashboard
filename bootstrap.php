@@ -214,6 +214,10 @@ function requestCsrfToken(): string
  */
 function validateCsrf(): void
 {
+    if (\Dashboard\Api\AgentAccess::currentUser() !== null) {
+        return;
+    }
+
     initAppSession();
 
     $token    = requestCsrfToken();

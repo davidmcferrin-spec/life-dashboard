@@ -98,11 +98,44 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "widget_data",
-        "description": "What a widget is currently showing.",
+        "description": "What a widget is currently showing, including the latest YouTube, Reddit, and X cards.",
         "inputSchema": {
             "type": "object",
             "properties": {"widget_id": {"type": "integer"}},
             "required": ["widget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_widget",
+        "description": "Read one widget, including its config. Use this before changing sources.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"widget_id": {"type": "integer"}},
+            "required": ["widget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_widget_types",
+        "description": "Widget types and their config fields.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "save_widget",
+        "description": (
+            "Create a widget, or update it when widget_id is set. "
+            "youtube, reddit, and x use config.sources with one channel, subreddit, or account per line. "
+            "On update, send the full config from get_widget so the other settings stay."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "widget_id": {"type": "integer"},
+                "type": {"type": "string"},
+                "title": {"type": "string"},
+                "config": {"type": "object"},
+            },
             "additionalProperties": False,
         },
     },
@@ -152,12 +185,94 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "money_summary",
-        "description": "Spending and net worth. Read only aside from what the user asked to record elsewhere.",
+        "description": "Spending and net worth for a date range. Dates are YYYY-MM-DD.",
         "inputSchema": {
             "type": "object",
             "properties": {"from": {"type": "string"}, "to": {"type": "string"}},
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "list_accounts",
+        "description": "Money accounts and balances.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "save_account",
+        "description": (
+            "Create a money account, or update it when account_id is set. "
+            "kind is checking, savings, credit, cash, investment, or other."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "kind": {"type": "string"},
+                "balance": {"type": "number"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_account",
+        "description": "Archive a money account. Transactions stay.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"account_id": {"type": "integer"}},
+            "required": ["account_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_transactions",
+        "description": "Money transactions. Amount is signed: negative is money spent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_transaction",
+        "description": (
+            "Add a transaction on an account. Amount is signed: negative is money spent. "
+            "Pass dedupe_key so a retry updates the same row."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "account_id": {"type": "integer"},
+                "amount": {"type": "number"},
+                "date": {"type": "string"},
+                "payee": {"type": "string"},
+                "category": {"type": "string"},
+                "note": {"type": "string"},
+                "dedupe_key": {"type": "string"},
+            },
+            "required": ["account_id", "amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "import_money",
+        "description": "Import a Monarch-style money CSV. Columns are Date, Amount, Merchant, Category, Account.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"csv": {"type": "string"}},
+            "required": ["csv"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "weekly_review",
+        "description": "Write this week's money review into the vault.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "search",
@@ -180,10 +295,74 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "invest_scorecard",
-        "description": "Read-only positions and unrealized result. Do not place trades.",
+        "description": "Positions and unrealized result. Do not place trades.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "dashboard",
+        "description": (
+            "Read or write a dashboard path the signed-in user can use. method is GET or POST. "
+            "Examples: /metrics/4/update, /bookmarks, /todos, /flights, /packages, /stocks, /clipboards/1/save. "
+            "Files, favicons, Dropbox, S3, public share links, CloudPad, tokens, and trades are closed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "method": {"type": "string", "enum": ["GET", "POST"]},
+                "path": {"type": "string"},
+                "query": {"type": "object"},
+                "body": {"type": "object"},
+            },
+            "required": ["method", "path"],
+        },
+    },
 ]
+
+
+def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
+    query = {key: args[key] for key in keys if args.get(key) not in (None, "")}
+    return ("?" + urlencode(query)) if query else ""
+
+
+def _pick(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    return {key: args[key] for key in keys if key in args and args[key] is not None}
+
+
+_LEGACY = ("bookmarks", "todos", "flights", "packages", "stocks", "clipboards")
+_CLOSED = ("/favicon", "/capture", "/shares/link", "/files", "/storage", "/cloudpad", "/tokens", "/trade", "/order")
+
+
+def _api_path(path: str, query: Any = None) -> str:
+    """Map a tool path onto /api/v1 or an older JSON API. Closed areas stay closed."""
+    raw = path.strip().split("?", 1)[0]
+    if ".." in raw or "\\" in raw or raw.startswith("//"):
+        raise ValueError("Path must stay inside the dashboard API.")
+    if not raw.startswith("/"):
+        raw = "/" + raw
+    if raw.startswith("/api/v1/") or raw == "/api/v1":
+        full = raw
+    elif raw.startswith("/api/"):
+        full = raw
+    else:
+        segment = raw.strip("/").split("/", 1)[0]
+        full = ("/api" if segment in _LEGACY else "/api/v1") + raw
+    if any(ch not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-" for ch in full):
+        raise ValueError("Path has unsupported characters.")
+    lowered = full.lower()
+    if any(part in lowered for part in _CLOSED):
+        raise ValueError("That path is not available to an agent.")
+    if not full.startswith("/api/v1"):
+        segment = full[len("/api/"):].split("/", 1)[0]
+        if segment not in _LEGACY:
+            raise ValueError("That path is not available to an agent.")
+    suffix = ""
+    if query:
+        if not isinstance(query, dict):
+            raise ValueError("query must be an object.")
+        clean = {str(key): str(value) for key, value in query.items() if value is not None and str(value) != ""}
+        if clean:
+            suffix = "?" + urlencode(clean)
+    return full + suffix
 
 
 def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict[str, Any] | None]:
@@ -211,6 +390,16 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/widgets", None
     if name == "widget_data":
         return "GET", f"/api/v1/widgets/{int(args['widget_id'])}/data", None
+    if name == "get_widget":
+        return "GET", f"/api/v1/widgets/{int(args['widget_id'])}", None
+    if name == "list_widget_types":
+        return "GET", "/api/v1/widget-types", None
+    if name == "save_widget":
+        body = _pick(args, ("title", "config"))
+        if args.get("widget_id"):
+            return "POST", f"/api/v1/widgets/{int(args['widget_id'])}/update", body
+        body["type"] = args["type"]
+        return "POST", "/api/v1/widgets", body
     if name == "life_today":
         return "GET", "/api/v1/life/today", None
     if name == "life_ingest":
@@ -227,11 +416,39 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
             return "POST", f"/api/v1/pages/{int(args['page_id'])}/update", body
         return "POST", "/api/v1/pages", body
     if name == "money_summary":
-        query = {k: args[k] for k in ("from", "to") if k in args}
-        suffix = ("?" + urlencode(query)) if query else ""
-        return "GET", "/api/v1/money/summary" + suffix, None
+        return "GET", "/api/v1/money/summary" + _query(args, ("from", "to")), None
+    if name == "list_accounts":
+        return "GET", "/api/v1/money/accounts", None
+    if name == "save_account":
+        body = _pick(args, ("name", "kind", "balance"))
+        if args.get("account_id"):
+            return "POST", f"/api/v1/money/accounts/{int(args['account_id'])}/update", body
+        return "POST", "/api/v1/money/accounts", body
+    if name == "archive_account":
+        return "POST", f"/api/v1/money/accounts/{int(args['account_id'])}/archive", {}
+    if name == "list_transactions":
+        return "GET", "/api/v1/money/transactions" + _query(args, ("from", "to", "limit")), None
+    if name == "add_transaction":
+        return "POST", "/api/v1/money/transactions", _pick(args, ("account_id", "amount", "date", "payee", "category", "note", "dedupe_key"))
+    if name == "import_money":
+        return "POST", "/api/v1/money/import", {"csv": args["csv"]}
+    if name == "weekly_review":
+        return "POST", "/api/v1/money/weekly-review", {}
     if name == "invest_scorecard":
         return "GET", "/api/v1/invest/scorecard", None
+    if name == "dashboard":
+        method = str(args.get("method") or "").upper()
+        if method not in ("GET", "POST"):
+            raise ValueError("method must be GET or POST.")
+        path = _api_path(str(args.get("path") or ""), args.get("query"))
+        if method == "GET":
+            return method, path, None
+        raw_body = args.get("body")
+        if raw_body is None:
+            raw_body = {}
+        if not isinstance(raw_body, dict):
+            raise ValueError("body must be an object.")
+        return method, path, raw_body
     if name == "search":
         query = {"q": args["q"]}
         if args.get("include"):

@@ -156,6 +156,31 @@
    ------------------------------------------------------- */
 .app-modal-panel.ld-modal-wide { max-width: 34rem; max-height: min(90vh, 40rem); }
 
+.ld-token-steps {
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.8125rem;
+    gap: 0.45rem;
+    line-height: 1.45;
+    list-style: decimal;
+    margin: 0.6rem 0 0.9rem;
+    padding-left: 1.2rem;
+}
+.ld-token-steps code {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.75rem;
+}
+.ld-token-secret {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+    resize: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 .setup-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .setup-row {
     align-items: center;
