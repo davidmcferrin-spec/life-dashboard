@@ -28,18 +28,19 @@ final class PageService
     /**
      * @return list<array<string, mixed>>
      */
-    public function list(int $userId, ?string $query = null, int $limit = 100): array
+    public function list(int $userId, ?string $query = null, int $limit = 100, ?int $folderId = null, bool $folderSet = false): array
     {
         $limit = max(1, min(200, $limit));
         $query = $query !== null ? trim($query) : '';
+        [$clause, $folderParams] = $this->folderClause($userId, $folderId, $folderSet, 'folder_id');
         if ($query === '') {
             return array_map(
                 fn (array $row): array => $this->brief($row),
                 $this->db->fetchAll(
-                    "SELECT id, title, slug, kind, updated_at FROM pages
-                     WHERE user_id = ? AND archived_at IS NULL
+                    "SELECT id, title, slug, kind, folder_id, updated_at FROM pages
+                     WHERE user_id = ? AND archived_at IS NULL {$clause}
                      ORDER BY updated_at DESC, id DESC LIMIT {$limit}",
-                    [$userId]
+                    array_merge([$userId], $folderParams)
                 )
             );
         }
@@ -47,17 +48,30 @@ final class PageService
         $fts = array_map(
             fn (array $row): array => $this->brief($row),
             $this->db->fetchAll(
-                "SELECT id, title, slug, kind, updated_at,
+                "SELECT id, title, slug, kind, folder_id, updated_at,
                         ts_rank(to_tsvector('english', title || ' ' || body), plainto_tsquery('english', ?)) AS rank
                  FROM pages
-                 WHERE user_id = ? AND archived_at IS NULL
+                 WHERE user_id = ? AND archived_at IS NULL {$clause}
                    AND to_tsvector('english', title || ' ' || body) @@ plainto_tsquery('english', ?)
                  ORDER BY rank DESC, updated_at DESC
                  LIMIT {$limit}",
-                [$query, $userId, $query]
+                array_merge([$query, $userId], $folderParams, [$query])
             )
         );
         $semantic = $this->semantic($userId, $query, $limit);
+        if ($folderSet) {
+            $allowed = array_flip($folderParams);
+            $semantic = array_values(array_filter(
+                $semantic,
+                static function (array $row) use ($folderId, $allowed): bool {
+                    $id = $row['folder_id'] ?? null;
+                    if ($folderId === null && $folderParams === []) {
+                        return $id === null;
+                    }
+                    return $id !== null && isset($allowed[(int) $id]);
+                }
+            ));
+        }
         return $this->mergeHits($fts, $semantic, $limit);
     }
 
@@ -82,6 +96,7 @@ final class PageService
         $page['backlinks'] = $this->backlinks($userId, $id);
         $page['links'] = $this->outgoing($userId, $id);
         $page['revisions'] = $this->revisions($userId, $id);
+        $page['breadcrumbs'] = $this->breadcrumbs($userId, $page['folder_id']);
         return $page;
     }
 
@@ -96,10 +111,11 @@ final class PageService
         $kind = $this->cleanKind($input['kind'] ?? 'note');
         $body = $this->cleanBody($input['body'] ?? '');
         $slug = $this->uniqueSlug($userId, $title);
+        $folderId = $this->inputHasFolder($input) ? $this->folderFromInput($userId, $input) : null;
 
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO pages (user_id, title, slug, kind, body) VALUES (?, ?, ?, ?, ?) RETURNING id',
-            [$userId, $title, $slug, $kind, $body]
+            'INSERT INTO pages (user_id, title, slug, kind, body, folder_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $title, $slug, $kind, $body, $folderId]
         );
         $this->addRevision($userId, $id, 1, $title, $body);
         $this->syncLinks($userId, $id, $body);
@@ -121,6 +137,10 @@ final class PageService
         $body  = array_key_exists('body', $input) ? $this->cleanBody($input['body']) : (string) $page['body'];
         if ($title !== $page['title']) {
             $this->assertUniqueTitle($userId, $title, $id);
+        }
+        if ($this->inputHasFolder($input)) {
+            $this->movePage($userId, $id, $this->folderFromInput($userId, $input), $actor, $tool);
+            $page = $this->get($userId, $id);
         }
         if ($title === $page['title'] && $kind === $page['kind'] && $body === $page['body']) {
             return $page;
@@ -188,6 +208,190 @@ final class PageService
             [$id, $userId]
         );
         $this->audit->record($userId, $actor, null, 'page.archive', 'page:' . $id);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function folderTree(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT id, parent_id, name FROM page_folders WHERE user_id = ? ORDER BY lower(name) ASC, id ASC',
+            [$userId]
+        );
+        $byParent = [];
+        foreach ($rows as $row) {
+            $parent = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : 0;
+            $byParent[$parent][] = $row;
+        }
+        $walk = function (int $parent) use (&$walk, $byParent): array {
+            $out = [];
+            foreach ($byParent[$parent] ?? [] as $row) {
+                $id = (int) $row['id'];
+                $out[] = [
+                    'id'        => $id,
+                    'name'      => (string) $row['name'],
+                    'parent_id' => $parent === 0 ? null : $parent,
+                    'children'  => $walk($id),
+                ];
+            }
+            return $out;
+        };
+        return $walk(0);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function createFolder(int $userId, string $name, ?int $parentId, string $actor = 'user', ?string $tool = null): array
+    {
+        $name = $this->cleanFolderName($name);
+        if ($parentId !== null) {
+            $this->requireFolder($userId, $parentId);
+            $this->assertDepth($userId, $parentId);
+        }
+        try {
+            $id = (int) $this->db->fetchScalar(
+                'INSERT INTO page_folders (user_id, parent_id, name) VALUES (?, ?, ?) RETURNING id',
+                [$userId, $parentId, $name]
+            );
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), 'page_folders_sibling_name') || str_contains($e->getMessage(), '23505')) {
+                throw ValidationException::withFields(['name' => 'A folder with that name is already here.']);
+            }
+            throw $e;
+        }
+        $this->audit->record($userId, $actor, $tool, 'folder.create', 'folder:' . $id, ['folder_id' => $id, 'parent_id' => $parentId]);
+        return $this->folderRow($userId, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function renameFolder(int $userId, int $id, string $name, string $actor = 'user', ?string $tool = null): array
+    {
+        $this->requireFolder($userId, $id);
+        $name = $this->cleanFolderName($name);
+        try {
+            $this->db->execute(
+                "UPDATE page_folders SET name = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+                [$name, $id, $userId]
+            );
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), '23505')) {
+                throw ValidationException::withFields(['name' => 'A folder with that name is already here.']);
+            }
+            throw $e;
+        }
+        $this->audit->record($userId, $actor, $tool, 'folder.rename', 'folder:' . $id, ['folder_id' => $id]);
+        return $this->folderRow($userId, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function moveFolder(int $userId, int $id, ?int $parentId, string $actor = 'user', ?string $tool = null): array
+    {
+        $folder = $this->requireFolder($userId, $id);
+        if ($parentId !== null) {
+            $this->requireFolder($userId, $parentId);
+        }
+        if ($parentId === $id) {
+            throw ValidationException::withFields(['parent_id' => 'A folder cannot sit inside itself.']);
+        }
+        $this->assertNotDescendant($userId, $id, $parentId);
+        if ($parentId !== null) {
+            $this->assertDepth($userId, $parentId, $this->subtreeHeight($userId, $id));
+        }
+        $current = $folder['parent_id'];
+        if ($current === $parentId) {
+            return $this->folderRow($userId, $id);
+        }
+        try {
+            $this->db->execute(
+                "UPDATE page_folders SET parent_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+                [$parentId, $id, $userId]
+            );
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), '23505')) {
+                throw ValidationException::withFields(['parent_id' => 'A folder with that name is already there.']);
+            }
+            throw $e;
+        }
+        $this->audit->record($userId, $actor, $tool, 'folder.move', 'folder:' . $id, ['folder_id' => $id, 'parent_id' => $parentId]);
+        return $this->folderRow($userId, $id);
+    }
+
+    public function deleteFolder(int $userId, int $id, bool $moveContents, string $actor = 'user', ?string $tool = null): void
+    {
+        $folder = $this->requireFolder($userId, $id);
+        $parentId = $folder['parent_id'];
+        $children = (int) $this->db->fetchScalar('SELECT COUNT(*) FROM page_folders WHERE user_id = ? AND parent_id = ?', [$userId, $id]);
+        $pages = (int) $this->db->fetchScalar('SELECT COUNT(*) FROM pages WHERE user_id = ? AND folder_id = ?', [$userId, $id]);
+        if (!$moveContents && ($children > 0 || $pages > 0)) {
+            throw ValidationException::withFields(['folder' => 'Folder is not empty. Move its contents to the parent, or remove them first.']);
+        }
+        try {
+            $this->db->transaction(function () use ($userId, $id, $parentId, $moveContents): void {
+                if ($moveContents) {
+                    $this->db->execute(
+                        'UPDATE page_folders SET parent_id = ?, updated_at = (now() AT TIME ZONE \'UTC\') WHERE user_id = ? AND parent_id = ?',
+                        [$parentId, $userId, $id]
+                    );
+                    $this->db->execute(
+                        "UPDATE pages SET folder_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE user_id = ? AND folder_id = ?",
+                        [$parentId, $userId, $id]
+                    );
+                }
+                $this->db->execute('DELETE FROM page_folders WHERE id = ? AND user_id = ?', [$id, $userId]);
+            });
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), '23505')) {
+                throw ValidationException::withFields(['folder' => 'A folder with that name is already in the parent.']);
+            }
+            throw $e;
+        }
+        $this->audit->record($userId, $actor, $tool, 'folder.delete', 'folder:' . $id, ['folder_id' => $id, 'parent_id' => $parentId]);
+    }
+
+    public function movePage(int $userId, int $pageId, ?int $folderId, string $actor = 'user', ?string $tool = null): void
+    {
+        $page = $this->get($userId, $pageId);
+        if ($folderId !== null) {
+            $this->requireFolder($userId, $folderId);
+        }
+        $current = $page['folder_id'];
+        if ($current === $folderId) {
+            return;
+        }
+        $this->db->execute(
+            "UPDATE pages SET folder_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$folderId, $pageId, $userId]
+        );
+        $this->audit->record($userId, $actor, $tool, 'page.move', 'page:' . $pageId, ['page_id' => $pageId, 'folder_id' => $folderId]);
+    }
+
+    public function folderIdByPath(int $userId, string $path): int
+    {
+        $parts = array_values(array_filter(array_map('trim', explode('/', str_replace('\\', '/', $path))), static fn (string $part): bool => $part !== ''));
+        if ($parts === []) {
+            throw ValidationException::withFields(['folder' => 'Folder path is empty.']);
+        }
+        $parent = null;
+        $id = 0;
+        foreach ($parts as $part) {
+            $row = $this->db->fetchOne(
+                'SELECT id FROM page_folders WHERE user_id = ? AND lower(name) = lower(?) AND '
+                . ($parent === null ? 'parent_id IS NULL' : 'parent_id = ?'),
+                $parent === null ? [$userId, $part] : [$userId, $part, $parent]
+            );
+            if ($row === null) {
+                throw new NotFoundException('Folder not found.');
+            }
+            $id = (int) $row['id'];
+            $parent = $id;
+        }
+        return $id;
     }
 
     /**
@@ -417,7 +621,7 @@ final class PageService
             return [];
         }
         $rows = $this->db->fetchAll(
-            'SELECT p.id, p.title, p.slug, p.kind, p.updated_at, e.embedding
+            'SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.updated_at, e.embedding
              FROM page_embeddings e JOIN pages p ON p.id = e.page_id
              WHERE e.user_id = ? AND p.archived_at IS NULL',
             [$userId]
@@ -512,6 +716,184 @@ final class PageService
     }
 
     /**
+     * @param array<string, mixed> $input
+     */
+    private function inputHasFolder(array $input): bool
+    {
+        return array_key_exists('folder_id', $input) || array_key_exists('folder', $input);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    public function folderFromInput(int $userId, array $input): ?int
+    {
+        if (array_key_exists('folder_id', $input)) {
+            $raw = $input['folder_id'];
+            if ($raw === null || $raw === '' || $raw === 0 || $raw === '0' || $raw === 'root') {
+                return null;
+            }
+            if (!is_numeric($raw) || (int) $raw < 1) {
+                throw ValidationException::withFields(['folder_id' => 'folder_id must be a folder on this vault.']);
+            }
+            $this->requireFolder($userId, (int) $raw);
+            return (int) $raw;
+        }
+        $path = trim((string) ($input['folder'] ?? ''));
+        if ($path === '' || strcasecmp($path, 'root') === 0) {
+            return null;
+        }
+        return $this->folderIdByPath($userId, $path);
+    }
+
+    /**
+     * @return array{0: string, 1: list<int>}
+     */
+    private function folderClause(int $userId, ?int $folderId, bool $folderSet, string $column): array
+    {
+        if (!$folderSet) {
+            return ['', []];
+        }
+        if ($folderId === null) {
+            return [' AND ' . $column . ' IS NULL', []];
+        }
+        $ids = $this->descendantFolderIds($userId, $folderId);
+        $marks = implode(', ', array_fill(0, count($ids), '?'));
+        return [' AND ' . $column . ' IN (' . $marks . ')', $ids];
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function descendantFolderIds(int $userId, int $folderId): array
+    {
+        $this->requireFolder($userId, $folderId);
+        $rows = $this->db->fetchAll('SELECT id, parent_id FROM page_folders WHERE user_id = ?', [$userId]);
+        $children = [];
+        foreach ($rows as $row) {
+            $parent = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : 0;
+            $children[$parent][] = (int) $row['id'];
+        }
+        $out = [];
+        $stack = [$folderId];
+        while ($stack !== []) {
+            $id = array_pop($stack);
+            $out[] = $id;
+            foreach ($children[$id] ?? [] as $child) {
+                $stack[] = $child;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * @return array{id: int, name: string, parent_id: ?int}
+     */
+    private function requireFolder(int $userId, int $id): array
+    {
+        $row = $this->db->fetchOne('SELECT id, parent_id, name FROM page_folders WHERE id = ? AND user_id = ?', [$id, $userId]);
+        if ($row === null) {
+            throw new NotFoundException('Folder not found.');
+        }
+        return $this->formatFolder($row);
+    }
+
+    /**
+     * @return array{id: int, name: string, parent_id: ?int}
+     */
+    private function folderRow(int $userId, int $id): array
+    {
+        return $this->requireFolder($userId, $id);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{id: int, name: string, parent_id: ?int}
+     */
+    private function formatFolder(array $row): array
+    {
+        return [
+            'id'        => (int) $row['id'],
+            'name'      => (string) $row['name'],
+            'parent_id' => $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : null,
+        ];
+    }
+
+    /**
+     * @return list<array{id: int, name: string}>
+     */
+    private function breadcrumbs(int $userId, ?int $folderId): array
+    {
+        $out = [];
+        $cursor = $folderId;
+        $guard = 0;
+        while ($cursor !== null && $guard < 16) {
+            $row = $this->db->fetchOne(
+                'SELECT id, parent_id, name FROM page_folders WHERE id = ? AND user_id = ?',
+                [$cursor, $userId]
+            );
+            if ($row === null) {
+                break;
+            }
+            array_unshift($out, ['id' => (int) $row['id'], 'name' => (string) $row['name']]);
+            $cursor = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : null;
+            $guard++;
+        }
+        return $out;
+    }
+
+    private function assertNotDescendant(int $userId, int $id, ?int $parentId): void
+    {
+        if ($parentId === null) {
+            return;
+        }
+        if (in_array($parentId, $this->descendantFolderIds($userId, $id), true)) {
+            throw ValidationException::withFields(['parent_id' => 'A folder cannot move inside its own child.']);
+        }
+    }
+
+    private function subtreeHeight(int $userId, int $id): int
+    {
+        $rows = $this->db->fetchAll('SELECT id, parent_id FROM page_folders WHERE user_id = ?', [$userId]);
+        $children = [];
+        foreach ($rows as $row) {
+            $parent = $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : 0;
+            $children[$parent][] = (int) $row['id'];
+        }
+        $height = function (int $node) use (&$height, $children): int {
+            $max = 0;
+            foreach ($children[$node] ?? [] as $child) {
+                $max = max($max, $height($child));
+            }
+            return 1 + $max;
+        };
+        return $height($id);
+    }
+
+    private function assertDepth(int $userId, int $parentId, int $adding = 1): void
+    {
+        $depth = $adding;
+        $cursor = $parentId;
+        while ($cursor !== null) {
+            $depth++;
+            if ($depth > 8) {
+                throw ValidationException::withFields(['parent_id' => 'Folders can nest 8 levels deep.']);
+            }
+            $row = $this->requireFolder($userId, $cursor);
+            $cursor = $row['parent_id'];
+        }
+    }
+
+    private function cleanFolderName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '' || mb_strlen($name) > 80 || str_contains($name, '/') || str_contains($name, '\\')) {
+            throw ValidationException::withFields(['name' => 'Folder name must be 1–80 characters and cannot contain a slash.']);
+        }
+        return $name;
+    }
+
+    /**
      * @param array<string, mixed> $row
      * @return array<string, mixed>
      */
@@ -522,6 +904,7 @@ final class PageService
             'title'      => (string) $row['title'],
             'slug'       => (string) $row['slug'],
             'kind'       => (string) $row['kind'],
+            'folder_id'  => isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== '' ? (int) $row['folder_id'] : null,
             'updated_at' => (string) $row['updated_at'],
         ];
     }

@@ -85,3 +85,5 @@ jobs:
       - run: shellcheck setup.sh deploy/provision.sh deploy/bin/*
       - name: JS syntax (app scripts, not bundles/vendor)
         run: for f in public/assets/js/*.js; do case "$f" in *.bundle.js) continue;; esac; node --check "$f"; done
+      - name: Vault markdown preview
+        run: node --test tests/js/brain-markdown.test.cjs

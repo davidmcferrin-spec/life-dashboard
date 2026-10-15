@@ -15,116 +15,96 @@
     const linksEl = document.getElementById('brain-links');
     const backsEl = document.getElementById('brain-backlinks');
     const revsEl = document.getElementById('brain-revs');
+    const crumbsEl = document.getElementById('brain-crumbs');
+    const moveEl = document.getElementById('brain-move');
+    const stage = document.querySelector('.brain-stage');
 
     let pages = [];
+    let folders = [];
     let current = null;
     let dirty = false;
+    let activeFolder = null;
+    let didExpand = false;
+    const expanded = new Set();
     const split = document.getElementById('brain-split');
     preview.hidden = true;
+    stage.classList.remove('is-preview');
     split.style.gridTemplateColumns = '1fr';
 
     function setStatus(text) {
         statusEl.textContent = text || '';
     }
 
-    function titles() {
-        const map = new Map();
-        pages.forEach((p) => map.set(p.title.toLowerCase(), p));
-        return map;
-    }
-
-    function renderInline(text, known) {
-        const src = String(text);
-        const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g;
-        const chunks = [];
-        let last = 0;
-        let m;
-        while ((m = re.exec(src))) {
-            chunks.push(esc(src.slice(last, m.index)));
-            const target = m[1].trim();
-            const page = known.get(target.toLowerCase());
-            const label = esc((m[2] || target).trim());
-            chunks.push(page ? `<a href="/brain?page=${page.id}">${label}</a>` : `<span class="km-missing">${label}</span>`);
-            last = m.index + m[0].length;
-        }
-        chunks.push(esc(src.slice(last)));
-        let s = chunks.join('');
-        s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-        s = s.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
-        s = s.replace(/\$([^$\n]+)\$/g, '<span class="km-math">$1</span>');
-        s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-        s = s.replace(/\[([^\]\n]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" rel="noopener noreferrer" target="_blank">$1</a>');
-        return s;
-    }
-
     function renderMarkdown(raw) {
-        const known = titles();
-        const lines = String(raw || '').replace(/\r\n/g, '\n').split('\n');
-        const html = [];
-        let i = 0;
-        while (i < lines.length) {
-            const line = lines[i];
-            if (/^```/.test(line)) {
-                i++;
-                const code = [];
-                while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
-                if (i < lines.length) i++;
-                html.push(`<pre class="km-code">${esc(code.join('\n'))}</pre>`);
-                continue;
-            }
-            const callout = line.match(/^>\s*\[!([a-z]+)\]\s*(.*)$/i);
-            if (callout) {
-                const kind = callout[1].toLowerCase();
-                const bits = [callout[2]];
-                i++;
-                while (i < lines.length && lines[i].startsWith('>')) {
-                    bits.push(lines[i].replace(/^>\s?/, ''));
-                    i++;
-                }
-                html.push(`<div class="km-callout km-${esc(kind)}">${bits.map((b) => `<p>${renderInline(b, known)}</p>`).join('')}</div>`);
-                continue;
-            }
-            const heading = line.match(/^(#{1,3})\s+(.*)$/);
-            if (heading) {
-                html.push(`<h${heading[1].length}>${renderInline(heading[2], known)}</h${heading[1].length}>`);
-                i++;
-                continue;
-            }
-            if (/^[-*]\s+\[[ xX]\]\s+/.test(line)) {
-                const items = [];
-                while (i < lines.length && /^[-*]\s+\[[ xX]\]\s+/.test(lines[i])) {
-                    const checked = /\[[xX]\]/.test(lines[i]);
-                    items.push(`<li class="km-task"><label><input type="checkbox" disabled ${checked ? 'checked' : ''}> ${renderInline(lines[i].replace(/^[-*]\s+\[[ xX]\]\s+/, ''), known)}</label></li>`);
-                    i++;
-                }
-                html.push(`<ul>${items.join('')}</ul>`);
-                continue;
-            }
-            if (/^[-*]\s+/.test(line)) {
-                const items = [];
-                while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-                    items.push(`<li>${renderInline(lines[i].replace(/^[-*]\s+/, ''), known)}</li>`);
-                    i++;
-                }
-                html.push(`<ul>${items.join('')}</ul>`);
-                continue;
-            }
-            if (line.trim() === '') {
-                i++;
-                continue;
-            }
-            html.push(`<p>${renderInline(line, known)}</p>`);
-            i++;
+        preview.innerHTML = window.BrainMarkdown.render(raw, pages);
+    }
+
+    function flattenFolders(nodes, depth, out) {
+        nodes.forEach((folder) => {
+            out.push({ id: folder.id, name: folder.name, parent_id: folder.parent_id, depth });
+            flattenFolders(folder.children || [], depth + 1, out);
+        });
+        return out;
+    }
+
+    function flatFolders() {
+        return flattenFolders(folders, 0, []);
+    }
+
+    function fillMoveMenu() {
+        const currentId = current && current.folder_id ? String(current.folder_id) : '';
+        const options = ['<option value="">Root</option>'].concat(flatFolders().map((folder) => {
+            const pad = '\u00a0'.repeat(folder.depth * 2);
+            return `<option value="${folder.id}">${pad}${esc(folder.name)}</option>`;
+        }));
+        moveEl.innerHTML = options.join('');
+        moveEl.value = currentId;
+    }
+
+    function renderCrumbs(page) {
+        const crumbs = (page && page.breadcrumbs) || [];
+        if (!page) {
+            crumbsEl.innerHTML = '';
+            return;
         }
-        preview.innerHTML = html.join('') || '<p class="ld-meta">Nothing to preview.</p>';
+        const bits = [`<button type="button" data-folder="">Root</button>`];
+        crumbs.forEach((crumb) => {
+            bits.push(`<span class="brain-crumb-sep">/</span><button type="button" data-folder="${crumb.id}">${esc(crumb.name)}</button>`);
+        });
+        crumbsEl.innerHTML = bits.join('');
+    }
+
+    function pagesIn(folderId) {
+        return pages.filter((page) => (page.folder_id || null) === folderId);
+    }
+
+    function folderHtml(nodes) {
+        return nodes.map((folder) => {
+            const open = expanded.has(folder.id);
+            const kids = folderHtml(folder.children || []);
+            const pageButtons = pagesIn(folder.id).map(pageButton).join('');
+            return `<div class="brain-folder${activeFolder === folder.id ? ' is-active' : ''}" data-folder="${folder.id}">
+                <div class="brain-folder-row" data-drop="${folder.id}">
+                    <button type="button" class="brain-folder-toggle" data-toggle="${folder.id}" aria-label="${open ? 'Collapse' : 'Expand'}">${open ? '▾' : '▸'}</button>
+                    <button type="button" class="brain-folder-name" data-folder-pick="${folder.id}">${esc(folder.name)}</button>
+                </div>
+                <div class="brain-folder-children"${open ? '' : ' hidden'}>${kids}${pageButtons}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function pageButton(page) {
+        return `<button type="button" class="brain-node${current && current.id === page.id ? ' is-active' : ''}" draggable="true" data-id="${page.id}">
+            <i class="brain-kind brain-kind-${esc(page.kind)}"></i><span>${esc(page.title)}</span>
+        </button>`;
     }
 
     function renderTree() {
-        tree.innerHTML = pages.map((p) =>
-            `<button type="button" class="brain-node${current && current.id === p.id ? ' is-active' : ''}" data-id="${p.id}">
-                <i class="brain-kind brain-kind-${esc(p.kind)}"></i><span>${esc(p.title)}</span>
-            </button>`
-        ).join('') || '<p class="empty-state mono text-xs">No pages yet.</p>';
+        const rootPages = pagesIn(null).map(pageButton).join('');
+        const rootDrop = '<div class="brain-folder-row" data-drop="root"><span class="brain-folder-name">Root</span></div>';
+        const body = folderHtml(folders) + rootPages;
+        tree.innerHTML = rootDrop + (body || '<p class="empty-state mono text-xs">No pages yet.</p>');
+        fillMoveMenu();
     }
 
     function show(page) {
@@ -133,35 +113,49 @@
         titleEl.value = page ? page.title : '';
         bodyEl.value = page ? (page.body || '') : '';
         kindEl.value = page ? page.kind : 'note';
-        linksEl.innerHTML = (page && page.links || []).map((l) =>
-            l.id ? `<a class="brain-back" href="/brain?page=${l.id}">${esc(l.title)}</a>` : `<span class="brain-back km-missing">${esc(l.title)}</span>`
+        linksEl.innerHTML = (page && page.links || []).map((link) =>
+            link.id ? `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>` : `<span class="brain-back km-missing">${esc(link.title)}</span>`
         ).join('') || '<p class="ld-meta">No outgoing links.</p>';
-        backsEl.innerHTML = (page && page.backlinks || []).map((l) =>
-            `<a class="brain-back" href="/brain?page=${l.id}">${esc(l.title)}</a>`
+        backsEl.innerHTML = (page && page.backlinks || []).map((link) =>
+            `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>`
         ).join('') || '<p class="ld-meta">No backlinks.</p>';
-        revsEl.innerHTML = (page && page.revisions || []).map((r) =>
-            `<li><button type="button" data-rev="${r.version}">v${r.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(r.created_at).slice(0, 10)))}</span></li>`
+        revsEl.innerHTML = (page && page.revisions || []).map((rev) =>
+            `<li><button type="button" data-rev="${rev.version}">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
         ).join('');
+        renderCrumbs(page);
         renderTree();
         renderMarkdown(bodyEl.value);
         if (page) history.replaceState(null, '', '/brain?page=' + page.id);
     }
 
     async function loadList(q) {
-        const res = await api.get('/pages' + (q ? '?q=' + encodeURIComponent(q) : ''));
+        const folder = activeFolder ? '&folder_id=' + activeFolder : '';
+        const res = await api.get('/pages' + (q ? '?q=' + encodeURIComponent(q) + folder : (folder ? '?' + folder.slice(1) : '')));
         pages = res.pages || [];
+        const treeRes = await api.get('/pages/folders');
+        folders = treeRes.folders || [];
+        if (!didExpand) {
+            folders.forEach((folderNode) => walkExpand(folderNode));
+            didExpand = true;
+        }
         renderTree();
+    }
+
+    function walkExpand(folder) {
+        expanded.add(folder.id);
+        (folder.children || []).forEach(walkExpand);
     }
 
     async function openPage(id) {
         const res = await api.get('/pages/' + id);
-        const brief = pages.find((p) => p.id === res.page.id);
-        if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, updated_at: res.page.updated_at });
+        const brief = pages.find((page) => page.id === res.page.id);
+        if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, folder_id: res.page.folder_id, updated_at: res.page.updated_at });
         show(res.page);
     }
 
     async function save() {
         const payload = { title: titleEl.value.trim(), body: bodyEl.value, kind: kindEl.value };
+        if (!current && activeFolder) payload.folder_id = activeFolder;
         if (!payload.title) {
             setStatus('Add a title first.');
             return;
@@ -175,20 +169,96 @@
         setStatus('Saved.');
     }
 
+    async function moveCurrent(folderId) {
+        if (!current) return;
+        const id = folderId === '' ? null : Number(folderId);
+        setStatus('Moving…');
+        const res = await api.post('/pages/' + current.id + '/move', { folder_id: id });
+        await loadList(document.getElementById('brain-search').value.trim());
+        show(res.page);
+        setStatus('Moved.');
+    }
+
     tree.addEventListener('click', (e) => {
+        const toggle = e.target.closest('[data-toggle]');
+        if (toggle) {
+            const id = Number(toggle.dataset.toggle);
+            if (expanded.has(id)) expanded.delete(id);
+            else expanded.add(id);
+            renderTree();
+            return;
+        }
+        const folderBtn = e.target.closest('[data-folder-pick]');
+        if (folderBtn) {
+            activeFolder = Number(folderBtn.dataset.folderPick);
+            loadList(document.getElementById('brain-search').value.trim()).catch((err) => setStatus(err.message));
+            return;
+        }
         const btn = e.target.closest('[data-id]');
         if (btn) openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
     });
+    tree.addEventListener('dragstart', (e) => {
+        const btn = e.target.closest('[data-id]');
+        if (!btn) return;
+        e.dataTransfer.setData('text/page-id', btn.dataset.id);
+        e.dataTransfer.setData('text/plain', btn.dataset.id);
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    tree.addEventListener('dragover', (e) => {
+        const row = e.target.closest('[data-drop]');
+        if (!row) return;
+        e.preventDefault();
+        row.classList.add('is-drop');
+    });
+    tree.addEventListener('dragleave', (e) => {
+        const row = e.target.closest('[data-drop]');
+        if (row) row.classList.remove('is-drop');
+    });
+    tree.addEventListener('drop', (e) => {
+        const row = e.target.closest('[data-drop]');
+        if (!row) return;
+        e.preventDefault();
+        row.classList.remove('is-drop');
+        const pageId = Number(e.dataTransfer.getData('text/page-id') || e.dataTransfer.getData('text/plain'));
+        const raw = row.dataset.drop;
+        const folderId = raw === 'root' ? null : Number(raw);
+        if (!pageId || (folderId !== null && !folderId)) return;
+        api.post('/pages/' + pageId + '/move', { folder_id: folderId })
+            .then(() => loadList(document.getElementById('brain-search').value.trim()))
+            .then(() => {
+                if (current && current.id === pageId) return openPage(pageId);
+            })
+            .then(() => setStatus('Moved.'))
+            .catch((err) => setStatus(err.message));
+    });
+    crumbsEl.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-folder]');
+        if (!btn) return;
+        activeFolder = btn.dataset.folder === '' ? null : Number(btn.dataset.folder);
+        loadList(document.getElementById('brain-search').value.trim()).catch((err) => setStatus(err.message));
+    });
+    moveEl.addEventListener('change', () => {
+        moveCurrent(moveEl.value).catch((err) => setStatus(err.message));
+    });
     document.getElementById('brain-new').addEventListener('click', () => show(null));
+    document.getElementById('brain-folder').addEventListener('click', () => {
+        const name = window.prompt('Folder name');
+        if (!name) return;
+        api.post('/pages/folders', { name: name.trim(), parent_id: activeFolder })
+            .then(() => loadList(document.getElementById('brain-search').value.trim()))
+            .then(() => setStatus('Folder created.'))
+            .catch((err) => setStatus(err.message));
+    });
     document.getElementById('brain-save').addEventListener('click', () => save().catch((err) => setStatus(err.message)));
     titleEl.addEventListener('input', () => { dirty = true; });
     bodyEl.addEventListener('input', () => { dirty = true; renderMarkdown(bodyEl.value); });
     document.querySelectorAll('[data-brain-tab]').forEach((btn) => {
         btn.addEventListener('click', () => {
             const previewing = btn.dataset.brainTab === 'preview';
-            document.querySelectorAll('[data-brain-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
+            document.querySelectorAll('[data-brain-tab]').forEach((item) => item.classList.toggle('is-active', item === btn));
             bodyEl.hidden = previewing;
             preview.hidden = !previewing;
+            stage.classList.toggle('is-preview', previewing);
             split.style.gridTemplateColumns = '1fr';
             if (previewing) renderMarkdown(bodyEl.value);
         });

@@ -57,9 +57,9 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] `life` widget and `/settings/life`
 
 **L4 — Second brain ✅**
-- [x] `pages`, `page_revisions`, `page_links`, `page_embeddings` (JSON vectors; full-text via `to_tsvector`)
-- [x] `/brain` editor (Markdown, wikilinks, callouts, tree, backlinks, revision restore) and `/brain/graph` (stable topic clusters, live per-token read/write traces from `audit_events`)
-- [x] Page MCP tools. Optional `OLLAMA_URL` embeds on save. Agents may also `POST …/embedding`
+- [x] `pages`, `page_revisions`, `page_links`, `page_embeddings` (JSON vectors; full-text via `to_tsvector`), `page_folders` (nested, `pages.folder_id`; existing pages stay at the root)
+- [x] `/brain` editor (Markdown preview renders sanitized HTML, wikilinks, callouts, tree, backlinks, revision restore, folder tree, breadcrumbs) and `/brain/graph` (stable topic clusters, live per-token read/write traces from `audit_events`)
+- [x] Page MCP tools, including folder list/create/rename/move/delete and `move_page`. Optional `OLLAMA_URL` embeds on save. Agents may also `POST …/embedding`
 
 **L5 — Money ✅** · **L6 — Investing (read-only) ✅** · **L7 — Custom widgets ✅**
 - [x] Accounts, signed transactions, Monarch-style CSV, spending + net-worth widgets, weekly review page
@@ -367,6 +367,7 @@ Legacy URLs `/flights`, `/packages`, `/clipboards` redirect to settings routes.
 `user_cloudpad_canvases`, `cloudpad_share_links`, `cloudpad_user_shares`,
 `user_todo_lists`, `user_todo_items`, `todo_list_user_shares`,
 `metrics`, `datapoints`, `dashboard_widgets`, `widget_revisions`,
+`pages`, `page_revisions`, `page_links`, `page_embeddings`, `page_folders`,
 `migrations`
 
 PostgreSQL schema source of truth: `database/pgsql/*.sql` (applied names recorded in `migrations.name`).
