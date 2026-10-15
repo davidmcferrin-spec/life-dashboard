@@ -1,6 +1,18 @@
 import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 
-from lifedash.mcp_server import TOOLS, RequestLimiter, handle_message, resolve
+from lifedash.mcp_server import (
+    TOOLS,
+    RequestLimiter,
+    handle_message,
+    listen_host,
+    make_handler,
+    negotiate_protocol,
+    resolve,
+)
 
 
 def test_tools_cover_the_platform_and_never_a_trade():
@@ -246,6 +258,7 @@ def test_initialize_and_tool_call_forward_the_bearer_token():
 
     init = handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, None, fetch)
     assert init["result"]["serverInfo"]["name"] == "lifedash"
+    assert init["result"]["protocolVersion"] == "2025-03-26"
     assert handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}, None, fetch) is None
 
     denied = handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_metrics"}}, None, fetch)
@@ -260,3 +273,83 @@ def test_initialize_and_tool_call_forward_the_bearer_token():
     text = json.loads(ok["result"]["content"][0]["text"])
     assert text["metrics"] == []
     assert ok["result"]["isError"] is False
+
+
+def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
+    assert listen_host(None) == "127.0.0.1"
+    assert listen_host("127.0.0.1") == "127.0.0.1"
+    assert listen_host("0.0.0.0") == "127.0.0.1"
+    assert listen_host("10.1.1.5") == "127.0.0.1"
+    assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
+    assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
+
+    def fetch(*_args):
+        raise AssertionError("tools/list must not call the API")
+
+    denied = handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, None, fetch)
+    assert denied["error"]["code"] == -32001
+    assert "result" not in denied
+
+    def listed(token, protocol):
+        if protocol:
+            init = handle_message(
+                {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": protocol, "capabilities": {}}},
+                token,
+                fetch,
+            )
+            assert init["result"]["protocolVersion"] == protocol
+        reply = handle_message({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, token, fetch)
+        return [tool["name"] for tool in reply["result"]["tools"]]
+
+    full = [tool["name"] for tool in TOOLS]
+    assert listed("Bearer money-only", None) == full
+    assert listed("Bearer full-token", "2025-06-18") == full
+    assert "create_habit" in full
+    assert "create_debt" in full
+    assert "list_todos" in full
+
+    handler = make_handler(fetch, RequestLimiter())
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        def post(payload, headers):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/mcp",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **headers},
+                method="POST",
+            )
+            with urllib.request.urlopen(req) as res:
+                return res.status, json.loads(res.read().decode())
+
+        status, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
+        assert status == 200
+        assert body["error"]["code"] == -32001
+
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}},
+            {},
+        )
+        assert body["result"]["protocolVersion"] == "2025-11-25"
+
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
+            {"Authorization": "Bearer anything", "Mcp-Session-Id": "stale"},
+        )
+        assert [tool["name"] for tool in body["result"]["tools"]] == full
+
+        try:
+            urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/mcp", method="GET"))
+            raise AssertionError("GET /mcp must not look like an SSE stream")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 405
+            assert exc.headers.get("Allow") == "POST"
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            assert res.status == 200
+            assert json.loads(res.read().decode())["service"] == "lifedash-mcp"
+    finally:
+        server.shutdown()
+        server.server_close()

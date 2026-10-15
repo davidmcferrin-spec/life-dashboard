@@ -68,4 +68,14 @@ curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null || die "/healthz fai
 runuser -u lifedash -- "$VENV/bin/lifedash-healthcheck" >/dev/null || log "WARNING: lifedash-healthcheck reported warn/fail (run it for details)"
 systemctl is-active --quiet lifedash-push.service || log "WARNING: lifedash-push is not running — journalctl -u lifedash-push (dashboard falls back to polling)"
 systemctl is-active --quiet lifedash-mcp.service || log "WARNING: lifedash-mcp is not running — journalctl -u lifedash-mcp (/mcp stays 502 until it is)"
+if command -v ss >/dev/null; then
+    while read -r row; do
+        [[ -n $row ]] || continue
+        log "8765 $row"
+        case $row in
+            *127.0.0.1:8765*|*\[::1\]:8765*) ;;
+            *) log "WARNING: port 8765 is listening outside loopback. Stop that process so only 127.0.0.1:8765 remains." ;;
+        esac
+    done < <(ss -ltnH 'sport = :8765' 2>/dev/null || true)
+fi
 log "ok"

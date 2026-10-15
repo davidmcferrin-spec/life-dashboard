@@ -1,8 +1,10 @@
-"""``lifedash-mcp`` — MCP endpoint on port 8765.
+"""``lifedash-mcp`` — MCP endpoint on 127.0.0.1:8765.
 
 Cloudflare Tunnel sends ``/mcp`` here. Each tool call is an HTTP request to the
 PHP ``/api/v1`` API with the caller's bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
+The tool registry is the ``TOOLS`` list in this module: one list for every
+caller, not a per-session cache and not a filter on protocol version or token scope.
 """
 from __future__ import annotations
 
@@ -22,6 +24,8 @@ from .log import setup as setup_logging
 
 LOG = logging.getLogger("lifedash.mcp")
 PROTOCOL = "2025-03-26"
+# Echo the client's version when we know it. The tool list does not change with it.
+SUPPORTED_PROTOCOLS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
 
 Fetch = Callable[[str, str, dict[str, Any] | None, str, str], tuple[int, Any]]
 
@@ -1167,6 +1171,26 @@ class RequestLimiter:
             return True
 
 
+def listen_host(requested: str | None) -> str:
+    """Loopback only. A 0.0.0.0 bind answers the public address and, on Linux,
+    leaves a process still bound to 127.0.0.1 answering the tunnel.
+    """
+    host = (requested or "").strip()
+    if host in ("", "127.0.0.1", "localhost", "::1"):
+        return "127.0.0.1"
+    LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 127.0.0.1 only", host)
+    return "127.0.0.1"
+
+
+def negotiate_protocol(params: Any) -> str:
+    requested = ""
+    if isinstance(params, dict):
+        requested = str(params.get("protocolVersion") or "")
+    if requested in SUPPORTED_PROTOCOLS:
+        return requested
+    return PROTOCOL
+
+
 def handle_message(
     message: dict[str, Any],
     authorization: str | None,
@@ -1189,8 +1213,8 @@ def handle_message(
 
     if method == "initialize":
         return reply({
-            "protocolVersion": PROTOCOL,
-            "capabilities": {"tools": {}},
+            "protocolVersion": negotiate_protocol(message.get("params")),
+            "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "lifedash", "version": "0.1.0"},
         })
     if method == "ping":
@@ -1270,6 +1294,7 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
             except json.JSONDecodeError:
                 self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
                 return
+            # Stateless. A leftover Mcp-Session-Id is ignored; it does not select a tool list.
             auth = self.headers.get("Authorization")
             if isinstance(message, list):
                 replies = [r for item in message if isinstance(item, dict) and (r := handle_message(item, auth, fetch, gate)) is not None]
@@ -1285,19 +1310,32 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
             self._send(200, reply)
 
         def do_GET(self) -> None:  # noqa: N802
-            if self.path.split("?", 1)[0] in ("/healthz", "/mcp"):
+            path = self.path.split("?", 1)[0]
+            if path == "/healthz":
                 self._send(200, {"ok": True, "service": "lifedash-mcp"})
+                return
+            # Streamable HTTP clients GET the MCP path to open an SSE stream.
+            # This server has no stream. 200 JSON here makes that probe look
+            # successful and the client never finishes tools/list.
+            if path in ("/mcp", "/mcp/"):
+                self._send(
+                    405,
+                    {"error": "POST JSON-RPC to this path. No SSE stream."},
+                    {"Allow": "POST"},
+                )
                 return
             self._send(404, {"error": "not found"})
 
         def log_message(self, fmt: str, *args: Any) -> None:
             LOG.info("%s - " + fmt, self.address_string(), *args)
 
-        def _send(self, status: int, payload: Any) -> None:
+        def _send(self, status: int, payload: Any, headers: dict[str, str] | None = None) -> None:
             body = b"" if payload is None else json.dumps(payload).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
+            for key, value in (headers or {}).items():
+                self.send_header(key, value)
             self.end_headers()
             if body:
                 self.wfile.write(body)
@@ -1308,11 +1346,11 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
 def main() -> None:
     config = Config.load()
     setup_logging(config.get("LOG_LEVEL", "INFO"))
-    host = config.get("MCP_HOST", "0.0.0.0")
+    host = listen_host(config.maybe("MCP_HOST"))
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
     server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base)))
-    LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s", host, port, api_base)
+    LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)", host, port, api_base, len(TOOLS))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
