@@ -95,6 +95,19 @@ final class MoneyPlanTest extends TestCase
         self::assertFalse(ApiTokenService::isMoneyOnly(['*']));
         self::assertFalse(ApiTokenService::isMoneyOnly([]));
         self::assertFalse(ApiTokenService::isMoneyOnly(['money:read', 'pages:read']));
+        self::assertTrue(ApiTokenService::isTodosOnly(['todos:read', 'todos:write']));
+        self::assertFalse(ApiTokenService::isTodosOnly(['todos:read', 'money:read']));
+        self::assertNull(Scope::auditEntityAllow(null, 'debt'));
+        try {
+            Scope::auditEntityAllow(['money:read'], 'todo');
+            self::fail('a money token cannot read todo audit rows');
+        } catch (\Dashboard\Support\ForbiddenException) {
+            self::assertTrue(true);
+        }
+        self::assertSame(
+            ['debt', 'account', 'transaction', 'budget', 'sinking_fund'],
+            Scope::auditEntityAllow(['money:read', 'money:write'], null)
+        );
         self::assertFalse(Scope::allows(['money:read'], 'money:write'));
         self::assertTrue(Scope::allows(['money:write'], 'money:read'));
     }

@@ -291,6 +291,49 @@ final class TodoRepository
     }
 
     /**
+     * Owned lists only. status all is open plus completed. Archived stays out.
+     *
+     * @param array{category?: ?string, status?: string, due_before?: ?string, due_after?: ?string, priority?: int|null, limit?: int} $filters
+     * @return list<array<string, mixed>>
+     */
+    public function searchOwned(int $userId, array $filters): array
+    {
+        $sql = 'SELECT i.*, l.name AS list_name, u.username AS assignee_username
+                FROM user_todo_items i
+                JOIN user_todo_lists l ON l.id = i.list_id
+                LEFT JOIN users u ON u.id = i.assigned_to_user_id
+                WHERE l.user_id = ? AND i.status <> \'archived\'';
+        $params = [$userId];
+        $status = $filters['status'] ?? 'open';
+        if ($status === 'open' || $status === 'completed') {
+            $sql .= ' AND i.status = ?';
+            $params[] = $status;
+        }
+        $category = trim((string) ($filters['category'] ?? ''));
+        if ($category !== '') {
+            $sql .= ' AND lower(l.name) = lower(?)';
+            $params[] = $category;
+        }
+        $before = $filters['due_before'] ?? null;
+        if (is_string($before) && $before !== '') {
+            $sql .= ' AND i.due_date IS NOT NULL AND i.due_date <= ?';
+            $params[] = $before;
+        }
+        $after = $filters['due_after'] ?? null;
+        if (is_string($after) && $after !== '') {
+            $sql .= ' AND i.due_date IS NOT NULL AND i.due_date >= ?';
+            $params[] = $after;
+        }
+        if (isset($filters['priority']) && $filters['priority'] !== null) {
+            $sql .= ' AND i.priority = ?';
+            $params[] = (int) $filters['priority'];
+        }
+        $limit = max(1, min(200, (int) ($filters['limit'] ?? 50)));
+        $sql .= ' ORDER BY i.priority NULLS LAST, i.due_date NULLS LAST, i.sort_order ASC, i.id ASC LIMIT ' . $limit;
+        return $this->db->fetchAll($sql, $params);
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function listAssignedToUser(int $userId, ?string $status = 'open'): array
@@ -356,12 +399,13 @@ final class TodoRepository
         ?int $assignedByUserId,
         int $sortOrder,
         ?string $dueDate = null,
+        ?int $priority = null,
     ): int {
         $this->db->execute(
             'INSERT INTO user_todo_items
              (list_id, title, notes, links_json, status, assigned_to_user_id, assigned_by_user_id,
-              created_by_user_id, sort_order, due_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+              created_by_user_id, sort_order, due_date, priority)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 $listId,
                 $title,
@@ -373,6 +417,7 @@ final class TodoRepository
                 $createdByUserId,
                 $sortOrder,
                 $dueDate,
+                $priority,
             ]
         );
 

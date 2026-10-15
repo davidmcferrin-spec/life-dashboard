@@ -23,7 +23,7 @@ require __DIR__ . '/_shell-top.php';
                 <h1 class="text-primary text-xl font-medium">Agents</h1>
                 <p class="text-muted text-sm mt-1">
                     A bearer token lets Claude or Grok use the same dashboard data as this account.
-                    Read and write covers every area, including money, habits, and widgets.
+                    Read and write covers every area, including money, todos, habits, and widgets.
                     Read only cannot change anything.
                     The full token appears once, in a dialog. Writes are marked <span class="text-secondary">source=ai</span> and listed below.
                     If a token is already in the list and you never copied it, revoke it and create a new one.
@@ -44,6 +44,7 @@ require __DIR__ . '/_shell-top.php';
                             <option value="read">Read only</option>
                             <option value="reddit">Reddit only</option>
                             <option value="money">Money only (90 days)</option>
+                            <option value="todos">Todos only</option>
                         </select>
                     </label>
                 </div>

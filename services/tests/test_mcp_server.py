@@ -132,11 +132,55 @@ def test_money_tools_resolve_onto_the_money_api():
     assert (method, path) == ("POST", "/api/v1/money/credit-scores")
     method, path, body = resolve("get_dashboard_summary", {})
     assert (method, path, body) == ("GET", "/api/v1/money/dashboard", None)
+    method, path, body = resolve("create_debt", {"name": "Visa", "last4": "4242", "balance": 10, "notes": "card"})
+    assert (method, path) == ("POST", "/api/v1/money/debts")
+    assert body["last4"] == "4242"
+    method, path, body = resolve("archive_debt", {"debt_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/money/debts/4/archive", {})
+    method, path, body = resolve("delete_debt", {"debt_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/money/debts/4/delete", {})
+    method, path, body = resolve("set_category_cap", {"category": "Food", "weekly_cap": 275, "effective_from": "2026-10-19"})
+    assert (method, path) == ("POST", "/api/v1/money/category-caps")
+    assert body["weekly_cap"] == 275
+    method, path, body = resolve("create_sinking_fund", {"name": "Tires", "target_amount": 400, "notes": "winter"})
+    assert (method, path) == ("POST", "/api/v1/money/sinking-funds")
+    method, path, body = resolve("archive_sinking_fund", {"sinking_fund_id": 3})
+    assert (method, path, body) == ("POST", "/api/v1/money/sinking-funds/3/archive", {})
+    method, path, body = resolve("weekly_review", {})
+    assert (method, path, body) == ("POST", "/api/v1/money/weekly-review", {"write_page": False})
+    method, path, body = resolve("weekly_review", {"write_page": True})
+    assert body["write_page"] is True
+    method, path, body = resolve("get_audit_log", {"since": "2026-10-01", "source": "ai", "entity": "debt", "entity_id": 4, "limit": 10})
+    assert method == "GET"
+    assert body is None
+    assert path.startswith("/api/v1/audit/log?")
+    assert "actor=ai" in path
+    assert "entity=debt" in path
+    assert "entity_id=4" in path
+    method, path, body = resolve("list_todos", {"category": "Work", "status": "open", "priority": 1, "due_before": "2026-10-20"})
+    assert method == "GET"
+    assert "category=Work" in path
+    assert "status=open" in path
+    method, path, body = resolve("create_todo", {"title": "Call", "category": "Work", "priority": 2})
+    assert (method, path) == ("POST", "/api/v1/todos/items")
+    assert body["title"] == "Call"
+    method, path, body = resolve("update_todo", {"todo_id": 8, "notes": "later"})
+    assert (method, path) == ("POST", "/api/v1/todos/items/8")
+    assert "todo_id" not in body
+    method, path, body = resolve("complete_todo", {"todo_id": 8, "reopen": True})
+    assert (method, path, body) == ("POST", "/api/v1/todos/items/8/complete", {"reopen": True})
+    method, path, body = resolve("list_todo_categories", {})
+    assert (method, path, body) == ("GET", "/api/v1/todos/categories", None)
+    method, path, body = resolve("create_todo_category", {"name": "Travel"})
+    assert (method, path, body) == ("POST", "/api/v1/todos/categories", {"name": "Travel"})
     names = [tool["name"] for tool in TOOLS]
     for name in (
         "add_transactions", "list_transactions", "get_budget", "set_budget_line", "get_debts",
-        "update_debt", "get_sinking_funds", "update_sinking_fund", "add_net_worth_snapshot",
-        "add_credit_score", "get_dashboard_summary", "money_summary",
+        "create_debt", "update_debt", "archive_debt", "delete_debt",
+        "get_sinking_funds", "create_sinking_fund", "update_sinking_fund", "archive_sinking_fund",
+        "set_category_cap", "add_net_worth_snapshot",
+        "add_credit_score", "get_dashboard_summary", "money_summary", "weekly_review", "get_audit_log",
+        "list_todos", "create_todo", "update_todo", "complete_todo", "list_todo_categories", "create_todo_category",
     ):
         assert name in names
 

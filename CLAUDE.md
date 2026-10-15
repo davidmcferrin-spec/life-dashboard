@@ -148,7 +148,7 @@ shellcheck setup.sh deploy/provision.sh deploy/bin/*
 - Assign tasks to list owner or share recipients
 - Widget: list **tabs** (up to 4 pinned via `/settings/todos`, else first 4 lists), open tasks, **+** opens add modal; **View all** → `/todos`
 - Limits: `TODO_MAX_LISTS_PER_USER` (10), 100 open tasks/list, `TODO_WIDGET_MAX_ITEMS` (8), `TODO_WIDGET_MAX_TABS` (4)
-- API: `GET/POST /api/todos/*`, `GET /api/todos/widget`, `GET /api/todos/assigned`
+- API: `GET/POST /api/todos/*`, `GET /api/todos/widget`, `GET /api/todos/assigned`. Agents use `/api/v1/todos/items` and `/api/v1/todos/categories` (`todos:read` / `todos:write`; a Todos only token has no expiry). Priority is `SMALLINT` 1–5 (1 highest) on `user_todo_items`.
 
 ## Focus clock
 

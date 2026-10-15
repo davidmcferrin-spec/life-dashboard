@@ -16,6 +16,7 @@ use Dashboard\Money\MoneyService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
 use Dashboard\Support\Clock;
+use Dashboard\Todo\TodoService;
 use Dashboard\Widgets\WidgetDataService;
 use Dashboard\Widgets\WidgetService;
 
@@ -38,6 +39,7 @@ final class Services
     public readonly InvestService $invest;
     public readonly SearchService $search;
     public readonly RedditService $reddit;
+    public readonly TodoService $todos;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -54,6 +56,7 @@ final class Services
         $this->invest  = new InvestService($db);
         $this->search  = new SearchService($db);
         $this->reddit  = new RedditService($db);
+        $this->todos   = TodoService::fromDatabase($db);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,

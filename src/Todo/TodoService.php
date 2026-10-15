@@ -211,6 +211,170 @@ final class TodoService
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    public function agentCategories(int $userId): array
+    {
+        $this->ensureDefaults($userId);
+        $out = [];
+        foreach ($this->repo->listOwnedForUser($userId) as $row) {
+            $out[] = [
+                'id'   => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'slug' => (string) $row['slug'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function agentCreateCategory(int $userId, string $name): array
+    {
+        return $this->createList($userId, $name);
+    }
+
+    /**
+     * @param array<string, mixed> $filters
+     * @return list<array<string, mixed>>
+     */
+    public function agentList(int $userId, array $filters): array
+    {
+        $this->ensureDefaults($userId);
+        $status = strtolower(trim((string) ($filters['status'] ?? 'open')));
+        if (!in_array($status, ['open', 'done', 'all'], true)) {
+            throw new \InvalidArgumentException('Status must be open, done, or all.');
+        }
+        $category = isset($filters['category']) ? trim((string) $filters['category']) : '';
+        if ($category !== '') {
+            $this->requireOwnedCategory($userId, $category);
+        }
+        $priority = null;
+        if (isset($filters['priority']) && $filters['priority'] !== null && $filters['priority'] !== '') {
+            $priority = $this->normalizePriority($filters['priority']);
+        }
+        $dueBefore = $this->optionalDue($filters['due_before'] ?? null, 'due_before');
+        $dueAfter = $this->optionalDue($filters['due_after'] ?? null, 'due_after');
+        $limit = (int) ($filters['limit'] ?? 50);
+        if ($limit < 1) {
+            $limit = 50;
+        }
+        $rows = $this->repo->searchOwned($userId, [
+            'category'   => $category,
+            'status'     => $status === 'done' ? 'completed' : $status,
+            'due_before' => $dueBefore,
+            'due_after'  => $dueAfter,
+            'priority'   => $priority,
+            'limit'      => min(200, $limit),
+        ]);
+        return array_map(function (array $row): array {
+            $item = $this->formatItem($row, true);
+            $item['category'] = (string) ($row['list_name'] ?? '');
+            return $item;
+        }, $rows);
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    public function agentCreate(int $userId, array $body): array
+    {
+        $this->ensureDefaults($userId);
+        $category = trim((string) ($body['category'] ?? ''));
+        if ($category === '') {
+            $category = 'Personal';
+        }
+        $list = $this->requireOwnedCategory($userId, $category);
+        $access = $this->resolveAccess((int) $list['id'], $userId);
+        if ($access === null) {
+            throw new \InvalidArgumentException('Unknown category. Create it with create_todo_category.');
+        }
+        $item = $this->createItem($access, $userId, $body);
+        $item['category'] = (string) $list['name'];
+        return $item;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    public function agentUpdate(int $userId, int $itemId, array $body): array
+    {
+        $this->ownedItem($userId, $itemId);
+        if (array_key_exists('category', $body) && trim((string) $body['category']) !== '') {
+            $list = $this->requireOwnedCategory($userId, (string) $body['category']);
+            $this->repo->updateItem($itemId, ['list_id' => (int) $list['id']]);
+        }
+        $updated = $this->updateItem($itemId, $userId, $body);
+        if ($updated === null) {
+            throw new \InvalidArgumentException('Task not found.');
+        }
+        $fresh = $this->repo->findItemById($itemId);
+        $list = $fresh !== null ? $this->repo->findListById((int) $fresh['list_id']) : null;
+        $updated['category'] = $list !== null ? (string) $list['name'] : '';
+        return $updated;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function agentComplete(int $userId, int $itemId, bool $reopen): array
+    {
+        $this->ownedItem($userId, $itemId);
+        $updated = $this->updateItem($itemId, $userId, ['status' => $reopen ? 'open' : 'completed']);
+        if ($updated === null) {
+            throw new \InvalidArgumentException('Task not found.');
+        }
+        $fresh = $this->repo->findItemById($itemId);
+        $list = $fresh !== null ? $this->repo->findListById((int) $fresh['list_id']) : null;
+        $updated['category'] = $list !== null ? (string) $list['name'] : '';
+        return $updated;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requireOwnedCategory(int $userId, string $name): array
+    {
+        $name = trim($name);
+        if ($name === '') {
+            throw new \InvalidArgumentException('Category is required.');
+        }
+        foreach ($this->repo->listOwnedForUser($userId) as $row) {
+            if (strcasecmp((string) $row['name'], $name) === 0) {
+                return $row;
+            }
+        }
+        throw new \InvalidArgumentException('Unknown category. Create it with create_todo_category.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ownedItem(int $userId, int $itemId): array
+    {
+        $row = $this->repo->findItemById($itemId);
+        if ($row === null || (int) ($row['list_owner_id'] ?? 0) !== $userId) {
+            throw new \InvalidArgumentException('Task not found.');
+        }
+        return $row;
+    }
+
+    private function optionalDue(mixed $raw, string $field): ?string
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        try {
+            return $this->normalizeDueDate($raw);
+        } catch (\InvalidArgumentException) {
+            throw new \InvalidArgumentException($field . ' must be YYYY-MM-DD.');
+        }
+    }
+
+    /**
      * @param array<string, mixed> $fields
      * @return array<string, mixed>|null
      */
@@ -285,6 +449,7 @@ final class TodoService
         $assigneeId = $this->resolveAssigneeId($access, $userId, $body['assigned_to_user_id'] ?? null);
         $assignedBy = $assigneeId !== null ? $userId : null;
         $dueDate    = $this->normalizeDueDate($body['due_date'] ?? null);
+        $priority   = array_key_exists('priority', $body) ? $this->normalizePriority($body['priority']) : null;
 
         $id = $this->repo->insertItem(
             $access->listId(),
@@ -296,6 +461,7 @@ final class TodoService
             $assignedBy,
             $this->repo->nextItemSortOrder($access->listId()),
             $dueDate,
+            $priority,
         );
 
         $row = $this->repo->findItemById($id);
@@ -375,6 +541,13 @@ final class TodoService
                 throw new \InvalidArgumentException('You do not have permission to set a due date.');
             }
             $update['due_date'] = $this->normalizeDueDate($body['due_date']);
+        }
+
+        if (array_key_exists('priority', $body)) {
+            if (!$access->canWrite()) {
+                throw new \InvalidArgumentException('You do not have permission to set a priority.');
+            }
+            $update['priority'] = $this->normalizePriority($body['priority']);
         }
 
         if ($update !== []) {
@@ -697,6 +870,9 @@ final class TodoService
             'due_date'           => isset($row['due_date']) && $row['due_date'] !== null && $row['due_date'] !== ''
                 ? (string) $row['due_date']
                 : null,
+            'priority'           => isset($row['priority']) && $row['priority'] !== null && $row['priority'] !== ''
+                ? (int) $row['priority']
+                : null,
             'due_urgency'        => $this->computeDueUrgency(
                 isset($row['due_date']) && $row['due_date'] !== null && $row['due_date'] !== ''
                     ? (string) $row['due_date']
@@ -804,6 +980,21 @@ final class TodoService
         $notes = trim((string) $raw);
 
         return $notes === '' ? null : mb_substr($notes, 0, self::NOTES_MAX);
+    }
+
+    private function normalizePriority(mixed $raw): ?int
+    {
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (!is_numeric($raw) || (int) $raw != (float) $raw) {
+            throw new \InvalidArgumentException('Priority must be 1–5.');
+        }
+        $priority = (int) $raw;
+        if ($priority < 1 || $priority > 5) {
+            throw new \InvalidArgumentException('Priority must be 1–5.');
+        }
+        return $priority;
     }
 
     private function normalizeDueDate(mixed $raw): ?string

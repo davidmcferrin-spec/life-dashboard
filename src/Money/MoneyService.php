@@ -50,13 +50,15 @@ final class MoneyService
         $institution = $this->optionalInstitution($input['institution'] ?? null);
         $last4 = AccountNumberGuard::last4($input['last4'] ?? null);
         $limit = $this->optionalLimit($input['credit_limit'] ?? null);
+        $available = array_key_exists('available_credit', $input) ? $this->optionalAvailable($input['available_credit']) : null;
         if ($this->db->fetchOne('SELECT 1 FROM money_accounts WHERE user_id = ? AND name = ?', [$userId, $name]) !== null) {
             throw ValidationException::withFields(['name' => 'An account with that name already exists.']);
         }
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO money_accounts (user_id, name, kind, balance, institution, last4, credit_limit) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-            [$userId, $name, $kind, $balance, $institution, $last4, $limit]
+            'INSERT INTO money_accounts (user_id, name, kind, balance, institution, last4, credit_limit, available_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $name, $kind, $balance, $institution, $last4, $limit, $available]
         );
+        $this->linkCreditDebts($userId, $id, $kind, $last4, $limit);
         $this->touchSnapshot($userId);
         return $this->account($userId, $id);
     }
@@ -74,10 +76,18 @@ final class MoneyService
         $institution = array_key_exists('institution', $input) ? $this->optionalInstitution($input['institution']) : $account['institution'];
         $last4 = array_key_exists('last4', $input) ? AccountNumberGuard::last4($input['last4']) : $account['last4'];
         $limit = array_key_exists('credit_limit', $input) ? $this->optionalLimit($input['credit_limit']) : $account['credit_limit'];
-        $this->db->execute(
-            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, institution = ?, last4 = ?, credit_limit = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$name, $kind, $balance, $institution, $last4, $limit, $id, $userId]
+        $rawAvailable = $this->db->fetchOne(
+            'SELECT available_credit FROM money_accounts WHERE id = ? AND user_id = ?',
+            [$id, $userId]
         );
+        $available = array_key_exists('available_credit', $input)
+            ? $this->optionalAvailable($input['available_credit'])
+            : $this->storedAvailable($rawAvailable ?? []);
+        $this->db->execute(
+            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, institution = ?, last4 = ?, credit_limit = ?, available_credit = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$name, $kind, $balance, $institution, $last4, $limit, $available, $id, $userId]
+        );
+        $this->linkCreditDebts($userId, $id, $kind, $last4, $limit);
         $this->touchSnapshot($userId);
         return $this->account($userId, $id);
     }
@@ -384,9 +394,23 @@ final class MoneyService
     }
 
     /**
-     * @return array<string, mixed> the vault page
+     * @return array<string, mixed> the vault page when writing, otherwise the review text
      */
-    public function weeklyReview(int $userId): array
+    public function weeklyReview(int $userId, bool $writePage = true): array
+    {
+        $draft = $this->weeklyReviewDraft($userId);
+        if (!$writePage) {
+            return $draft;
+        }
+        $page = $this->pages->upsertSlug($userId, 'weekly-review-' . $draft['as_of'], $draft['title'], $draft['body'], 'review');
+        $page['written'] = true;
+        return $page;
+    }
+
+    /**
+     * @return array{written: bool, title: string, body: string, as_of: string, from: string, to: string}
+     */
+    public function weeklyReviewDraft(int $userId): array
     {
         $today = $this->clock->today();
         $from = Clock::shiftDate($today, 6);
@@ -408,8 +432,14 @@ final class MoneyService
         $lines[] = '## Net worth';
         $lines[] = '$' . number_format($summary['net_worth'], 2);
         $lines[] = '';
-        $slug = 'weekly-review-' . $today;
-        return $this->pages->upsertSlug($userId, $slug, 'Weekly review ' . $today, implode("\n", $lines), 'review');
+        return [
+            'written' => false,
+            'title'   => 'Weekly review ' . $today,
+            'body'    => implode("\n", $lines),
+            'as_of'   => $today,
+            'from'    => $from,
+            'to'      => $today,
+        ];
     }
 
     /**
@@ -498,15 +528,19 @@ final class MoneyService
     {
         $last4 = $row['last4'] ?? null;
         $limit = $row['credit_limit'] ?? null;
+        $limit = $limit !== null && $limit !== '' ? (float) $limit : null;
+        $balance = (float) $row['balance'];
+        $stored = $this->storedAvailable($row);
         return [
-            'id'           => (int) $row['id'],
-            'name'         => (string) $row['name'],
-            'kind'         => (string) $row['kind'],
-            'balance'      => (float) $row['balance'],
-            'institution'  => isset($row['institution']) && $row['institution'] !== null && $row['institution'] !== '' ? (string) $row['institution'] : null,
-            'last4'        => $last4 !== null && trim((string) $last4) !== '' ? trim((string) $last4) : null,
-            'credit_limit' => $limit !== null ? (float) $limit : null,
-            'archived'     => $row['archived_at'] !== null,
+            'id'               => (int) $row['id'],
+            'name'             => (string) $row['name'],
+            'kind'             => (string) $row['kind'],
+            'balance'          => $balance,
+            'institution'      => isset($row['institution']) && $row['institution'] !== null && $row['institution'] !== '' ? (string) $row['institution'] : null,
+            'last4'            => $last4 !== null && trim((string) $last4) !== '' ? trim((string) $last4) : null,
+            'credit_limit'     => $limit,
+            'available_credit' => $stored ?? ($limit !== null ? round($limit - $balance, 2) : null),
+            'archived'         => $row['archived_at'] !== null,
         ];
     }
 
@@ -539,6 +573,63 @@ final class MoneyService
             throw ValidationException::withFields(['credit_limit' => 'Credit limit cannot be negative.']);
         }
         return $limit;
+    }
+
+    private function optionalAvailable(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return $this->cleanAmount($value, 'available_credit');
+    }
+
+    /**
+     * The stored column only. A formatted account's available_credit may be computed.
+     *
+     * @param array<string, mixed> $row
+     */
+    private function storedAvailable(array $row): ?float
+    {
+        if (!array_key_exists('available_credit', $row) || $row['available_credit'] === null || $row['available_credit'] === '') {
+            return null;
+        }
+        return (float) $row['available_credit'];
+    }
+
+    /**
+     * A credit account and a debt with the same last 4 are the same card.
+     */
+    private function linkCreditDebts(int $userId, int $accountId, string $kind, ?string $last4, ?float $limit): void
+    {
+        if ($kind !== 'credit' || $last4 === null || $last4 === '') {
+            return;
+        }
+        $debts = $this->db->fetchAll(
+            "SELECT id, credit_limit FROM money_debts
+             WHERE user_id = ? AND archived_at IS NULL AND btrim(last4) = ?
+               AND (account_id IS NULL OR account_id = ?)",
+            [$userId, $last4, $accountId]
+        );
+        foreach ($debts as $debt) {
+            $this->db->execute(
+                "UPDATE money_debts SET account_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+                [$accountId, (int) $debt['id'], $userId]
+            );
+            $debtLimit = $debt['credit_limit'] !== null && $debt['credit_limit'] !== '' ? (float) $debt['credit_limit'] : null;
+            if ($limit !== null && $debtLimit === null) {
+                $this->db->execute(
+                    'UPDATE money_debts SET credit_limit = ? WHERE id = ? AND user_id = ? AND credit_limit IS NULL',
+                    [$limit, (int) $debt['id'], $userId]
+                );
+            }
+            if ($limit === null && $debtLimit !== null) {
+                $this->db->execute(
+                    'UPDATE money_accounts SET credit_limit = ? WHERE id = ? AND user_id = ? AND credit_limit IS NULL',
+                    [$debtLimit, $accountId, $userId]
+                );
+                $limit = $debtLimit;
+            }
+        }
     }
 
     public function ensureCategory(int $userId, string $name, float $amount = -1, ?string $kind = null, ?float $weeklyCap = null): int

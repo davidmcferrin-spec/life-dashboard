@@ -151,34 +151,49 @@ final class MoneyPlanService
         } else {
             $last4 = $existing !== null ? $this->trimLast4($existing['last4'] ?? null) : null;
         }
-        $accountId = $fallback['account_id'] ?? null;
-        if (isset($input['account']) && trim((string) $input['account']) !== '') {
-            $account = $this->money->accountByName($userId, (string) $input['account']);
-            $accountId = $account['id'] ?? null;
+        if (array_key_exists('credit_limit', $input)) {
+            $limit = $this->optionalLimit($input['credit_limit']);
+        } else {
+            $limit = $existing !== null && $existing['credit_limit'] !== null && $existing['credit_limit'] !== ''
+                ? (float) $existing['credit_limit']
+                : null;
         }
+        if (array_key_exists('notes', $input)) {
+            $notes = $this->debtNotes($input['notes']);
+        } else {
+            $notes = $existing !== null && isset($existing['notes']) && $existing['notes'] !== ''
+                ? (string) $existing['notes']
+                : null;
+        }
+        $accountId = $this->resolveDebtAccount($userId, $input, $existing, $last4);
 
         if ($existing === null) {
             $id = (int) $this->db->fetchScalar(
-                'INSERT INTO money_debts (user_id, account_id, name, last4, balance, apr_percent, minimum_payment, payoff_order, target_payoff_on, due_day)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                'INSERT INTO money_debts (user_id, account_id, name, last4, balance, apr_percent, minimum_payment, payoff_order, target_payoff_on, due_day, credit_limit, notes)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (user_id, name) DO UPDATE SET
                     balance = EXCLUDED.balance, apr_percent = EXCLUDED.apr_percent,
                     minimum_payment = EXCLUDED.minimum_payment, payoff_order = EXCLUDED.payoff_order,
                     target_payoff_on = COALESCE(EXCLUDED.target_payoff_on, money_debts.target_payoff_on),
                     last4 = COALESCE(EXCLUDED.last4, money_debts.last4),
                     due_day = COALESCE(EXCLUDED.due_day, money_debts.due_day),
+                    credit_limit = COALESCE(EXCLUDED.credit_limit, money_debts.credit_limit),
+                    notes = COALESCE(EXCLUDED.notes, money_debts.notes),
+                    account_id = COALESCE(EXCLUDED.account_id, money_debts.account_id),
                     updated_at = (now() AT TIME ZONE \'UTC\')
                  RETURNING id',
-                [$userId, $accountId, $name, $last4, $balance, $apr, $minimum, $order, $target, $due]
+                [$userId, $accountId, $name, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes]
             );
         } else {
             $this->db->execute(
-                'UPDATE money_debts SET name = ?, last4 = ?, balance = ?, apr_percent = ?, minimum_payment = ?,
-                    payoff_order = ?, target_payoff_on = ?, due_day = ?, updated_at = (now() AT TIME ZONE \'UTC\')
+                'UPDATE money_debts SET name = ?, account_id = ?, last4 = ?, balance = ?, apr_percent = ?, minimum_payment = ?,
+                    payoff_order = ?, target_payoff_on = ?, due_day = ?, credit_limit = ?, notes = ?,
+                    updated_at = (now() AT TIME ZONE \'UTC\')
                  WHERE id = ? AND user_id = ?',
-                [$name, $last4, $balance, $apr, $minimum, $order, $target, $due, $id, $userId]
+                [$name, $accountId, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes, $id, $userId]
             );
         }
+        $this->alignLinkedCredit($userId, (int) $id, $accountId, $last4, $limit);
         return $this->formatDebt($this->debtRow($userId, (int) $id));
     }
 
@@ -189,6 +204,35 @@ final class MoneyPlanService
     public function updateDebt(int $userId, int $id, array $input): array
     {
         return $this->saveDebt($userId, $input, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function archiveDebt(int $userId, int $id): array
+    {
+        $this->debtRow($userId, $id);
+        $this->db->execute(
+            "UPDATE money_debts SET archived_at = (now() AT TIME ZONE 'UTC'), updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$id, $userId]
+        );
+        return $this->formatDebt($this->debtRow($userId, $id));
+    }
+
+    public function deleteDebt(int $userId, int $id): void
+    {
+        $this->debtRow($userId, $id);
+        if ($this->debtDependents($id) > 0) {
+            throw ValidationException::withFields(['debt' => 'This debt is still used by other records. Archive it instead.']);
+        }
+        try {
+            $this->db->execute('DELETE FROM money_debts WHERE id = ? AND user_id = ?', [$id, $userId]);
+        } catch (\PDOException $e) {
+            if (str_contains($e->getMessage(), '23503') || str_contains($e->getMessage(), 'foreign key')) {
+                throw ValidationException::withFields(['debt' => 'This debt is still used by other records. Archive it instead.']);
+            }
+            throw $e;
+        }
     }
 
     /**
@@ -223,22 +267,30 @@ final class MoneyPlanService
         }
         $due = $input['due_on'] ?? $input['due'] ?? $fallback['due_on'] ?? null;
         $due = $due !== null && $due !== '' ? $this->money->cleanDate($due) : null;
+        if (array_key_exists('notes', $input)) {
+            $notes = $this->debtNotes($input['notes']);
+        } else {
+            $notes = $existing !== null && isset($existing['notes']) && $existing['notes'] !== ''
+                ? (string) $existing['notes']
+                : null;
+        }
         if ($existing === null) {
             $id = (int) $this->db->fetchScalar(
-                'INSERT INTO money_sinking_funds (user_id, name, target_amount, balance, due_on)
-                 VALUES (?, ?, ?, ?, ?)
+                'INSERT INTO money_sinking_funds (user_id, name, target_amount, balance, due_on, notes)
+                 VALUES (?, ?, ?, ?, ?, ?)
                  ON CONFLICT (user_id, name) DO UPDATE SET
                     target_amount = EXCLUDED.target_amount, balance = EXCLUDED.balance,
                     due_on = COALESCE(EXCLUDED.due_on, money_sinking_funds.due_on),
+                    notes = COALESCE(EXCLUDED.notes, money_sinking_funds.notes),
                     updated_at = (now() AT TIME ZONE \'UTC\')
                  RETURNING id',
-                [$userId, $name, $target, $balance, $due]
+                [$userId, $name, $target, $balance, $due, $notes]
             );
         } else {
             $this->db->execute(
-                'UPDATE money_sinking_funds SET name = ?, target_amount = ?, balance = ?, due_on = ?, updated_at = (now() AT TIME ZONE \'UTC\')
+                'UPDATE money_sinking_funds SET name = ?, target_amount = ?, balance = ?, due_on = ?, notes = ?, updated_at = (now() AT TIME ZONE \'UTC\')
                  WHERE id = ? AND user_id = ?',
-                [$name, $target, $balance, $due, $id, $userId]
+                [$name, $target, $balance, $due, $notes, $id, $userId]
             );
         }
         return $this->formatFund($this->fundRow($userId, (int) $id));
@@ -250,6 +302,95 @@ final class MoneyPlanService
     public function updateSinkingFund(int $userId, int $id, array $input): array
     {
         return $this->saveSinkingFund($userId, $input, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function archiveSinkingFund(int $userId, int $id): array
+    {
+        $this->fundRow($userId, $id);
+        $this->db->execute(
+            "UPDATE money_sinking_funds SET archived_at = (now() AT TIME ZONE 'UTC'), updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$id, $userId]
+        );
+        return $this->formatFund($this->fundRow($userId, $id));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function setCategoryCap(int $userId, string $category, ?float $weekly, ?float $monthly, string $effectiveFrom): array
+    {
+        $category = trim($category);
+        if ($category === '' || mb_strlen($category) > 80) {
+            throw ValidationException::withFields(['category' => 'Category name must be 1–80 characters.']);
+        }
+        AccountNumberGuard::assertNoFullNumber($category, 'category');
+        if ($weekly === null && $monthly === null) {
+            throw ValidationException::withFields(['weekly_cap' => 'Set a weekly cap, a monthly cap, or both.']);
+        }
+        if ($weekly !== null && $weekly < 0) {
+            throw ValidationException::withFields(['weekly_cap' => 'A weekly cap cannot be negative.']);
+        }
+        if ($monthly !== null && $monthly < 0) {
+            throw ValidationException::withFields(['monthly_cap' => 'A monthly cap cannot be negative.']);
+        }
+        $weekly = $weekly !== null ? round($weekly, 2) : null;
+        $monthly = $monthly !== null ? round($monthly, 2) : null;
+        $from = $this->money->cleanDate($effectiveFrom);
+        $categoryId = $this->money->ensureCategory($userId, $category, -1, 'expense');
+        $this->db->execute(
+            'INSERT INTO money_category_caps (user_id, category_id, weekly_cap, monthly_cap, effective_from)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, category_id, effective_from) DO UPDATE SET
+                weekly_cap = COALESCE(EXCLUDED.weekly_cap, money_category_caps.weekly_cap),
+                monthly_cap = COALESCE(EXCLUDED.monthly_cap, money_category_caps.monthly_cap)',
+            [$userId, $categoryId, $weekly, $monthly, $from]
+        );
+        return [
+            'category'       => $category,
+            'weekly_cap'     => $this->weeklyCap($userId, $category, $from),
+            'monthly_cap'    => $this->monthlyCap($userId, $category, $from),
+            'effective_from' => $from,
+        ];
+    }
+
+    public function weeklyCap(int $userId, string $category, string $asOf): ?float
+    {
+        return $this->capValue($userId, $category, $asOf, 'weekly_cap');
+    }
+
+    public function monthlyCap(int $userId, string $category, string $asOf): ?float
+    {
+        return $this->capValue($userId, $category, $asOf, 'monthly_cap');
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function capsInEffect(int $userId, string $asOf): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT name FROM money_categories WHERE user_id = ? AND archived_at IS NULL ORDER BY name ASC',
+            [$userId]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $name = (string) $row['name'];
+            $weekly = $this->weeklyCap($userId, $name, $asOf);
+            $monthly = $this->monthlyCap($userId, $name, $asOf);
+            if ($weekly === null && $monthly === null) {
+                continue;
+            }
+            $out[] = [
+                'category'    => $name,
+                'weekly_cap'  => $weekly,
+                'monthly_cap' => $monthly,
+                'as_of'       => $asOf,
+            ];
+        }
+        return $out;
     }
 
     /**
@@ -382,11 +523,7 @@ final class MoneyPlanService
              WHERE user_id = ? AND posted_on >= ? AND posted_on <= ? AND amount < 0 AND lower(category) = \'food\'',
             [$userId, $from, $to]
         );
-        $capRow = $this->db->fetchScalar(
-            'SELECT weekly_cap FROM money_categories WHERE user_id = ? AND lower(name) = \'food\'',
-            [$userId]
-        );
-        $cap = $capRow !== null ? (float) $capRow : self::FOOD_CAP;
+        $cap = $this->weeklyCap($userId, 'Food', $to) ?? self::FOOD_CAP;
         $spent = round($spent, 2);
         return [
             'spent' => $spent,
@@ -473,6 +610,7 @@ final class MoneyPlanService
             'bills_due'      => $this->billsDue($userId),
             'retirement'     => $this->retirement($userId),
             'credit'         => $this->credit($userId),
+            'category_caps'  => $this->capsInEffect($userId, $when),
         ];
     }
 
@@ -521,6 +659,10 @@ final class MoneyPlanService
             'target_payoff_on'    => $row['target_payoff_on'] !== null ? (string) $row['target_payoff_on'] : null,
             'estimated_payoff_on' => self::estimatePayoff($balance, $apr, $minimum, $this->clock->today()),
             'due_day'             => $row['due_day'] !== null ? (int) $row['due_day'] : null,
+            'account_id'          => $row['account_id'] !== null && $row['account_id'] !== '' ? (int) $row['account_id'] : null,
+            'credit_limit'        => isset($row['credit_limit']) && $row['credit_limit'] !== null && $row['credit_limit'] !== '' ? (float) $row['credit_limit'] : null,
+            'notes'               => isset($row['notes']) && $row['notes'] !== '' ? (string) $row['notes'] : null,
+            'archived'            => isset($row['archived_at']) && $row['archived_at'] !== null,
         ];
     }
 
@@ -540,6 +682,8 @@ final class MoneyPlanService
             'balance'       => $balance,
             'due_on'        => $row['due_on'] !== null ? (string) $row['due_on'] : null,
             'percent'       => $percent,
+            'notes'         => isset($row['notes']) && $row['notes'] !== '' ? (string) $row['notes'] : null,
+            'archived'      => isset($row['archived_at']) && $row['archived_at'] !== null,
         ];
     }
 
@@ -565,21 +709,61 @@ final class MoneyPlanService
 
     private function computedUtilization(int $userId): ?float
     {
-        $rows = $this->db->fetchAll(
-            'SELECT balance, credit_limit FROM money_accounts
-             WHERE user_id = ? AND archived_at IS NULL AND kind = \'credit\' AND credit_limit IS NOT NULL AND credit_limit > 0',
+        $accounts = $this->db->fetchAll(
+            "SELECT id, balance, credit_limit FROM money_accounts
+             WHERE user_id = ? AND archived_at IS NULL AND kind = 'credit'",
             [$userId]
         );
-        if ($rows === []) {
-            return null;
+        $debts = $this->db->fetchAll(
+            'SELECT id, account_id, balance, credit_limit FROM money_debts
+             WHERE user_id = ? AND archived_at IS NULL',
+            [$userId]
+        );
+        $byAccount = [];
+        foreach ($debts as $debt) {
+            if ($debt['account_id'] === null || $debt['account_id'] === '') {
+                continue;
+            }
+            $byAccount[(int) $debt['account_id']][] = $debt;
         }
+        $used = [];
         $owed = 0.0;
         $limit = 0.0;
-        foreach ($rows as $row) {
-            $owed += (float) $row['balance'];
-            $limit += (float) $row['credit_limit'];
+        $any = false;
+        foreach ($accounts as $account) {
+            $linked = $byAccount[(int) $account['id']] ?? [];
+            foreach ($linked as $debt) {
+                $used[(int) $debt['id']] = true;
+            }
+            $cardLimit = $account['credit_limit'] !== null && $account['credit_limit'] !== '' ? (float) $account['credit_limit'] : null;
+            $debtBalance = 0.0;
+            foreach ($linked as $debt) {
+                $debtBalance += (float) $debt['balance'];
+                if ($cardLimit === null && $debt['credit_limit'] !== null && $debt['credit_limit'] !== '') {
+                    $cardLimit = (float) $debt['credit_limit'];
+                }
+            }
+            $cardBalance = $debtBalance > 0 ? $debtBalance : (float) $account['balance'];
+            if ($cardLimit === null || $cardLimit <= 0) {
+                continue;
+            }
+            $any = true;
+            $owed += $cardBalance;
+            $limit += $cardLimit;
         }
-        if ($limit <= 0) {
+        foreach ($debts as $debt) {
+            if (isset($used[(int) $debt['id']])) {
+                continue;
+            }
+            $cardLimit = $debt['credit_limit'] !== null && $debt['credit_limit'] !== '' ? (float) $debt['credit_limit'] : null;
+            if ($cardLimit === null || $cardLimit <= 0) {
+                continue;
+            }
+            $any = true;
+            $owed += (float) $debt['balance'];
+            $limit += $cardLimit;
+        }
+        if (!$any || $limit <= 0) {
             return null;
         }
         return round(($owed / $limit) * 100, 2);
@@ -648,5 +832,194 @@ final class MoneyPlanService
         }
         $text = trim((string) $value);
         return $text === '' ? null : $text;
+    }
+
+    /**
+     * An explicit account_id wins, including null, which unlinks and does not auto-link.
+     * Otherwise a last4 that matches exactly one credit account is linked.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed>|null $existing
+     */
+    private function resolveDebtAccount(int $userId, array $input, ?array $existing, ?string $last4): ?int
+    {
+        if (array_key_exists('account_id', $input)) {
+            $raw = $input['account_id'];
+            if ($raw === null || $raw === '') {
+                return null;
+            }
+            if (!is_numeric($raw) || (int) $raw < 1) {
+                throw ValidationException::withFields(['account_id' => 'account_id must be an account on this dashboard.']);
+            }
+            $account = $this->db->fetchOne(
+                'SELECT id FROM money_accounts WHERE id = ? AND user_id = ? AND archived_at IS NULL',
+                [(int) $raw, $userId]
+            );
+            if ($account === null) {
+                throw ValidationException::withFields(['account_id' => 'That account is not on this dashboard.']);
+            }
+            return (int) $account['id'];
+        }
+        if ($existing !== null && $existing['account_id'] !== null && $existing['account_id'] !== '') {
+            return (int) $existing['account_id'];
+        }
+        if ($last4 === null || $last4 === '') {
+            return null;
+        }
+        $matches = $this->db->fetchAll(
+            "SELECT id FROM money_accounts
+             WHERE user_id = ? AND archived_at IS NULL AND kind = 'credit' AND btrim(last4) = ?",
+            [$userId, $last4]
+        );
+        if (count($matches) !== 1) {
+            return null;
+        }
+        return (int) $matches[0]['id'];
+    }
+
+    /**
+     * Copy last4 and credit limit onto the other side only when that side is empty.
+     */
+    private function alignLinkedCredit(int $userId, int $debtId, ?int $accountId, ?string $last4, ?float $limit): void
+    {
+        if ($accountId === null) {
+            return;
+        }
+        $account = $this->db->fetchOne(
+            'SELECT id, last4, credit_limit FROM money_accounts WHERE id = ? AND user_id = ?',
+            [$accountId, $userId]
+        );
+        if ($account === null) {
+            return;
+        }
+        $accountLast4 = $this->trimLast4($account['last4'] ?? null);
+        $accountLimit = $account['credit_limit'] !== null && $account['credit_limit'] !== ''
+            ? (float) $account['credit_limit']
+            : null;
+        if ($accountLast4 === null && $last4 !== null) {
+            $this->db->execute(
+                "UPDATE money_accounts SET last4 = ? WHERE id = ? AND user_id = ? AND (last4 IS NULL OR btrim(last4) = '')",
+                [$last4, $accountId, $userId]
+            );
+        }
+        if ($last4 === null && $accountLast4 !== null) {
+            $this->db->execute(
+                'UPDATE money_debts SET last4 = ? WHERE id = ? AND user_id = ? AND last4 IS NULL',
+                [$accountLast4, $debtId, $userId]
+            );
+        }
+        if ($accountLimit === null && $limit !== null) {
+            $this->db->execute(
+                'UPDATE money_accounts SET credit_limit = ? WHERE id = ? AND user_id = ? AND credit_limit IS NULL',
+                [$limit, $accountId, $userId]
+            );
+        }
+        if ($limit === null && $accountLimit !== null) {
+            $this->db->execute(
+                'UPDATE money_debts SET credit_limit = ? WHERE id = ? AND user_id = ? AND credit_limit IS NULL',
+                [$accountLimit, $debtId, $userId]
+            );
+        }
+    }
+
+    private function optionalLimit(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $limit = $this->money->cleanAmount($value, 'credit_limit');
+        if ($limit < 0) {
+            throw ValidationException::withFields(['credit_limit' => 'Credit limit cannot be negative.']);
+        }
+        return $limit;
+    }
+
+    private function debtNotes(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+        if ($text === '') {
+            return null;
+        }
+        if (mb_strlen($text) > 4000) {
+            throw ValidationException::withFields(['notes' => 'Notes must be 4000 characters or fewer.']);
+        }
+        AccountNumberGuard::assertNoFullNumber($text, 'notes');
+        return $text;
+    }
+
+    private function debtDependents(int $id): int
+    {
+        $fks = $this->db->fetchAll(
+            "SELECT c.relname AS table_name, a.attname AS column_name
+             FROM pg_constraint fk
+             JOIN pg_class c ON c.oid = fk.conrelid
+             JOIN pg_namespace n ON n.oid = c.relnamespace
+             JOIN pg_attribute a ON a.attrelid = fk.conrelid AND a.attnum = fk.conkey[1]
+             WHERE fk.contype = 'f'
+               AND fk.confrelid = 'money_debts'::regclass
+               AND n.nspname = 'public'
+               AND array_length(fk.conkey, 1) = 1"
+        );
+        $count = 0;
+        foreach ($fks as $fk) {
+            $table = (string) $fk['table_name'];
+            $column = (string) $fk['column_name'];
+            if (preg_match('/^[a-z_][a-z0-9_]*$/', $table) !== 1 || preg_match('/^[a-z_][a-z0-9_]*$/', $column) !== 1) {
+                continue;
+            }
+            // sql-lint:ignore identifiers come from pg_constraint and match ^[a-z_][a-z0-9_]*$
+            $count += (int) $this->db->fetchScalar(
+                'SELECT COUNT(*) FROM ' . $table . ' WHERE ' . $column . ' = ?',
+                [$id]
+            );
+        }
+        return $count;
+    }
+
+    private function capValue(int $userId, string $category, string $asOf, string $column): ?float
+    {
+        if ($column === 'weekly_cap') {
+            $row = $this->db->fetchOne(
+                'SELECT caps.weekly_cap AS cap
+                 FROM money_category_caps caps
+                 JOIN money_categories c ON c.id = caps.category_id
+                 WHERE caps.user_id = ? AND lower(c.name) = lower(?)
+                   AND caps.effective_from <= ? AND caps.weekly_cap IS NOT NULL
+                 ORDER BY caps.effective_from DESC, caps.id DESC
+                 LIMIT 1',
+                [$userId, $category, $asOf]
+            );
+        } elseif ($column === 'monthly_cap') {
+            $row = $this->db->fetchOne(
+                'SELECT caps.monthly_cap AS cap
+                 FROM money_category_caps caps
+                 JOIN money_categories c ON c.id = caps.category_id
+                 WHERE caps.user_id = ? AND lower(c.name) = lower(?)
+                   AND caps.effective_from <= ? AND caps.monthly_cap IS NOT NULL
+                 ORDER BY caps.effective_from DESC, caps.id DESC
+                 LIMIT 1',
+                [$userId, $category, $asOf]
+            );
+        } else {
+            throw new \InvalidArgumentException('Unknown cap column.');
+        }
+        if ($row !== null && $row['cap'] !== null && $row['cap'] !== '') {
+            return (float) $row['cap'];
+        }
+        if ($column !== 'weekly_cap') {
+            return null;
+        }
+        $fallback = $this->db->fetchOne(
+            'SELECT weekly_cap FROM money_categories
+             WHERE user_id = ? AND lower(name) = lower(?) AND archived_at IS NULL',
+            [$userId, $category]
+        );
+        if ($fallback === null || $fallback['weekly_cap'] === null || $fallback['weekly_cap'] === '') {
+            return null;
+        }
+        return (float) $fallback['weekly_cap'];
     }
 }
