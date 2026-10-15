@@ -24,14 +24,14 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] SQLite-only `datetime()` queries replaced with `Support\SqlTime` cutoffs (also fixed the flight poll window, which compared APP_TIMEZONE wall clock to UTC)
 - [x] `scripts/migrate-sqlite-to-pgsql.php` + `DB\SqliteToPgsqlImporter` (preflight → single-transaction import → sequence reset → count verify)
 - [x] `scripts/sql-lint-pgsql.php` + `DB\SqlStatementExtractor` — PREPAREs every SQL string in the codebase against PostgreSQL
-- [x] `GET /healthz` (unauthenticated, up/down only); `/settings/system` shows PostgreSQL version/size/pending migrations
+- [x] `GET /healthz` (unauthenticated, up/down only); `/settings/system` shows PostgreSQL version/size/pending migrations plus lifedash-mcp and lifedash-push (systemd, listen address, MCP `/healthz`, tool count, revision)
 - [x] HTTPS on the LAN: `deploy/apache/lifedash.conf.template` rendered by `lifedash-render-vhost` (:443 UI, :80 redirects all but loopback/tunnel); settings persisted in `/etc/lifedash/provision.conf`
 - [x] `lifedash-perms` (ownership model) + `lifedash-env set KEY VALUE`; setup.sh syncs `APP_URL`/`SESSION_SECURE` with HTTP/HTTPS mode
 - [x] First real run on the box (26.04.1, PHP 8.5.4, PG 18.6, huge pages on, TPM present) surfaced two permission bugs, fixed: Apache 403 (no o+x on /srv/lifedash) and storage/ subdirs from git owned by root
 - [x] `setup.sh` (repo root): one-command install — place app, build/encrypt `.env`, provision, DB init (fresh or SQLite import), verify; `--dry-run`, `--yes`
 - [x] `deploy/` kit: `provision.sh`, Apache vhost, FPM pool, PG tuning + huge pages, systemd timers (replace crontab), `lifedash-{deploy,env,backup,job,tunnel-setup}`
 - [x] Secrets via `systemd-creds` → `/run/lifedash/app.env`; `.env` is a symlink to it on the server
-- [x] Python package `services/lifedash` (config parity with PHP `Config`, psycopg db, JSON logging, `lifedash-healthcheck`)
+- [x] Python package `services/lifedash` (config parity with PHP `Config`, psycopg db, JSON logging, `lifedash-healthcheck` — includes lifedash-mcp and lifedash-push)
 - [x] Tests: PHPUnit unit + PostgreSQL integration, pytest, `tests/smoke/smoke_http.py`; GitHub Actions CI
 
 **L1 — Core platform + habits/mood ✅ (Sept 2026)**
@@ -48,7 +48,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 **L2 — MCP v1 ✅**
 - [x] `api_tokens` (SHA-256, scopes, prefix) and `audit_events` (actor, tool, resource) with `lifedash_notify`
 - [x] `/api/v1` accepts a browser session (CSRF) or `Authorization: Bearer`; scopes inferred from the path; bearer writes use `source=ai`
-- [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `127.0.0.1:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
+- [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `0.0.0.0:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
 - [x] `GET /api/v1/agent-prompt` and `/settings/agents` (token shown once, prompt copy, audit trail)
 
 **L3 — Life tracking ✅**
@@ -293,7 +293,7 @@ Shared chrome: `templates/settings/_shell-top.php`, `_nav.php`, `_shell-bottom.p
 - `/settings/flights`, `/settings/packages`, `/settings/clipboards` (Boards · Files · CloudPad tabs), `/settings/todos`, `/settings/weather`, `/settings/pings`
 
 **Administration** (sidebar section, `is_admin` only):
-- `/settings/system` — cron health + logs
+- `/settings/system` — application health (including lifedash-mcp and lifedash-push) + cron logs
 - `/settings/cloud-storage` — cloud file defaults (root folder name, quota)
 - `/settings/users` — account management (`last_login_at`, `last_active_at` per user)
 

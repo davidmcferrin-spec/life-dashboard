@@ -7,9 +7,9 @@ The dashboard UI stays on the LAN (and UniFi Teleport). The public hostname is o
 | Path | Where it goes |
 | --- | --- |
 | `/healthz` | Apache on port 80. Up or down only. |
-| `/mcp` | `lifedash-mcp` on `127.0.0.1:8765` |
+| `/mcp` | `lifedash-mcp` on port 8765 (`0.0.0.0`; the tunnel still dials `127.0.0.1:8765`) |
 
-Every other path returns 404 at Cloudflare's edge. The UI hostname is not in the tunnel ingress. `cloudflared` connects outbound, so the router does not gain a new open port. `lifedash-mcp` keeps listening on `127.0.0.1` only.
+Every other path returns 404 at Cloudflare's edge. The UI hostname is not in the tunnel ingress. `cloudflared` connects outbound, so the router does not gain a new open port. `lifedash-mcp` listens on `0.0.0.0`.
 
 ```bash
 sudo lifedash-tunnel-setup mcp.<your-domain>

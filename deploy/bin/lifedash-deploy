@@ -73,8 +73,8 @@ if command -v ss >/dev/null; then
         [[ -n $row ]] || continue
         log "8765 $row"
         case $row in
-            *127.0.0.1:8765*|*\[::1\]:8765*) ;;
-            *) log "WARNING: port 8765 is listening outside loopback. Stop that process so only 127.0.0.1:8765 remains." ;;
+            *0.0.0.0:8765*|*\[::\]:8765*) ;;
+            *) log "WARNING: port 8765 is not bound to 0.0.0.0. Restart lifedash-mcp so it listens on 0.0.0.0:8765." ;;
         esac
     done < <(ss -ltnH 'sport = :8765' 2>/dev/null || true)
 fi

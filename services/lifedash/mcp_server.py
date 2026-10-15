@@ -1,4 +1,4 @@
-"""``lifedash-mcp`` — MCP endpoint on 127.0.0.1:8765.
+"""``lifedash-mcp`` — MCP endpoint on 0.0.0.0:8765.
 
 Cloudflare Tunnel sends ``/mcp`` here. Each tool call is an HTTP request to the
 PHP ``/api/v1`` API with the caller's bearer token and ``X-Lifedash-Tool``.
@@ -19,6 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from . import __version__
 from .config import Config
 from .log import setup as setup_logging
 
@@ -1172,14 +1173,13 @@ class RequestLimiter:
 
 
 def listen_host(requested: str | None) -> str:
-    """Loopback only. A 0.0.0.0 bind answers the public address and, on Linux,
-    leaves a process still bound to 127.0.0.1 answering the tunnel.
+    """All IPv4 interfaces. A loopback-only socket is invisible to other hosts,
+    and MCP_HOST is ignored so a leftover 127.0.0.1 cannot put it back.
     """
     host = (requested or "").strip()
-    if host in ("", "127.0.0.1", "localhost", "::1"):
-        return "127.0.0.1"
-    LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 127.0.0.1 only", host)
-    return "127.0.0.1"
+    if host not in ("", "0.0.0.0", "*"):
+        LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 0.0.0.0", host)
+    return "0.0.0.0"
 
 
 def negotiate_protocol(params: Any) -> str:
@@ -1215,7 +1215,7 @@ def handle_message(
         return reply({
             "protocolVersion": negotiate_protocol(message.get("params")),
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "lifedash", "version": "0.1.0"},
+            "serverInfo": {"name": "lifedash", "version": __version__},
         })
     if method == "ping":
         return reply({})
@@ -1276,7 +1276,27 @@ def urllib_fetch(api_base: str) -> Fetch:
 _PROCESS_LIMITER = RequestLimiter()
 
 
-def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[BaseHTTPRequestHandler]:
+def health_document(listen: str = "0.0.0.0", port: int = 8765) -> dict[str, Any]:
+    """GET /healthz. Tool count is the in-process registry, not a cached session."""
+    from .healthcheck import git_revision
+
+    return {
+        "ok": True,
+        "service": "lifedash-mcp",
+        "listen": f"{listen}:{port}",
+        "tool_count": len(TOOLS),
+        "version": __version__,
+        "revision": git_revision(),
+    }
+
+
+def make_handler(
+    fetch: Fetch,
+    limiter: RequestLimiter | None = None,
+    *,
+    listen: str = "0.0.0.0",
+    port: int = 8765,
+) -> type[BaseHTTPRequestHandler]:
     gate = limiter or RequestLimiter()
 
     class Handler(BaseHTTPRequestHandler):
@@ -1312,7 +1332,7 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?", 1)[0]
             if path == "/healthz":
-                self._send(200, {"ok": True, "service": "lifedash-mcp"})
+                self._send(200, health_document(listen, port))
                 return
             # Streamable HTTP clients GET the MCP path to open an SSE stream.
             # This server has no stream. 200 JSON here makes that probe look
@@ -1349,7 +1369,7 @@ def main() -> None:
     host = listen_host(config.maybe("MCP_HOST"))
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
-    server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base)))
+    server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base), listen=host, port=port))
     LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)", host, port, api_base, len(TOOLS))
     try:
         server.serve_forever()

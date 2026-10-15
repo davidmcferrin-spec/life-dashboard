@@ -162,7 +162,11 @@ else
         ok "cloned (no upstream remote in the source checkout)"
     fi
 fi
-run chmod +x "$TARGET/setup.sh" "$TARGET/deploy/provision.sh" "$TARGET"/deploy/bin/*
+for f in "$TARGET/setup.sh" "$TARGET/deploy/provision.sh" "$TARGET"/deploy/bin/*; do
+    if [[ -f $f && ! -x $f ]]; then
+        note "$f is not executable — commit it as git mode 100755 (a local chmod blocks git pull)"
+    fi
+done
 
 # --- 2a. HTTPS settings ---------------------------------------------------------
 stage "HTTPS for the dashboard"
