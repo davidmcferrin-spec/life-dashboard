@@ -82,8 +82,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: shellcheck setup.sh deploy/provision.sh deploy/bin/*
+      - run: shellcheck -x setup.sh deploy/provision.sh deploy/bin/* deploy/lib/* tests/shell/*
       - name: JS syntax (app scripts, not bundles/vendor)
         run: for f in public/assets/js/*.js; do case "$f" in *.bundle.js) continue;; esac; node --check "$f"; done
       - name: Vault markdown, map camera, and presence sprite
         run: node --test tests/js/*.cjs
+      - name: Deploy workdir mode cleanup
+        run: bash tests/shell/prepare-workdir.sh
