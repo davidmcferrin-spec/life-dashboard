@@ -1,4 +1,4 @@
-# MCP for Claude / Grok. Cloudflare Tunnel sends /mcp to 127.0.0.1:8765.
+# MCP for Claude / Grok. Listens on MCP_HOST (default 0.0.0.0) port MCP_PORT (default 8765).
 # Tool calls are forwarded to the PHP /api/v1 app with the caller's bearer token.
 #   journalctl -u lifedash-mcp -o cat
 

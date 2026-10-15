@@ -1,4 +1,4 @@
-"""``lifedash-mcp`` — MCP endpoint on 127.0.0.1:8765.
+"""``lifedash-mcp`` — MCP endpoint on port 8765.
 
 Cloudflare Tunnel sends ``/mcp`` here. Each tool call is an HTTP request to the
 PHP ``/api/v1`` API with the caller's bearer token and ``X-Lifedash-Tool``.
@@ -853,7 +853,7 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
 def main() -> None:
     config = Config.load()
     setup_logging(config.get("LOG_LEVEL", "INFO"))
-    host = "127.0.0.1"
+    host = config.get("MCP_HOST", "0.0.0.0")
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
     server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base)))
