@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Tracking;
 
 use Dashboard\Support\Clock;
+use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
 /**
@@ -67,6 +68,8 @@ final class HabitService
                 'emoji'           => $h['config']['emoji'] ?? null,
                 'color'           => $h['config']['color'] ?? null,
                 'target_per_week' => $h['config']['target_per_week'] ?? null,
+                'goal_metric_id'  => isset($h['config']['goal_metric_id']) ? (int) $h['config']['goal_metric_id'] : null,
+                'goal_threshold'  => isset($h['config']['goal_threshold']) ? (float) $h['config']['goal_threshold'] : null,
                 'done_today'      => isset($doneSet[$today]),
                 'streak'          => self::currentStreak($done, $today),
                 'best_streak'     => self::bestStreak($done),
@@ -122,6 +125,57 @@ final class HabitService
     }
 
     /**
+     * Check off habits whose linked metric reached its threshold on $localDate.
+     *
+     * Only completes. A lower value leaves a manual check-in in place. The
+     * habit write itself does not call back here (habits are not number metrics).
+     */
+    public function completeFromMetric(int $userId, int $metricId, string $localDate, string $source): void
+    {
+        try {
+            $sourceMetric = $this->metrics->get($userId, $metricId);
+        } catch (NotFoundException) {
+            return;
+        }
+        if ($sourceMetric['kind'] !== 'number' || $sourceMetric['archived']) {
+            return;
+        }
+
+        $last = $this->points->aggregate($userId, $metricId, 'last', $localDate, $localDate);
+        if ($last === null) {
+            return;
+        }
+
+        $today = $this->clock->today();
+        $oldest = Clock::shiftDate($today, self::MAX_BACKFILL_DAYS);
+        if ($localDate > $today || $localDate < $oldest) {
+            return;
+        }
+
+        foreach ($this->metrics->list($userId, 'habit') as $habit) {
+            $linked = $habit['config']['goal_metric_id'] ?? null;
+            if ($linked === null || (int) $linked !== $metricId) {
+                continue;
+            }
+            $threshold = $habit['config']['goal_threshold'] ?? ($sourceMetric['config']['goal'] ?? null);
+            if ($threshold === null || !is_numeric($threshold)) {
+                continue;
+            }
+            if ($last < (float) $threshold) {
+                continue;
+            }
+            if ($this->points->datesWithValue($userId, (int) $habit['id'], $localDate, $localDate) !== []) {
+                continue;
+            }
+            try {
+                $this->set($userId, (int) $habit['id'], true, $localDate, $source);
+            } catch (ValidationException) {
+                // The check-in window or the habit changed between the read and the write.
+            }
+        }
+    }
+
+    /**
      * Create a habit. The same key returns the existing habit and leaves it unchanged.
      *
      * @param array<string, mixed> $input name, key|slug, icon|emoji, color, frequency|target|target_per_week, sort_order
@@ -140,6 +194,7 @@ final class HabitService
         }
 
         $config = self::configFrom($input, [], true);
+        $this->assertGoalMetric($userId, $config);
         try {
             $metric = $this->metrics->create($userId, [
                 'name'   => $name,
@@ -188,6 +243,7 @@ final class HabitService
         }
         if (self::touchesAppearance($input)) {
             $patch['config'] = self::configFrom($input, $metric['config'], false);
+            $this->assertGoalMetric($userId, $patch['config']);
         }
         if (array_key_exists('sort_order', $input) && $input['sort_order'] !== null && $input['sort_order'] !== '') {
             $patch['sort_order'] = $input['sort_order'];
@@ -333,6 +389,8 @@ final class HabitService
             'color'           => $config['color'] ?? null,
             'frequency'       => self::frequencyLabel($target),
             'target_per_week' => $target,
+            'goal_metric_id'  => isset($config['goal_metric_id']) ? (int) $config['goal_metric_id'] : null,
+            'goal_threshold'  => isset($config['goal_threshold']) ? (float) $config['goal_threshold'] : null,
             'sort_order'      => (int) $metric['sort_order'],
             'archived'        => (bool) ($metric['archived'] ?? false),
         ];
@@ -407,7 +465,41 @@ final class HabitService
         if ($frequency !== null) {
             $config['target_per_week'] = $frequency;
         }
+        if (array_key_exists('goal_metric_id', $input)) {
+            $raw = $input['goal_metric_id'];
+            if ($raw === null || $raw === '' || $raw === 0 || $raw === '0') {
+                unset($config['goal_metric_id'], $config['goal_threshold']);
+            } else {
+                $config['goal_metric_id'] = $raw;
+            }
+        }
+        if (array_key_exists('goal_threshold', $input)) {
+            $threshold = $input['goal_threshold'];
+            if ($threshold === null || $threshold === '') {
+                unset($config['goal_threshold']);
+            } else {
+                $config['goal_threshold'] = $threshold;
+            }
+        }
         return MetricService::validateConfig('habit', $config);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function assertGoalMetric(int $userId, array $config): void
+    {
+        if (!isset($config['goal_metric_id'])) {
+            return;
+        }
+        try {
+            $metric = $this->metrics->get($userId, (int) $config['goal_metric_id']);
+        } catch (NotFoundException) {
+            throw ValidationException::withFields(['goal_metric_id' => 'Metric not found.']);
+        }
+        if ($metric['kind'] !== 'number' || $metric['archived']) {
+            throw ValidationException::withFields(['goal_metric_id' => 'Link a number metric.']);
+        }
     }
 
     /**
@@ -415,7 +507,7 @@ final class HabitService
      */
     private static function touchesAppearance(array $input): bool
     {
-        foreach (['icon', 'emoji', 'color', 'frequency', 'target', 'target_per_week'] as $key) {
+        foreach (['icon', 'emoji', 'color', 'frequency', 'target', 'target_per_week', 'goal_metric_id', 'goal_threshold'] as $key) {
             if (array_key_exists($key, $input) && $input[$key] !== null) {
                 return true;
             }

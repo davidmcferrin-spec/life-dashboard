@@ -74,6 +74,15 @@ final class WidgetTypeRegistry
                     'agg'        => ['type' => 'enum', 'label' => 'Combine', 'options' => $aggs, 'default' => 'avg'],
                 ],
             ],
+            'goal' => [
+                'label' => 'Goal progress', 'category' => 'tracking', 'singleton' => false,
+                'description' => 'Today, or each day this week, against a number metric\'s goal. Full at 100%, a different shade through 200%.',
+                'size' => ['w' => 6, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [
+                    'metric_id' => ['type' => 'metric', 'label' => 'Metric', 'kinds' => ['number'], 'required' => true],
+                    'view'      => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
+                ],
+            ],
             'gauge' => [
                 'label' => 'Gauge', 'category' => 'data', 'singleton' => false,
                 'description' => 'Progress toward a range, e.g. steps vs goal.',

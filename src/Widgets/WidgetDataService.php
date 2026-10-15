@@ -56,6 +56,7 @@ final class WidgetDataService
             'stat'   => $this->statData($userId, $c),
             'chart'  => $this->chartData($userId, $c),
             'gauge'  => $this->gaugeData($userId, $c),
+            'goal'   => $this->goalData($userId, $c),
             'table'  => $this->tableData($userId, $c),
             'streak'    => $this->streakData($userId, $c),
             'life'      => $this->lifeData($userId),
@@ -267,6 +268,84 @@ final class WidgetDataService
             'buckets'    => self::bucketKeys($bucket, $from, $to),
             'series'     => $series,
             'error'      => $series === [] ? 'The metrics for this chart were removed. Edit the widget.' : null,
+        ];
+    }
+
+    /**
+     * Progress of value / goal, capped at 200% (2.0). No reading is empty.
+     */
+    public static function goalRatio(?float $value, float $goal): float
+    {
+        if ($value === null || $goal <= 0.0) {
+            return 0.0;
+        }
+        return max(0.0, min(2.0, $value / $goal));
+    }
+
+    /** @param array<string, mixed> $c */
+    private function goalData(int $userId, array $c): array
+    {
+        $metric = $this->metricOrNull($userId, (int) $c['metric_id']);
+        if ($metric === null) {
+            return self::missingMetric();
+        }
+        $goalRaw = $metric['config']['goal'] ?? null;
+        $goal = is_numeric($goalRaw) ? (float) $goalRaw : null;
+        $view = (string) ($c['view'] ?? 'day');
+        $id = (int) $metric['id'];
+        if ($goal === null || $goal <= 0.0) {
+            return [
+                'metric_ids' => [$id],
+                'metric'     => $metric,
+                'view'       => $view,
+                'error'      => 'Set a goal on this metric to show progress.',
+            ];
+        }
+
+        $today = $this->clock->today();
+        if ($view === 'week') {
+            $start = HabitService::weekStart($today);
+            $end = Clock::shiftDate($start, -6);
+            $byDate = [];
+            foreach ($this->points->series($userId, $id, 'day', 'last', $start, $end) as $row) {
+                $byDate[$row['bucket']] = $row['value'];
+            }
+            $days = [];
+            for ($i = 0; $i < 7; $i++) {
+                $date = Clock::shiftDate($start, -$i);
+                $value = array_key_exists($date, $byDate) ? (float) $byDate[$date] : null;
+                $ratio = self::goalRatio($value, $goal);
+                $days[] = [
+                    'date'    => $date,
+                    'label'   => (new \DateTimeImmutable($date . ' 12:00:00 UTC'))->format('D'),
+                    'value'   => $value,
+                    'ratio'   => $ratio,
+                    'percent' => (int) round($ratio * 100),
+                    'today'   => $date === $today,
+                    'future'  => $date > $today,
+                ];
+            }
+            return [
+                'metric_ids' => [$id],
+                'view'       => 'week',
+                'metric'     => $metric,
+                'today'      => $today,
+                'goal'       => $goal,
+                'days'       => $days,
+            ];
+        }
+
+        $value = $this->points->aggregate($userId, $id, 'last', $today, $today);
+        $ratio = self::goalRatio($value, $goal);
+        return [
+            'metric_ids' => [$id],
+            'view'       => 'day',
+            'metric'     => $metric,
+            'today'      => $today,
+            'goal'       => $goal,
+            'value'      => $value,
+            'ratio'      => $ratio,
+            'percent'    => (int) round($ratio * 100),
         ];
     }
 

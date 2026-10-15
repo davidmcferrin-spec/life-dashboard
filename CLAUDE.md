@@ -40,7 +40,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] `Widgets\WidgetTypeRegistry` (strict config schemas — reused by L2 MCP), `WidgetService` (grid CRUD, versioned config + rollback, layout save, one-time seed from legacy prefs), `WidgetDataService` (server-side widget payloads)
 - [x] `/api/v1` (`Api\V1\ApiV1`): metrics, datapoints, series, habits, widget types, widgets, revisions/rollback, layout, realtime token
 - [x] Dashboard rebuilt on GridStack 12.6.0 (vendored): Edit layout → drag/resize/add/configure/remove; history tab restores old configs; 1 column < 700 px (edit disabled there)
-- [x] Native widgets: habits, mood, stat, chart (SVG line/bar), gauge, table, streak (`lifedash-renderers.js`); legacy widgets are singleton `legacy.*` types wrapping `templates/partials/widgets/*.php`
+- [x] Native widgets: habits, mood, stat, chart (SVG line/bar), gauge, goal (day or week vs a number metric's goal), table, streak (`lifedash-renderers.js`); legacy widgets are singleton `legacy.*` types wrapping `templates/partials/widgets/*.php`
 - [x] `/settings/trackers` — create/edit/reorder/archive habits and other metrics; mood (1–5) auto-created per user
 - [x] Realtime: `services/lifedash/push.py` (`lifedash-push.service`, 127.0.0.1:8766, Apache `/ws`) — HMAC ticket as first frame, per-user fan-out, resync after DB reconnect; browser falls back to 60 s polling
 - [x] Old widget visibility/columns/height settings removed (grid is the source of truth); `dashboard-widgets.js` deleted

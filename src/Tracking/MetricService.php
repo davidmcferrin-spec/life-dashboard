@@ -11,7 +11,7 @@ use Dashboard\Support\ValidationException;
 /**
  * MetricService — what a user tracks. Kinds:
  *
- *   habit     one 0/1 entry per local day            config: emoji, color, target_per_week, description
+ *   habit     one 0/1 entry per local day            config: emoji, color, target_per_week, description, goal_metric_id, goal_threshold
  *   scale     bounded integer rating (e.g. mood 1–5) config: min, max, labels{value:label}, emoji
  *   number    free numeric value                     config: decimals, goal, goal_direction
  *   duration  seconds                                config: goal_seconds
@@ -221,7 +221,7 @@ final class MetricService
     public static function validateConfig(string $kind, array $config): array
     {
         $allowed = match ($kind) {
-            'habit'    => ['emoji', 'color', 'target_per_week', 'description'],
+            'habit'    => ['emoji', 'color', 'target_per_week', 'description', 'goal_metric_id', 'goal_threshold'],
             'scale'    => ['min', 'max', 'labels', 'emoji', 'color', 'description'],
             'number'   => ['decimals', 'goal', 'goal_direction', 'color', 'description'],
             'duration' => ['goal_seconds', 'color', 'description'],
@@ -264,6 +264,15 @@ final class MetricService
                 if (isset($config['target_per_week'])) {
                     $t = self::intIn($config['target_per_week'], 1, 7, 'config.target_per_week');
                     $out['target_per_week'] = $t;
+                }
+                if (array_key_exists('goal_metric_id', $config) && $config['goal_metric_id'] !== null && $config['goal_metric_id'] !== '') {
+                    $out['goal_metric_id'] = self::intIn($config['goal_metric_id'], 1, PHP_INT_MAX, 'config.goal_metric_id');
+                }
+                if (array_key_exists('goal_threshold', $config) && $config['goal_threshold'] !== null && $config['goal_threshold'] !== '') {
+                    if (!is_numeric($config['goal_threshold'])) {
+                        throw ValidationException::withFields(['config.goal_threshold' => 'Threshold must be a number.']);
+                    }
+                    $out['goal_threshold'] = (float) $config['goal_threshold'];
                 }
                 break;
 

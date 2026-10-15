@@ -48,6 +48,17 @@ final class WidgetRegistryTest extends TestCase
         );
         self::assertSame(['metric_ids' => [], 'days' => '7'], WidgetTypeRegistry::validateConfig('habits', [], self::finder()));
         self::assertSame(['days' => '30'], WidgetTypeRegistry::validateConfig('mood', ['metric_id' => ''], self::finder()), 'empty = default Mood');
+        self::assertSame(['metric_id' => 1, 'view' => 'week'], WidgetTypeRegistry::validateConfig('goal', ['metric_id' => '1', 'view' => 'week'], self::finder()));
+    }
+
+    public function testGoalRatioCapsAtDoubleTheGoal(): void
+    {
+        self::assertSame(0.0, WidgetDataService::goalRatio(null, 3000));
+        self::assertSame(0.0, WidgetDataService::goalRatio(-40.0, 3000));
+        self::assertSame(0.5, WidgetDataService::goalRatio(1500.0, 3000));
+        self::assertSame(1.0, WidgetDataService::goalRatio(3000.0, 3000));
+        self::assertSame(1.5, WidgetDataService::goalRatio(4500.0, 3000));
+        self::assertSame(2.0, WidgetDataService::goalRatio(9000.0, 3000));
     }
 
     /**
@@ -65,6 +76,8 @@ final class WidgetRegistryTest extends TestCase
         yield 'too many metrics'     => ['chart', ['metric_ids' => [1, 2, 3, 1, 2]], 'config.metric_ids'];
         yield 'metrics not a list'   => ['chart', ['metric_ids' => ['a' => 1]], 'config.metric_ids'];
         yield 'gauge max <= min'     => ['gauge', ['metric_id' => 1, 'min' => 10, 'max' => 10], 'config.max'];
+        yield 'goal needs number'    => ['goal', ['metric_id' => 2], 'config.metric_id'];
+        yield 'goal view'            => ['goal', ['metric_id' => 1, 'view' => 'month'], 'config.view'];
         yield 'legacy takes no cfg'  => ['legacy.weather', ['city' => 'x'], 'config'];
         yield 'unknown type'         => ['nope', [], 'type'];
     }

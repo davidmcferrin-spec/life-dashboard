@@ -105,7 +105,9 @@ TOOLS: list[dict[str, Any]] = [
             "Create a habit on the dashboard. key (or slug) is idempotent: if that key already "
             "exists, the existing habit is returned unchanged. frequency defaults to daily. "
             "Also accepts weekdays, weekly, or a number 1–7 (days per week). icon is an emoji. "
-            "color is #rrggbb."
+            "color is #rrggbb. Optional goal_metric_id is a number metric; goal_threshold is the "
+            "day's last value that checks the habit off (omit it to use that metric's goal). "
+            "An existing key is returned unchanged — use update_habit to link it."
         ),
         "inputSchema": {
             "type": "object",
@@ -118,6 +120,8 @@ TOOLS: list[dict[str, Any]] = [
                 "frequency": {"type": ["string", "integer"]},
                 "target": {"type": ["string", "integer"]},
                 "sort_order": {"type": "integer"},
+                "goal_metric_id": {"type": "integer"},
+                "goal_threshold": {"type": "number"},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -125,7 +129,12 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "update_habit",
-        "description": "Change a habit's name, icon, color, frequency, or sort order. The key cannot change.",
+        "description": (
+            "Change a habit's name, icon, color, frequency, or sort order. The key cannot change. "
+            "goal_metric_id links a number metric; the habit is checked when that day's last value "
+            "reaches goal_threshold (or the metric's goal when threshold is omitted). "
+            "goal_metric_id 0 removes the link. A manual toggle still works."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -136,6 +145,8 @@ TOOLS: list[dict[str, Any]] = [
                 "frequency": {"type": ["string", "integer"]},
                 "target": {"type": ["string", "integer"]},
                 "sort_order": {"type": "integer"},
+                "goal_metric_id": {"type": "integer"},
+                "goal_threshold": {"type": "number"},
             },
             "required": ["metric_id"],
             "additionalProperties": False,
@@ -173,7 +184,11 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "widget_data",
-        "description": "What a widget is currently showing, including the latest YouTube, Reddit, and X cards.",
+        "description": (
+            "What a widget is currently showing, including the latest YouTube, Reddit, and X cards. "
+            "A goal widget returns view (day or week), the metric, goal, today's value or one cell "
+            "per day, ratio capped at 2 (200%), and percent."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"widget_id": {"type": "integer"}},
@@ -929,10 +944,10 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         body = {"date": args["date"]} if args.get("date") else {}
         return "POST", f"/api/v1/habits/{int(args['metric_id'])}/toggle", body
     if name == "create_habit":
-        body = _pick(args, ("name", "key", "slug", "icon", "color", "frequency", "target", "sort_order"))
+        body = _pick(args, ("name", "key", "slug", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold"))
         return "POST", "/api/v1/habits", body
     if name == "update_habit":
-        body = _pick(args, ("name", "icon", "color", "frequency", "target", "sort_order"))
+        body = _pick(args, ("name", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold"))
         return "POST", f"/api/v1/habits/{int(args['metric_id'])}/update", body
     if name == "archive_habit":
         body = {"archived": bool(args["archived"])} if "archived" in args else {}

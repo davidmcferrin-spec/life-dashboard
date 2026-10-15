@@ -117,6 +117,7 @@
         const c = m.config || {};
         const bits = [m.kind];
         if (m.kind === 'habit' && c.target_per_week) bits.push(`${c.target_per_week}×/week`);
+        if (m.kind === 'habit' && c.goal_metric_id) bits.push(`auto when metric ${c.goal_metric_id} hits ${c.goal_threshold ?? 'its goal'}`);
         if (m.kind === 'scale') bits.push(`${c.min ?? 1}–${c.max ?? 5}`);
         if (m.kind === 'number' && m.unit) bits.push(m.unit);
         if (m.kind === 'number' && c.goal !== undefined) bits.push(`goal ${c.goal}${c.goal_direction === 'down' ? ' ↓' : c.goal_direction === 'up' ? ' ↑' : ''}`);
@@ -248,6 +249,12 @@
         const c = m.config || {};
         const merged = m.kind === 'scale' ? Object.assign({ min: c.min, max: c.max }, v) : v;
         const body = { name: (v.name || '').trim(), config: configFrom(m.kind, merged) };
+        if (m.kind === 'habit') {
+            if (c.goal_metric_id) body.config.goal_metric_id = Number(c.goal_metric_id);
+            if (c.goal_threshold !== undefined && c.goal_threshold !== null && c.goal_threshold !== '') {
+                body.config.goal_threshold = Number(c.goal_threshold);
+            }
+        }
         if (m.kind === 'number') body.unit = (v.unit || '').trim() || null;
         const errEl = f.querySelector('[data-error]');
         errEl.classList.add('hidden');

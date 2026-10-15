@@ -77,6 +77,10 @@ final class TrackingHelpersTest extends TestCase
         );
         self::assertSame(['decimals' => 2, 'goal' => 10000.0, 'goal_direction' => 'up'],
             MetricService::validateConfig('number', ['decimals' => 2, 'goal' => '10000', 'goal_direction' => 'up']));
+        self::assertSame(
+            ['goal_metric_id' => 17, 'goal_threshold' => 3000.0],
+            MetricService::validateConfig('habit', ['goal_metric_id' => '17', 'goal_threshold' => 3000])
+        );
     }
 
     /**
@@ -92,6 +96,8 @@ final class TrackingHelpersTest extends TestCase
         yield 'label out of range' => ['scale', ['labels' => ['9' => 'x']], 'config.labels'];
         yield 'goal not numeric'   => ['number', ['goal' => 'lots'], 'config.goal'];
         yield 'bad direction'      => ['number', ['goal_direction' => 'sideways'], 'config.goal_direction'];
+        yield 'goal metric id'     => ['habit', ['goal_metric_id' => 0], 'config.goal_metric_id'];
+        yield 'goal threshold'     => ['habit', ['goal_threshold' => 'full'], 'config.goal_threshold'];
         yield 'unknown kind'       => ['vibes', [], 'kind'];
     }
 
