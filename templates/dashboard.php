@@ -40,7 +40,8 @@ $starfieldPref  = $prefService->getStarfield($userId);
 $lifedash = Services::fromDatabase($db);
 $lifedash->widgets->ensureSeeded($userId);
 $lifedash->widgets->ensureCompactRow($userId);
-$widgets  = $lifedash->widgets->list($userId);
+$widgets     = $lifedash->widgets->list($userId);
+$wideLayouts = $lifedash->widgets->breakpointLayouts($userId);
 $onBoard  = array_fill_keys(array_column($widgets, 'type'), true);
 $hasAny   = static fn (string ...$types): bool => array_intersect_key($onBoard, array_flip($types)) !== [];
 
@@ -90,7 +91,7 @@ $timezones = [
     </div>
 </nav>
 
-<main class="max-w-screen-xl mx-auto px-4 py-6 space-y-6">
+<main class="dash-main mx-auto py-6 space-y-6">
 
     <!-- -------------------------------------------------------
          TIMEZONE BAR
@@ -153,7 +154,7 @@ $timezones = [
     </section>
 
     <!-- -------------------------------------------------------
-         WIDGET GRID (GridStack, 12 columns; 1 column on narrow screens)
+         WIDGET GRID (12 columns under 1600px, 18 to 3439px, 24 from 3440px; 1 column under 700px)
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
         <div class="ld-toolbar">
@@ -210,6 +211,7 @@ $timezones = [
             <?php endforeach; ?>
         </div>
         <script type="application/json" id="ld-initial"><?= json_encode($widgets, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
+        <script type="application/json" id="ld-layouts"><?= json_encode($wideLayouts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
     </section>
 
 </main>

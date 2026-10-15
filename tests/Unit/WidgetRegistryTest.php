@@ -255,4 +255,51 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(['2026-07-01', '2026-08-01', '2026-09-01'], WidgetDataService::bucketKeys('month', '2026-07-31', '2026-09-25'));
         self::assertCount(365, WidgetDataService::bucketKeys('day', '2025-09-26', '2026-09-25'));
     }
+
+    public function testProjectColumnsFlowsNarrowCardsAndSpansFullBleed(): void
+    {
+        $items = [
+            ['id' => 1, 'x' => 0, 'y' => 0, 'w' => 3, 'h' => 3],
+            ['id' => 2, 'x' => 3, 'y' => 0, 'w' => 3, 'h' => 6],
+            ['id' => 3, 'x' => 6, 'y' => 0, 'w' => 3, 'h' => 5],
+            ['id' => 4, 'x' => 9, 'y' => 0, 'w' => 3, 'h' => 5],
+            ['id' => 5, 'x' => 8, 'y' => 5, 'w' => 4, 'h' => 3],
+            ['id' => 6, 'x' => 0, 'y' => 6, 'w' => 8, 'h' => 8],
+            ['id' => 7, 'x' => 0, 'y' => 20, 'w' => 12, 'h' => 4],
+        ];
+        $same = [];
+        foreach (WidgetService::projectColumns($items, 12) as $row) {
+            $same[$row['id']] = $row;
+        }
+        self::assertSame([8, 5, 4], [$same[5]['x'], $same[5]['y'], $same[5]['w']], '12 columns keep the saved position');
+        self::assertSame(8, $same[6]['w']);
+
+        $wide = [];
+        foreach (WidgetService::projectColumns($items, 18) as $row) {
+            $wide[$row['id']] = $row;
+        }
+        self::assertSame([0, 0, 3], [$wide[1]['x'], $wide[1]['y'], $wide[1]['w']]);
+        self::assertSame([12, 0, 4], [$wide[5]['x'], $wide[5]['y'], $wide[5]['w']], 'a later narrow card joins the first row');
+        self::assertSame(8, $wide[6]['w'], 'an 8-column card is not scaled');
+        self::assertGreaterThan(0, $wide[6]['y']);
+        self::assertSame([0, 18], [$wide[7]['x'], $wide[7]['w']]);
+
+        $ultra = [];
+        foreach (WidgetService::projectColumns($items, 24) as $row) {
+            $ultra[$row['id']] = $row;
+        }
+        self::assertSame([16, 0, 8], [$ultra[6]['x'], $ultra[6]['y'], $ultra[6]['w']]);
+        self::assertSame(24, $ultra[7]['w']);
+        self::assertGreaterThan(0, $ultra[7]['y']);
+
+        $eight = [];
+        for ($i = 1; $i <= 8; $i++) {
+            $eight[] = ['id' => $i, 'x' => (($i - 1) % 4) * 3, 'y' => intdiv($i - 1, 4) * 3, 'w' => 3, 'h' => 3];
+        }
+        $row = WidgetService::projectColumns($eight, 24);
+        self::assertSame(0, $row[0]['y']);
+        self::assertSame(0, $row[7]['y']);
+        self::assertSame(21, $row[7]['x']);
+        self::assertSame(3, $row[7]['w']);
+    }
 }

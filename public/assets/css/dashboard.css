@@ -1710,3 +1710,36 @@ html[data-theme="jarvis"] #weather-widget img {
         animation: none;
     }
 }
+
+/* Wide and ultrawide: the dashboard fills the viewport. Header, search and
+   clocks grow with it; the grid column count is chosen in lifedash-grid.js. */
+.dash-main {
+    box-sizing: border-box;
+    max-width: none;
+    padding-left: clamp(1rem, 1.4vw, 2.75rem);
+    padding-right: clamp(1rem, 1.4vw, 2.75rem);
+    width: 100%;
+}
+
+@media (min-width: 1600px) {
+    .chrome {
+        padding-left: clamp(1.5rem, 1.6vw, 3rem);
+        padding-right: clamp(1.5rem, 1.6vw, 3rem);
+    }
+    .brand { font-size: clamp(0.85rem, 0.55vw, 1.15rem); }
+    .nav-meta { font-size: clamp(0.8rem, 0.5vw, 1.05rem); }
+    #timezone-bar { gap: clamp(2.75rem, 2.6vw, 6rem); }
+    .clock-label { font-size: clamp(0.8rem, 0.5vw, 1rem); }
+    .clock-time { font-size: clamp(1.4rem, 1.15vw, 2.15rem); }
+    .clock-ampm { font-size: clamp(0.8rem, 0.5vw, 1.05rem); }
+    html[data-theme="jarvis"] .clock-time { font-size: clamp(1.6rem, 1.35vw, 2.5rem); }
+    html[data-theme="jarvis"] .clock-label { font-size: clamp(0.8rem, 0.5vw, 1rem); }
+    #search-form,
+    #local-search { max-width: min(72rem, 46vw); }
+    .search-input {
+        font-size: clamp(1.05rem, 0.7vw, 1.4rem);
+        padding: 1rem 1.75rem;
+    }
+    .broadcast-week-line { max-width: min(64rem, 50vw); }
+    .broadcast-week-primary { font-size: clamp(0.95rem, 0.65vw, 1.3rem); }
+}

@@ -23,6 +23,9 @@ use Dashboard\Tracking\MetricService;
 final class WidgetService
 {
     public const COLUMNS = 12;
+    /** Display columns above the canonical 12. Positions for these live in user preferences. */
+    public const WIDE_COLUMNS = [18, 24];
+    public const COLUMN_MAX = 24;
     public const MAX_WIDGETS = 60;
     public const BOARD = 'home';
     public const CHANGERS = ['user', 'ai', 'system'];
@@ -238,7 +241,15 @@ final class WidgetService
 
         return $this->db->transaction(function (Database $db) use ($userId, $clean): int {
             $n = 0;
+            $geometry = false;
             foreach ($clean as [$id, $x, $y, $w, $h, $locked]) {
+                $prev = $db->fetchOne(
+                    'SELECT grid_x, grid_y, grid_w FROM dashboard_widgets WHERE id = ? AND user_id = ?',
+                    [$id, $userId]
+                );
+                if ($prev !== null && ((int) $prev['grid_x'] !== $x || (int) $prev['grid_y'] !== $y || (int) $prev['grid_w'] !== $w)) {
+                    $geometry = true;
+                }
                 if ($locked === null) {
                     $n += $db->execute(
                         "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
@@ -253,8 +264,180 @@ final class WidgetService
                     [$x, $y, $w, $h, $locked, $id, $userId, $x, $y, $w, $h, $locked]
                 );
             }
+            // A real 12-column move makes a saved wide arrangement stale. Height-only
+            // writes (auto-fit) leave those arrangements in place.
+            if ($geometry) {
+                self::clearWideLayouts($db, $userId);
+            }
             return $n;
         });
+    }
+
+    /**
+     * Persist only row heights. Used when a wide screen auto-fits, so the
+     * 12-column x/y/w and any saved wide arrangement stay as they are.
+     *
+     * @param list<array{id: mixed, h: mixed, height_locked?: mixed}> $items
+     */
+    public function saveHeights(int $userId, array $items): int
+    {
+        if (count($items) > self::MAX_WIDGETS) {
+            throw new ValidationException('Too many layout items.');
+        }
+        $clean = [];
+        foreach ($items as $i => $it) {
+            if (!is_array($it)) {
+                throw ValidationException::withFields(["items.{$i}" => 'Invalid item.']);
+            }
+            $id = filter_var($it['id'] ?? null, FILTER_VALIDATE_INT);
+            $h  = filter_var($it['h'] ?? null, FILTER_VALIDATE_INT);
+            if ($id === false || $h === false || $h < 1 || $h > 24) {
+                throw ValidationException::withFields(["items.{$i}" => 'Height out of range (1–24).']);
+            }
+            $locked = null;
+            if (array_key_exists('height_locked', $it)) {
+                $flag = filter_var($it['height_locked'], FILTER_VALIDATE_INT);
+                if ($flag !== 0 && $flag !== 1) {
+                    throw ValidationException::withFields(["items.{$i}.height_locked" => 'height_locked must be 0 or 1.']);
+                }
+                $locked = $flag;
+            }
+            $clean[] = [$id, $h, $locked];
+        }
+
+        return $this->db->transaction(function (Database $db) use ($userId, $clean): int {
+            $n = 0;
+            foreach ($clean as [$id, $h, $locked]) {
+                if ($locked === null) {
+                    $n += $db->execute(
+                        "UPDATE dashboard_widgets SET grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                         WHERE id = ? AND user_id = ? AND grid_h IS DISTINCT FROM ?",
+                        [$h, $id, $userId, $h]
+                    );
+                    continue;
+                }
+                $n += $db->execute(
+                    "UPDATE dashboard_widgets SET grid_h = ?, height_locked = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                     WHERE id = ? AND user_id = ? AND (grid_h, height_locked) IS DISTINCT FROM (?, ?)",
+                    [$h, $locked, $id, $userId, $h, $locked]
+                );
+            }
+            return $n;
+        });
+    }
+
+    public static function layoutPrefKey(int $columns): string
+    {
+        return 'dashboard_layout_' . $columns;
+    }
+
+    /**
+     * Saved drag/resize for one wide breakpoint. Missing or unreadable prefs
+     * come back as an empty list so the client projects from the 12-column layout.
+     *
+     * @return array{18: list<array{id: int, x: int, y: int, w: int, h: int}>, 24: list<array{id: int, x: int, y: int, w: int, h: int}>}
+     */
+    public function breakpointLayouts(int $userId): array
+    {
+        $keys = [];
+        foreach (self::WIDE_COLUMNS as $columns) {
+            $keys[self::layoutPrefKey($columns)] = $columns;
+        }
+        $rows = $this->db->fetchAll(
+            'SELECT pref_key, pref_value FROM user_preferences WHERE user_id = ? AND pref_key IN ('
+            . implode(', ', array_fill(0, count($keys), '?')) . ')',
+            array_merge([$userId], array_keys($keys))
+        );
+        $byKey = [];
+        foreach ($rows as $row) {
+            $byKey[(string) $row['pref_key']] = (string) $row['pref_value'];
+        }
+        $out = [];
+        foreach (self::WIDE_COLUMNS as $columns) {
+            $out[(string) $columns] = self::decodeLayout($byKey[self::layoutPrefKey($columns)] ?? null, $columns);
+        }
+        return $out;
+    }
+
+    /**
+     * Remember a wide-screen arrangement. Canonical grid_x/grid_w are not written
+     * (the 12-column check constraint would reject them).
+     *
+     * @param list<array{id: mixed, x: mixed, y: mixed, w: mixed, h: mixed}> $items
+     */
+    public function saveBreakpointLayout(int $userId, int $columns, array $items): void
+    {
+        if (!in_array($columns, self::WIDE_COLUMNS, true)) {
+            throw ValidationException::withFields(['columns' => 'columns must be 18 or 24.']);
+        }
+        if (count($items) > self::MAX_WIDGETS) {
+            throw new ValidationException('Too many layout items.');
+        }
+        $clean = [];
+        foreach ($items as $i => $it) {
+            if (!is_array($it)) {
+                throw ValidationException::withFields(["items.{$i}" => 'Invalid item.']);
+            }
+            $id = filter_var($it['id'] ?? null, FILTER_VALIDATE_INT);
+            $w  = filter_var($it['w'] ?? null, FILTER_VALIDATE_INT);
+            $h  = filter_var($it['h'] ?? null, FILTER_VALIDATE_INT);
+            $x  = filter_var($it['x'] ?? null, FILTER_VALIDATE_INT);
+            $y  = filter_var($it['y'] ?? null, FILTER_VALIDATE_INT);
+            if ($id === false || $w === false || $h === false || $x === false || $y === false
+                || $w < 1 || $w > $columns || $h < 1 || $h > 24 || $x < 0 || $x + $w > $columns || $y < 0 || $y > 10000) {
+                throw ValidationException::withFields(["items.{$i}" => "Position out of range ({$columns}-column grid, height 1–24)."]);
+            }
+            $clean[] = ['id' => $id, 'x' => $x, 'y' => $y, 'w' => $w, 'h' => $h];
+        }
+        (new PreferenceService($this->db))->set(
+            $userId,
+            self::layoutPrefKey($columns),
+            json_encode($clean, JSON_THROW_ON_ERROR)
+        );
+    }
+
+    private static function clearWideLayouts(Database $db, int $userId): void
+    {
+        $keys = array_map([self::class, 'layoutPrefKey'], self::WIDE_COLUMNS);
+        $db->execute(
+            'DELETE FROM user_preferences WHERE user_id = ? AND pref_key IN (' . implode(', ', array_fill(0, count($keys), '?')) . ')',
+            array_merge([$userId], $keys)
+        );
+    }
+
+    /**
+     * @return list<array{id: int, x: int, y: int, w: int, h: int}>
+     */
+    private static function decodeLayout(?string $raw, int $columns): array
+    {
+        if ($raw === null || $raw === '') {
+            return [];
+        }
+        try {
+            $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return [];
+        }
+        if (!is_array($data) || !array_is_list($data)) {
+            return [];
+        }
+        $out = [];
+        foreach ($data as $it) {
+            if (!is_array($it)) {
+                return [];
+            }
+            $id = filter_var($it['id'] ?? null, FILTER_VALIDATE_INT);
+            $x  = filter_var($it['x'] ?? null, FILTER_VALIDATE_INT);
+            $y  = filter_var($it['y'] ?? null, FILTER_VALIDATE_INT);
+            $w  = filter_var($it['w'] ?? null, FILTER_VALIDATE_INT);
+            $h  = filter_var($it['h'] ?? null, FILTER_VALIDATE_INT);
+            if ($id === false || $x === false || $y === false || $w === false || $h === false
+                || $w < 1 || $w > $columns || $x < 0 || $x + $w > $columns || $h < 1 || $h > 24 || $y < 0) {
+                return [];
+            }
+            $out[] = ['id' => $id, 'x' => $x, 'y' => $y, 'w' => $w, 'h' => $h];
+        }
+        return $out;
     }
 
     /**
@@ -332,6 +515,51 @@ final class WidgetService
             $nodes[$i]['y'] = $y;
         }
         return $nodes;
+    }
+
+    /**
+     * Flow a 12-column layout onto a wider grid.
+     * Each card keeps its stored column count, so a 3-column card stays 3 and
+     * more of them share a row. A card that already spans the canonical grid
+     * spans the new one. At 12 columns the positions are unchanged.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    public static function projectColumns(array $items, int $columns): array
+    {
+        $columns = max(1, $columns);
+        $nodes = array_values($items);
+        usort($nodes, static function (array $a, array $b): int {
+            return [(int) ($a['y'] ?? 0), (int) ($a['x'] ?? 0), (int) ($a['id'] ?? 0)]
+                <=> [(int) ($b['y'] ?? 0), (int) ($b['x'] ?? 0), (int) ($b['id'] ?? 0)];
+        });
+        if ($columns === self::COLUMNS) {
+            return $nodes;
+        }
+        $x = 0;
+        $y = 0;
+        $rowH = 0;
+        $out = [];
+        foreach ($nodes as $it) {
+            $storedW = max(1, (int) ($it['w'] ?? 1));
+            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+            $w = $storedW >= self::COLUMNS ? $columns : max(1, min($columns, $storedW));
+            if ($x > 0 && $x + $w > $columns) {
+                $y += $rowH;
+                $x = 0;
+                $rowH = 0;
+            }
+            $row = $it;
+            $row['x'] = $x;
+            $row['y'] = $y;
+            $row['w'] = $w;
+            $row['h'] = $h;
+            $out[] = $row;
+            $x += $w;
+            $rowH = max($rowH, $h);
+        }
+        return $out;
     }
 
     /**
