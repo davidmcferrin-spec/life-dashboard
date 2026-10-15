@@ -865,41 +865,82 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
     text-shadow: none;
 }
 
-/* Goal progress. Fill uses the user accent; past the goal it blends toward --ok, capped at 200%. */
-.ld-w-body:has(.ld-goal-day),
-.ld-w-body:has(.ld-goal-week) {
+/* Goals. Fill uses the user accent; past the goal it blends toward --ok, capped at 200%. */
+.ld-goal-list {
+    --ld-goal-over: color-mix(in srgb, var(--ok) 72%, var(--hud-accent, var(--accent)));
     display: flex;
     flex-direction: column;
+    gap: 0.45rem;
 }
-.ld-goal { display: flex; flex-direction: column; gap: 0.55rem; }
-.ld-h-lock .ld-goal,
-.size-to-content-max .ld-goal { flex: 1 1 auto; min-height: 0; }
-.ld-goal-day {
-    align-items: stretch;
+.ld-goal-row {
+    align-items: center;
     display: grid;
+    gap: 0.45rem 0.55rem;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    min-height: 2.65rem;
+}
+.ld-goal-list.is-week .ld-goal-row,
+.ld-goal-row.is-count {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.ld-goal-list.is-single.is-day .ld-goal-row { min-height: 3.6rem; }
+.ld-goal-ico {
+    align-items: center;
+    background: color-mix(in srgb, var(--hud-accent, var(--accent)) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 45%, var(--surface-border));
+    border-radius: 999px;
+    display: flex;
     flex: 0 0 auto;
-    gap: 0.85rem;
-    grid-template-columns: 4.25rem minmax(0, 1fr);
-    padding: 0.15rem 0.1rem 0.15rem;
+    font-size: 1rem;
+    height: 2rem;
+    justify-content: center;
+    line-height: 1;
+    width: 2rem;
 }
-.ld-h-lock .ld-goal-day,
-.size-to-content-max .ld-goal-day {
-    flex: 1 1 auto;
-    grid-template-rows: 1fr;
-    min-height: 6.5rem;
+.ld-goal-list.is-single .ld-goal-ico { font-size: 1.2rem; height: 2.35rem; width: 2.35rem; }
+.ld-goal-letter {
+    color: var(--hud-accent, var(--accent));
+    font-family: 'Rajdhani', 'IBM Plex Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
 }
-.ld-goal-tank,
+.ld-goal-copy { min-width: 0; }
+.ld-goal-name {
+    color: var(--text-primary);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 1.1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.ld-goal-nums {
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ld-goal-list.is-single .ld-goal-nums { font-size: 0.78rem; }
+.ld-goal-track,
 .ld-goal-cell {
     --ld-goal-over: color-mix(in srgb, var(--ok) 72%, var(--hud-accent, var(--accent)));
-    background: color-mix(in srgb, var(--hud-accent, var(--accent)) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 45%, var(--surface-border));
-    border-radius: 0.35rem;
+    background: color-mix(in srgb, var(--hud-accent, var(--accent)) 10%, transparent);
+    border-radius: 999px;
     overflow: hidden;
     position: relative;
 }
-.ld-goal-tank { height: 6.5rem; }
-.ld-h-lock .ld-goal-tank,
-.size-to-content-max .ld-goal-tank { height: 100%; }
+.ld-goal-track {
+    height: 0.38rem;
+    margin-top: 0.28rem;
+}
+.ld-goal-list.is-single .ld-goal-track { height: 0.5rem; }
 .ld-goal-fill {
     background: color-mix(
         in srgb,
@@ -907,36 +948,67 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
         var(--ld-goal-over) calc(var(--goal-over, 0) * 100%)
     );
     bottom: 0;
-    height: var(--goal-fill, 0%);
     left: 0;
     position: absolute;
-    right: 0;
+    top: 0;
+    width: var(--goal-fill, 0%);
 }
-.ld-goal-readout { min-width: 0; }
-.ld-goal-unit {
-    font-size: 0.72rem;
-    letter-spacing: 0.06em;
-    margin-left: 0.25rem;
-    opacity: 0.75;
+.ld-goal-ring {
+    flex: 0 0 auto;
+    height: 2.15rem;
+    transform: rotate(-90deg);
+    width: 2.15rem;
+}
+.ld-goal-list.is-single .ld-goal-ring { height: 2.7rem; width: 2.7rem; }
+.ld-goal-ring-track,
+.ld-goal-ring-value { fill: none; stroke-width: 3.4; }
+.ld-goal-ring-track { stroke: color-mix(in srgb, var(--hud-accent, var(--accent)) 22%, transparent); }
+.ld-goal-ring-value {
+    stroke: color-mix(
+        in srgb,
+        var(--hud-accent, var(--accent)) calc((1 - var(--goal-over, 0)) * 100%),
+        var(--ld-goal-over) calc(var(--goal-over, 0) * 100%)
+    );
+    stroke-linecap: round;
+}
+.ld-goal-pips {
+    align-items: center;
+    display: flex;
+    gap: 0.22rem;
+    margin-top: 0.28rem;
+}
+.ld-goal-pip {
+    background: color-mix(in srgb, var(--hud-accent, var(--accent)) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 40%, var(--surface-border));
+    border-radius: 999px;
+    height: 0.55rem;
+    width: 0.55rem;
+}
+.ld-goal-pip.is-extra-first { margin-left: 0.28rem; }
+.ld-goal-pip.is-on {
+    background: var(--hud-accent, var(--accent));
+    border-color: var(--hud-accent, var(--accent));
+}
+.ld-goal-pip.is-on.is-over {
+    background: var(--ld-goal-over);
+    border-color: var(--ld-goal-over);
 }
 .ld-goal-week {
     display: grid;
-    flex: 0 0 auto;
-    gap: 0.35rem;
+    gap: 0.2rem;
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    margin-top: 0.22rem;
 }
-.ld-h-lock .ld-goal-week,
-.size-to-content-max .ld-goal-week { flex: 1 1 auto; min-height: 6.5rem; }
 .ld-goal-cell {
+    border-radius: 0.22rem;
     display: flex;
     flex-direction: column;
-    height: 6.5rem;
+    height: 1.65rem;
+    justify-content: space-between;
 }
-.ld-h-lock .ld-goal-cell,
-.size-to-content-max .ld-goal-cell { height: 100%; }
-.ld-goal-cell.is-today {
-    box-shadow: 0 0 0 1px var(--hud-accent, var(--accent));
-}
+.ld-goal-list.is-single .ld-goal-cell { height: 2.15rem; }
+.ld-goal-cell .ld-goal-fill { width: 100%; height: var(--goal-fill, 0%); top: auto; }
+.ld-goal-cell.is-today { box-shadow: 0 0 0 1px var(--hud-accent, var(--accent)); }
 .ld-goal-cell.is-future { opacity: 0.4; }
 .ld-goal-dow,
 .ld-goal-cap {
@@ -946,33 +1018,62 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
 }
 .ld-goal-dow {
     color: var(--text-secondary);
-    font-size: 0.62rem;
-    letter-spacing: 0.08em;
-    padding-top: 0.28rem;
+    font-size: 0.55rem;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding-top: 0.12rem;
     text-transform: uppercase;
 }
 .ld-goal-cap {
     color: var(--text-primary);
-    font-size: 0.68rem;
-    margin-top: auto;
-    padding-bottom: 0.28rem;
-    text-shadow: 0 0 6px var(--surface);
+    font-size: 0.55rem;
+    line-height: 1;
+    padding-bottom: 0.1rem;
 }
-.ld-w-tools .ld-sub { margin: 0; white-space: nowrap; }
-html[data-theme="jarvis"] .ld-goal-fill {
-    box-shadow: 0 0 14px color-mix(in srgb, var(--hud-accent, var(--accent)) 55%, transparent);
-}
-html[data-theme="jarvis"] .ld-goal-tank.is-over .ld-goal-fill,
-html[data-theme="jarvis"] .ld-goal-cell.is-over .ld-goal-fill {
-    box-shadow: 0 0 16px color-mix(in srgb, var(--ok) 70%, var(--hud-accent, var(--accent)));
-}
-.ld-goal-log {
+.ld-goal-ctl {
     align-items: center;
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
+    flex: 0 0 auto;
+    gap: 0.2rem;
 }
-.ld-goal-adds { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.ld-goal-custom { align-items: center; display: inline-flex; gap: 0.25rem; }
-.ld-goal-custom input { padding: 0.15rem 0.4rem; width: 4.75rem; }
-.ld-goal-undo { min-width: 1.75rem; padding-left: 0.45rem; padding-right: 0.45rem; }
+.ld-goal-ctl .btn {
+    min-width: 1.7rem;
+    padding: 0.15rem 0.4rem;
+    white-space: nowrap;
+}
+.ld-goal-more { letter-spacing: 0; min-width: 1.4rem; padding-left: 0.3rem; padding-right: 0.3rem; }
+.ld-goal-pop {
+    background: color-mix(in srgb, var(--surface, #081426) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 45%, var(--surface-border));
+    border-radius: 0.4rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.45rem;
+    position: fixed;
+    z-index: 80;
+}
+.ld-goal-pop-custom { align-items: center; display: flex; gap: 0.25rem; }
+.ld-goal-pop-custom input { padding: 0.15rem 0.4rem; width: 5rem; }
+.ld-goal-log-cfg { display: flex; flex-direction: column; gap: 0.45rem; }
+.ld-goal-log-row {
+    display: grid;
+    gap: 0.3rem 0.45rem;
+    grid-template-columns: minmax(0, 1fr) 6.5rem 7rem 6.5rem;
+}
+.ld-goal-log-row span { align-self: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ld-w-tools .ld-sub { margin: 0; white-space: nowrap; }
+html[data-theme="jarvis"] .ld-goal-fill,
+html[data-theme="jarvis"] .ld-goal-ring-value,
+html[data-theme="jarvis"] .ld-goal-pip.is-on {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--hud-accent, var(--accent)) 55%, transparent);
+}
+html[data-theme="jarvis"] .ld-goal-pip.is-on.is-over,
+html[data-theme="jarvis"] .ld-goal-cell.is-over .ld-goal-fill {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 70%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .ld-goal-pop {
+    backdrop-filter: blur(10px);
+    background: rgba(6, 14, 28, 0.92);
+}

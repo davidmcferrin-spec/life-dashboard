@@ -93,6 +93,10 @@ def test_money_and_widget_writes():
     assert method == "POST"
     assert path == "/api/v1/widgets/7/update"
     assert body["config"]["sources"] == "news\nprogramming"
+    schema = {tool["name"]: tool for tool in TOOLS}
+    assert "metric_ids" in schema["widget_data"]["description"]
+    assert "config.logs" in schema["save_widget"]["description"]
+    assert "movement:YYYY-MM-DD" in schema["widget_data"]["description"]
 
 
 def test_dashboard_reaches_the_api_and_blocks_tokens_and_trades():

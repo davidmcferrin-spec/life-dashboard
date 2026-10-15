@@ -75,14 +75,13 @@ final class WidgetTypeRegistry
                 ],
             ],
             'goal' => [
-                'label' => 'Goal progress', 'category' => 'tracking', 'singleton' => false,
-                'description' => 'Today, or each day this week, against a number metric\'s goal. Full at 100%, a different shade through 200%. Quick-add buttons log today\'s running total.',
-                'size' => ['w' => 6, 'h' => 3], 'min' => ['w' => 3, 'h' => 2],
+                'label' => 'Goals', 'category' => 'tracking', 'singleton' => false,
+                'description' => 'One to four number metrics in a single card. Each row shows today, or seven days, against its goal (full at 100%, a different shade through 200%). Amount metrics tap to add; count metrics use pips.',
+                'size' => ['w' => 6, 'h' => 3], 'min' => ['w' => 4, 'h' => 2],
                 'fields' => [
-                    'metric_id'     => ['type' => 'metric', 'label' => 'Metric', 'kinds' => ['number'], 'required' => true],
-                    'view'          => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
-                    'increments'    => ['type' => 'string', 'label' => 'Quick-add amounts', 'max' => 64, 'default' => '250,500', 'placeholder' => '250,500'],
-                    'dedupe_prefix' => ['type' => 'string', 'label' => 'Daily key prefix', 'max' => 40, 'default' => '', 'placeholder' => 'blank uses the metric key', 'pattern' => '/^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/'],
+                    'metric_ids' => ['type' => 'metrics', 'label' => 'Goals', 'kinds' => ['number'], 'min_items' => 1, 'max_items' => 4],
+                    'view'       => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
+                    'logs'       => ['type' => 'goal_logs', 'label' => 'Quick-add'],
                 ],
             ],
             'gauge' => [
@@ -306,6 +305,10 @@ final class WidgetTypeRegistry
         $def    = self::get($type);
         $fields = $def['fields'] ?? [];
 
+        if ($type === 'goal') {
+            $config = GoalLog::acceptLegacy($config);
+        }
+
         $unknown = array_diff(array_keys($config), array_keys($fields));
         if ($unknown !== []) {
             throw ValidationException::withFields(['config' => 'Unknown config keys for ' . $type . ': ' . implode(', ', $unknown) . '.']);
@@ -390,6 +393,10 @@ final class WidgetTypeRegistry
                         $out[$name] = array_values(array_unique($ids));
                         break;
 
+                    case 'goal_logs':
+                        $out[$name] = self::goalLogs($value);
+                        break;
+
                     default:
                         throw new \LogicException("Unhandled field type {$f['type']}.");
                 }
@@ -410,11 +417,7 @@ final class WidgetTypeRegistry
             MediaSources::parse($type, (string) ($out['sources'] ?? ''));
         }
         if ($type === 'goal') {
-            try {
-                $out['increments'] = GoalLog::formatIncrements(GoalLog::parseIncrements((string) ($out['increments'] ?? '')));
-            } catch (\DomainException $e) {
-                throw ValidationException::withFields(['config.increments' => $e->getMessage()]);
-            }
+            $out['logs'] = self::fillGoalLogs($out['metric_ids'] ?? [], $out['logs'] ?? [], $findMetric);
         }
 
         return $out;
@@ -428,6 +431,9 @@ final class WidgetTypeRegistry
      */
     public static function metricRefs(string $type, array $config): array
     {
+        if ($type === 'goal') {
+            return GoalLog::metricIds($config);
+        }
         $ids = [];
         foreach (self::get($type)['fields'] ?? [] as $name => $f) {
             if ($f['type'] === 'metric' && isset($config[$name])) {
@@ -468,6 +474,56 @@ final class WidgetTypeRegistry
             'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => 3, 'h' => 2],
             'fields' => [],
         ];
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private static function goalLogs(mixed $value): array
+    {
+        if ($value === null || $value === []) {
+            return [];
+        }
+        if (!is_array($value) || array_is_list($value)) {
+            throw new \DomainException('Quick-add settings must be an object keyed by metric id.');
+        }
+        $out = [];
+        foreach ($value as $key => $row) {
+            $id = filter_var($key, FILTER_VALIDATE_INT);
+            if ($id === false || $id < 1) {
+                throw new \DomainException('Quick-add keys must be metric ids.');
+            }
+            if (!is_array($row) || array_is_list($row)) {
+                throw new \DomainException('Each quick-add entry must be an object.');
+            }
+            $out[(string) $id] = GoalLog::cleanLogRow($row);
+        }
+        return $out;
+    }
+
+    /**
+     * @param list<int> $ids
+     * @param array<string, array<string, mixed>> $logs
+     * @param callable(int): ?array<string, mixed> $findMetric
+     * @return array<string, array<string, mixed>>
+     */
+    private static function fillGoalLogs(array $ids, array $logs, callable $findMetric): array
+    {
+        foreach (array_keys($logs) as $key) {
+            if (!in_array((int) $key, $ids, true)) {
+                throw ValidationException::withFields(['config.logs' => 'Quick-add settings must match the chosen metrics.']);
+            }
+        }
+        $filled = [];
+        foreach ($ids as $id) {
+            $entry = $logs[(string) $id] ?? [];
+            $metric = $findMetric($id) ?? ['id' => $id];
+            if (!isset($entry['increments'])) {
+                $entry['increments'] = GoalLog::defaultIncrements($metric, GoalLog::mode($metric, $entry));
+            }
+            $filled[(string) $id] = $entry;
+        }
+        return $filled;
     }
 
     /**

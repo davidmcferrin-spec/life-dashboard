@@ -186,9 +186,12 @@ TOOLS: list[dict[str, Any]] = [
         "name": "widget_data",
         "description": (
             "What a widget is currently showing, including the latest YouTube, Reddit, and X cards. "
-            "A goal widget returns view (day or week), the metric, goal, today's value or one cell "
-            "per day, ratio capped at 2 (200%), percent, increments, and dedupe_key. "
-            "The dashboard logs today's running total on that key (water_ml uses water:YYYY-MM-DD); last value wins."
+            "A goal widget returns view (day or week) and goals, one per metric (1–4): mode amount or count, "
+            "goal, today's value, ratio capped at 2 (200%), percent, increments, dedupe_key, and pips for a count. "
+            "Week view adds seven day cells on each goal. "
+            "config.metric_ids lists the metrics. config.logs, keyed by metric id, stores mode, increments, and dedupe_prefix. "
+            "POST /widgets/{id}/goal-log with delta and metric_id writes today's running total "
+            "(water_ml uses water:YYYY-MM-DD, movement_sessions uses movement:YYYY-MM-DD); last value wins."
         ),
         "inputSchema": {
             "type": "object",
@@ -217,6 +220,9 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Create a widget, or update it when widget_id is set. "
             "youtube, reddit, and x use config.sources with one channel, subreddit, or account per line. "
+            "A goal widget uses config.metric_ids (1–4 number metrics), config.view day or week, and "
+            "config.logs keyed by metric id (mode amount or count, increments, dedupe_prefix). "
+            "Amount increments default to 250,500. Count increments default to 1. "
             "On update, send the full config from get_widget so the other settings stay."
         ),
         "inputSchema": {

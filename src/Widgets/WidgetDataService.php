@@ -285,25 +285,67 @@ final class WidgetDataService
     /** @param array<string, mixed> $c */
     private function goalData(int $userId, array $c): array
     {
-        $metric = $this->metricOrNull($userId, (int) $c['metric_id']);
-        if ($metric === null) {
+        $ids = GoalLog::metricIds($c);
+        $view = (string) ($c['view'] ?? 'day');
+        if ($ids === []) {
             return self::missingMetric();
         }
+        $today = $this->clock->today();
+        $goals = [];
+        foreach ($ids as $id) {
+            $metric = $this->metricOrNull($userId, $id);
+            if ($metric === null) {
+                continue;
+            }
+            $goals[] = $this->oneGoal($userId, $c, $metric, $view, $today);
+        }
+        if ($goals === []) {
+            return self::missingMetric();
+        }
+        $payload = [
+            'metric_ids' => array_map(static fn (array $g): int => (int) $g['metric']['id'], $goals),
+            'view'       => $view,
+            'today'      => $today,
+            'goals'      => $goals,
+        ];
+        $errors = array_values(array_filter(array_map(static fn (array $g): ?string => $g['error'] ?? null, $goals)));
+        if (count($errors) === count($goals)) {
+            $payload['error'] = $errors[0];
+        }
+        return $this->mirrorFirstGoal($payload);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @param array<string, mixed> $metric
+     * @return array<string, mixed>
+     */
+    private function oneGoal(int $userId, array $config, array $metric, string $view, string $today): array
+    {
+        $id = (int) $metric['id'];
+        $entry = GoalLog::logEntry($config, $metric);
+        $mode = GoalLog::mode($metric, $entry);
         $goalRaw = $metric['config']['goal'] ?? null;
         $goal = is_numeric($goalRaw) ? (float) $goalRaw : null;
-        $view = (string) ($c['view'] ?? 'day');
-        $id = (int) $metric['id'];
+        $base = [
+            'metric' => $metric,
+            'mode'   => $mode,
+            'icon'   => GoalLog::icon($metric),
+        ];
         if ($goal === null || $goal <= 0.0) {
-            return [
-                'metric_ids' => [$id],
-                'metric'     => $metric,
-                'view'       => $view,
-                'error'      => 'Set a goal on this metric to show progress.',
-            ];
+            return $base + ['error' => 'Set a goal on this metric to show progress.'];
         }
-
-        $today = $this->clock->today();
-        $log = $this->goalLogFields($c, $metric, $today);
+        try {
+            $rawInc = isset($entry['increments']) ? (string) $entry['increments'] : GoalLog::defaultIncrements($metric, $mode);
+            $increments = GoalLog::parseIncrements($rawInc);
+        } catch (\DomainException) {
+            $increments = GoalLog::parseIncrements(GoalLog::defaultIncrements($metric, $mode));
+        }
+        $log = [
+            'increments' => $increments,
+            'dedupe_key' => GoalLog::dedupeKey(GoalLog::prefix($entry, $metric), $today),
+            'pips'       => $mode === 'count' ? GoalLog::pipCount($goal) : 0,
+        ];
         if ($view === 'week') {
             $start = HabitService::weekStart($today);
             $end = Clock::shiftDate($start, -6);
@@ -312,10 +354,14 @@ final class WidgetDataService
                 $byDate[$row['bucket']] = $row['value'];
             }
             $days = [];
+            $todayValue = null;
             for ($i = 0; $i < 7; $i++) {
                 $date = Clock::shiftDate($start, -$i);
                 $value = array_key_exists($date, $byDate) ? (float) $byDate[$date] : null;
                 $ratio = self::goalRatio($value, $goal);
+                if ($date === $today) {
+                    $todayValue = $value;
+                }
                 $days[] = [
                     'date'    => $date,
                     'label'   => (new \DateTimeImmutable($date . ' 12:00:00 UTC'))->format('D'),
@@ -326,37 +372,56 @@ final class WidgetDataService
                     'future'  => $date > $today,
                 ];
             }
-            return [
-                'metric_ids' => [$id],
-                'view'       => 'week',
-                'metric'     => $metric,
-                'today'      => $today,
-                'goal'       => $goal,
-                'days'       => $days,
-            ] + $log;
+            $ratio = self::goalRatio($todayValue, $goal);
+            return $base + $log + [
+                'goal'    => $goal,
+                'value'   => $todayValue,
+                'ratio'   => $ratio,
+                'percent' => (int) round($ratio * 100),
+                'days'    => $days,
+            ];
         }
 
         $value = $this->points->aggregate($userId, $id, 'last', $today, $today);
         $ratio = self::goalRatio($value, $goal);
-        return [
-            'metric_ids' => [$id],
-            'view'       => 'day',
-            'metric'     => $metric,
-            'today'      => $today,
-            'goal'       => $goal,
-            'value'      => $value,
-            'ratio'      => $ratio,
-            'percent'    => (int) round($ratio * 100),
-        ] + $log;
+        return $base + $log + [
+            'goal'    => $goal,
+            'value'   => $value,
+            'ratio'   => $ratio,
+            'percent' => (int) round($ratio * 100),
+        ];
+    }
+
+    /**
+     * The first goal is also copied to the top level so a one-metric widget
+     * still reads as value / goal / days.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function mirrorFirstGoal(array $payload): array
+    {
+        $first = $payload['goals'][0] ?? null;
+        if (!is_array($first)) {
+            return $payload;
+        }
+        foreach (['metric', 'goal', 'value', 'ratio', 'percent', 'increments', 'dedupe_key', 'days', 'mode', 'icon', 'pips'] as $key) {
+            if (array_key_exists($key, $first)) {
+                $payload[$key] = $first[$key];
+            }
+        }
+        return $payload;
     }
 
     /**
      * Add or subtract from today's running total and store it on the metric's
-     * daily dedupe key (water_ml uses water:YYYY-MM-DD). Last value wins.
+     * daily dedupe key (water_ml uses water:YYYY-MM-DD, movement_sessions uses
+     * movement:YYYY-MM-DD). Last value wins. metricId is required when the
+     * widget has more than one goal.
      *
-     * @return array{dedupe_key: string, value: float, data: array<string, mixed>}
+     * @return array{dedupe_key: string, value: float, metric_id: int, data: array<string, mixed>}
      */
-    public function adjustGoal(int $userId, int $widgetId, mixed $delta, string $source = 'widget'): array
+    public function adjustGoal(int $userId, int $widgetId, mixed $delta, string $source = 'widget', ?int $metricId = null): array
     {
         $widget = $this->widgets->get($userId, $widgetId);
         if ($widget['type'] !== 'goal') {
@@ -370,15 +435,27 @@ final class WidgetDataService
         }
 
         $config = $widget['config'];
-        $metric = $this->metrics->get($userId, (int) $config['metric_id']);
+        $ids = GoalLog::metricIds($config);
+        if ($metricId === null) {
+            if (count($ids) !== 1) {
+                throw ValidationException::withFields(['metric_id' => 'Choose which goal to log.']);
+            }
+            $metricId = $ids[0];
+        }
+        if (!in_array($metricId, $ids, true)) {
+            throw ValidationException::withFields(['metric_id' => 'That metric is not on this widget.']);
+        }
+
+        $metric = $this->metrics->get($userId, $metricId);
         $today = $this->clock->today();
-        $key = GoalLog::dedupeKey(GoalLog::prefix($config, $metric), $today);
-        $current = $this->points->valueForDedupe($userId, (int) $metric['id'], $key);
+        $entry = GoalLog::logEntry($config, $metric);
+        $key = GoalLog::dedupeKey(GoalLog::prefix($entry, $metric), $today);
+        $current = $this->points->valueForDedupe($userId, $metricId, $key);
         if ($current === null) {
-            $current = $this->points->aggregate($userId, (int) $metric['id'], 'last', $today, $today) ?? 0.0;
+            $current = $this->points->aggregate($userId, $metricId, 'last', $today, $today) ?? 0.0;
         }
         $next = max(0.0, $current + (float) $delta);
-        $this->points->record($userId, (int) $metric['id'], [
+        $this->points->record($userId, $metricId, [
             'value'      => $next,
             'date'       => $today,
             'source'     => $source,
@@ -387,26 +464,9 @@ final class WidgetDataService
 
         return [
             'dedupe_key' => $key,
+            'metric_id'  => $metricId,
             'value'      => $next,
             'data'       => $this->goalData($userId, $config),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     * @param array<string, mixed> $metric
-     * @return array{increments: list<float>, dedupe_key: string}
-     */
-    private function goalLogFields(array $config, array $metric, string $today): array
-    {
-        try {
-            $increments = GoalLog::parseIncrements(isset($config['increments']) ? (string) $config['increments'] : null);
-        } catch (\DomainException) {
-            $increments = GoalLog::parseIncrements(null);
-        }
-        return [
-            'increments' => $increments,
-            'dedupe_key' => GoalLog::dedupeKey(GoalLog::prefix($config, $metric), $today),
         ];
     }
 

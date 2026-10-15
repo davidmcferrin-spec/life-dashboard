@@ -176,7 +176,10 @@ final class ApiV1
         }, 200, true));
         $r->post('/api/v1/widgets/{id}/goal-log', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $source = $this->runner->actor()->kind === 'ai' ? 'ai' : 'widget';
-            return $this->svc->widgetData->adjustGoal($u, self::id($p), $this->body()['delta'] ?? null, $source);
+            $body = $this->body();
+            $raw = $body['metric_id'] ?? null;
+            $metricId = is_numeric($raw) && (int) $raw > 0 ? (int) $raw : null;
+            return $this->svc->widgetData->adjustGoal($u, self::id($p), $body['delta'] ?? null, $source, $metricId);
         }, 200, true));
         $r->post('/api/v1/layout', fn () => $this->run(function (int $u): array {
             $body = $this->body();
