@@ -202,6 +202,9 @@ function widgetItemHtml(item) {
     const level = item.due_urgency || due.urgency?.(item.due_date, item.status);
     const dueClass = due.rowClass?.(level) || '';
     const flag = due.flagHtml?.(level) || '';
+    const pri = item.priority
+        ? `<span class="todo-priority widget-mono-sm text-faint flex-shrink-0" title="Priority ${todoEsc(String(item.priority))}">P${todoEsc(String(item.priority))}</span>`
+        : '';
     const dueLabel = item.due_date && due.formatLabel
         ? `<span class="todo-due-label widget-mono-sm text-faint flex-shrink-0">${todoEsc(due.formatLabel(item.due_date))}</span>`
         : '';
@@ -219,6 +222,7 @@ function widgetItemHtml(item) {
         <div class="todo-line mono text-sm min-w-0${dueClass}" data-id="${item.id}">
             <input type="checkbox" class="todo-widget-check flex-shrink-0" data-id="${item.id}" aria-label="Complete task">
             ${flag}
+            ${pri}
             <span class="${titleClass}" data-id="${item.id}" title="${item.can_edit ? 'Click to edit' : ''}">${todoEsc(item.title)}</span>
             ${details}
             ${dueLabel}

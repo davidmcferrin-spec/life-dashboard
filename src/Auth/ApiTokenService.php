@@ -164,6 +164,24 @@ final class ApiTokenService
     }
 
     /**
+     * A todos-only token is todos:read and todos:write, with no expiry of its own.
+     *
+     * @param list<string> $scopes
+     */
+    public static function isTodosOnly(array $scopes): bool
+    {
+        if ($scopes === [] || in_array('*', $scopes, true)) {
+            return false;
+        }
+        foreach ($scopes as $scope) {
+            if ($scope !== 'todos:read' && $scope !== 'todos:write') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      * @return list<string>
      */
     private static function parseScopes(string $stored): array

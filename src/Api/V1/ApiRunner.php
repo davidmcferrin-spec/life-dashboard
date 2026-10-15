@@ -28,6 +28,9 @@ final class ApiRunner
     /** @var array<string, mixed>|null */
     private ?array $jsonBody = null;
 
+    /** @var list<string>|null null means a browser session, which is unrestricted */
+    private ?array $grantedScopes = null;
+
     public function __construct(
         private readonly Auth $auth,
         private readonly ApiTokenService $tokens,
@@ -43,16 +46,25 @@ final class ApiRunner
     }
 
     /**
-     * @param callable(int): array<string, mixed> $fn
+     * @return list<string>|null
      */
-    public function run(callable $fn, int $status = 200, bool $mutating = false, ?string $scope = null): void
+    public function grantedScopes(): ?array
+    {
+        return $this->grantedScopes;
+    }
+
+    /**
+     * @param callable(int): array<string, mixed> $fn
+     * @param list<string>|string|null $scope one required scope, or any of a list
+     */
+    public function run(callable $fn, int $status = 200, bool $mutating = false, array|string|null $scope = null): void
     {
         try {
             $userId = $this->authenticate($mutating, $scope);
             $payload = $fn($userId);
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
             if ($mutating) {
-                $this->auditCall($userId);
+                $this->auditCall($userId, $payload);
             } elseif ($this->actor()->kind === 'ai' && $method === 'GET' && !self::isMetaRead(self::safePath())) {
                 $this->auditRead($userId);
             }
@@ -89,8 +101,12 @@ final class ApiRunner
         return $data;
     }
 
-    private function authenticate(bool $mutating, ?string $scope): int
+    /**
+     * @param list<string>|string|null $scope
+     */
+    private function authenticate(bool $mutating, array|string|null $scope): int
     {
+        $this->grantedScopes = null;
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
         $path = is_string($path) ? $path : '/';
         $bearer = self::bearerToken();
@@ -104,10 +120,16 @@ final class ApiRunner
             if (Scope::sessionOnly($path)) {
                 throw new ForbiddenException('Creating and revoking tokens requires a signed-in browser session.');
             }
-            if (!str_contains($path, '/agent-prompt') && !str_contains($path, '/audit')) {
+            $this->grantedScopes = $row['scopes'];
+            $legacyAudit = str_contains($path, '/audit') && !str_contains($path, '/audit/log');
+            if (!str_contains($path, '/agent-prompt') && !$legacyAudit) {
                 $required = $scope ?? Scope::forPath($path, $mutating);
-                if (!Scope::allows($row['scopes'], $required)) {
-                    throw new ForbiddenException('Token is missing the ' . $required . ' scope.');
+                $allowed = is_array($required)
+                    ? self::allowsAny($row['scopes'], $required)
+                    : Scope::allows($row['scopes'], $required);
+                if (!$allowed) {
+                    $label = is_array($required) ? implode(' or ', $required) : $required;
+                    throw new ForbiddenException('Token is missing the ' . $label . ' scope.');
                 }
             }
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);
@@ -124,7 +146,10 @@ final class ApiRunner
         return (int) $user['id'];
     }
 
-    private function auditCall(int $userId): void
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function auditCall(int $userId, array $payload): void
     {
         $actor = $this->actor();
         $this->audit->record(
@@ -133,7 +158,7 @@ final class ApiRunner
             $actor->tool,
             'POST',
             self::safePath(),
-            $this->auditDetail('write')
+            $this->auditDetail('write', $payload)
         );
     }
 
@@ -165,21 +190,94 @@ final class ApiRunner
     }
 
     /**
+     * Entity type and id only. Notes, titles, and payees stay out of the log.
+     *
+     * @param array<string, mixed> $payload
      * @return array<string, mixed>
      */
-    private function auditDetail(string $verb): array
+    private function auditDetail(string $verb, array $payload = []): array
     {
         $extra = [];
-        if ($verb === 'read' && str_contains(self::safePath(), '/api/v1/money/')) {
+        $path = self::safePath();
+        if ($verb === 'read' && str_contains($path, '/api/v1/money/')) {
             $filter = self::moneyFilter($_GET);
             if ($filter !== '') {
                 $extra['filter'] = $filter;
+            }
+        }
+        $entity = self::entityFromPath($path);
+        if ($entity !== null) {
+            $extra['entity'] = $entity;
+            $id = self::entityIdFromPayload($payload) ?? self::entityIdFromPath($path);
+            if ($id !== null) {
+                $extra['entity_id'] = $id;
             }
         }
         if ($this->actor()->kind !== 'ai') {
             return $extra;
         }
         return TokenStamp::detail($this->tokenId, $this->tokenName, $verb, $extra);
+    }
+
+    public static function entityFromPath(string $path): ?string
+    {
+        $map = [
+            '/money/category-caps'  => 'budget',
+            '/money/sinking-funds'  => 'sinking_fund',
+            '/money/transactions'   => 'transaction',
+            '/money/accounts'       => 'account',
+            '/money/debts'          => 'debt',
+            '/money/budget'         => 'budget',
+            '/todos/categories'     => 'todo_category',
+            '/todos/items'          => 'todo',
+        ];
+        foreach ($map as $fragment => $entity) {
+            if (str_contains($path, $fragment)) {
+                return $entity;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    public static function entityIdFromPayload(array $payload): ?int
+    {
+        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction'] as $key) {
+            $row = $payload[$key] ?? null;
+            if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
+                return (int) $row['id'];
+            }
+        }
+        foreach (['debt_id', 'account_id', 'sinking_fund_id', 'todo_id', 'entity_id', 'id'] as $key) {
+            if (isset($payload[$key]) && is_numeric($payload[$key]) && (int) $payload[$key] > 0) {
+                return (int) $payload[$key];
+            }
+        }
+        return null;
+    }
+
+    public static function entityIdFromPath(string $path): ?int
+    {
+        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|items|categories)/(\d+)\b#', $path, $m) === 1) {
+            return (int) $m[1];
+        }
+        return null;
+    }
+
+    /**
+     * @param list<string> $granted
+     * @param list<string> $required
+     */
+    private static function allowsAny(array $granted, array $required): bool
+    {
+        foreach ($required as $scope) {
+            if (Scope::allows($granted, $scope)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static function safePath(): string

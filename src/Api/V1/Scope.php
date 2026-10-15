@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\ValidationException;
 
 /**
@@ -18,7 +19,15 @@ final class Scope
 
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
-        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards',
+        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit',
+    ];
+
+    public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
+
+    public const TODO_ENTITIES = ['todo', 'todo_category'];
+
+    public const AUDIT_ENTITIES = [
+        'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category',
     ];
 
     /**
@@ -94,6 +103,35 @@ final class Scope
             return in_array($write, $granted, true);
         }
         return false;
+    }
+
+    /**
+     * Null scopes are a browser session and can read every entity.
+     * audit:read can too. A narrower token is limited to the entities its areas cover.
+     * Returns null when the caller is unrestricted, otherwise the entity names they may see.
+     *
+     * @param list<string>|null $granted
+     * @return list<string>|null
+     */
+    public static function auditEntityAllow(?array $granted, ?string $entity): ?array
+    {
+        if ($entity !== null && !in_array($entity, self::AUDIT_ENTITIES, true)) {
+            throw ValidationException::withFields(['entity' => 'Unknown entity type.']);
+        }
+        if ($granted === null || self::allows($granted, 'audit:read')) {
+            return null;
+        }
+        $allow = [];
+        if (self::allows($granted, 'money:read')) {
+            $allow = array_merge($allow, self::MONEY_ENTITIES);
+        }
+        if (self::allows($granted, 'todos:read')) {
+            $allow = array_merge($allow, self::TODO_ENTITIES);
+        }
+        if ($entity !== null && !in_array($entity, $allow, true)) {
+            throw new ForbiddenException('This token cannot read that audit entity.');
+        }
+        return $allow;
     }
 
     /**
