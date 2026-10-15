@@ -50,6 +50,12 @@ class SystemHealthService
             'staleMinutes'  => 45,
             'scheduleHint'  => 'Every ~30 min',
         ],
+        'reddit' => [
+            'label'         => 'Tracked subreddits',
+            'log'           => 'reddit.log',
+            'staleMinutes'  => 45,
+            'scheduleHint'  => 'Every ~30 min',
+        ],
         'shares' => [
             'label'         => 'Share link purge',
             'log'           => 'shares.log',

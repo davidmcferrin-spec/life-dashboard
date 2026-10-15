@@ -118,9 +118,57 @@ final class WidgetTypeRegistry
                 ],
             ],
             'networth' => [
-                'label' => 'Net worth', 'category' => 'money', 'singleton' => false,
-                'description' => 'Account balances and the recent net-worth line.',
-                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 3],
+                'label' => 'Net worth trend', 'category' => 'money', 'singleton' => false,
+                'description' => 'Net worth over the last year, plus account balances.',
+                'size' => ['w' => 8, 'h' => 4], 'min' => ['w' => 4, 'h' => 3],
+                'fields' => [],
+            ],
+            'baby_step' => [
+                'label' => 'Baby Step', 'category' => 'money', 'singleton' => false,
+                'description' => 'Which of the seven Baby Steps you are on.',
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [],
+            ],
+            'debt_snowball' => [
+                'label' => 'Debt snowball', 'category' => 'money', 'singleton' => false,
+                'description' => 'Debts in payoff order, with the target date and an estimate from the minimum payment.',
+                'size' => ['w' => 6, 'h' => 6], 'min' => ['w' => 4, 'h' => 4],
+                'fields' => [],
+            ],
+            'food_week' => [
+                'label' => 'Food this week', 'category' => 'money', 'singleton' => false,
+                'description' => 'This week\'s Food spending against the weekly cap.',
+                'size' => ['w' => 3, 'h' => 3], 'min' => ['w' => 2, 'h' => 2],
+                'fields' => [],
+            ],
+            'budget_actual' => [
+                'label' => 'Budget vs actual', 'category' => 'money', 'singleton' => false,
+                'description' => 'This month\'s planned lines against what was spent.',
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 3],
+                'fields' => [],
+            ],
+            'sinking_funds' => [
+                'label' => 'Sinking funds', 'category' => 'money', 'singleton' => false,
+                'description' => 'Saved versus target for each sinking fund.',
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 3],
+                'fields' => [],
+            ],
+            'bills_due' => [
+                'label' => 'Bills due', 'category' => 'money', 'singleton' => false,
+                'description' => 'Budget lines and debts whose due day falls in the next 10 days.',
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [],
+            ],
+            'retirement' => [
+                'label' => 'Retirement', 'category' => 'money', 'singleton' => false,
+                'description' => 'Contribution rate next to the 15% target.',
+                'size' => ['w' => 4, 'h' => 3], 'min' => ['w' => 3, 'h' => 2],
+                'fields' => [],
+            ],
+            'credit' => [
+                'label' => 'Credit', 'category' => 'money', 'singleton' => false,
+                'description' => 'Latest credit score and card utilization.',
+                'size' => ['w' => 4, 'h' => 3], 'min' => ['w' => 3, 'h' => 2],
                 'fields' => [],
             ],
             'portfolio' => [
@@ -152,6 +200,15 @@ final class WidgetTypeRegistry
                 'description' => 'Latest posts from subreddits you choose. Cards rotate with a wipe or push.',
                 'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
                 'fields' => self::carouselFields('Subreddits', "One per line\nnews\nr/programming", false),
+            ],
+            'reddit_feed' => [
+                'label' => 'Reddit reader', 'category' => 'media', 'singleton' => false,
+                'description' => 'Recent posts from the subreddits you track on Settings → Reddit.',
+                'size' => ['w' => 6, 'h' => 6], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => [
+                    'subreddit' => ['type' => 'string', 'label' => 'One subreddit (blank = all tracked)', 'max' => 21, 'default' => '', 'placeholder' => 'programming'],
+                    'limit'     => ['type' => 'int', 'label' => 'Posts', 'min' => 3, 'max' => 40, 'default' => 12],
+                ],
             ],
             'x' => [
                 'label' => 'X', 'category' => 'media', 'singleton' => false,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Audit;
 
 use Dashboard\DB\Database;
+use Dashboard\Money\AccountNumberGuard;
 
 /**
  * Append-only record of API and MCP writes. The brain view reads recent
@@ -33,8 +34,9 @@ final class AuditLog
         $tool = $tool !== null ? mb_substr(trim($tool), 0, 64) : null;
         $tool = $tool === '' ? null : $tool;
         $action = mb_substr(trim($action), 0, 64);
-        $resource = $resource !== null ? mb_substr($resource, 0, 160) : null;
+        $resource = $resource !== null ? mb_substr(AccountNumberGuard::redact($resource) ?? $resource, 0, 160) : null;
         $json = json_encode($detail === [] ? new \stdClass() : $detail, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        $json = AccountNumberGuard::redact($json) ?? $json;
         if (strlen($json) > 4000) {
             $json = '{}';
         }

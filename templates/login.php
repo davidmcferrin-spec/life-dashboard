@@ -3,7 +3,7 @@
 $error = $_SESSION['login_error'] ?? null;
 unset($_SESSION['login_error']);
 $pageTitle = 'Login';
-$themePref = 'system';
+$themePref = 'jarvis';
 $themeLocalOnly = true;
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>

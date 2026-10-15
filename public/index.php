@@ -115,7 +115,7 @@ $router->get('/share/clipboard/{token}', function (array $params) use ($db): voi
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared clipboard';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/clipboard.php';
 });
@@ -136,7 +136,7 @@ $router->get('/share/cloudpad/{token}', function (array $params) use ($db): void
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared CloudPad canvas';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/cloudpad.php';
 });
@@ -153,7 +153,7 @@ $router->get('/share/file/{token}', function (array $params) use ($db): void {
         ShareDeniedResponse::html();
     }
     $pageTitle      = 'Shared file';
-    $themePref      = 'system';
+    $themePref      = 'jarvis';
     $themeLocalOnly = true;
     require VIEWS_DIR . '/share/file.php';
 });
@@ -471,7 +471,10 @@ $router->post('/settings/preferences', function () use ($auth, $prefService): vo
 
     try {
         $prefService->setSearchEngine($userId, (string) ($_POST['search_engine'] ?? 'google'));
-        $prefService->setTheme($userId, (string) ($_POST['theme'] ?? 'system'));
+        $prefService->setTheme($userId, (string) ($_POST['theme'] ?? 'jarvis'));
+        if (isset($_POST['jarvis_accent'])) {
+            $prefService->setJarvisAccent($userId, (string) $_POST['jarvis_accent']);
+        }
         $prefService->setClockFormat($userId, (string) ($_POST['clock_format'] ?? '12h'));
         $prefService->setShowBroadcastWeek($userId, isset($_POST['show_broadcast_week']));
         $prefService->setShowBookmarkIcons($userId, isset($_POST['show_bookmark_icons']));
@@ -1285,6 +1288,79 @@ $router->get('/settings/money', function () use ($auth): void {
 $router->get('/settings/investing', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings/investing.php';
+});
+
+$router->get('/settings/reddit', function () use ($auth, $lifedash): void {
+    $user = $auth->requireAuth();
+    $subs = $lifedash->reddit->list((int) $user['id']);
+    $flash = $_SESSION['settings_flash'] ?? null;
+    unset($_SESSION['settings_flash']);
+    require VIEWS_DIR . '/settings/reddit.php';
+});
+
+$router->post('/settings/reddit/add', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->add(
+            (int) $user['id'],
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['sort'] ?? 'hot'),
+            (string) ($_POST['include'] ?? ''),
+            (string) ($_POST['exclude'] ?? ''),
+        );
+        $_SESSION['settings_flash'] = 'Subreddit saved. Fetch now, or wait for the half-hour job.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/update', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->add(
+            (int) $user['id'],
+            (string) ($_POST['name'] ?? ''),
+            (string) ($_POST['sort'] ?? 'hot'),
+            (string) ($_POST['include'] ?? ''),
+            (string) ($_POST['exclude'] ?? ''),
+        );
+        $_SESSION['settings_flash'] = 'Saved.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/remove', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        $lifedash->reddit->remove((int) $user['id'], (string) ($_POST['name'] ?? ''));
+        $_SESSION['settings_flash'] = 'Removed.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/reddit');
+});
+
+$router->post('/settings/reddit/refresh', function () use ($auth, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $errors = $lifedash->reddit->refresh((int) $user['id']);
+    $_SESSION['settings_flash'] = $errors === []
+        ? 'Fetched.'
+        : 'Fetched with errors: ' . implode('; ', $errors);
+    redirect('/settings/reddit');
+});
+
+$router->get('/reddit', function () use ($auth, $lifedash): void {
+    $user = $auth->requireAuth();
+    $subs = $lifedash->reddit->list((int) $user['id']);
+    $posts = $lifedash->reddit->posts((int) $user['id'], ['limit' => 60]);
+    require VIEWS_DIR . '/reddit.php';
 });
 
 // -------------------------------------------------------

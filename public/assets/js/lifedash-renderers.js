@@ -243,7 +243,7 @@
                 <svg class="ld-svg" viewBox="0 0 100 58" style="max-height:8rem" role="img"
                      aria-label="${esc(d.metric.name)} ${esc(fmt.value(d.metric, d.value))} of ${esc(d.max)}">
                     <path class="ld-track" d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}" stroke-width="9" stroke-linecap="round"/>
-                    ${frac > 0 ? `<path d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${vx.toFixed(2)} ${vy.toFixed(2)}" fill="none" style="stroke:${color}" stroke-width="9" stroke-linecap="round"/>` : ''}
+                    ${frac > 0 ? `<path class="ld-arc-value" d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${vx.toFixed(2)} ${vy.toFixed(2)}" fill="none" style="stroke:${color}" stroke-width="9" stroke-linecap="round"/>` : ''}
                     <text x="50" y="47" text-anchor="middle" class="ld-label" style="font-size:13px;fill:var(--text-primary)">${esc(fmt.value(d.metric, d.value))}</text>
                 </svg>
                 <div class="ld-sub">${Math.round(frac * 100)}% of ${esc(fmt.value(d.metric, d.max))} · ${esc(PERIOD_LABEL[d.period] || d.period)}</div>
@@ -428,14 +428,118 @@
         const accounts = (d.accounts || []).map((a) =>
             `<div class="ld-life-row"><span>${esc(a.name)}</span><strong>${esc(fmt.money(a.kind === 'credit' ? -a.balance : a.balance))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.net_worth))}</div><div class="ld-meta">net worth</div>${accounts}`;
+        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.net_worth))}</div><div class="ld-meta">net worth trend</div>${accounts}`;
         const el = document.createElement('div');
-        el.style.height = '3.25rem';
+        el.style.height = '7rem';
         ctx.body.appendChild(el);
         const snaps = d.snapshots || [];
         if (snaps.length > 1) {
             drawLineChart(el, snaps.map((s) => s.date), [{ name: 'Net worth', color: PALETTE[0], values: snaps.map((s) => s.net) }], { compact: true, format: fmt.money });
         }
+    }
+
+    function arcMeter(percent, opts) {
+        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+        const shown = pct >= 0.8;
+        const dash = pct.toFixed(1);
+        const size = opts.small ? ' ld-arc-sm' : '';
+        const warn = opts.warn ? ' is-warn' : '';
+        const tone = opts.warn ? 'text-warn' : '';
+        const value = `<div class="ld-stat-value ${tone}">${esc(opts.value || '')}</div>`;
+        const sub = opts.sub ? `<div class="ld-meta ${tone}">${esc(opts.sub)}</div>` : '';
+        const note = opts.note ? `<p class="text-sm">${esc(opts.note)}</p>` : '';
+        return `<div class="ld-arc${size}${warn}" role="img" aria-label="${esc(opts.label || opts.value || 'progress')}">
+            <svg class="ld-arc-svg" viewBox="0 0 120 74" aria-hidden="true">
+                <path class="ld-arc-track" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100"></path>
+                <path class="ld-arc-ticks" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100" stroke-dasharray="0.6 7.6"></path>
+                ${shown ? `<path class="ld-arc-value" d="M 14 64 A 46 46 0 0 1 106 64" pathLength="100" stroke-dasharray="${dash} 100"></path>` : ''}
+            </svg>
+            <div class="ld-arc-copy">${value}${sub}${note}</div>
+        </div>`;
+    }
+
+    function babyStep(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        if (!d.step) {
+            ctx.body.innerHTML = '<p class="empty-state mono text-xs">No Baby Step recorded yet.</p>';
+            return;
+        }
+        const step = Number(d.step) || 0;
+        ctx.body.innerHTML = arcMeter((step / 7) * 100, {
+            label: 'Baby Step ' + step,
+            value: 'Step ' + step,
+            sub: d.name || '',
+            note: d.note || '',
+        });
+    }
+
+    function debtSnowball(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.debts || []).map((d) => {
+            const dates = [d.target_payoff_on ? 'target ' + d.target_payoff_on : '', d.estimated_payoff_on ? 'estimate ' + d.estimated_payoff_on : 'estimate unavailable'].filter(Boolean).join(' · ');
+            return `<div class="ld-life-row"><span>${esc(d.name)}${d.last4 ? ' · ' + esc(d.last4) : ''}<span class="ld-meta">${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</span></span><strong>${esc(fmt.money(d.balance))}</strong></div>`;
+        }).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No debts recorded.</p>';
+    }
+
+    function foodWeek(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const cap = Number(d.cap) || 0;
+        const spent = Number(d.spent) || 0;
+        ctx.body.innerHTML = arcMeter(cap > 0 ? (spent / cap) * 100 : 0, {
+            warn: !!d.over,
+            label: 'Food this week',
+            value: fmt.money(d.spent),
+            sub: 'of ' + fmt.money(d.cap) + ' this week',
+        });
+    }
+
+    function budgetActual(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (d.lines || []).map((line) =>
+            `<div class="ld-life-row"><span>${esc(line.category)}<span class="ld-meta">planned ${esc(fmt.money(line.planned))}</span></span><strong class="${line.actual > line.planned ? 'text-danger' : ''}">${esc(fmt.money(line.actual))}</strong></div>`
+        ).join('');
+        ctx.body.innerHTML = `<div class="ld-meta">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || '<p class="empty-state mono text-xs">No budget lines this month.</p>'}`;
+    }
+
+    function sinkingFunds(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.funds || []).map((f) => {
+            const pct = Number(f.percent) || 0;
+            return `<div class="ld-fund">${arcMeter(pct, { small: true, label: f.name, value: Math.round(pct) + '%' })}<div class="ld-fund-copy"><span>${esc(f.name)}</span><span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></div></div>`;
+        }).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No sinking funds yet.</p>';
+    }
+
+    function billsDue(ctx) {
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rows = (ctx.data.bills || []).map((b) =>
+            `<div class="ld-life-row"><span>${esc(b.name)}<span class="ld-meta">${esc(b.due_on)}</span></span><strong>${esc(fmt.money(b.amount))}</strong></div>`
+        ).join('');
+        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">Nothing due in the next 10 days.</p>';
+    }
+
+    function retirement(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const rate = d.contribution_rate == null ? null : Number(d.contribution_rate);
+        const shown = rate == null ? '—' : Math.round(rate * 1000) / 10 + '%';
+        ctx.body.innerHTML = arcMeter(rate == null ? 0 : (rate / 0.15) * 100, {
+            warn: !d.on_track,
+            label: 'Retirement contribution',
+            value: shown,
+            sub: 'of a 15% target',
+        });
+    }
+
+    function credit(ctx) {
+        const d = ctx.data;
+        tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
+        const util = d.utilization_percent == null ? '—' : d.utilization_percent + '%';
+        ctx.body.innerHTML = `<div class="ld-stat-value">${d.score == null ? '—' : esc(String(d.score))}</div><div class="ld-meta">utilization ${esc(String(util))}${d.as_of ? ' · ' + esc(d.as_of) : ''}</div>`;
     }
 
     function portfolio(ctx) {
@@ -568,6 +672,25 @@
         arm();
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, custom };
+    function redditFeed(ctx) {
+        tools(ctx, '<a href="/reddit" class="nav-link">Reader</a>');
+        const posts = ctx.data.posts || [];
+        if (!posts.length) {
+            ctx.body.innerHTML = `<p class="empty-state mono text-xs">${esc(ctx.data.empty || 'No posts yet.')}</p>`;
+            return;
+        }
+        ctx.body.innerHTML = posts.map((post) => {
+            const meta = [
+                post.subreddit ? 'r/' + post.subreddit : '',
+                post.author ? 'u/' + post.author : '',
+                (post.score ?? 0) + ' pts',
+                (post.num_comments ?? 0) + ' comments',
+            ].filter(Boolean).join(' · ');
+            return `<a class="ld-life-row" href="${esc(post.permalink)}" target="_blank" rel="noopener noreferrer">
+                <span>${esc(post.title)}</span><span class="ld-meta">${esc(meta)}</span></a>`;
+        }).join('');
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

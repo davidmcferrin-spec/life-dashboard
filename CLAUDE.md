@@ -63,8 +63,16 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 
 **L5 — Money ✅** · **L6 — Investing (read-only) ✅** · **L7 — Custom widgets ✅**
 - [x] Accounts, signed transactions, Monarch-style CSV, spending + net-worth widgets, weekly review page
+- [x] Budget, debts, sinking funds, Baby Step, credit score, retirement rate (migration `0013_money_plan.sql`). Nine money widgets. One-time CSV import `scripts/import-budget-csvs.php` (see `docs/money-import.md`). No full account numbers. One payee is stored only as `Creator subscription`
+- [x] MCP money tools on the existing server, money-only token expiry (90 days), ~60 req/min per token in `lifedash-mcp`, read+write audit without sensitive values. Tunnel + Access: `docs/deploy/cloudflare-access.md`
 - [x] Positions, Robinhood activity CSV, public Polymarket data-API refresh, scorecard widget. No trade placement
 - [x] Widget type `custom`: sandboxed srcdoc, `window.__DATA__.metrics`
+
+**Reddit tracking**
+- Settings `/settings/reddit` holds the tracked list (name, hot/new/top, include/exclude words). The rotating `reddit` card still reads its own widget sources via RSS into `media_cards`.
+- `reddit_subs` / `reddit_posts` (migration `0012`) store title, author, score, comment count, url, permalink, created time, subreddit, flair, and a selftext snippet. Dedupe is `(user_id, external_id)`. Search indexes those rows as dataset `reddit`.
+- Fetch: `cron/fetch_reddit.php` on `lifedash-job-reddit.timer` (public JSON, or OAuth when `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` are set on Setup). User-Agent `REDDIT_USER_AGENT`. One request a second; a 429 stops the run.
+- Reader `/reddit` and widget `reddit_feed`. MCP: `list_tracked_subreddits`, `add_tracked_subreddit`, `remove_tracked_subreddit`, `get_reddit_posts`, `get_reddit_post_comments`. Scope area `reddit`.
 
 ## Conventions (life-dashboard)
 
@@ -79,6 +87,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - **Widget config is versioned:** change it only through `WidgetService::update()` / `rollback()` (writes `widget_revisions`); positions (`saveLayout`) do not create revisions.
 - **Realtime:** anything that should refresh open dashboards must change a table with the `lifedash_notify` trigger (metrics, datapoints, dashboard_widgets); add the trigger to new tables that widgets display. Ticket format is pinned by `tests/Unit/RealtimeTokenTest.php` and `services/tests/test_push.py` (same golden vector).
 - New UI styles for the grid/widgets go in `public/assets/css/lifedash.css` (plain CSS with theme tokens) — Tailwind is prebuilt, so classes not already in `tailwind.css` won't exist. Bump `$assetVer` in `templates/partials/head.php` when shipping JS/CSS changes.
+- Themes are `jarvis` (default when unset), `light`, `dark`, and `system`. `data-theme="jarvis"` is its own palette (not an alias of dark). The HUD accent is per-user `jarvis_accent` (`#rrggbb`, default `#00e5ff`) and is applied as `--hud-accent` / `--hud-rgb` / `--hud-bright` / `--hud-dim` / `--hud-ink` on `<html>` (`Support\JarvisAccent`). Faces are self-hosted in `public/assets/fonts/` (OFL). Rebuild Tailwind with `npm run build:css`.
 - Scheduled work = a `lifedash-job` case + a `deploy/systemd/lifedash-job-<name>.timer`; logs go to `storage/logs/<name>.log` (listed in `SystemHealthService::JOBS`).
 
 ## Testing
@@ -152,7 +161,7 @@ shellcheck setup.sh deploy/provision.sh deploy/bin/*
 - `timezone_auto` — use browser IANA zone via `Intl` (`focus-clock-tz.js`); manual dropdown kept as fallback
 - Alarm: `/clock` only (visible tab); no catch-up; dismiss + snooze 5 min; `clock-alarm.js` on `/clock` (+ settings for preview)
 - Alarm sounds: built-in tone, **shared library** (`alarm_sounds` table + `storage/uploads/alarm/shared/`), or **personal** (`storage/uploads/alarm/user/{userId}.ext`); `GET /api/clock/alarm-sounds`, stream `GET /api/clock/alarm-sound/mine` or `/{id}`; uploads default to shared (`scope=shared|mine`)
-- Font: DSEG7 Classic woff2 from [npm `dseg@0.46.0`](https://www.npmjs.com/package/dseg) in `public/assets/fonts/dseg7/` (not GitHub raw — repo ships sources only); mono fonts via Google Fonts on `/clock`
+- Font: DSEG7 Classic woff2 from [npm `dseg@0.46.0`](https://www.npmjs.com/package/dseg) in `public/assets/fonts/dseg7/` (not GitHub raw — repo ships sources only). Optional faces (Inconsolata, Space Mono, IBM Plex Mono, Source Code Pro) are self-hosted woff2 in `public/assets/fonts/` and declared in `clock.css`. `/clock` does not load fonts from Google.
 
 ## Package tracking
 

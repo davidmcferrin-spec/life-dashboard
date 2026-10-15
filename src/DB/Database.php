@@ -149,6 +149,26 @@ class Database
         self::$instance = null;
     }
 
+    /**
+     * True when boot cannot read system_settings because migrations have not
+     * created it yet (PostgreSQL 42P01, MySQL 42S02, or SQLite "no such table").
+     */
+    public static function isMissingSettingsTable(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+        if (!str_contains($message, 'system_settings')) {
+            return false;
+        }
+        $code = (string) $e->getCode();
+
+        return $code === '42P01'
+            || $code === '42S02'
+            || str_contains($message, '42P01')
+            || str_contains($message, '42S02')
+            || str_contains($message, 'no such table')
+            || str_contains($message, 'does not exist');
+    }
+
     public static function getInstance(): self
     {
         if (self::$instance === null) {
@@ -156,7 +176,11 @@ class Database
             try {
                 \Dashboard\Settings\SetupConfig::apply(self::$instance);
             } catch (\Throwable $e) {
-                error_log('[Dashboard][setup] ' . $e->getMessage());
+                // The first migrate connects before system_settings exists.
+                // That miss is expected. Other setup failures still log.
+                if (!self::isMissingSettingsTable($e)) {
+                    error_log('[Dashboard][setup] ' . $e->getMessage());
+                }
             }
         }
         return self::$instance;

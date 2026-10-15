@@ -1,0 +1,11 @@
+{
+  "transactions": {
+    "file": "ledger.csv",
+    "columns": {
+      "date": "Txn day",
+      "account": "Wallet",
+      "amount": "Signed",
+      "payee": "Who"
+    }
+  }
+}

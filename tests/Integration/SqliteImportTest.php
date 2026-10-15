@@ -122,4 +122,48 @@ final class SqliteImportTest extends PgsqlTestCase
 
         self::assertSame(['keep'], array_column($this->db->fetchAll('SELECT username FROM users'), 'username'));
     }
+
+    public function testAutologinPlaintextIsImportedAsSha256Only(): void
+    {
+        $plain = str_repeat('cd', 32);
+        $s = new PDO('sqlite:' . $this->sqliteFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $s->exec("
+            CREATE TABLE users (id INTEGER PRIMARY KEY, username VARCHAR(64), email VARCHAR(255),
+                password_hash VARCHAR(255), is_admin TINYINT(1) NOT NULL DEFAULT 0, created_at DATETIME);
+            CREATE TABLE autologin_tokens (
+                id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, token CHAR(64) NOT NULL,
+                label VARCHAR(128), expires_at DATETIME, last_used_at DATETIME,
+                created_at DATETIME, revoked TINYINT(1) NOT NULL DEFAULT 0
+            );
+            INSERT INTO users (id, username, email, password_hash, is_admin, created_at)
+                VALUES (5, 'david', 'd@x', 'h', 0, '2026-09-01 12:00:00');
+            INSERT INTO autologin_tokens (id, user_id, token, label, created_at, revoked)
+                VALUES (7, 5, '{$plain}', 'phone', '2026-09-01 12:00:00', 0);
+        ");
+
+        $importer = new SqliteToPgsqlImporter($s, $this->db->pdo());
+        $plan     = $importer->preflight();
+
+        self::assertSame([], $plan['errors']);
+        foreach ($plan['warnings'] as $warning) {
+            self::assertStringNotContainsString('autologin_tokens: source columns not in target, ignored: token', $warning);
+        }
+        $imported = $plan['rows']['autologin_tokens'][0];
+        self::assertSame(hash('sha256', $plain), $imported['token_hash']);
+        self::assertArrayNotHasKey('token', $imported);
+
+        $importer->import($plan);
+        $stored = (string) $this->db->fetchScalar('SELECT token_hash FROM autologin_tokens WHERE id = 7');
+        self::assertSame(hash('sha256', $plain), rtrim($stored));
+        self::assertNotContains(
+            'token',
+            array_column(
+                $this->db->fetchAll(
+                    "SELECT column_name FROM information_schema.columns
+                     WHERE table_schema = current_schema() AND table_name = 'autologin_tokens'"
+                ),
+                'column_name'
+            )
+        );
+    }
 }

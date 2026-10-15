@@ -107,7 +107,7 @@ date_default_timezone_set(Config::get('APP_TIMEZONE', 'America/Chicago'));
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self'; media-src 'self'; worker-src 'self' blob:");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self'; media-src 'self'; worker-src 'self' blob:");
 
 // -------------------------------------------------------
 // Global helper functions
@@ -137,6 +137,9 @@ function redirect(string $url, int $status = 302): never
  */
 function jsonResponse(mixed $data, int $status = 200): never
 {
+    if (getenv('LIFEDASH_TEST_CAPTURE') === '1') {
+        throw new \Dashboard\Support\CapturedResponse($data, $status);
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

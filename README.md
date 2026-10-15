@@ -15,6 +15,8 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **Search** — Google, DuckDuckGo, Bing, Grok, Claude (per-user preference)
 - **4 US Timezone Clocks** — ET / CT / MT / PT, live; optional broadcast week (EPOCH)
 - **RSS News Feed** — 30+ built-in sources across tech, developer, mobile, hardware, enterprise, Microsoft, broadcast, and news categories; merged timeline; `/news` reader
+- **Reddit** — track subreddits on Settings → Reddit (hot/new/top, keyword filters). Posts are saved on the server and shown at `/reddit` and on the Reddit reader widget. An assistant reads them through MCP. A token can be limited to Reddit only. The rotating Reddit card is separate and still uses the list typed into that widget
+- **Money** — accounts, transactions, budget, debt snowball, sinking funds, Baby Step, food week, bills due, retirement vs 15%, and credit score. A one-time CSV import copies a spreadsheet into Postgres (`docs/money-import.md`). A money-only agent token expires in 90 days
 - **Weather Widget** — OpenWeatherMap free tier, browser geolocation
 - **Bookmarks** — per-user folders with favicons, bookmarklet capture, collapsible links
 - **Flight Watches** — OpenSky ADS-B (optional FlightAware); polls 24h before departure via cron
@@ -26,9 +28,9 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 - **CloudPad** — Excalidraw infinite canvas on clipboards **CloudPad** tab + full-screen editor; sharing, PNG export
 - **Todo Lists** — dashboard widget, full page at `/todos`, sharing and assignment
 - **Focus Clock** — `/clock` full-viewport clock with alarm (`Alt+Shift+C` from dashboard)
-- **Auth** — session login + auto-login tokens (`/auto/{64-char-hash}`) with per-token expiry and revoke/regenerate
+- **Auth** — session login + auto-login tokens (`/auto/{64-char token}`) with per-token expiry and revoke/regenerate. The database stores SHA-256 of the token.
 - **Multi-user ready** — per-user preferences, feed toggles, bookmarks
-- **Appearance** — light, dark, or system theme (per-user, synced across devices)
+- **Appearance** — JARVIS is the default. Light, Dark, and Auto stay available. The accent color is per user under Settings → Dashboard → Appearance (synced across devices)
 
 ## Stack
 
@@ -270,7 +272,7 @@ Until then, nightly `pg_dump`s go to `/var/backups/lifedash` only (7 days). **Sa
 sudo lifedash-tunnel-setup mcp.<your-domain>
 ```
 
-This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at Cloudflare's edge, and the dashboard UI is never public. `/mcp` answers 502 until the MCP server ships in Phase L2. Claude.ai and Grok call custom MCP servers from their own clouds, which is why a public endpoint is needed at all; Claude Code and Cursor on your own devices can use the LAN (or Teleport) directly.
+This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at Cloudflare's edge, and the dashboard UI is never public. Put a Cloudflare Access service token in front of `/mcp` (`CF-Access-Client-Id` and `CF-Access-Client-Secret`). The app bearer token is a second check. Steps: [docs/deploy/cloudflare-access.md](docs/deploy/cloudflare-access.md). Claude.ai and Grok call custom MCP servers from their own clouds, which is why a public endpoint is needed at all; Claude Code and Cursor on your own devices can use the LAN (or Teleport) directly.
 
 ## Day-to-day operations
 
@@ -305,7 +307,7 @@ This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at
    sudo -u lifedash php /srv/lifedash/app/scripts/migrate.php     # re-apply feed seeds/repairs
    sudo rsync -a /tmp/uploads/ /srv/lifedash/app/storage/uploads/ && sudo chown -R lifedash:lifedash /srv/lifedash/app/storage/uploads
    ```
-4. Log in with your existing account. Auto-login tokens and shares carry over (same `APP_SECRET`).
+4. Log in with your existing account. Auto-login links still work: import stores only a SHA-256 of each existing token, and the same link you already have matches that hash. Shared boards and files still need the same `APP_SECRET`.
 5. Update any Dropbox app redirect URI to `{APP_URL}/api/storage/oauth/callback/dropbox`.
 
 ## Local development
@@ -474,7 +476,7 @@ Metric kinds: `habit` (0/1, one per local day), `scale` (integers min–max, def
 
 ## Security Notes
 
-- Auto-login tokens are 64-char cryptographically random hex strings
+- Auto-login tokens are 64-character random hex strings. The database stores only their SHA-256, the same way API tokens are stored. A link you already have keeps working.
 - All sessions are HMAC-validated against `APP_SECRET`
 - CSRF tokens on all state-mutating forms
 - Secrets are encrypted at rest with `systemd-creds` (TPM2 when available); plaintext exists only in `/run` (tmpfs)

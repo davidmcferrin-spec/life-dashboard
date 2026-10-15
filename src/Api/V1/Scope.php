@@ -17,7 +17,7 @@ final class Scope
     public const CORE = ['metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search'];
 
     public const AREAS = [
-        'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search',
+        'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards',
     ];
 

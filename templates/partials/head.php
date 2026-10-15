@@ -3,27 +3,40 @@
  * Shared document head (theme boot + assets)
  *
  * @var string $pageTitle
- * @var string $pageTitle
- * @var string $themePref light|dark|system
+ * @var string $themePref jarvis|light|dark|system
+ * @var string $jarvisAccent #rrggbb HUD accent (JARVIS glows, edges, gauges)
  * @var bool   $starfieldPref Starfield background in dark mode (per-user)
  * @var bool   $themeLocalOnly Use localStorage instead of server pref (login page)
  * @var list<string> $extraStyles Page-specific stylesheet paths under /assets (optional)
  */
 $pageTitle = $pageTitle ?? 'Dashboard';
-$themePref = $themePref ?? 'system';
+$themePref = $themePref ?? 'jarvis';
 $starfieldPref = $starfieldPref ?? false;
 $themeLocalOnly = $themeLocalOnly ?? false;
-if (!in_array($themePref, ['light', 'dark', 'system'], true)) {
-    $themePref = 'system';
+if (!in_array($themePref, ['jarvis', 'light', 'dark', 'system'], true)) {
+    $themePref = 'jarvis';
 }
+if (!isset($jarvisAccent)) {
+    $jarvisAccent = \Dashboard\Support\JarvisAccent::DEFAULT;
+    if (!$themeLocalOnly && !empty($user['id'])) {
+        try {
+            $jarvisAccent = (new \Dashboard\Settings\PreferenceService(\Dashboard\DB\Database::getInstance()))
+                ->getJarvisAccent((int) $user['id']);
+        } catch (\Throwable) {
+            $jarvisAccent = \Dashboard\Support\JarvisAccent::DEFAULT;
+        }
+    }
+}
+$jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
+$jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261014b';
+$assetVer = '20261014f';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>
 <!DOCTYPE html>
-<html lang="en" data-theme-pref="<?= e($themePref) ?>"<?= $themeLocalOnly ? ' data-theme-local="1"' : '' ?><?= $starfieldPrefAttr ?><?= $serverTimeMs !== null ? ' data-server-time-ms="' . e((string) $serverTimeMs) . '"' : '' ?>>
+<html lang="en" style="<?= e($jarvisStyle) ?>" data-jarvis-accent="<?= e($jarvisAccent) ?>" data-theme-pref="<?= e($themePref) ?>"<?= $themeLocalOnly ? ' data-theme-local="1"' : '' ?><?= $starfieldPrefAttr ?><?= $serverTimeMs !== null ? ' data-server-time-ms="' . e((string) $serverTimeMs) . '"' : '' ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -38,22 +51,21 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     <link rel="apple-touch-icon" href="/favicon_512.png">
     <script>
     (function () {
-        var pref = document.documentElement.getAttribute('data-theme-pref') || 'system';
+        var pref = document.documentElement.getAttribute('data-theme-pref') || 'jarvis';
         var localOnly = document.documentElement.getAttribute('data-theme-local') === '1';
         var starfieldOn = <?= $themeLocalOnly ? 'false' : $starfieldBoot ?>;
-        if (localOnly) {
-            try {
-                var s = localStorage.getItem('dashboard_theme');
-                if (s === 'light' || s === 'dark' || s === 'system') pref = s;
-            } catch (e) {}
-        } else {
-            try {
-                var t = localStorage.getItem('dashboard_theme');
-                if (t === 'light' || t === 'dark' || t === 'system') pref = t;
-            } catch (e) {}
+        var allowed = { jarvis: 1, light: 1, dark: 1, system: 1 };
+        try {
+            var stored = localStorage.getItem('dashboard_theme');
+            if (stored && allowed[stored]) pref = stored;
+        } catch (e) {}
+        var effective = pref;
+        if (pref === 'system') {
+            effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } else if (pref !== 'light' && pref !== 'dark' && pref !== 'jarvis') {
+            effective = 'jarvis';
         }
-        var dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-        document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', effective);
         document.documentElement.setAttribute('data-theme-pref', pref);
         if (!localOnly) {
             try {
@@ -63,8 +75,6 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     })();
     </script>
     <link rel="stylesheet" href="/assets/css/tailwind.css?v=<?= e($assetVer) ?>">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/css/dashboard.css?v=<?= e($assetVer) ?>">
     <?php foreach ($extraStyles as $sheet): ?>
     <link rel="stylesheet" href="<?= e($sheet) ?>?v=<?= e($assetVer) ?>">

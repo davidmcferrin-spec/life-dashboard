@@ -40,3 +40,18 @@ spl_autoload_register(static function (string $class): void {
 });
 
 date_default_timezone_set('UTC');
+
+if (!function_exists('jsonResponse')) {
+    /**
+     * Same exit hatch as bootstrap.php. Tests set LIFEDASH_TEST_CAPTURE=1.
+     *
+     * @param mixed $data
+     */
+    function jsonResponse(mixed $data, int $status = 200): never
+    {
+        if (getenv('LIFEDASH_TEST_CAPTURE') === '1') {
+            throw new Dashboard\Support\CapturedResponse($data, $status);
+        }
+        throw new RuntimeException('jsonResponse is only captured in tests.');
+    }
+}
