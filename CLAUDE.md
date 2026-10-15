@@ -24,7 +24,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] SQLite-only `datetime()` queries replaced with `Support\SqlTime` cutoffs (also fixed the flight poll window, which compared APP_TIMEZONE wall clock to UTC)
 - [x] `scripts/migrate-sqlite-to-pgsql.php` + `DB\SqliteToPgsqlImporter` (preflight → single-transaction import → sequence reset → count verify)
 - [x] `scripts/sql-lint-pgsql.php` + `DB\SqlStatementExtractor` — PREPAREs every SQL string in the codebase against PostgreSQL
-- [x] `GET /healthz` (unauthenticated, up/down only); `/settings/system` shows PostgreSQL version/size/pending migrations plus lifedash-mcp and lifedash-push (systemd, loopback listen, MCP `/healthz`, tool count, revision)
+- [x] `GET /healthz` (unauthenticated, up/down only); `/settings/system` shows PostgreSQL version/size/pending migrations plus lifedash-mcp and lifedash-push (systemd, listen address, MCP `/healthz`, tool count, revision)
 - [x] HTTPS on the LAN: `deploy/apache/lifedash.conf.template` rendered by `lifedash-render-vhost` (:443 UI, :80 redirects all but loopback/tunnel); settings persisted in `/etc/lifedash/provision.conf`
 - [x] `lifedash-perms` (ownership model) + `lifedash-env set KEY VALUE`; setup.sh syncs `APP_URL`/`SESSION_SECURE` with HTTP/HTTPS mode
 - [x] First real run on the box (26.04.1, PHP 8.5.4, PG 18.6, huge pages on, TPM present) surfaced two permission bugs, fixed: Apache 403 (no o+x on /srv/lifedash) and storage/ subdirs from git owned by root
@@ -48,7 +48,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 **L2 — MCP v1 ✅**
 - [x] `api_tokens` (SHA-256, scopes, prefix) and `audit_events` (actor, tool, resource) with `lifedash_notify`
 - [x] `/api/v1` accepts a browser session (CSRF) or `Authorization: Bearer`; scopes inferred from the path; bearer writes use `source=ai`
-- [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `127.0.0.1:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
+- [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `0.0.0.0:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
 - [x] `GET /api/v1/agent-prompt` and `/settings/agents` (token shown once, prompt copy, audit trail)
 
 **L3 — Life tracking ✅**

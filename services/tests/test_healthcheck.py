@@ -98,7 +98,7 @@ def _healthy_mcp(**overrides):
         "systemd": "active",
         "healthz_status": 200,
         "healthz_body": {"ok": True, "service": "lifedash-mcp", "tool_count": 65},
-        "hosts": ["127.0.0.1"],
+        "hosts": ["0.0.0.0"],
         "tools": 65,
         "version": "0.1.0",
         "revision": "abc1234",
@@ -107,25 +107,28 @@ def _healthy_mcp(**overrides):
     return healthcheck.assess_mcp(**facts)
 
 
-def test_mcp_loopback_active_is_ok():
+def test_mcp_all_interfaces_active_is_ok():
     row = _healthy_mcp()
     assert row == {
         "name": "lifedash-mcp",
         "status": "ok",
-        "detail": "systemd active; healthz 200; listen 127.0.0.1:8765; 65 tools; 0.1.0 abc1234",
+        "detail": "systemd active; healthz 200; listen 0.0.0.0:8765; 65 tools; 0.1.0 abc1234",
     }
 
 
-def test_mcp_public_listen_is_a_warning():
-    row = _healthy_mcp(hosts=["0.0.0.0"])
+def test_mcp_loopback_listen_is_a_warning():
+    row = _healthy_mcp(hosts=["127.0.0.1"])
     assert row["status"] == "warn"
-    assert "listen 0.0.0.0:8765 (not 127.0.0.1)" in row["detail"]
+    assert "listen 127.0.0.1:8765 (not 0.0.0.0)" in row["detail"]
+    both = _healthy_mcp(hosts=["0.0.0.0", "127.0.0.1"])
+    assert both["status"] == "warn"
+    assert "not 0.0.0.0" in both["detail"]
 
 
-def test_mcp_ipv6_loopback_is_not_127_0_0_1():
+def test_mcp_ipv6_loopback_is_not_all_interfaces():
     row = _healthy_mcp(hosts=["::1"])
     assert row["status"] == "warn"
-    assert "listen [::1]:8765 (not 127.0.0.1)" in row["detail"]
+    assert "listen [::1]:8765 (not 0.0.0.0)" in row["detail"]
 
 
 def test_mcp_inactive_unit_fails():

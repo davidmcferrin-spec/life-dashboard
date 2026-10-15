@@ -160,7 +160,7 @@ def assess_mcp(
     parts: list[tuple[str, str]] = [
         _systemd_part(state),
         _healthz_part(healthz_status, healthz_body, state),
-        _listen_part(hosts, port, state),
+        _listen_part(hosts, port, state, expect="0.0.0.0"),
         _tools_part(tools, healthz_body),
         _version_part(version, revision),
     ]
@@ -173,7 +173,7 @@ def assess_mcp(
 
 def assess_push(*, systemd: str, hosts: list[str], port: int = 8766) -> dict:
     state = (systemd or "").strip().lower() or "unknown"
-    parts = [_systemd_part(state), _listen_part(hosts, port, state)]
+    parts = [_systemd_part(state), _listen_part(hosts, port, state, expect="127.0.0.1")]
     return {"name": "lifedash-push", "status": _worst(status for status, _detail in parts), "detail": "; ".join(detail for _status, detail in parts)}
 
 
@@ -271,13 +271,20 @@ def _healthz_part(code: int | None, body: Any, systemd: str) -> tuple[str, str]:
     return down, f"healthz {code}"
 
 
-def _listen_part(hosts: list[str], port: int, systemd: str) -> tuple[str, str]:
+_ALL_INTERFACES = {"0.0.0.0", "*", "::"}
+
+
+def _listen_part(hosts: list[str], port: int, systemd: str, *, expect: str) -> tuple[str, str]:
     if not hosts:
         status = FAIL if systemd == "active" else WARN
         return status, f"listen none :{port}"
     shown = ", ".join(_format_listen(host, port) for host in hosts)
-    if any(host != "127.0.0.1" for host in hosts):
-        return WARN, f"listen {shown} (not 127.0.0.1)"
+    if expect == "0.0.0.0":
+        if any(host not in _ALL_INTERFACES for host in hosts):
+            return WARN, f"listen {shown} (not 0.0.0.0)"
+        return OK, f"listen {shown}"
+    if any(host != expect for host in hosts):
+        return WARN, f"listen {shown} (not {expect})"
     return OK, f"listen {shown}"
 
 

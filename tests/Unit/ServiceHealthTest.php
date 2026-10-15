@@ -18,7 +18,7 @@ final class ServiceHealthTest extends TestCase
                 [
                     'name'   => 'lifedash-mcp',
                     'status' => 'warn',
-                    'detail' => 'systemd active; healthz 200; listen 0.0.0.0:8765 (not 127.0.0.1); 65 tools; 0.1.0 abc1234',
+                    'detail' => 'systemd active; healthz 200; listen 0.0.0.0:8765; 65 tools; 0.1.0 abc1234',
                 ],
                 [
                     'name'   => 'lifedash-push',
@@ -32,7 +32,7 @@ final class ServiceHealthTest extends TestCase
             [
                 'label'  => 'lifedash-mcp',
                 'status' => 'warn',
-                'detail' => 'systemd active; healthz 200; listen 0.0.0.0:8765 (not 127.0.0.1); 65 tools; 0.1.0 abc1234',
+                'detail' => 'systemd active; healthz 200; listen 0.0.0.0:8765; 65 tools; 0.1.0 abc1234',
             ],
             [
                 'label'  => 'lifedash-push',

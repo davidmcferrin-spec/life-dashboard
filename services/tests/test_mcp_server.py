@@ -276,10 +276,11 @@ def test_initialize_and_tool_call_forward_the_bearer_token():
 
 
 def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
-    assert listen_host(None) == "127.0.0.1"
-    assert listen_host("127.0.0.1") == "127.0.0.1"
-    assert listen_host("0.0.0.0") == "127.0.0.1"
-    assert listen_host("10.1.1.5") == "127.0.0.1"
+    assert listen_host(None) == "0.0.0.0"
+    assert listen_host("") == "0.0.0.0"
+    assert listen_host("0.0.0.0") == "0.0.0.0"
+    assert listen_host("127.0.0.1") == "0.0.0.0"
+    assert listen_host("10.1.1.5") == "0.0.0.0"
     assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
     assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
 
@@ -353,7 +354,7 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
             assert body["service"] == "lifedash-mcp"
             assert body["ok"] is True
             assert body["tool_count"] == len(TOOLS)
-            assert body["listen"] == "127.0.0.1:8765"
+            assert body["listen"] == "0.0.0.0:8765"
             assert body["version"]
             assert "revision" in body
     finally:

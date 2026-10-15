@@ -1,4 +1,4 @@
-"""``lifedash-mcp`` — MCP endpoint on 127.0.0.1:8765.
+"""``lifedash-mcp`` — MCP endpoint on 0.0.0.0:8765.
 
 Cloudflare Tunnel sends ``/mcp`` here. Each tool call is an HTTP request to the
 PHP ``/api/v1`` API with the caller's bearer token and ``X-Lifedash-Tool``.
@@ -1173,14 +1173,13 @@ class RequestLimiter:
 
 
 def listen_host(requested: str | None) -> str:
-    """Loopback only. A 0.0.0.0 bind answers the public address and, on Linux,
-    leaves a process still bound to 127.0.0.1 answering the tunnel.
+    """All IPv4 interfaces. A loopback-only socket is invisible to other hosts,
+    and MCP_HOST is ignored so a leftover 127.0.0.1 cannot put it back.
     """
     host = (requested or "").strip()
-    if host in ("", "127.0.0.1", "localhost", "::1"):
-        return "127.0.0.1"
-    LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 127.0.0.1 only", host)
-    return "127.0.0.1"
+    if host not in ("", "0.0.0.0", "*"):
+        LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 0.0.0.0", host)
+    return "0.0.0.0"
 
 
 def negotiate_protocol(params: Any) -> str:
@@ -1277,7 +1276,7 @@ def urllib_fetch(api_base: str) -> Fetch:
 _PROCESS_LIMITER = RequestLimiter()
 
 
-def health_document(listen: str = "127.0.0.1", port: int = 8765) -> dict[str, Any]:
+def health_document(listen: str = "0.0.0.0", port: int = 8765) -> dict[str, Any]:
     """GET /healthz. Tool count is the in-process registry, not a cached session."""
     from .healthcheck import git_revision
 
@@ -1295,7 +1294,7 @@ def make_handler(
     fetch: Fetch,
     limiter: RequestLimiter | None = None,
     *,
-    listen: str = "127.0.0.1",
+    listen: str = "0.0.0.0",
     port: int = 8765,
 ) -> type[BaseHTTPRequestHandler]:
     gate = limiter or RequestLimiter()

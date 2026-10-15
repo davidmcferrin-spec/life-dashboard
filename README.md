@@ -445,7 +445,7 @@ life-dashboard phases use an **L** prefix to avoid confusion with personal-dashb
 
 - [x] **L0 — Foundation:** PostgreSQL driver + baseline schema, SQLite importer, SQL lint, Ubuntu 26.04 deploy kit (Apache/PHP-FPM/PostgreSQL/systemd timers), encrypted secrets, backups, LAN HTTPS + Cloudflare Tunnel, Python services foundation, CI
 - [x] **L1 — Core platform:** metrics/datapoints, versioned widget grid (drag/resize/add/configure/rollback), native renderers, habits + mood, `/api/v1`, realtime push (LISTEN/NOTIFY → WebSocket), existing widgets ported onto the grid
-- [x] **L2 — MCP v1:** scoped bearer tokens, audit log, `/api/v1` for session or token, Python MCP server on `127.0.0.1:8765` (`/mcp`), generated agent prompt
+- [x] **L2 — MCP v1:** scoped bearer tokens, audit log, `/api/v1` for session or token, Python MCP server on `0.0.0.0:8765` (`/mcp`), generated agent prompt
 - [x] **L3 — Life tracking:** sleep, steps, exercise, weight, travel day; Health Connect ingest; Home Assistant webhook
 - [x] **L4 — Second brain:** Markdown vault (`/brain`), tree, revisions, backlinks, full-text and optional Ollama semantic search, 3D brain (`/brain/graph`) driven by the audit log
 - [x] **L5 — Money visibility:** accounts, CSV import (Monarch-style), spending and net-worth widgets, weekly review page in the vault
