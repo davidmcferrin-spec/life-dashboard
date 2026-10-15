@@ -105,11 +105,88 @@ final class GoalProgressTest extends PgsqlTestCase
         self::assertTrue($byDate['2026-10-16']['future']);
         self::assertSame(0, $byDate['2026-10-18']['percent']);
 
+        self::assertSame([250.0, 500.0], $dayData['increments']);
+        self::assertSame('water:2026-10-15', $dayData['dedupe_key']);
+        self::assertSame('water:2026-10-15', $weekData['dedupe_key']);
+
         $cleared = $this->svc->habits->update($this->user, $habit['id'], ['goal_metric_id' => 0]);
         self::assertNull($cleared['goal_metric_id']);
         $this->svc->habits->toggle($this->user, $habit['id'], '2026-10-15');
         $this->log($water['id'], '2026-10-15', 9000, 'water:2026-10-15');
         self::assertFalse($this->doneOn('2026-10-15'));
+    }
+
+    public function testQuickAddUpdatesTheSharedDailyTotal(): void
+    {
+        $water = $this->svc->metrics->create($this->user, [
+            'name' => 'Water',
+            'key'  => 'water_ml',
+            'kind' => 'number',
+            'unit' => 'ml',
+            'config' => ['goal' => 3000, 'decimals' => 0],
+        ]);
+        $habit = $this->svc->habits->create($this->user, [
+            'name' => 'Water',
+            'key'  => 'water',
+            'goal_metric_id' => $water['id'],
+        ]);
+        $widget = $this->svc->widgets->create($this->user, 'goal', 'Water today', [
+            'metric_id' => $water['id'],
+        ]);
+
+        // A total already stored under a different key is adopted once, then
+        // every later add updates water:YYYY-MM-DD so the two writers agree.
+        $this->log($water['id'], '2026-10-15', 2800, 'import:2026-10-15');
+        $first = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 250, 'widget');
+        self::assertSame('water:2026-10-15', $first['dedupe_key']);
+        self::assertSame(3050.0, $first['value']);
+        self::assertTrue($this->doneOn('2026-10-15', $habit['id']));
+        $rows = $this->svc->points->list($this->user, $water['id'], '2026-10-15', '2026-10-15', 10);
+        self::assertCount(2, $rows);
+        $canonical = array_values(array_filter($rows, static fn (array $r): bool => $r['dedupe_key'] === 'water:2026-10-15'));
+        self::assertCount(1, $canonical);
+        self::assertSame('widget', $canonical[0]['source']);
+
+        $second = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 250, 'widget');
+        self::assertSame(3300.0, $second['value']);
+        $canonical = array_values(array_filter(
+            $this->svc->points->list($this->user, $water['id'], '2026-10-15', '2026-10-15', 10),
+            static fn (array $r): bool => $r['dedupe_key'] === 'water:2026-10-15'
+        ));
+        self::assertCount(1, $canonical);
+        self::assertSame(3300.0, $canonical[0]['value']);
+
+        $undo = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], -800, 'widget');
+        self::assertSame(2500.0, $undo['value']);
+        self::assertTrue($this->doneOn('2026-10-15', $habit['id']), 'dropping under the goal leaves the check');
+        $floor = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], -99999, 'widget');
+        self::assertSame(0.0, $floor['value']);
+
+        $steps = $this->svc->metrics->create($this->user, [
+            'name' => 'Steps', 'key' => 'steps', 'kind' => 'number', 'config' => ['goal' => 8000],
+        ]);
+        $walk = $this->svc->widgets->create($this->user, 'goal', 'Steps', [
+            'metric_id' => $steps['id'],
+            'increments' => '100, 200',
+            'dedupe_prefix' => 'walk',
+        ]);
+        $added = $this->svc->widgetData->adjustGoal($this->user, $walk['id'], 100, 'widget');
+        self::assertSame('walk:2026-10-15', $added['dedupe_key']);
+        self::assertSame([100.0, 200.0], $added['data']['increments']);
+
+        $stocks = $this->svc->widgets->create($this->user, 'legacy.stocks', null, []);
+        try {
+            $this->svc->widgetData->adjustGoal($this->user, $stocks['id'], 1, 'widget');
+            self::fail('logged against a stocks widget');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('goal widget', $e->getMessage());
+        }
+        try {
+            $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 0, 'widget');
+            self::fail('accepted a zero delta');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('delta', $e->fields());
+        }
     }
 
     public function testThresholdOverridesTheMetricGoalAndRejectsAHabitLink(): void

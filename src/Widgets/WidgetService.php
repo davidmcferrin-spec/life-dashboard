@@ -191,7 +191,7 @@ final class WidgetService
     /**
      * Save grid positions for many widgets at once (one drag can move several).
      *
-     * @param list<array{id: mixed, x: mixed, y: mixed, w: mixed, h: mixed}> $items
+     * @param list<array{id: mixed, x: mixed, y: mixed, w: mixed, h: mixed, height_locked?: mixed}> $items
      */
     public function saveLayout(int $userId, array $items): int
     {
@@ -212,20 +212,113 @@ final class WidgetService
                 || $w < 1 || $w > self::COLUMNS || $h < 1 || $h > 24 || $x < 0 || $x + $w > self::COLUMNS || $y < 0 || $y > 10000) {
                 throw ValidationException::withFields(["items.{$i}" => 'Position out of range (12-column grid, height 1–24).']);
             }
-            $clean[] = [$id, $x, $y, $w, $h];
+            $locked = null;
+            if (array_key_exists('height_locked', $it)) {
+                $flag = filter_var($it['height_locked'], FILTER_VALIDATE_INT);
+                if ($flag !== 0 && $flag !== 1) {
+                    throw ValidationException::withFields(["items.{$i}.height_locked" => 'height_locked must be 0 or 1.']);
+                }
+                $locked = $flag;
+            }
+            $clean[] = [$id, $x, $y, $w, $h, $locked];
         }
 
         return $this->db->transaction(function (Database $db) use ($userId, $clean): int {
             $n = 0;
-            foreach ($clean as [$id, $x, $y, $w, $h]) {
+            foreach ($clean as [$id, $x, $y, $w, $h, $locked]) {
+                if ($locked === null) {
+                    $n += $db->execute(
+                        "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                         WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h) IS DISTINCT FROM (?, ?, ?, ?)",
+                        [$x, $y, $w, $h, $id, $userId, $x, $y, $w, $h]
+                    );
+                    continue;
+                }
                 $n += $db->execute(
-                    "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
-                     WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h) IS DISTINCT FROM (?, ?, ?, ?)",
-                    [$x, $y, $w, $h, $id, $userId, $x, $y, $w, $h]
+                    "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, height_locked = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                     WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h, height_locked) IS DISTINCT FROM (?, ?, ?, ?, ?)",
+                    [$x, $y, $w, $h, $locked, $id, $userId, $x, $y, $w, $h, $locked]
                 );
             }
             return $n;
         });
+    }
+
+    /**
+     * Place items in order on a 12-column grid. A row is as tall as its tallest item.
+     * Used when a phone reorder is saved back as a desktop layout.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    public static function pack(array $items, int $columns = self::COLUMNS): array
+    {
+        $x = 0;
+        $y = 0;
+        $rowH = 0;
+        $out = [];
+        foreach ($items as $it) {
+            $w = max(1, min($columns, (int) ($it['w'] ?? 1)));
+            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+            if ($x > 0 && $x + $w > $columns) {
+                $y += $rowH;
+                $x = 0;
+                $rowH = 0;
+            }
+            $row = $it;
+            $row['x'] = $x;
+            $row['y'] = $y;
+            $row['w'] = $w;
+            $row['h'] = $h;
+            $out[] = $row;
+            $x += $w;
+            $rowH = max($rowH, $h);
+        }
+        return $out;
+    }
+
+    /**
+     * Pull each widget up into the first row where its column is free.
+     * Horizontal position stays, so a card the user put on the right stays there.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    public static function packUp(array $items): array
+    {
+        $nodes = array_values($items);
+        usort($nodes, static function (array $a, array $b): int {
+            return [$a['y'] ?? 0, $a['x'] ?? 0, $a['id'] ?? 0] <=> [$b['y'] ?? 0, $b['x'] ?? 0, $b['id'] ?? 0];
+        });
+        $count = count($nodes);
+        for ($i = 0; $i < $count; $i++) {
+            $y = (int) $nodes[$i]['y'];
+            $h = (int) $nodes[$i]['h'];
+            $x = (int) $nodes[$i]['x'];
+            $w = (int) $nodes[$i]['w'];
+            while ($y > 0) {
+                $trial = $y - 1;
+                $hit = false;
+                for ($j = 0; $j < $count; $j++) {
+                    if ($j === $i) {
+                        continue;
+                    }
+                    $o = $nodes[$j];
+                    $ox = (int) $o['x'];
+                    $oy = (int) $o['y'];
+                    if ($x < $ox + (int) $o['w'] && $x + $w > $ox && $trial < $oy + (int) $o['h'] && $trial + $h > $oy) {
+                        $hit = true;
+                        break;
+                    }
+                }
+                if ($hit) {
+                    break;
+                }
+                $y = $trial;
+            }
+            $nodes[$i]['y'] = $y;
+        }
+        return $nodes;
     }
 
     /**
@@ -270,19 +363,22 @@ final class WidgetService
         $plan = [['habits', 0, 0, 6, 5], ['mood', 6, 0, 6, 5]];
         $y = 5;
         $col = 0;
+        $rowH = 0;
         foreach ($order as $id) {
             if (!($visible[$id] ?? true) || !WidgetTypeRegistry::exists('legacy.' . $id)) {
                 continue;
             }
             $h = $id === 'bookmarks' || $id === 'todos' ? 6 : 5;
             $plan[] = ['legacy.' . $id, $col * 4, $y, 4, $h];
+            $rowH = max($rowH, $h);
             if (++$col === 3) {
                 $col = 0;
-                $y += 6;
+                $y += $rowH;
+                $rowH = 0;
             }
         }
         if ($col !== 0) {
-            $y += 6;
+            $y += $rowH;
         }
         if ($visible['clipboards'] ?? true) {
             $plan[] = ['legacy.clipboards', 0, $y, 12, 6];
@@ -313,9 +409,10 @@ final class WidgetService
             'version'     => (int) $row['version'],
             'x'           => (int) $row['grid_x'],
             'y'           => (int) $row['grid_y'],
-            'w'           => (int) $row['grid_w'],
-            'h'           => (int) $row['grid_h'],
-            'min_w'       => (int) ($def['min']['w'] ?? 1),
+            'w'             => (int) $row['grid_w'],
+            'h'             => (int) $row['grid_h'],
+            'height_locked' => (int) ($row['height_locked'] ?? 0),
+            'min_w'         => (int) ($def['min']['w'] ?? 1),
             'min_h'       => (int) ($def['min']['h'] ?? 1),
             'created_by'  => (string) $row['created_by'],
             'updated_at'  => (string) $row['updated_at'],

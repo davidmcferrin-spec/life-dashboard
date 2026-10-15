@@ -177,7 +177,7 @@ $timezones = [
                     continue; // unknown legacy type (should not happen; registry and partials ship together)
                 }
             ?>
-            <div class="grid-stack-item"
+            <div class="grid-stack-item<?= !empty($w['height_locked']) ? ' ld-h-lock' : '' ?>"
                  gs-id="<?= (int) $w['id'] ?>"
                  gs-x="<?= (int) $w['x'] ?>" gs-y="<?= (int) $w['y'] ?>"
                  gs-w="<?= (int) $w['w'] ?>" gs-h="<?= (int) $w['h'] ?>"
@@ -185,8 +185,10 @@ $timezones = [
                  data-widget-id="<?= (int) $w['id'] ?>"
                  data-widget-type="<?= e($w['type']) ?>">
                 <div class="grid-stack-item-content surface ld-w <?= $legacyKey !== null ? 'ld-w-legacy' : 'ld-w-native' ?>">
+                    <div class="ld-fit">
                     <div class="ld-edit-bar ld-edit-only">
                         <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
+                        <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
                         <?php if ($legacyKey === null): ?>
                         <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>
                         <?php endif; ?>
@@ -201,6 +203,7 @@ $timezones = [
                     </div>
                     <div class="ld-w-body"><div class="empty-state mono text-xs">Loading…</div></div>
                     <?php endif; ?>
+                    </div>
                 </div>
             </div>
             <?php endforeach; ?>

@@ -187,7 +187,8 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "What a widget is currently showing, including the latest YouTube, Reddit, and X cards. "
             "A goal widget returns view (day or week), the metric, goal, today's value or one cell "
-            "per day, ratio capped at 2 (200%), and percent."
+            "per day, ratio capped at 2 (200%), percent, increments, and dedupe_key. "
+            "The dashboard logs today's running total on that key (water_ml uses water:YYYY-MM-DD); last value wins."
         ),
         "inputSchema": {
             "type": "object",

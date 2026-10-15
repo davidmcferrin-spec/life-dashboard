@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Dashboard\Tests\Unit;
 
 use Dashboard\Support\ValidationException;
+use Dashboard\Widgets\GoalLog;
 use Dashboard\Widgets\WidgetDataService;
+use Dashboard\Widgets\WidgetService;
 use Dashboard\Widgets\WidgetTypeRegistry;
 use PHPUnit\Framework\TestCase;
 
@@ -48,7 +50,14 @@ final class WidgetRegistryTest extends TestCase
         );
         self::assertSame(['metric_ids' => [], 'days' => '7'], WidgetTypeRegistry::validateConfig('habits', [], self::finder()));
         self::assertSame(['days' => '30'], WidgetTypeRegistry::validateConfig('mood', ['metric_id' => ''], self::finder()), 'empty = default Mood');
-        self::assertSame(['metric_id' => 1, 'view' => 'week'], WidgetTypeRegistry::validateConfig('goal', ['metric_id' => '1', 'view' => 'week'], self::finder()));
+        self::assertSame(
+            ['metric_id' => 1, 'view' => 'week', 'increments' => '250,500', 'dedupe_prefix' => ''],
+            WidgetTypeRegistry::validateConfig('goal', ['metric_id' => '1', 'view' => 'week'], self::finder())
+        );
+        self::assertSame(
+            ['metric_id' => 1, 'view' => 'day', 'increments' => '100,250', 'dedupe_prefix' => 'walk'],
+            WidgetTypeRegistry::validateConfig('goal', ['metric_id' => 1, 'increments' => '100, 250', 'dedupe_prefix' => 'walk'], self::finder())
+        );
     }
 
     public function testGoalRatioCapsAtDoubleTheGoal(): void
@@ -59,6 +68,40 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(1.0, WidgetDataService::goalRatio(3000.0, 3000));
         self::assertSame(1.5, WidgetDataService::goalRatio(4500.0, 3000));
         self::assertSame(2.0, WidgetDataService::goalRatio(9000.0, 3000));
+    }
+
+    public function testGoalLogKeyMatchesHypeManAndPackClosesGaps(): void
+    {
+        self::assertSame([250.0, 500.0], GoalLog::parseIncrements(null));
+        self::assertSame([250.0, 500.0], GoalLog::parseIncrements('250, 500'));
+        self::assertSame('water', GoalLog::prefix([], ['key' => 'water_ml', 'id' => 17]));
+        self::assertSame('steps', GoalLog::prefix([], ['key' => 'steps', 'id' => 3]));
+        self::assertSame('walk', GoalLog::prefix(['dedupe_prefix' => 'walk'], ['key' => 'water_ml', 'id' => 17]));
+        self::assertSame('water:2026-10-15', GoalLog::dedupeKey('water', '2026-10-15'));
+
+        $flow = WidgetService::pack([
+            ['id' => 1, 'w' => 8, 'h' => 3],
+            ['id' => 2, 'w' => 8, 'h' => 4],
+            ['id' => 3, 'w' => 4, 'h' => 2, 'height_locked' => 1],
+        ]);
+        self::assertSame([0, 0, 8, 3], [$flow[0]['x'], $flow[0]['y'], $flow[0]['w'], $flow[0]['h']]);
+        self::assertSame([0, 3, 8, 4], [$flow[1]['x'], $flow[1]['y'], $flow[1]['w'], $flow[1]['h']]);
+        self::assertSame([8, 3, 4, 2], [$flow[2]['x'], $flow[2]['y'], $flow[2]['w'], $flow[2]['h']]);
+        self::assertSame(1, $flow[2]['height_locked']);
+
+        $up = WidgetService::packUp([
+            ['id' => 1, 'x' => 0, 'y' => 5, 'w' => 6, 'h' => 2],
+            ['id' => 2, 'x' => 6, 'y' => 10, 'w' => 6, 'h' => 2],
+            ['id' => 3, 'x' => 0, 'y' => 20, 'w' => 4, 'h' => 3],
+        ]);
+        $byId = [];
+        foreach ($up as $row) {
+            $byId[$row['id']] = $row;
+        }
+        self::assertSame(0, $byId[1]['y']);
+        self::assertSame(0, $byId[2]['y'], 'a widget on the right slides up beside the one on the left');
+        self::assertSame(6, $byId[2]['x']);
+        self::assertSame(2, $byId[3]['y'], 'the card below stops under the one in its column');
     }
 
     /**
@@ -78,6 +121,8 @@ final class WidgetRegistryTest extends TestCase
         yield 'gauge max <= min'     => ['gauge', ['metric_id' => 1, 'min' => 10, 'max' => 10], 'config.max'];
         yield 'goal needs number'    => ['goal', ['metric_id' => 2], 'config.metric_id'];
         yield 'goal view'            => ['goal', ['metric_id' => 1, 'view' => 'month'], 'config.view'];
+        yield 'goal increments'      => ['goal', ['metric_id' => 1, 'increments' => '0,250'], 'config.increments'];
+        yield 'goal prefix'          => ['goal', ['metric_id' => 1, 'dedupe_prefix' => 'water:'], 'config.dedupe_prefix'];
         yield 'legacy takes no cfg'  => ['legacy.weather', ['city' => 'x'], 'config'];
         yield 'unknown type'         => ['nope', [], 'type'];
     }

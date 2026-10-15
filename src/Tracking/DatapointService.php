@@ -239,6 +239,20 @@ final class DatapointService
     }
 
     /**
+     * The value stored on one dedupe key, or null when that key has no row.
+     * Goal logging reads this before writing the same key, so a second writer
+     * updates the row instead of adding a parallel total.
+     */
+    public function valueForDedupe(int $userId, int $metricId, string $dedupeKey): ?float
+    {
+        $v = $this->db->fetchScalar(
+            'SELECT value FROM datapoints WHERE user_id = ? AND metric_id = ? AND dedupe_key = ?',
+            [$userId, $metricId, $dedupeKey]
+        );
+        return $v === null ? null : (float) $v;
+    }
+
+    /**
      * Local dates with an entry (habits), within a range.
      *
      * @return list<string>

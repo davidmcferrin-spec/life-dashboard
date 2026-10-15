@@ -45,7 +45,7 @@ final class WidgetTypeRegistry
             'mood' => [
                 'label' => 'Mood', 'category' => 'tracking', 'singleton' => false,
                 'description' => 'Log how you feel (1–5) with an optional note; recent trend.',
-                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
+                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 3],
                 'fields' => [
                     'metric_id' => ['type' => 'metric', 'label' => 'Scale metric (empty = Mood)', 'kinds' => ['scale']],
                     'days'      => ['type' => 'enum', 'label' => 'Trend', 'options' => ['14' => '14 days', '30' => '30 days', '90' => '90 days'], 'default' => '30'],
@@ -76,11 +76,13 @@ final class WidgetTypeRegistry
             ],
             'goal' => [
                 'label' => 'Goal progress', 'category' => 'tracking', 'singleton' => false,
-                'description' => 'Today, or each day this week, against a number metric\'s goal. Full at 100%, a different shade through 200%.',
-                'size' => ['w' => 6, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'description' => 'Today, or each day this week, against a number metric\'s goal. Full at 100%, a different shade through 200%. Quick-add buttons log today\'s running total.',
+                'size' => ['w' => 6, 'h' => 3], 'min' => ['w' => 3, 'h' => 2],
                 'fields' => [
-                    'metric_id' => ['type' => 'metric', 'label' => 'Metric', 'kinds' => ['number'], 'required' => true],
-                    'view'      => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
+                    'metric_id'     => ['type' => 'metric', 'label' => 'Metric', 'kinds' => ['number'], 'required' => true],
+                    'view'          => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
+                    'increments'    => ['type' => 'string', 'label' => 'Quick-add amounts', 'max' => 64, 'default' => '250,500', 'placeholder' => '250,500'],
+                    'dedupe_prefix' => ['type' => 'string', 'label' => 'Daily key prefix', 'max' => 40, 'default' => '', 'placeholder' => 'blank uses the metric key', 'pattern' => '/^[A-Za-z0-9][A-Za-z0-9_.-]{0,39}$/'],
                 ],
             ],
             'gauge' => [
@@ -135,13 +137,13 @@ final class WidgetTypeRegistry
             'baby_step' => [
                 'label' => 'Baby Step', 'category' => 'money', 'singleton' => false,
                 'description' => 'Which of the seven Baby Steps you are on.',
-                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 2],
                 'fields' => [],
             ],
             'debt_snowball' => [
                 'label' => 'Debt snowball', 'category' => 'money', 'singleton' => false,
                 'description' => 'Debts in payoff order, with the target date and an estimate from the minimum payment.',
-                'size' => ['w' => 6, 'h' => 6], 'min' => ['w' => 4, 'h' => 4],
+                'size' => ['w' => 6, 'h' => 6], 'min' => ['w' => 4, 'h' => 2],
                 'fields' => [],
             ],
             'food_week' => [
@@ -153,19 +155,19 @@ final class WidgetTypeRegistry
             'budget_actual' => [
                 'label' => 'Budget vs actual', 'category' => 'money', 'singleton' => false,
                 'description' => 'This month\'s planned lines against what was spent.',
-                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 3],
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 2],
                 'fields' => [],
             ],
             'sinking_funds' => [
                 'label' => 'Sinking funds', 'category' => 'money', 'singleton' => false,
                 'description' => 'Saved versus target for each sinking fund.',
-                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 3],
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 2],
                 'fields' => [],
             ],
             'bills_due' => [
                 'label' => 'Bills due', 'category' => 'money', 'singleton' => false,
                 'description' => 'Budget lines and debts whose due day falls in the next 10 days.',
-                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 2],
                 'fields' => [],
             ],
             'retirement' => [
@@ -348,6 +350,9 @@ final class WidgetTypeRegistry
                         if (mb_strlen($s) > ($f['max'] ?? 255)) {
                             throw new \DomainException('Too long (max ' . ($f['max'] ?? 255) . ').');
                         }
+                        if ($s !== '' && !empty($f['pattern']) && !preg_match($f['pattern'], $s)) {
+                            throw new \DomainException('Use letters, digits, and . _ - only.');
+                        }
                         $out[$name] = $s;
                         break;
 
@@ -404,6 +409,13 @@ final class WidgetTypeRegistry
         if (in_array($type, ['youtube', 'reddit', 'x'], true)) {
             MediaSources::parse($type, (string) ($out['sources'] ?? ''));
         }
+        if ($type === 'goal') {
+            try {
+                $out['increments'] = GoalLog::formatIncrements(GoalLog::parseIncrements((string) ($out['increments'] ?? '')));
+            } catch (\DomainException $e) {
+                throw ValidationException::withFields(['config.increments' => $e->getMessage()]);
+            }
+        }
 
         return $out;
     }
@@ -453,7 +465,7 @@ final class WidgetTypeRegistry
         return [
             'label' => $label, 'category' => 'dashboard', 'singleton' => true,
             'description' => $description,
-            'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => 3, 'h' => 3],
+            'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => 3, 'h' => 2],
             'fields' => [],
         ];
     }
