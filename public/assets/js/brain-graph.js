@@ -25,6 +25,8 @@
     let firstLoad = true;
     let angle = 0;
     let raf = 0;
+    let view = window.BrainCamera.reset();
+    let suppressClick = false;
     let ws = null;
     let attempt = 0;
     let reconnectTimer = null;
@@ -139,13 +141,17 @@
         const now = Date.now();
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        const cam = window.BrainCamera.matrix(view, w, h, dpr);
+        ctx.setTransform(cam.a, cam.b, cam.c, cam.d, cam.e, cam.f);
         const style = getComputedStyle(document.documentElement);
         const accent = style.getPropertyValue('--hud-accent').trim()
             || style.getPropertyValue('--accent').trim()
             || '#00e5ff';
         const faint = style.getPropertyValue('--text-faint').trim() || '#8aa';
         const text = style.getPropertyValue('--text-secondary').trim() || '#d5e7ea';
-        ctx.clearRect(0, 0, w, h);
         const box = layout();
         const o = { x: box.x, y: box.y };
 
@@ -292,21 +298,130 @@
         raf = requestAnimationFrame(frame);
     }
 
-    function hitNode(ev) {
+    function canvasPoint(ev) {
         const rect = canvas.getBoundingClientRect();
-        const x = ev.clientX - rect.left;
-        const y = ev.clientY - rect.top;
+        return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+    }
+
+    function hitNode(ev) {
+        const raw = canvasPoint(ev);
+        const world = window.BrainCamera.toWorld(view, raw.x, raw.y, canvas.clientWidth / 2, canvas.clientHeight / 2);
         let hit = null;
         (graph.nodes || []).forEach((node) => {
             const point = project(node.x, node.y);
-            const dx = point.sx - x;
-            const dy = point.sy - y;
-            if (dx * dx + dy * dy < 18 * 18) hit = node;
+            const dx = point.sx - world.x;
+            const dy = point.sy - world.y;
+            const radius = 18 / view.k;
+            if (dx * dx + dy * dy < radius * radius) hit = node;
         });
         return hit;
     }
 
+    function usableRect() {
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        if (w < 720) {
+            return { left: 20, top: 64, width: Math.max(80, w - 40), height: Math.max(80, h * 0.58) };
+        }
+        return { left: 20, top: 16, width: Math.max(80, w - 320), height: Math.max(80, h - 36) };
+    }
+
+    function nodePoints() {
+        return (graph.nodes || []).map((node) => {
+            const point = project(node.x, node.y);
+            return { x: point.sx, y: point.sy };
+        });
+    }
+
+    function zoomBy(factor) {
+        view = window.BrainCamera.zoomAt(view, canvas.clientWidth / 2, canvas.clientHeight / 2, canvas.clientWidth / 2, canvas.clientHeight / 2, factor);
+    }
+
+    function fitView() {
+        view = window.BrainCamera.fit(nodePoints(), canvas.clientWidth, canvas.clientHeight, usableRect());
+    }
+
+    const pointers = new Map();
+    let drag = null;
+    let pinch = null;
+
+    canvas.addEventListener('pointerdown', (ev) => {
+        if (ev.button !== undefined && ev.button !== 0) return;
+        canvas.setPointerCapture(ev.pointerId);
+        pointers.set(ev.pointerId, canvasPoint(ev));
+        pinch = null;
+        if (pointers.size === 1) {
+            drag = { x: ev.clientX, y: ev.clientY, moved: false, panX: view.x, panY: view.y };
+        }
+    });
+    canvas.addEventListener('pointermove', (ev) => {
+        if (!pointers.has(ev.pointerId)) return;
+        pointers.set(ev.pointerId, canvasPoint(ev));
+        if (pointers.size >= 2) {
+            const pts = [...pointers.values()];
+            const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+            if (!pinch) pinch = { dist: Math.max(1, dist), state: { k: view.k, x: view.x, y: view.y } };
+            const factor = dist / pinch.dist;
+            view = window.BrainCamera.zoomAt(pinch.state, mid.x, mid.y, canvas.clientWidth / 2, canvas.clientHeight / 2, factor);
+            suppressClick = true;
+            drag = null;
+            return;
+        }
+        if (!drag) return;
+        const dx = ev.clientX - drag.x;
+        const dy = ev.clientY - drag.y;
+        if (dx * dx + dy * dy > 16) drag.moved = true;
+        if (drag.moved) {
+            view = { k: view.k, x: drag.panX + dx, y: drag.panY + dy };
+            canvas.classList.add('is-panning');
+            suppressClick = true;
+        }
+    });
+    function endPointer(ev) {
+        pointers.delete(ev.pointerId);
+        pinch = null;
+        if (suppressClick || (drag && drag.moved)) {
+            suppressClick = true;
+            setTimeout(() => { suppressClick = false; }, 0);
+        } else {
+            suppressClick = false;
+        }
+        drag = null;
+        if (pointers.size === 0) canvas.classList.remove('is-panning');
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        const point = canvasPoint(ev);
+        const factor = window.BrainCamera.wheelFactor(ev.deltaY, ev.deltaMode);
+        view = window.BrainCamera.zoomAt(view, point.x, point.y, canvas.clientWidth / 2, canvas.clientHeight / 2, factor);
+    }, { passive: false });
+    canvas.addEventListener('keydown', (ev) => {
+        if (ev.key === '+' || ev.key === '=') zoomBy(1.18);
+        else if (ev.key === '-' || ev.key === '_') zoomBy(1 / 1.18);
+        else if (ev.key === '0') view = window.BrainCamera.reset();
+        else if (ev.key === 'f' || ev.key === 'F') fitView();
+        else if (ev.key === 'ArrowLeft') view = window.BrainCamera.panBy(view, 28, 0);
+        else if (ev.key === 'ArrowRight') view = window.BrainCamera.panBy(view, -28, 0);
+        else if (ev.key === 'ArrowUp') view = window.BrainCamera.panBy(view, 0, 28);
+        else if (ev.key === 'ArrowDown') view = window.BrainCamera.panBy(view, 0, -28);
+        else return;
+        ev.preventDefault();
+    });
+    document.getElementById('brain-zoom-in').addEventListener('click', () => zoomBy(1.2));
+    document.getElementById('brain-zoom-out').addEventListener('click', () => zoomBy(1 / 1.2));
+    document.getElementById('brain-zoom-fit').addEventListener('click', fitView);
+    document.getElementById('brain-zoom-reset').addEventListener('click', () => {
+        view = window.BrainCamera.reset();
+    });
+
     canvas.addEventListener('click', (ev) => {
+        if (suppressClick) {
+            suppressClick = false;
+            return;
+        }
         const hit = hitNode(ev);
         if (!hit) return;
         const cluster = (graph.clusters || []).find((item) => item.key === hit.cluster);

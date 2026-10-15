@@ -478,6 +478,7 @@ $router->post('/settings/preferences', function () use ($auth, $prefService): vo
         $prefService->setClockFormat($userId, (string) ($_POST['clock_format'] ?? '12h'));
         $prefService->setShowBroadcastWeek($userId, isset($_POST['show_broadcast_week']));
         $prefService->setShowBookmarkIcons($userId, isset($_POST['show_bookmark_icons']));
+        $prefService->setAiPresence($userId, isset($_POST['ai_presence']));
     } catch (\InvalidArgumentException $e) {
         $_SESSION['settings_flash'] = $e->getMessage();
         redirect('/settings');

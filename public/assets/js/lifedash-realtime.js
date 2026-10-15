@@ -85,11 +85,14 @@
                 ready = true;
                 attempt = 0;
                 stopPolling();
+                window.dispatchEvent(new CustomEvent('lifedash:status', { detail: { live: true } }));
                 if (wasDown) window.LD.grid.refreshAll(); // catch up on anything missed
             } else if (evt.type === 'event') {
                 window.LD.grid.handleEvent(evt);
+                window.dispatchEvent(new CustomEvent('lifedash:event', { detail: evt }));
             } else if (evt.type === 'resync') {
                 window.LD.grid.refreshAll(); // server's DB listener reconnected; events may be lost
+                window.dispatchEvent(new CustomEvent('lifedash:resync'));
             }
         });
 
@@ -97,6 +100,7 @@
             ready = false;
             ws = null;
             startPolling();
+            window.dispatchEvent(new CustomEvent('lifedash:status', { detail: { live: false } }));
             scheduleReconnect();
         });
 

@@ -503,8 +503,36 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
 .brain-revs { list-style: none; padding: 0; margin: 0; }
 .brain-revs button { background: none; border: 0; color: var(--accent); }
 
-.brain-graph-wrap { position: relative; height: calc(100vh - 3.6rem); }
-#brain-canvas { display: block; height: 100%; width: 100%; }
+button.nav-link { background: transparent; border: 0; cursor: pointer; font: inherit; }
+.brain-map-layer {
+    background: var(--bg);
+    inset: 3.6rem 0 0 0;
+    position: fixed;
+    z-index: 40;
+}
+.brain-map-layer[hidden] { display: none !important; }
+.brain-map-layer .brain-graph-wrap { height: 100%; }
+.brain-graph-wrap { position: relative; height: calc(100vh - 3.6rem); touch-action: none; }
+#brain-canvas { cursor: grab; display: block; height: 100%; touch-action: none; width: 100%; }
+#brain-canvas.is-panning { cursor: grabbing; }
+.brain-zoom {
+    display: flex;
+    gap: 0.35rem;
+    left: 0.75rem;
+    position: absolute;
+    top: 0.75rem;
+    z-index: 2;
+}
+.brain-zoom button {
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 45%, var(--surface-border));
+    border-radius: 0.55rem;
+    color: var(--text-primary);
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    padding: 0 0.65rem;
+}
+.brain-zoom button:hover { color: var(--hud-accent, var(--accent)); }
 .brain-ticker {
     position: absolute;
     left: 1rem;
@@ -590,6 +618,73 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
     .brain-shell { grid-template-columns: 1fr; height: auto; }
     .brain-split { grid-template-columns: 1fr; }
     .brain-tree { max-height: 14rem; }
+}
+@media (max-width: 720px) {
+    .brain-panel {
+        bottom: 0.5rem;
+        left: 0.5rem;
+        max-height: 34vh;
+        right: 0.5rem;
+        top: auto;
+        width: auto;
+    }
+    .brain-ticker { bottom: calc(34vh + 0.75rem); right: 0.5rem; }
+    .brain-zoom { left: 0.5rem; top: 0.5rem; }
+}
+
+.ai-presence {
+    color: var(--hud-accent, var(--accent));
+    left: 40%;
+    pointer-events: none;
+    position: fixed;
+    top: 30%;
+    width: 4.6rem;
+    z-index: 70;
+}
+.ai-presence[hidden] { display: none !important; }
+.ai-presence.is-leaving { opacity: 0; transition: opacity 0.65s ease; }
+.ai-bubble {
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 92%, transparent);
+    border: 1px solid color-mix(in srgb, var(--hud-accent, var(--accent)) 55%, transparent);
+    border-radius: 0.75rem;
+    bottom: calc(100% + 0.35rem);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--hud-accent, var(--accent)) 30%, transparent);
+    left: 50%;
+    max-width: 14rem;
+    min-width: 8.5rem;
+    padding: 0.4rem 0.6rem 0.45rem;
+    position: absolute;
+    transform: translateX(-40%);
+}
+.ai-agent {
+    color: var(--hud-accent, var(--accent));
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-transform: uppercase;
+}
+.ai-label { color: var(--text-secondary); font-size: 0.78rem; margin: 0.15rem 0 0; }
+.ai-core { display: block; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--hud-accent, var(--accent)) 70%, transparent)); height: 4.6rem; width: 4.6rem; }
+.ai-ring { animation: ai-spin 18s linear infinite; transform-origin: 40px 40px; }
+.ai-ring-b { animation-direction: reverse; animation-duration: 11s; }
+.ai-pupil { animation: ai-pulse 2.2s ease-in-out infinite; }
+.grid-stack-item.ai-touched {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--hud-accent, var(--accent)) 45%, transparent);
+    outline: 1px solid var(--hud-accent, var(--accent));
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+@keyframes ai-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+    .ai-presence,
+    .ai-presence.is-static {
+        bottom: 1rem;
+        left: auto !important;
+        right: 1rem;
+        top: auto !important;
+        transition: none;
+    }
+    .ai-ring, .ai-ring-b, .ai-pupil { animation: none; }
+    .ai-presence.is-leaving { transition: none; }
 }
 
 /* Rotating YouTube, Reddit, and X cards */

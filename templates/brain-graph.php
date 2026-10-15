@@ -26,7 +26,13 @@ $extraStyles   = ['/assets/css/lifedash.css'];
 </nav>
 
 <div class="brain-graph-wrap">
-    <canvas id="brain-canvas"></canvas>
+    <canvas id="brain-canvas" tabindex="0" aria-label="Vault map. Drag to pan, scroll or pinch to zoom."></canvas>
+    <div class="brain-zoom" role="toolbar" aria-label="Map zoom">
+        <button type="button" id="brain-zoom-in" aria-label="Zoom in">+</button>
+        <button type="button" id="brain-zoom-out" aria-label="Zoom out">−</button>
+        <button type="button" id="brain-zoom-fit">Fit</button>
+        <button type="button" id="brain-zoom-reset">Reset</button>
+    </div>
     <div id="brain-ticker" class="brain-ticker"></div>
     <aside class="brain-panel">
         <p class="brain-kicker">Second brain</p>
@@ -41,6 +47,7 @@ $extraStyles   = ['/assets/css/lifedash.css'];
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-camera.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-graph.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>
