@@ -1,6 +1,6 @@
 <?php
 /**
- * Vault graph. Nodes touched in the audit log during the last week glow.
+ * Vault map. Pages stay in topic clusters. Agent reads and writes draw live.
  *
  * @var array<string, mixed> $user
  */
@@ -31,8 +31,11 @@ $extraStyles   = ['/assets/css/lifedash.css'];
     <aside class="brain-panel">
         <p class="brain-kicker">Second brain</p>
         <h1 id="brain-panel-title" class="text-primary text-lg mt-2">Vault</h1>
-        <p id="brain-panel-copy" class="text-secondary text-sm mt-2">Pages are nodes. A link is a [[wikilink]]. Nodes touched this week glow.</p>
+        <p id="brain-panel-copy" class="text-secondary text-sm mt-2">Pages stay in clusters. A line is a [[wikilink]]. A dashed probe is a read. A solid beam is a write.</p>
         <a id="brain-panel-open" class="nav-link inline-block mt-3" href="/brain">Open vault</a>
+        <p class="brain-kicker mt-4">Agents</p>
+        <div id="brain-legend"></div>
+        <p id="brain-live" class="brain-live">Connecting</p>
     </aside>
 </div>
 

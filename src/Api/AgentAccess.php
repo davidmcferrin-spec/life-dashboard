@@ -6,6 +6,7 @@ namespace Dashboard\Api;
 
 use Dashboard\Api\V1\Scope;
 use Dashboard\Audit\AuditLog;
+use Dashboard\Audit\TokenStamp;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\DB\Database;
 
@@ -64,16 +65,19 @@ final class AgentAccess
             jsonResponse(['error' => 'Invalid or expired token.'], 401);
         }
         self::$user = $user;
-        if ($write) {
-            $tool = $_SERVER['HTTP_X_LIFEDASH_TOOL'] ?? '';
-            (new AuditLog($db))->record(
-                $row['user_id'],
-                'ai',
-                is_string($tool) && trim($tool) !== '' ? trim($tool) : null,
-                'POST',
-                $path
-            );
+        $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+        if ($method === 'HEAD') {
+            return;
         }
+        $tool = $_SERVER['HTTP_X_LIFEDASH_TOOL'] ?? '';
+        (new AuditLog($db))->record(
+            $row['user_id'],
+            'ai',
+            is_string($tool) && trim($tool) !== '' ? trim($tool) : null,
+            $write ? 'POST' : 'GET',
+            $path,
+            TokenStamp::detail((int) $row['id'], (string) $row['name'], $write ? 'write' : 'read')
+        );
     }
 
     private static function classify(string $path): string

@@ -219,22 +219,25 @@ final class PageService
     }
 
     /**
-     * @return array{nodes: list<array<string, mixed>>, edges: list<array{from: int, to: int}>, recent: list<array<string, mixed>>}
+     * @return array{
+     *   nodes: list<array<string, mixed>>,
+     *   edges: list<array{from: int, to: int}>,
+     *   clusters: list<array<string, mixed>>,
+     *   tokens: list<array{id: int, name: string}>,
+     *   activity: list<array<string, mixed>>
+     * }
      */
     public function graph(int $userId): array
     {
-        $hot = array_flip($this->audit->hotPageIds($userId));
-        $nodes = [];
+        $pages = [];
         foreach ($this->db->fetchAll(
-            'SELECT id, title, kind FROM pages WHERE user_id = ? AND archived_at IS NULL ORDER BY title ASC',
+            'SELECT id, title, kind FROM pages WHERE user_id = ? AND archived_at IS NULL ORDER BY id ASC',
             [$userId]
         ) as $row) {
-            $id = (int) $row['id'];
-            $nodes[] = [
-                'id'    => $id,
+            $pages[] = [
+                'id'    => (int) $row['id'],
                 'title' => (string) $row['title'],
                 'kind'  => (string) $row['kind'],
-                'hot'   => isset($hot[$id]),
             ];
         }
         $edges = [];
@@ -244,10 +247,35 @@ final class PageService
         ) as $row) {
             $edges[] = ['from' => (int) $row['from_page_id'], 'to' => (int) $row['to_page_id']];
         }
+
+        $placed = BrainLayout::place($pages, $edges, $this->savedLayout($userId), $this->embeddings($userId));
+        $this->saveLayout($userId, $placed['dirty']);
+        $this->pruneLayout($userId);
+
+        $hot = array_flip($this->audit->hotPageIds($userId));
+        $known = [];
+        $nodes = [];
+        foreach ($placed['nodes'] as $node) {
+            $known[$node['id']] = true;
+            $node['hot'] = isset($hot[$node['id']]);
+            $nodes[] = $node;
+        }
+        $presented = BrainActivity::present($this->audit->recent($userId, 60));
+        $activity = [];
+        foreach ($presented['activity'] as $item) {
+            $pageId = $item['page_id'];
+            if ($pageId !== null && !isset($known[(int) $pageId])) {
+                $item['page_id'] = null;
+            }
+            $activity[] = $item;
+        }
+
         return [
-            'nodes'  => $nodes,
-            'edges'  => $edges,
-            'recent' => array_slice($this->audit->recent($userId, 12), 0, 12),
+            'nodes'    => $nodes,
+            'edges'    => $edges,
+            'clusters' => $placed['clusters'],
+            'tokens'   => $presented['tokens'],
+            'activity' => $activity,
         ];
     }
 
@@ -508,5 +536,77 @@ final class PageService
             'body'     => (string) $row['body'],
             'archived' => $row['archived_at'] !== null,
         ];
+    }
+
+    /**
+     * @return array<int, array{x: float, y: float, cluster_key: string}>
+     */
+    private function savedLayout(int $userId): array
+    {
+        $saved = [];
+        foreach ($this->db->fetchAll(
+            'SELECT page_id, cluster_key, x, y FROM page_graph_nodes WHERE user_id = ?',
+            [$userId]
+        ) as $row) {
+            $saved[(int) $row['page_id']] = [
+                'x'           => (float) $row['x'],
+                'y'           => (float) $row['y'],
+                'cluster_key' => (string) $row['cluster_key'],
+            ];
+        }
+        return $saved;
+    }
+
+    /**
+     * @param list<array{id: int, cluster_key: string, x: float, y: float}> $dirty
+     */
+    private function saveLayout(int $userId, array $dirty): void
+    {
+        foreach ($dirty as $node) {
+            $this->db->execute(
+                'INSERT INTO page_graph_nodes (page_id, user_id, cluster_key, x, y)
+                 VALUES (?, ?, ?, ?, ?)
+                 ON CONFLICT (page_id) DO UPDATE
+                    SET cluster_key = EXCLUDED.cluster_key, x = EXCLUDED.x, y = EXCLUDED.y,
+                        updated_at = (now() AT TIME ZONE \'UTC\')',
+                [$node['id'], $userId, $node['cluster_key'], $node['x'], $node['y']]
+            );
+        }
+    }
+
+    private function pruneLayout(int $userId): void
+    {
+        $this->db->execute(
+            'DELETE FROM page_graph_nodes AS g
+             WHERE g.user_id = ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM pages AS p
+                   WHERE p.id = g.page_id AND p.user_id = g.user_id AND p.archived_at IS NULL
+               )',
+            [$userId]
+        );
+    }
+
+    /**
+     * @return array<int, list<float>>
+     */
+    private function embeddings(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT page_id, embedding FROM page_embeddings WHERE user_id = ?',
+            [$userId]
+        );
+        if (count($rows) > 120) {
+            return [];
+        }
+        $out = [];
+        foreach ($rows as $row) {
+            $vec = is_string($row['embedding']) ? json_decode($row['embedding'], true) : $row['embedding'];
+            if (!is_array($vec) || $vec === []) {
+                continue;
+            }
+            $out[(int) $row['page_id']] = array_map(static fn ($n): float => (float) $n, $vec);
+        }
+        return $out;
     }
 }

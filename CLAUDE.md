@@ -58,7 +58,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 
 **L4 — Second brain ✅**
 - [x] `pages`, `page_revisions`, `page_links`, `page_embeddings` (JSON vectors; full-text via `to_tsvector`)
-- [x] `/brain` editor (Markdown, wikilinks, callouts, tree, backlinks, revision restore) and `/brain/graph` (nodes light up from `audit_events`)
+- [x] `/brain` editor (Markdown, wikilinks, callouts, tree, backlinks, revision restore) and `/brain/graph` (stable topic clusters, live per-token read/write traces from `audit_events`)
 - [x] Page MCP tools. Optional `OLLAMA_URL` embeds on save. Agents may also `POST …/embedding`
 
 **L5 — Money ✅** · **L6 — Investing (read-only) ✅** · **L7 — Custom widgets ✅**

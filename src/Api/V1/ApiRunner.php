@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Api\V1;
 
 use Dashboard\Audit\AuditLog;
+use Dashboard\Audit\TokenStamp;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\Auth\Auth;
 use Dashboard\Money\AccountNumberGuard;
@@ -19,6 +20,10 @@ use Dashboard\Support\ValidationException;
 final class ApiRunner
 {
     private ?ApiActor $actor = null;
+
+    private ?int $tokenId = null;
+
+    private ?string $tokenName = null;
 
     /** @var array<string, mixed>|null */
     private ?array $jsonBody = null;
@@ -45,9 +50,10 @@ final class ApiRunner
         try {
             $userId = $this->authenticate($mutating, $scope);
             $payload = $fn($userId);
+            $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
             if ($mutating) {
                 $this->auditCall($userId);
-            } elseif ($this->isMoneyRead()) {
+            } elseif ($this->actor()->kind === 'ai' && $method === 'GET' && !self::isMetaRead(self::safePath())) {
                 $this->auditRead($userId);
             }
             jsonResponse($payload, $status);
@@ -105,6 +111,8 @@ final class ApiRunner
                 }
             }
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);
+            $this->tokenId = (int) $row['id'];
+            $this->tokenName = (string) $row['name'];
             return $row['user_id'];
         }
 
@@ -124,27 +132,54 @@ final class ApiRunner
             $actor->kind,
             $actor->tool,
             'POST',
-            self::safePath()
+            self::safePath(),
+            $this->auditDetail('write')
         );
     }
 
     private function auditRead(int $userId): void
     {
         $actor = $this->actor();
-        $filter = self::moneyFilter($_GET);
         $this->audit->record(
             $userId,
             $actor->kind,
             $actor->tool,
             'GET',
             self::safePath(),
-            $filter === '' ? [] : ['filter' => $filter]
+            $this->auditDetail('read')
         );
     }
 
-    private function isMoneyRead(): bool
+    /**
+     * The brain map and the audit feed are not agent work. Recording them
+     * would draw a trace every time the map refreshes.
+     */
+    public static function isMetaRead(string $path): bool
     {
-        return str_contains(self::safePath(), '/api/v1/money/');
+        foreach (['/audit', '/agent-prompt', '/realtime/token', '/pages/graph'] as $part) {
+            if (str_contains($path, $part)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function auditDetail(string $verb): array
+    {
+        $extra = [];
+        if ($verb === 'read' && str_contains(self::safePath(), '/api/v1/money/')) {
+            $filter = self::moneyFilter($_GET);
+            if ($filter !== '') {
+                $extra['filter'] = $filter;
+            }
+        }
+        if ($this->actor()->kind !== 'ai') {
+            return $extra;
+        }
+        return TokenStamp::detail($this->tokenId, $this->tokenName, $verb, $extra);
     }
 
     public static function safePath(): string
