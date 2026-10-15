@@ -68,9 +68,12 @@ class SystemHealthService
 
     private Database $db;
 
-    public function __construct(?Database $db = null)
+    private ServiceHealth $services;
+
+    public function __construct(?Database $db = null, ?ServiceHealth $services = null)
     {
-        $this->db = $db ?? Database::getInstance();
+        $this->db       = $db ?? Database::getInstance();
+        $this->services = $services ?? new ServiceHealth();
     }
 
     /**
@@ -233,7 +236,7 @@ class SystemHealthService
             ];
         }
 
-        return $checks;
+        return array_merge($checks, $this->services->checks());
     }
 
     /**

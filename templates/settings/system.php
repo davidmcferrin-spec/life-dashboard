@@ -72,7 +72,7 @@ require __DIR__ . '/_shell-top.php';
 
             <section class="surface p-5">
                 <h2 class="text-primary font-medium mb-1">Application health</h2>
-                <p class="text-muted text-sm mb-4">Runtime checks for PHP, database, storage, and API configuration.</p>
+                <p class="text-muted text-sm mb-4">Runtime checks for PHP, the database, storage, lifedash-mcp, lifedash-push, and API configuration.</p>
 
                 <div class="divide-y divide-chrome">
                     <?php foreach ($healthChecks as $check): ?>

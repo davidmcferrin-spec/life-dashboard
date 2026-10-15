@@ -19,6 +19,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from . import __version__
 from .config import Config
 from .log import setup as setup_logging
 
@@ -1215,7 +1216,7 @@ def handle_message(
         return reply({
             "protocolVersion": negotiate_protocol(message.get("params")),
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "lifedash", "version": "0.1.0"},
+            "serverInfo": {"name": "lifedash", "version": __version__},
         })
     if method == "ping":
         return reply({})
@@ -1276,7 +1277,27 @@ def urllib_fetch(api_base: str) -> Fetch:
 _PROCESS_LIMITER = RequestLimiter()
 
 
-def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[BaseHTTPRequestHandler]:
+def health_document(listen: str = "127.0.0.1", port: int = 8765) -> dict[str, Any]:
+    """GET /healthz. Tool count is the in-process registry, not a cached session."""
+    from .healthcheck import git_revision
+
+    return {
+        "ok": True,
+        "service": "lifedash-mcp",
+        "listen": f"{listen}:{port}",
+        "tool_count": len(TOOLS),
+        "version": __version__,
+        "revision": git_revision(),
+    }
+
+
+def make_handler(
+    fetch: Fetch,
+    limiter: RequestLimiter | None = None,
+    *,
+    listen: str = "127.0.0.1",
+    port: int = 8765,
+) -> type[BaseHTTPRequestHandler]:
     gate = limiter or RequestLimiter()
 
     class Handler(BaseHTTPRequestHandler):
@@ -1312,7 +1333,7 @@ def make_handler(fetch: Fetch, limiter: RequestLimiter | None = None) -> type[Ba
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?", 1)[0]
             if path == "/healthz":
-                self._send(200, {"ok": True, "service": "lifedash-mcp"})
+                self._send(200, health_document(listen, port))
                 return
             # Streamable HTTP clients GET the MCP path to open an SSE stream.
             # This server has no stream. 200 JSON here makes that probe look
@@ -1349,7 +1370,7 @@ def main() -> None:
     host = listen_host(config.maybe("MCP_HOST"))
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
-    server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base)))
+    server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base), listen=host, port=port))
     LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)", host, port, api_base, len(TOOLS))
     try:
         server.serve_forever()

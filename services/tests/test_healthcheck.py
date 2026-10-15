@@ -32,9 +32,23 @@ def test_migration_files_are_found():
     assert names[:2] == ["0001_baseline", "0002_fk_and_hot_path_indexes"]
 
 
+def _quiet_services(monkeypatch, rows=None):
+    monkeypatch.setattr(
+        healthcheck,
+        "check_services",
+        lambda c=None: rows
+        if rows is not None
+        else [
+            {"name": "lifedash-mcp", "status": "ok", "detail": ""},
+            {"name": "lifedash-push", "status": "ok", "detail": ""},
+        ],
+    )
+
+
 def test_overall_status_is_worst_check(monkeypatch):
     monkeypatch.setattr(healthcheck, "check_database", lambda c: [{"name": "database", "status": "ok", "detail": ""}])
     monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "warn", "detail": "12% free"})
+    _quiet_services(monkeypatch)
     result = healthcheck.run(cfg(DB_DRIVER="pgsql"))
     assert result["status"] == "warn"
     assert healthcheck.to_checkmk(result).startswith("1 lifedash - ")
@@ -42,8 +56,130 @@ def test_overall_status_is_worst_check(monkeypatch):
 
 def test_non_pgsql_driver_fails(monkeypatch):
     monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "ok", "detail": ""})
+    _quiet_services(monkeypatch)
     result = healthcheck.run(cfg(DB_DRIVER="sqlite"))
     assert result["status"] == "fail"
+
+
+def test_run_includes_mcp_and_push(monkeypatch):
+    monkeypatch.setattr(healthcheck, "check_database", lambda c: [{"name": "database", "status": "ok", "detail": ""}])
+    monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "ok", "detail": ""})
+    _quiet_services(
+        monkeypatch,
+        [
+            {"name": "lifedash-mcp", "status": "ok", "detail": "systemd active"},
+            {"name": "lifedash-push", "status": "warn", "detail": "listen 0.0.0.0:8766 (not 127.0.0.1)"},
+        ],
+    )
+    result = healthcheck.run(cfg(DB_DRIVER="pgsql"))
+    names = [row["name"] for row in result["checks"]]
+    assert names[-2:] == ["lifedash-mcp", "lifedash-push"]
+    assert result["status"] == "warn"
+
+
+def test_parse_listen_hosts_reads_the_local_address():
+    text = (
+        "LISTEN 0 128 127.0.0.1:8765 0.0.0.0:*\n"
+        "LISTEN 0 128 0.0.0.0:8765 0.0.0.0:*\n"
+        "LISTEN 0 128 [::1]:8766 [::]:*\n"
+    )
+    assert healthcheck.parse_listen_hosts(text, 8765) == ["127.0.0.1", "0.0.0.0"]
+    assert healthcheck.parse_listen_hosts(text, 8766) == ["::1"]
+
+
+def test_registry_tool_count_matches_the_mcp_registry():
+    from lifedash.mcp_server import TOOLS
+
+    assert healthcheck.registry_tool_count() == len(TOOLS) > 0
+
+
+def _healthy_mcp(**overrides):
+    facts = {
+        "systemd": "active",
+        "healthz_status": 200,
+        "healthz_body": {"ok": True, "service": "lifedash-mcp", "tool_count": 65},
+        "hosts": ["127.0.0.1"],
+        "tools": 65,
+        "version": "0.1.0",
+        "revision": "abc1234",
+    }
+    facts.update(overrides)
+    return healthcheck.assess_mcp(**facts)
+
+
+def test_mcp_loopback_active_is_ok():
+    row = _healthy_mcp()
+    assert row == {
+        "name": "lifedash-mcp",
+        "status": "ok",
+        "detail": "systemd active; healthz 200; listen 127.0.0.1:8765; 65 tools; 0.1.0 abc1234",
+    }
+
+
+def test_mcp_public_listen_is_a_warning():
+    row = _healthy_mcp(hosts=["0.0.0.0"])
+    assert row["status"] == "warn"
+    assert "listen 0.0.0.0:8765 (not 127.0.0.1)" in row["detail"]
+
+
+def test_mcp_ipv6_loopback_is_not_127_0_0_1():
+    row = _healthy_mcp(hosts=["::1"])
+    assert row["status"] == "warn"
+    assert "listen [::1]:8765 (not 127.0.0.1)" in row["detail"]
+
+
+def test_mcp_inactive_unit_fails():
+    row = _healthy_mcp(systemd="inactive", healthz_status=None, healthz_body="connection refused", hosts=[])
+    assert row["status"] == "fail"
+    assert row["detail"].startswith("systemd inactive; healthz unreachable (connection refused); listen none :8765")
+
+
+def test_mcp_healthz_down_while_active_fails():
+    row = _healthy_mcp(healthz_status=None, healthz_body="timed out")
+    assert row["status"] == "fail"
+    assert "healthz unreachable (timed out)" in row["detail"]
+
+
+def test_mcp_running_tool_count_drift_warns():
+    row = _healthy_mcp(healthz_body={"ok": True, "service": "lifedash-mcp", "tool_count": 42})
+    assert row["status"] == "warn"
+    assert "65 tools (running 42)" in row["detail"]
+
+
+def test_mcp_missing_revision_warns():
+    row = _healthy_mcp(revision="")
+    assert row["status"] == "warn"
+    assert row["detail"].endswith("0.1.0 revision unknown")
+
+
+def test_mcp_without_systemd_does_not_fail_closed():
+    row = _healthy_mcp(systemd="unknown", healthz_status=None, healthz_body="connection refused", hosts=[])
+    assert row["status"] == "warn"
+
+
+def test_systemd_unavailable_when_the_host_has_no_systemd(monkeypatch):
+    class Proc:
+        stdout = ""
+        stderr = "System has not been booted with systemd as init system (PID 1).\nFailed to connect to bus: Host is down\n"
+        returncode = 1
+
+    monkeypatch.setattr(healthcheck.subprocess, "run", lambda *args, **kwargs: Proc())
+    assert healthcheck.systemd_is_active("lifedash-mcp.service") == "unavailable"
+
+
+def test_push_loopback_active_is_ok():
+    row = healthcheck.assess_push(systemd="active", hosts=["127.0.0.1"])
+    assert row == {"name": "lifedash-push", "status": "ok", "detail": "systemd active; listen 127.0.0.1:8766"}
+
+
+def test_push_public_listen_warns_and_inactive_fails():
+    public = healthcheck.assess_push(systemd="active", hosts=["0.0.0.0"])
+    assert public["status"] == "warn"
+    assert "not 127.0.0.1" in public["detail"]
+    down = healthcheck.assess_push(systemd="failed", hosts=[])
+    assert down["status"] == "fail"
+    assert "systemd failed" in down["detail"]
+    assert "listen none :8766" in down["detail"]
 
 
 def test_unreachable_database_is_a_fail_result_not_an_exception():

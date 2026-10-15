@@ -349,7 +349,13 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
 
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
             assert res.status == 200
-            assert json.loads(res.read().decode())["service"] == "lifedash-mcp"
+            body = json.loads(res.read().decode())
+            assert body["service"] == "lifedash-mcp"
+            assert body["ok"] is True
+            assert body["tool_count"] == len(TOOLS)
+            assert body["listen"] == "127.0.0.1:8765"
+            assert body["version"]
+            assert "revision" in body
     finally:
         server.shutdown()
         server.server_close()

@@ -27,7 +27,13 @@ chmod -R u+rwX,g+rX,g-w,o-rwx "$APP"
 # …except traversal to public/ and public/ itself for Apache.
 chmod o+x "$APP"
 chmod -R o+rX "$APP/public"
-chmod +x "$APP/setup.sh" "$APP/deploy/provision.sh" "$APP"/deploy/bin/*
+# Executable bits come from git (mode 100755). A local chmod +x dirties the
+# worktree and blocks git pull --ff-only, so this only warns.
+for f in "$APP/setup.sh" "$APP/deploy/provision.sh" "$APP"/deploy/bin/*; do
+    if [[ -f $f && ! -x $f ]]; then
+        echo "lifedash-perms: $f is not executable — commit it as git mode 100755; do not chmod it on the server" >&2
+    fi
+done
 
 # Writable state.
 for d in storage storage/logs storage/cache storage/sessions storage/uploads; do
