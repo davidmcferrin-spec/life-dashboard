@@ -84,7 +84,9 @@
                 ? ['reddit:read', 'reddit:write']
                 : (access === 'money'
                     ? ['money:read', 'money:write']
-                    : (access === 'read' ? ['read'] : ['*']));
+                    : (access === 'todos'
+                        ? ['todos:read', 'todos:write']
+                        : (access === 'read' ? ['read'] : ['*'])));
             const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
             const token = res.token && res.token.token;
             if (!token) {

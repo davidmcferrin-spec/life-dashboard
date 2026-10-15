@@ -204,7 +204,9 @@ TOOLS: list[dict[str, Any]] = [
         "name": "save_account",
         "description": (
             "Create a money account, or update it when account_id is set. "
-            "kind is checking, savings, credit, cash, investment, or other."
+            "kind is checking, savings, credit, cash, investment, or other. "
+            "credit_limit is the card limit. available_credit is stored when sent; "
+            "otherwise reads return credit_limit minus balance. last4 is four digits."
         ),
         "inputSchema": {
             "type": "object",
@@ -213,6 +215,9 @@ TOOLS: list[dict[str, Any]] = [
                 "name": {"type": "string"},
                 "kind": {"type": "string"},
                 "balance": {"type": "number"},
+                "credit_limit": {"type": "number"},
+                "available_credit": {"type": "number"},
+                "last4": {"type": "string"},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -315,17 +320,74 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "create_debt",
+        "description": (
+            "Create a debt. last4 is four digits or a mask like ****1234. "
+            "A last4 that matches exactly one credit account links them. "
+            "account_id links a specific account. Do not send a full account number."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "last4": {"type": "string"},
+                "balance": {"type": "number"},
+                "credit_limit": {"type": "number"},
+                "apr_percent": {"type": "number"},
+                "minimum_payment": {"type": "number"},
+                "due_day": {"type": "integer"},
+                "payoff_order": {"type": "integer"},
+                "notes": {"type": "string"},
+                "account_id": {"type": "integer"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "update_debt",
-        "description": "Update a debt's balance, APR, minimum payment, or snowball position.",
+        "description": (
+            "Update a debt. Any of name, last4, balance, credit_limit, apr or apr_percent, "
+            "minimum or minimum_payment, due_day, payoff_order, notes, and account_id. "
+            "account_id null unlinks the debt."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "debt_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "last4": {"type": "string"},
                 "balance": {"type": "number"},
+                "credit_limit": {"type": "number"},
                 "apr": {"type": "number"},
+                "apr_percent": {"type": "number"},
                 "minimum": {"type": "number"},
+                "minimum_payment": {"type": "number"},
+                "due_day": {"type": "integer"},
                 "payoff_order": {"type": "integer"},
+                "notes": {"type": "string"},
+                "account_id": {"type": "integer"},
             },
+            "required": ["debt_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_debt",
+        "description": "Archive a debt. It leaves the snowball list. The row stays.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"debt_id": {"type": "integer"}},
+            "required": ["debt_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "delete_debt",
+        "description": "Delete a debt only when nothing else points at it. Otherwise archive it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"debt_id": {"type": "integer"}},
             "required": ["debt_id"],
             "additionalProperties": False,
         },
@@ -336,8 +398,24 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "create_sinking_fund",
+        "description": "Create a sinking fund. balance defaults to 0. due_on is YYYY-MM-DD.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "target_amount": {"type": "number"},
+                "balance": {"type": "number"},
+                "due_on": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "update_sinking_fund",
-        "description": "Update a sinking fund's target, balance, or due date.",
+        "description": "Update a sinking fund's target, balance, due date, or notes.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -345,8 +423,37 @@ TOOLS: list[dict[str, Any]] = [
                 "target": {"type": "number"},
                 "balance": {"type": "number"},
                 "due_on": {"type": "string"},
+                "notes": {"type": "string"},
             },
             "required": ["sinking_fund_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_sinking_fund",
+        "description": "Archive a sinking fund. It leaves the active list. The row stays.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"sinking_fund_id": {"type": "integer"}},
+            "required": ["sinking_fund_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_category_cap",
+        "description": (
+            "Set a weekly and/or monthly spending cap for a category, starting on effective_from (YYYY-MM-DD). "
+            "Earlier weeks keep the older cap. A weekly-only change does not clear the monthly cap."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string"},
+                "weekly_cap": {"type": "number"},
+                "monthly_cap": {"type": "number"},
+                "effective_from": {"type": "string"},
+            },
+            "required": ["category", "effective_from"],
             "additionalProperties": False,
         },
     },
@@ -380,13 +487,127 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "weekly_review",
-        "description": "Write this week's money review into the vault.",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "description": (
+            "This week's money review. write_page defaults to false and returns the review without writing a vault page. "
+            "Pass write_page true to save it as a review page."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"write_page": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_audit_log",
+        "description": (
+            "Audit trail. Filters: since, until, actor (ai, user, system, integration; source is the same filter), "
+            "tool, entity (debt, account, transaction, budget, sinking_fund, todo, todo_category), entity_id, limit. "
+            "A money-only token sees money entities. A todos-only token sees todos. audit:read sees every entity. "
+            "Rows do not include notes, titles, payees, or full account numbers."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "since": {"type": "string"},
+                "until": {"type": "string"},
+                "actor": {"type": "string"},
+                "source": {"type": "string"},
+                "tool": {"type": "string"},
+                "entity": {"type": "string"},
+                "entity_id": {"type": "integer"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "get_dashboard_summary",
         "description": "Net worth, Baby Step, debts, food this week versus the cap, this month's budget, sinking funds, bills due in 10 days, retirement rate versus 15%, and credit score.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_todos",
+        "description": (
+            "Todos on lists you own. category is the list name. status is open, done, or all. "
+            "due_before and due_after are inclusive YYYY-MM-DD. priority is 1-5. "
+            "Archived tasks stay out."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string"},
+                "status": {"type": "string", "enum": ["open", "done", "all"]},
+                "due_before": {"type": "string"},
+                "due_after": {"type": "string"},
+                "priority": {"type": "integer"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_todo",
+        "description": (
+            "Add a todo to a list. category is the list name (Work, Personal, Home, or one you created). "
+            "An unknown category is an error. due_date is YYYY-MM-DD. priority is 1-5, 1 highest."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "category": {"type": "string"},
+                "due_date": {"type": "string"},
+                "notes": {"type": "string"},
+                "priority": {"type": "integer"},
+            },
+            "required": ["title"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_todo",
+        "description": "Update a todo's title, category (moves it to that list), due_date, notes, or priority.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "todo_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "category": {"type": "string"},
+                "due_date": {"type": "string"},
+                "notes": {"type": "string"},
+                "priority": {"type": "integer"},
+            },
+            "required": ["todo_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "complete_todo",
+        "description": "Mark a todo done. reopen true puts it back to open.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "todo_id": {"type": "integer"},
+                "reopen": {"type": "boolean"},
+            },
+            "required": ["todo_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_todo_categories",
+        "description": "Todo lists you own. The dashboard calls these categories.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "create_todo_category",
+        "description": "Create a todo list. New tasks use that name as category.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+            "additionalProperties": False,
+        },
     },
     {
         "name": "search",
@@ -592,7 +813,7 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "list_accounts":
         return "GET", "/api/v1/money/accounts", None
     if name == "save_account":
-        body = _pick(args, ("name", "kind", "balance"))
+        body = {k: args[k] for k in ("name", "kind", "balance", "credit_limit", "available_credit", "last4") if k in args}
         if args.get("account_id"):
             return "POST", f"/api/v1/money/accounts/{int(args['account_id'])}/update", body
         return "POST", "/api/v1/money/accounts", body
@@ -619,14 +840,35 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "POST", "/api/v1/money/budget", body
     if name == "get_debts":
         return "GET", "/api/v1/money/debts", None
+    if name == "create_debt":
+        body = {k: args[k] for k in (
+            "name", "last4", "balance", "credit_limit", "apr_percent", "minimum_payment",
+            "due_day", "payoff_order", "notes", "account_id",
+        ) if k in args}
+        return "POST", "/api/v1/money/debts", body
     if name == "update_debt":
-        body = {k: args[k] for k in ("balance", "apr", "minimum", "payoff_order") if k in args}
+        body = {k: args[k] for k in (
+            "name", "last4", "balance", "credit_limit", "apr", "apr_percent", "minimum",
+            "minimum_payment", "due_day", "payoff_order", "notes", "account_id",
+        ) if k in args}
         return "POST", f"/api/v1/money/debts/{int(args['debt_id'])}", body
+    if name == "archive_debt":
+        return "POST", f"/api/v1/money/debts/{int(args['debt_id'])}/archive", {}
+    if name == "delete_debt":
+        return "POST", f"/api/v1/money/debts/{int(args['debt_id'])}/delete", {}
     if name == "get_sinking_funds":
         return "GET", "/api/v1/money/sinking-funds", None
+    if name == "create_sinking_fund":
+        body = {k: args[k] for k in ("name", "target_amount", "balance", "due_on", "notes") if k in args}
+        return "POST", "/api/v1/money/sinking-funds", body
     if name == "update_sinking_fund":
-        body = {k: args[k] for k in ("target", "balance", "due_on") if k in args}
+        body = {k: args[k] for k in ("target", "balance", "due_on", "notes") if k in args}
         return "POST", f"/api/v1/money/sinking-funds/{int(args['sinking_fund_id'])}", body
+    if name == "archive_sinking_fund":
+        return "POST", f"/api/v1/money/sinking-funds/{int(args['sinking_fund_id'])}/archive", {}
+    if name == "set_category_cap":
+        body = {k: args[k] for k in ("category", "weekly_cap", "monthly_cap", "effective_from") if k in args}
+        return "POST", "/api/v1/money/category-caps", body
     if name == "add_net_worth_snapshot":
         body = {k: args[k] for k in ("date", "net_worth", "breakdown") if k in args}
         return "POST", "/api/v1/money/snapshots", body
@@ -634,7 +876,36 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         body = {k: args[k] for k in ("date", "score", "utilization") if k in args}
         return "POST", "/api/v1/money/credit-scores", body
     if name == "weekly_review":
-        return "POST", "/api/v1/money/weekly-review", {}
+        write = bool(args["write_page"]) if "write_page" in args else False
+        return "POST", "/api/v1/money/weekly-review", {"write_page": write}
+    if name == "get_audit_log":
+        query = {}
+        for key in ("since", "until", "actor", "tool", "entity"):
+            if args.get(key) not in (None, ""):
+                query[key] = args[key]
+        if args.get("source") and "actor" not in query:
+            query["actor"] = args["source"]
+        if args.get("entity_id") is not None:
+            query["entity_id"] = int(args["entity_id"])
+        if args.get("limit") is not None:
+            query["limit"] = int(args["limit"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/audit/log" + suffix, None
+    if name == "list_todos":
+        return "GET", "/api/v1/todos/items" + _query(args, ("category", "status", "due_before", "due_after", "priority", "limit")), None
+    if name == "create_todo":
+        body = {k: args[k] for k in ("title", "category", "due_date", "notes", "priority") if k in args}
+        return "POST", "/api/v1/todos/items", body
+    if name == "update_todo":
+        body = {k: args[k] for k in ("title", "category", "due_date", "notes", "priority") if k in args}
+        return "POST", f"/api/v1/todos/items/{int(args['todo_id'])}", body
+    if name == "complete_todo":
+        body = {"reopen": bool(args["reopen"])} if "reopen" in args else {}
+        return "POST", f"/api/v1/todos/items/{int(args['todo_id'])}/complete", body
+    if name == "list_todo_categories":
+        return "GET", "/api/v1/todos/categories", None
+    if name == "create_todo_category":
+        return "POST", "/api/v1/todos/categories", {"name": args["name"]}
     if name == "get_dashboard_summary":
         return "GET", "/api/v1/money/dashboard", None
     if name == "invest_scorecard":

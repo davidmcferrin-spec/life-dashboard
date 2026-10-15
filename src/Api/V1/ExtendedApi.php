@@ -40,6 +40,20 @@ final class ExtendedApi
         $r->get('/api/v1/audit', fn () => $this->run(fn (int $u) => [
             'events' => $this->svc->audit->recent($u, (int) ($_GET['limit'] ?? 40)),
         ]));
+        $r->get('/api/v1/audit/log', fn () => $this->runner->run(function (int $u): array {
+            $entity = self::strParam('entity');
+            $allow = Scope::auditEntityAllow($this->runner->grantedScopes(), $entity);
+            $actor = self::strParam('actor') ?? self::strParam('source');
+            return ['events' => $this->svc->audit->search($u, [
+                'since'     => self::strParam('since'),
+                'until'     => self::strParam('until'),
+                'actor'     => $actor,
+                'tool'      => self::strParam('tool'),
+                'entity'    => $entity,
+                'entity_id' => $_GET['entity_id'] ?? null,
+                'limit'     => (int) ($_GET['limit'] ?? 50),
+            ], $allow)];
+        }, 200, false, ['audit:read', 'money:read', 'todos:read']));
         $r->get('/api/v1/search', fn () => $this->run(fn (int $u) => $this->svc->search->search(
             $u,
             (string) ($_GET['q'] ?? ''),
@@ -146,9 +160,7 @@ final class ExtendedApi
             $to = self::strParam('to') ?? $today;
             return ['summary' => $this->svc->money->summary($u, $from, $to)];
         }));
-        $r->post('/api/v1/money/weekly-review', fn () => $this->run(fn (int $u) => [
-            'page' => $this->svc->money->weeklyReview($u),
-        ], 201, true));
+        $r->post('/api/v1/money/weekly-review', fn () => $this->weeklyReview());
         $r->post('/api/v1/money/transactions/bulk', fn () => $this->run(function (int $u): array {
             $items = $this->runner->body()['transactions'] ?? null;
             if (!is_array($items) || !array_is_list($items)) {
@@ -174,13 +186,44 @@ final class ExtendedApi
                 isset($b['due_day']) && $b['due_day'] !== '' ? (int) $b['due_day'] : null,
             )];
         }, 200, true));
+        $r->post('/api/v1/money/category-caps', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            $weekly = array_key_exists('weekly_cap', $b) && $b['weekly_cap'] !== '' && $b['weekly_cap'] !== null
+                ? (float) $b['weekly_cap'] : null;
+            $monthly = array_key_exists('monthly_cap', $b) && $b['monthly_cap'] !== '' && $b['monthly_cap'] !== null
+                ? (float) $b['monthly_cap'] : null;
+            return ['cap' => $this->svc->plan->setCategoryCap(
+                $u,
+                (string) ($b['category'] ?? ''),
+                $weekly,
+                $monthly,
+                (string) ($b['effective_from'] ?? ''),
+            )];
+        }, 200, true));
         $r->get('/api/v1/money/debts', fn () => $this->run(fn (int $u) => ['debts' => $this->svc->plan->debts($u)]));
+        $r->post('/api/v1/money/debts', fn () => $this->run(fn (int $u) => [
+            'debt' => $this->svc->plan->saveDebt($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/debts/{id}/archive', fn (array $p) => $this->run(fn (int $u) => [
+            'debt' => $this->svc->plan->archiveDebt($u, self::id($p)),
+        ], 200, true));
+        $r->post('/api/v1/money/debts/{id}/delete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $id = self::id($p);
+            $this->svc->plan->deleteDebt($u, $id);
+            return ['ok' => true, 'debt_id' => $id];
+        }, 200, true));
         $r->post('/api/v1/money/debts/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'debt' => $this->svc->plan->updateDebt($u, self::id($p), $this->runner->body()),
         ], 200, true));
         $r->get('/api/v1/money/sinking-funds', fn () => $this->run(fn (int $u) => [
             'sinking_funds' => $this->svc->plan->sinkingFunds($u),
         ]));
+        $r->post('/api/v1/money/sinking-funds', fn () => $this->run(fn (int $u) => [
+            'sinking_fund' => $this->svc->plan->saveSinkingFund($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/sinking-funds/{id}/archive', fn (array $p) => $this->run(fn (int $u) => [
+            'sinking_fund' => $this->svc->plan->archiveSinkingFund($u, self::id($p)),
+        ], 200, true));
         $r->post('/api/v1/money/sinking-funds/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'sinking_fund' => $this->svc->plan->updateSinkingFund($u, self::id($p), $this->runner->body()),
         ], 200, true));
@@ -261,6 +304,57 @@ final class ExtendedApi
             null,
             (int) ($_GET['limit'] ?? 20),
         )));
+
+        $r->get('/api/v1/todos/categories', fn () => $this->run(fn (int $u) => [
+            'categories' => $this->todo(fn () => $this->svc->todos->agentCategories($u)),
+        ]));
+        $r->post('/api/v1/todos/categories', fn () => $this->run(fn (int $u) => [
+            'category' => $this->todo(fn () => $this->svc->todos->agentCreateCategory($u, (string) ($this->runner->body()['name'] ?? ''))),
+        ], 201, true));
+        $r->get('/api/v1/todos/items', fn () => $this->run(fn (int $u) => [
+            'todos' => $this->todo(fn () => $this->svc->todos->agentList($u, [
+                'category'   => self::strParam('category'),
+                'status'     => self::strParam('status') ?? 'open',
+                'due_before' => self::strParam('due_before'),
+                'due_after'  => self::strParam('due_after'),
+                'priority'   => $_GET['priority'] ?? null,
+                'limit'      => (int) ($_GET['limit'] ?? 50),
+            ])),
+        ]));
+        $r->post('/api/v1/todos/items', fn () => $this->run(fn (int $u) => [
+            'todo' => $this->todo(fn () => $this->svc->todos->agentCreate($u, $this->runner->body())),
+        ], 201, true));
+        $r->post('/api/v1/todos/items/{id}/complete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $reopen = array_key_exists('reopen', $b) && filter_var($b['reopen'], FILTER_VALIDATE_BOOLEAN);
+            return ['todo' => $this->todo(fn () => $this->svc->todos->agentComplete($u, self::id($p), $reopen))];
+        }, 200, true));
+        $r->post('/api/v1/todos/items/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'todo' => $this->todo(fn () => $this->svc->todos->agentUpdate($u, self::id($p), $this->runner->body())),
+        ], 200, true));
+    }
+
+    private function weeklyReview(): void
+    {
+        $body = $this->runner->body();
+        $write = !array_key_exists('write_page', $body) || filter_var($body['write_page'], FILTER_VALIDATE_BOOLEAN);
+        $this->runner->run(function (int $u) use ($write): array {
+            return ['page' => $this->svc->money->weeklyReview($u, $write)];
+        }, $write ? 201 : 200, true);
+    }
+
+    /**
+     * @template T
+     * @param callable(): T $fn
+     * @return T
+     */
+    private function todo(callable $fn): mixed
+    {
+        try {
+            return $fn();
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withFields(['todo' => $e->getMessage()]);
+        }
     }
 
     /**
