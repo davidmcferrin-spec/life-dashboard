@@ -13,7 +13,9 @@ def test_tools_cover_the_platform_and_never_a_trade():
     assert "save_account" in names
     assert "save_widget" in names
     assert "dashboard" in names
-    assert not any("order" in name or "trade" in name for name in names)
+    assert "create_habit" in names
+    assert "reorder_habits" in names
+    assert not any("trade" in name or name.endswith("_order") for name in names)
 
 
 def test_resolve_record_and_page_update():
@@ -39,6 +41,20 @@ def test_resolve_record_and_page_update():
     assert (method, path, body) == ("POST", "/api/v1/pages/folders/2/delete", {"move_contents": True})
     method, path, body = resolve("move_page", {"page_id": 9, "folder_id": 2})
     assert (method, path, body) == ("POST", "/api/v1/pages/9/move", {"folder_id": 2})
+
+
+def test_habit_tools_resolve_onto_the_habits_api():
+    method, path, body = resolve("create_habit", {
+        "name": "Water", "key": "water", "icon": "💧", "frequency": "daily", "sort_order": 0,
+    })
+    assert (method, path) == ("POST", "/api/v1/habits")
+    assert body == {"name": "Water", "key": "water", "icon": "💧", "frequency": "daily", "sort_order": 0}
+    method, path, body = resolve("update_habit", {"metric_id": 4, "name": "Lunch", "target": 5})
+    assert (method, path, body) == ("POST", "/api/v1/habits/4/update", {"name": "Lunch", "target": 5})
+    method, path, body = resolve("archive_habit", {"metric_id": 4, "archived": False})
+    assert (method, path, body) == ("POST", "/api/v1/habits/4/archive", {"archived": False})
+    method, path, body = resolve("reorder_habits", {"ids": [3, 1, 2]})
+    assert (method, path, body) == ("POST", "/api/v1/habits/reorder", {"ids": [3, 1, 2]})
 
 
 def test_money_and_widget_writes():

@@ -195,6 +195,7 @@ final class AuditLog
         'sinking_fund'  => ['%/money/sinking-funds%'],
         'todo'          => ['%/todos/items%'],
         'todo_category' => ['%/todos/categories%'],
+        'habit'         => ['%/habits%'],
     ];
 
     /**
