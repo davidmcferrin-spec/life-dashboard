@@ -19,6 +19,7 @@ $jarvisRgb        = JarvisAccent::rgb($jarvisAccent);
 $clockFormat      = $prefs->getClockFormat($userId);
 $showBroadcastWeek = $prefs->getShowBroadcastWeek($userId);
 $showBookmarkIcons = $prefs->getShowBookmarkIcons($userId);
+$showAiPresence = $prefs->getAiPresence($userId);
 $pageTitle        = 'Settings';
 $flash            = $_SESSION['settings_flash'] ?? null;
 unset($_SESSION['settings_flash']);
@@ -137,6 +138,12 @@ require __DIR__ . '/settings/_shell-top.php';
                                 <?= $showBookmarkIcons ? 'checked' : '' ?>>
                             Show bookmark icons on dashboard
                         </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                            <input type="checkbox" name="ai_presence" value="1"
+                                <?= $showAiPresence ? 'checked' : '' ?>>
+                            Show the AI presence sprite
+                        </label>
+                        <p class="text-faint text-xs mono mt-1">When an agent uses a token, a small core drifts across the dashboard and names the token and the tool. It fades after about 30 seconds of quiet. Reduced motion keeps a still badge. The bubble never includes notes or account numbers.</p>
                     </div>
 
                     <button type="submit" class="btn-primary">

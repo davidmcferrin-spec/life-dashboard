@@ -37,6 +37,13 @@ final class ExtendedApi
             'token' => $this->svc->tokens->revoke($u, self::id($p)),
         ], 200, true));
 
+        $r->get('/api/v1/audit/presence', fn () => $this->run(function (int $u): array {
+            $after = filter_var($_GET['after'] ?? 0, FILTER_VALIDATE_INT);
+            if ($after === false || $after < 0) {
+                $after = 0;
+            }
+            return ['events' => $this->svc->audit->presence($u, $after, (int) ($_GET['limit'] ?? 20))];
+        }));
         $r->get('/api/v1/audit', fn () => $this->run(fn (int $u) => [
             'events' => $this->svc->audit->recent($u, (int) ($_GET['limit'] ?? 40)),
         ]));

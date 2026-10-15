@@ -73,6 +73,35 @@ final class AuditLog
     }
 
     /**
+     * Bearer and MCP calls for the presence sprite. Detail is reduced to a name and a label.
+     *
+     * @return list<array{id: int, agent: string, area: string, tool: string, label: string, at: string}>
+     */
+    public function presence(int $userId, int $afterId = 0, int $limit = 20): array
+    {
+        $limit = max(1, min(50, $limit));
+        $afterId = max(0, $afterId);
+        $rows = $this->db->fetchAll(
+            "SELECT id, actor, tool, action, resource, detail, created_at
+             FROM audit_events
+             WHERE user_id = ? AND actor = 'ai' AND id > ?
+             ORDER BY id ASC
+             LIMIT {$limit}",
+            [$userId, $afterId]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $detail = is_string($row['detail']) ? json_decode($row['detail'], true) : $row['detail'];
+            $row['detail'] = is_array($detail) ? $detail : [];
+            $item = AgentPresence::describe($row);
+            if ($item !== null) {
+                $out[] = $item;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Page ids touched in the audit log during the last 7 days.
      *
      * @return list<int>

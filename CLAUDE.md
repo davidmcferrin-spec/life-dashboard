@@ -60,6 +60,8 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] `pages`, `page_revisions`, `page_links`, `page_embeddings` (JSON vectors; full-text via `to_tsvector`), `page_folders` (nested, `pages.folder_id`; existing pages stay at the root)
 - [x] `/brain` editor (Markdown preview renders sanitized HTML, wikilinks, callouts, tree, backlinks, revision restore, folder tree, breadcrumbs) and `/brain/graph` (stable topic clusters, live per-token read/write traces from `audit_events`)
 - [x] Page MCP tools, including folder list/create/rename/move/delete and `move_page`. Optional `OLLAMA_URL` embeds on save. Agents may also `POST …/embedding`
+- [x] `/brain/graph` pans (drag, touch) and zooms (wheel, pinch, buttons) with fit and reset. Node clicks still open the page
+- [x] Dashboard AI presence sprite: accent-colored geometric core driven by bearer/MCP `audit_events` on the realtime channel. Names the token and tool, fades after ~30s, flies toward the matching widget. Settings → Dashboard toggle. Reduced motion is a still badge. The bubble has no notes or account numbers
 
 **L5 — Money ✅** · **L6 — Investing (read-only) ✅** · **L7 — Custom widgets ✅**
 - [x] Accounts, signed transactions, Monarch-style CSV, spending + net-worth widgets, weekly review page

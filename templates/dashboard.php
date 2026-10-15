@@ -26,6 +26,7 @@ $themePref        = $prefService->getTheme($userId);
 $clockFormat         = $prefService->getClockFormat($userId);
 $showBroadcastWeek   = $prefService->getShowBroadcastWeek($userId);
 $showBookmarkIcons   = $prefService->getShowBookmarkIcons($userId);
+$showAiPresence      = $prefService->getAiPresence($userId);
 $pageTitle        = 'Dashboard';
 $extraStyles      = ['/assets/vendor/gridstack-12.6.0/gridstack.min.css', '/assets/css/lifedash.css'];
 $showNewsFeed     = $feedPrefs->hasDashboardPins($userId);
@@ -75,7 +76,7 @@ $timezones = [
 ];
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
-<body class="page min-h-screen">
+<body class="page min-h-screen" data-ai-presence="<?= $showAiPresence ? '1' : '0' ?>">
 
 <nav class="chrome flex items-center justify-between px-6 py-3">
     <span class="brand">Dashboard</span>
@@ -302,5 +303,22 @@ $timezones = [
 <script src="/assets/js/lifedash-renderers.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-grid.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
+<?php if ($showAiPresence): ?>
+<div id="ai-presence" class="ai-presence" hidden>
+    <div class="ai-bubble" role="status" aria-live="polite">
+        <p id="ai-agent" class="ai-agent"></p>
+        <p id="ai-label" class="ai-label"></p>
+    </div>
+    <svg class="ai-core" viewBox="0 0 80 80" aria-hidden="true">
+        <circle class="ai-ring" cx="40" cy="40" r="30" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4"/>
+        <circle class="ai-ring ai-ring-b" cx="40" cy="40" r="22" fill="none" stroke="currentColor" stroke-width="1.15"/>
+        <polygon points="40,18 58,28 58,52 40,62 22,52 22,28" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <rect x="33" y="35" width="14" height="10" fill="none" stroke="currentColor" stroke-width="1.2"/>
+        <line class="ai-pupil" x1="27" y1="40" x2="53" y2="40" stroke="currentColor" stroke-width="2"/>
+        <circle cx="40" cy="40" r="2.2" fill="currentColor"/>
+    </svg>
+</div>
+<script src="/assets/js/ai-presence.js?v=<?= e($assetVer) ?>"></script>
+<?php endif; ?>
 </body>
 </html>

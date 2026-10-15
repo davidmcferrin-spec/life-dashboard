@@ -41,6 +41,7 @@ final class PreferenceService
     public const KEY_DEFAULTS_SEEDED_TODOS   = 'defaults_seeded_todos';
     public const KEY_TODO_WIDGET_LIST_ID      = 'todo_widget_list_id';
     public const KEY_SHOW_BOOKMARK_ICONS      = 'show_bookmark_icons';
+    public const KEY_AI_PRESENCE              = 'ai_presence';
 
     /** @var array<string, string> widget id => user_preferences.pref_key */
     public const WIDGET_DEFAULTS_SEEDED_KEYS = [
@@ -271,6 +272,18 @@ final class PreferenceService
     public function setShowBookmarkIcons(int $userId, bool $enabled): void
     {
         $this->set($userId, self::KEY_SHOW_BOOKMARK_ICONS, $enabled ? '1' : '0');
+    }
+
+    public function getAiPresence(int $userId): bool
+    {
+        $raw = $this->get($userId, self::KEY_AI_PRESENCE, '1') ?? '1';
+
+        return $raw === '1' || $raw === 'true';
+    }
+
+    public function setAiPresence(int $userId, bool $enabled): void
+    {
+        $this->set($userId, self::KEY_AI_PRESENCE, $enabled ? '1' : '0');
     }
 
     /**
