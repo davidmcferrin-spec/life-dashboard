@@ -11,6 +11,7 @@ use Dashboard\Support\NotFoundException;
 use Dashboard\Support\RealtimeToken;
 use Dashboard\Support\ValidationException;
 use Dashboard\Tracking\Services;
+use Dashboard\Widgets\WidgetService;
 use Dashboard\Widgets\WidgetTypeRegistry;
 
 /**
@@ -173,12 +174,28 @@ final class ApiV1
             }
             return ['widget' => $this->svc->widgets->rollback($u, self::id($p), $v)];
         }, 200, true));
+        $r->post('/api/v1/widgets/{id}/goal-log', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $source = $this->runner->actor()->kind === 'ai' ? 'ai' : 'widget';
+            return $this->svc->widgetData->adjustGoal($u, self::id($p), $this->body()['delta'] ?? null, $source);
+        }, 200, true));
         $r->post('/api/v1/layout', fn () => $this->run(function (int $u): array {
-            $items = $this->body()['items'] ?? null;
+            $body = $this->body();
+            $items = $body['items'] ?? null;
             if (!is_array($items) || !array_is_list($items)) {
                 throw ValidationException::withFields(['items' => 'items must be a list.']);
             }
-            return ['updated' => $this->svc->widgets->saveLayout($u, $items)];
+            if (!empty($body['pack'])) {
+                foreach ($items as $i => $it) {
+                    if (!is_array($it)) {
+                        throw ValidationException::withFields(["items.{$i}" => 'Invalid item.']);
+                    }
+                }
+                $items = WidgetService::pack($items);
+            }
+            return [
+                'updated' => $this->svc->widgets->saveLayout($u, $items),
+                'items'   => $items,
+            ];
         }, 200, true));
 
         // ---- realtime ------------------------------------------------

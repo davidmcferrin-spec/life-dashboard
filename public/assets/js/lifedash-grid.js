@@ -1,10 +1,13 @@
 /**
  * lifedash-grid.js — the dashboard widget grid.
  *
- *   - GridStack 12-column grid (1 column under 700px), locked until "Edit layout".
- *   - Edit mode: drag (⋮⋮), resize, add, configure, remove. Layout is saved
- *     (debounced) only for user edits at 12 columns, so phone layouts and
- *     remote updates never write back.
+ *   - GridStack 12-column grid (1 column under 700px). Drag and resize snap
+ *     to the grid. Edit works on a phone too: a reorder is saved as a
+ *     12-column flow of the desktop widths, never as a 1-column layout.
+ *   - Unlocked widgets size to their content, then pack upward (column kept).
+ *     A resize sets height_locked so that height stays. Fit clears it.
+ *   - Layout is saved debounced. Automatic fitting does not write while a
+ *     native widget is still loading, and a phone fit is visual only.
  *   - Native widgets render from /api/v1/widgets/{id}/data via LD.renderers;
  *     legacy widgets are server-rendered partials with their own scripts.
  *   - LD.grid.handleEvent() receives realtime events from lifedash-realtime.js.
@@ -112,6 +115,7 @@
             console.error('[lifedash] render failed', entry.widget, e);
             entry.body.innerHTML = '<p class="ld-error">This widget could not be displayed.</p>';
         }
+        scheduleFit();
     }
 
     // Charts are drawn at pixel size: redraw when the widget resizes.
@@ -130,8 +134,10 @@
     function nativeItemHtml(w) {
         return `
             <div class="grid-stack-item-content surface ld-w ld-w-native">
+                <div class="ld-fit">
                 <div class="ld-edit-bar ld-edit-only">
                     <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
+                    <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
                     <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>
                     <button type="button" class="ld-icon-btn ld-danger" data-action="remove" title="Remove" aria-label="Remove widget">✕</button>
                 </div>
@@ -140,6 +146,7 @@
                     <div class="ld-w-tools"></div>
                 </div>
                 <div class="ld-w-body"><div class="empty-state mono text-xs">Loading…</div></div>
+                </div>
             </div>`;
     }
 
@@ -154,6 +161,8 @@
         gridEl.appendChild(el);
         grid.makeWidget(el, { id: String(w.id), x: w.x, y: w.y, w: w.w, h: w.h, minW: w.min_w, minH: w.min_h });
         register(w, el);
+        const fit = el.querySelector('.ld-fit');
+        if (fit && fitObserver) fitObserver.observe(fit);
         document.getElementById('ld-empty')?.remove();
         if (flash) {
             el.classList.add('ld-flash');
@@ -176,16 +185,15 @@
     const editBtn = document.getElementById('ld-edit');
 
     function setEditing(on) {
-        if (on && grid.getColumn() !== COLUMNS) {
-            status('Widen the window to edit the layout.', 'error');
-            return;
-        }
         editing = on;
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
         editBtn.textContent = on ? 'Done' : 'Edit layout';
         editBtn.setAttribute('aria-pressed', String(on));
-        if (!on) saveLayout.flush();
+        if (!on) {
+            saveLayout.flush();
+            scheduleFit();
+        }
     }
 
     editBtn.addEventListener('click', () => setEditing(!editing));
@@ -193,27 +201,82 @@
         if (e.key === 'Escape' && editing && !document.querySelector('.app-modal:not(.hidden)')) setEditing(false);
     });
 
-    const saveLayout = debounce(async () => {
-        if (grid.getColumn() !== COLUMNS) return;
-        const items = grid.engine.nodes
-            .filter((n) => n.id !== undefined && widgets.has(Number(n.id)))
-            .map((n) => ({ id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h }));
+    function layoutNodes() {
+        return grid.engine.nodes.filter((n) => n.id !== undefined && widgets.has(Number(n.id)));
+    }
+
+    function desktopItems() {
+        return layoutNodes().map((n) => {
+            const w = widgets.get(Number(n.id)).widget;
+            return {
+                id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h,
+                height_locked: w.height_locked ? 1 : 0,
+            };
+        });
+    }
+
+    function sameLayout(items) {
+        return items.every((it) => {
+            const w = widgets.get(it.id)?.widget;
+            return w && w.x === it.x && w.y === it.y && w.w === it.w && w.h === it.h
+                && (w.height_locked ? 1 : 0) === (it.height_locked ? 1 : 0);
+        });
+    }
+
+    async function postLayout(items, pack) {
         if (!items.length) return;
+        if (!pack && sameLayout(items)) return;
         try {
             status('Saving…', 'sticky');
-            await api.post('/layout', { items });
-            items.forEach((it) => {
+            const res = await api.post('/layout', pack ? { items, pack: true } : { items });
+            (res.items || items).forEach((it) => {
                 const entry = widgets.get(it.id);
-                if (entry) Object.assign(entry.widget, { x: it.x, y: it.y, w: it.w, h: it.h });
+                if (!entry) return;
+                Object.assign(entry.widget, {
+                    x: it.x, y: it.y, w: it.w, h: it.h,
+                    height_locked: it.height_locked === undefined ? entry.widget.height_locked : (it.height_locked ? 1 : 0),
+                });
             });
             status('Layout saved');
         } catch (e) {
             status(`Layout not saved: ${e.message}`, 'error');
         }
+    }
+
+    const saveLayout = debounce(() => {
+        if (grid.getColumn() !== COLUMNS) return;
+        postLayout(desktopItems(), false);
     }, 600);
 
+    // Phone reorder: keep each widget's desktop width and flow them in the
+    // visual order. The 1-column x/w is never written.
+    function saveMobileOrder() {
+        const items = layoutNodes()
+            .slice()
+            .sort((a, b) => a.y - b.y || a.x - b.x)
+            .map((n) => {
+                const w = widgets.get(Number(n.id)).widget;
+                return { id: Number(n.id), w: w.w, h: n.h, height_locked: w.height_locked ? 1 : 0 };
+            });
+        postLayout(items, true);
+    }
+
     grid.on('change', () => {
-        if (editing) saveLayout();
+        if (editing && grid.getColumn() === COLUMNS) saveLayout();
+    });
+
+    grid.on('resizestart', (_e, el) => {
+        el.classList.add('ld-h-lock');
+        const entry = widgets.get(Number(el.dataset.widgetId));
+        if (entry) entry.widget.height_locked = 1;
+    });
+
+    grid.on('dragstop', () => {
+        if (editing && grid.getColumn() !== COLUMNS) saveMobileOrder();
+    });
+
+    grid.on('resizestop', () => {
+        if (grid.getColumn() !== COLUMNS) saveMobileOrder();
     });
 
     // -----------------------------------------------------------------
@@ -225,7 +288,18 @@
         const id = Number(btn.closest('.grid-stack-item')?.dataset.widgetId);
         if (!widgets.has(id)) return;
 
-        if (btn.dataset.action === 'configure') {
+        if (btn.dataset.action === 'fit') {
+            const el = btn.closest('.grid-stack-item');
+            el.classList.remove('ld-h-lock');
+            widgets.get(id).widget.height_locked = 0;
+            fitItem(el);
+            if (grid.getColumn() === COLUMNS) {
+                packUp();
+                saveLayout();
+            } else {
+                saveMobileOrder();
+            }
+        } else if (btn.dataset.action === 'configure') {
             openConfig(widgets.get(id).widget);
         } else if (btn.dataset.action === 'remove') {
             if (btn.dataset.armed !== '1') {
@@ -474,6 +548,7 @@
         if (!entry) return;
         const configChanged = w.version !== entry.widget.version;
         entry.widget = Object.assign(entry.widget, w);
+        entry.el.classList.toggle('ld-h-lock', !!w.height_locked);
         const title = entry.el.querySelector('.ld-w-title');
         if (title) title.textContent = w.title || w.label;
         if (configChanged && entry.body) loadData(w.id);
@@ -620,10 +695,60 @@
     // -----------------------------------------------------------------
     // Boot
     // -----------------------------------------------------------------
+    const FIT_MAX = { goal: 6, chart: 8, mood: 8, habits: 10, 'legacy.news': 8, 'legacy.clipboards': 8 };
+
+    function fitItem(el) {
+        const node = el.gridstackNode;
+        if (!node || el.classList.contains('ld-h-lock')) return;
+        node.sizeToContent = FIT_MAX[el.dataset.widgetType] || 8;
+        grid.resizeToContent(el);
+    }
+
+    // Gravity pack: move each widget up, keep its column. Mirrors WidgetService::packUp.
+    function packUp() {
+        if (grid.getColumn() !== COLUMNS) return;
+        const nodes = grid.engine.nodes.slice().sort((a, b) => a.y - b.y || a.x - b.x);
+        nodes.forEach((n) => {
+            if (n.locked) return;
+            let y = n.y;
+            while (y > 0 && !grid.engine.collide(n, { x: n.x, y: y - 1, w: n.w, h: n.h })) y -= 1;
+            if (y !== n.y) grid.update(n.el, { y });
+        });
+    }
+
+    let fitting = false;
+    let fitTimer = 0;
+    function scheduleFit() {
+        clearTimeout(fitTimer);
+        fitTimer = setTimeout(runFit, 80);
+    }
+
+    function runFit() {
+        if (fitting || editing) return;
+        fitting = true;
+        try {
+            grid.getGridItems().forEach(fitItem);
+            if (grid.getColumn() === COLUMNS) packUp();
+            const busy = [...widgets.values()].some((entry) => entry.loading);
+            if (!busy && grid.getColumn() === COLUMNS) saveLayout();
+        } finally {
+            fitting = false;
+        }
+    }
+
+    const fitObserver = 'ResizeObserver' in window
+        ? new ResizeObserver(debounce(() => { if (!editing && !fitting) scheduleFit(); }, 150))
+        : null;
+
     initial.forEach((w) => {
         const el = gridEl.querySelector(`.grid-stack-item[data-widget-id="${w.id}"]`);
-        if (el) register(w, el);
+        if (!el) return;
+        register(w, el);
+        const fit = el.querySelector('.ld-fit');
+        if (fit && fitObserver) fitObserver.observe(fit);
     });
+
+    requestAnimationFrame(() => scheduleFit());
 
     window.LD.grid = { handleEvent, refreshAll, refreshForMetric, get editing() { return editing; } };
 })();

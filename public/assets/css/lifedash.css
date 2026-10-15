@@ -39,20 +39,43 @@
 .grid-stack > .grid-stack-item > .grid-stack-item-content.ld-w {
     border-radius: 0.5rem;
     container-type: inline-size;
+    display: block;
+    overflow: hidden;
+    padding: 0;
+}
+
+/* Measured by GridStack.resizeToContent (first child of the content box).
+   Height is the content, so an unlocked widget can shrink. Padding lives here
+   so the measurement includes it. */
+.ld-fit {
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
     padding: 0.7rem 0.85rem 0.6rem;
+}
+
+.grid-stack-item.ld-h-lock > .grid-stack-item-content > .ld-fit,
+.grid-stack-item.size-to-content-max > .grid-stack-item-content > .ld-fit {
+    height: 100%;
+    min-height: 0;
 }
 
 .ld-w-scroll,
 .ld-w-body {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: visible;
     scrollbar-color: var(--surface-hover) transparent;
     scrollbar-width: thin;
+}
+
+.grid-stack-item.ld-h-lock .ld-w-scroll,
+.grid-stack-item.ld-h-lock .ld-w-body,
+.grid-stack-item.size-to-content-max .ld-w-scroll,
+.grid-stack-item.size-to-content-max .ld-w-body {
+    flex: 1 1 auto;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .ld-w-head {
@@ -127,7 +150,7 @@
 }
 
 /* Make room for the edit bar so it never covers header links (Manage, View all…). */
-.ld-editing .grid-stack > .grid-stack-item > .grid-stack-item-content.ld-w {
+.ld-editing .ld-fit {
     padding-top: 2.1rem;
 }
 
@@ -335,7 +358,8 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
 .ld-sub { color: var(--text-faint); font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; margin-top: 0.25rem; }
 .ld-delta-up { color: var(--ok); }
 .ld-delta-down { color: var(--danger); }
-.ld-center { align-items: center; display: flex; flex-direction: column; height: 100%; justify-content: center; text-align: center; }
+.ld-center { align-items: center; display: flex; flex-direction: column; height: auto; justify-content: center; text-align: center; }
+.ld-h-lock .ld-center { height: 100%; }
 
 /* Charts */
 .ld-svg { display: block; height: 100%; min-height: 4rem; overflow: visible; width: 100%; }
@@ -345,8 +369,13 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
 .ld-legend { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin-bottom: 0.25rem; }
 .ld-legend span { align-items: center; color: var(--text-muted); display: inline-flex; font-size: 0.72rem; gap: 0.3rem; }
 .ld-legend i { border-radius: 2px; display: inline-block; height: 0.55rem; width: 0.55rem; }
-.ld-chart-wrap { display: flex; flex-direction: column; height: 100%; }
-.ld-chart-wrap .ld-svg { flex: 1 1 auto; }
+.ld-chart-wrap { display: flex; flex-direction: column; height: auto; }
+.ld-plot { height: 9rem; min-height: 4rem; }
+.ld-h-lock .ld-chart-wrap,
+.size-to-content-max .ld-chart-wrap { flex: 1 1 auto; height: 100%; min-height: 0; }
+.ld-h-lock .ld-plot,
+.size-to-content-max .ld-plot { flex: 1 1 auto; height: auto; min-height: 4rem; }
+.ld-chart-wrap .ld-svg { flex: 1 1 auto; height: 100%; }
 
 /* Table */
 .ld-table { border-collapse: collapse; font-size: 0.8rem; width: 100%; }
@@ -842,14 +871,22 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
     display: flex;
     flex-direction: column;
 }
+.ld-goal { display: flex; flex-direction: column; gap: 0.55rem; }
+.ld-h-lock .ld-goal,
+.size-to-content-max .ld-goal { flex: 1 1 auto; min-height: 0; }
 .ld-goal-day {
     align-items: stretch;
     display: grid;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     gap: 0.85rem;
     grid-template-columns: 4.25rem minmax(0, 1fr);
-    min-height: 7.5rem;
     padding: 0.15rem 0.1rem 0.15rem;
+}
+.ld-h-lock .ld-goal-day,
+.size-to-content-max .ld-goal-day {
+    flex: 1 1 auto;
+    grid-template-rows: 1fr;
+    min-height: 6.5rem;
 }
 .ld-goal-tank,
 .ld-goal-cell {
@@ -860,7 +897,9 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
     overflow: hidden;
     position: relative;
 }
-.ld-goal-tank { height: 100%; min-height: 7.25rem; }
+.ld-goal-tank { height: 6.5rem; }
+.ld-h-lock .ld-goal-tank,
+.size-to-content-max .ld-goal-tank { height: 100%; }
 .ld-goal-fill {
     background: color-mix(
         in srgb,
@@ -882,17 +921,19 @@ html[data-theme="jarvis"] .ld-arc-sm .ld-stat-value {
 }
 .ld-goal-week {
     display: grid;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     gap: 0.35rem;
     grid-template-columns: repeat(7, minmax(0, 1fr));
-    min-height: 7.25rem;
 }
+.ld-h-lock .ld-goal-week,
+.size-to-content-max .ld-goal-week { flex: 1 1 auto; min-height: 6.5rem; }
 .ld-goal-cell {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    min-height: 7.25rem;
+    height: 6.5rem;
 }
+.ld-h-lock .ld-goal-cell,
+.size-to-content-max .ld-goal-cell { height: 100%; }
 .ld-goal-cell.is-today {
     box-shadow: 0 0 0 1px var(--hud-accent, var(--accent));
 }
@@ -925,3 +966,13 @@ html[data-theme="jarvis"] .ld-goal-tank.is-over .ld-goal-fill,
 html[data-theme="jarvis"] .ld-goal-cell.is-over .ld-goal-fill {
     box-shadow: 0 0 16px color-mix(in srgb, var(--ok) 70%, var(--hud-accent, var(--accent)));
 }
+.ld-goal-log {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.ld-goal-adds { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.ld-goal-custom { align-items: center; display: inline-flex; gap: 0.25rem; }
+.ld-goal-custom input { padding: 0.15rem 0.4rem; width: 4.75rem; }
+.ld-goal-undo { min-width: 1.75rem; padding-left: 0.45rem; padding-right: 0.45rem; }

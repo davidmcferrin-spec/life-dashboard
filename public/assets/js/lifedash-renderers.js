@@ -204,7 +204,7 @@
         const legend = series.length > 1
             ? `<div class="ld-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`
             : '';
-        ctx.body.innerHTML = `<div class="ld-chart-wrap">${legend}<div data-plot style="flex:1 1 auto;min-height:4rem"></div></div>`;
+        ctx.body.innerHTML = `<div class="ld-chart-wrap">${legend}<div class="ld-plot" data-plot></div></div>`;
 
         const plot = ctx.body.querySelector('[data-plot]');
         const metric = series[0] && series[0].metric;
@@ -260,11 +260,87 @@
         return `--goal-fill:${fill.toFixed(2)}%;--goal-over:${over.toFixed(4)}`;
     }
 
+    const goalUndo = new Map();
+
+    function goalAmount(n, unit) {
+        const text = fmt.number(n, Number.isInteger(Number(n)) ? 0 : 1);
+        return unit ? `${text} ${unit}` : text;
+    }
+
+    function goalLogForm(ctx) {
+        const incs = Array.isArray(ctx.data.increments) && ctx.data.increments.length
+            ? ctx.data.increments : [250, 500];
+        const unit = ctx.data.metric && ctx.data.metric.unit ? ctx.data.metric.unit : '';
+        const buttons = incs.map((n) =>
+            `<button type="button" class="btn text-xs ld-goal-add" data-delta="${Number(n)}">+${esc(goalAmount(n, unit))}</button>`
+        ).join('');
+        const step = Number(incs[0]) || 250;
+        return `<form class="ld-goal-log">
+            <div class="ld-goal-adds">${buttons}</div>
+            <label class="ld-goal-custom">
+                <input type="number" inputmode="decimal" min="0" step="any" class="input text-xs" aria-label="Custom amount${unit ? ` in ${esc(unit)}` : ''}" placeholder="${esc(unit || 'amount')}">
+                <button type="submit" class="btn text-xs">Add</button>
+            </label>
+            <button type="button" class="btn text-xs ld-goal-undo" title="Undo the last add, or subtract ${esc(goalAmount(step, unit))}">−</button>
+        </form>`;
+    }
+
+    async function logGoal(ctx, delta, btn) {
+        if (!Number.isFinite(delta) || delta === 0) return;
+        if (btn) btn.setAttribute('aria-busy', 'true');
+        try {
+            await api.post(`/widgets/${ctx.widget.id}/goal-log`, { delta });
+            const stack = goalUndo.get(ctx.widget.id) || [];
+            if (delta > 0) stack.push(delta);
+            else if (stack.length) stack.pop();
+            goalUndo.set(ctx.widget.id, stack);
+            await ctx.refresh();
+        } catch (e) {
+            status(e.message || 'Could not log.', 'error');
+        } finally {
+            if (btn && btn.isConnected) btn.removeAttribute('aria-busy');
+        }
+    }
+
+    function bindGoalLog(ctx) {
+        const form = ctx.body.querySelector('.ld-goal-log');
+        if (!form) return;
+        const incs = Array.isArray(ctx.data.increments) && ctx.data.increments.length
+            ? ctx.data.increments : [250, 500];
+        form.addEventListener('click', (e) => {
+            const add = e.target.closest('.ld-goal-add');
+            if (add) {
+                e.preventDefault();
+                logGoal(ctx, Number(add.dataset.delta), add);
+                return;
+            }
+            const undo = e.target.closest('.ld-goal-undo');
+            if (!undo) return;
+            e.preventDefault();
+            const stack = goalUndo.get(ctx.widget.id) || [];
+            const delta = stack.length ? -stack[stack.length - 1] : -(Number(incs[0]) || 250);
+            logGoal(ctx, delta, undo);
+        });
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const input = form.querySelector('input');
+            const raw = Number(input.value);
+            if (!(raw > 0)) {
+                status('Enter an amount.', 'error');
+                return;
+            }
+            logGoal(ctx, raw, form.querySelector('[type=submit]')).then(() => {
+                if (input.isConnected) input.value = '';
+            });
+        });
+    }
+
     function goal(ctx) {
         const d = ctx.data;
         if (d.error) return errorBox(ctx, d.error);
         tools(ctx, '');
         const unit = d.metric.unit ? ' ' + d.metric.unit : '';
+        const log = goalLogForm(ctx);
         if (d.view === 'week') {
             const cells = (d.days || []).map((day) => {
                 const cls = [
@@ -284,12 +360,14 @@
                 </div>`;
             }).join('');
             tools(ctx, '<span class="ld-sub">0 empty · 100% full · 200%</span>');
-            ctx.body.innerHTML = `<div class="ld-goal-week">${cells}</div>`;
+            ctx.body.innerHTML = `<div class="ld-goal"><div class="ld-goal-week">${cells}</div>${log}</div>`;
+            bindGoalLog(ctx);
             return;
         }
         const shown = d.value === null ? '—' : fmt.value(d.metric, d.value);
         const over = d.ratio > 1 ? ' is-over' : '';
         ctx.body.innerHTML = `
+            <div class="ld-goal">
             <div class="ld-goal-day">
                 <div class="ld-goal-tank${over}" style="${goalPaint(d.ratio)}" role="img"
                      aria-label="${esc(d.metric.name)} ${esc(shown)}, ${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}">
@@ -299,7 +377,10 @@
                     <div class="ld-stat-value">${esc(shown)}</div>
                     <div class="ld-sub">${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}</div>
                 </div>
+            </div>
+            ${log}
             </div>`;
+        bindGoalLog(ctx);
     }
 
     // -----------------------------------------------------------------

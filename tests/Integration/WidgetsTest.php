@@ -105,10 +105,13 @@ final class WidgetsTest extends PgsqlTestCase
     public function testLayoutSaveValidatesBoundsAndOwnership(): void
     {
         $w = $this->svc->widgets->create($this->user, 'legacy.stocks', null, []);
-        self::assertSame(1, $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 8, 'y' => 3, 'w' => 4, 'h' => 6]]));
-        self::assertSame(0, $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 8, 'y' => 3, 'w' => 4, 'h' => 6]]), 'unchanged → no write');
+        self::assertSame(0, $w['height_locked']);
+        self::assertSame(1, $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 8, 'y' => 3, 'w' => 4, 'h' => 6, 'height_locked' => 1]]));
+        self::assertSame(0, $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 8, 'y' => 3, 'w' => 4, 'h' => 6, 'height_locked' => 1]]), 'unchanged → no write');
         $got = $this->svc->widgets->get($this->user, $w['id']);
-        self::assertSame([8, 3, 4, 6], [$got['x'], $got['y'], $got['w'], $got['h']]);
+        self::assertSame([8, 3, 4, 6, 1], [$got['x'], $got['y'], $got['w'], $got['h'], $got['height_locked']]);
+        self::assertSame(0, $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 8, 'y' => 3, 'w' => 4, 'h' => 6]]), 'omitted lock is left alone');
+        self::assertSame(1, $this->svc->widgets->get($this->user, $w['id'])['height_locked']);
 
         $this->expectException(ValidationException::class);
         $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 10, 'y' => 0, 'w' => 4, 'h' => 4]]);

@@ -303,6 +303,7 @@ final class WidgetDataService
         }
 
         $today = $this->clock->today();
+        $log = $this->goalLogFields($c, $metric, $today);
         if ($view === 'week') {
             $start = HabitService::weekStart($today);
             $end = Clock::shiftDate($start, -6);
@@ -332,7 +333,7 @@ final class WidgetDataService
                 'today'      => $today,
                 'goal'       => $goal,
                 'days'       => $days,
-            ];
+            ] + $log;
         }
 
         $value = $this->points->aggregate($userId, $id, 'last', $today, $today);
@@ -346,6 +347,66 @@ final class WidgetDataService
             'value'      => $value,
             'ratio'      => $ratio,
             'percent'    => (int) round($ratio * 100),
+        ] + $log;
+    }
+
+    /**
+     * Add or subtract from today's running total and store it on the metric's
+     * daily dedupe key (water_ml uses water:YYYY-MM-DD). Last value wins.
+     *
+     * @return array{dedupe_key: string, value: float, data: array<string, mixed>}
+     */
+    public function adjustGoal(int $userId, int $widgetId, mixed $delta, string $source = 'widget'): array
+    {
+        $widget = $this->widgets->get($userId, $widgetId);
+        if ($widget['type'] !== 'goal') {
+            throw new ValidationException('Only a goal widget can log this way.');
+        }
+        if (!is_numeric($delta) || !is_finite((float) $delta) || (float) $delta == 0.0 || abs((float) $delta) > 1e12) {
+            throw ValidationException::withFields(['delta' => 'Enter an amount.']);
+        }
+        if (!in_array($source, DatapointService::SOURCES, true)) {
+            throw ValidationException::withFields(['source' => 'Invalid source.']);
+        }
+
+        $config = $widget['config'];
+        $metric = $this->metrics->get($userId, (int) $config['metric_id']);
+        $today = $this->clock->today();
+        $key = GoalLog::dedupeKey(GoalLog::prefix($config, $metric), $today);
+        $current = $this->points->valueForDedupe($userId, (int) $metric['id'], $key);
+        if ($current === null) {
+            $current = $this->points->aggregate($userId, (int) $metric['id'], 'last', $today, $today) ?? 0.0;
+        }
+        $next = max(0.0, $current + (float) $delta);
+        $this->points->record($userId, (int) $metric['id'], [
+            'value'      => $next,
+            'date'       => $today,
+            'source'     => $source,
+            'dedupe_key' => $key,
+        ]);
+
+        return [
+            'dedupe_key' => $key,
+            'value'      => $next,
+            'data'       => $this->goalData($userId, $config),
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @param array<string, mixed> $metric
+     * @return array{increments: list<float>, dedupe_key: string}
+     */
+    private function goalLogFields(array $config, array $metric, string $today): array
+    {
+        try {
+            $increments = GoalLog::parseIncrements(isset($config['increments']) ? (string) $config['increments'] : null);
+        } catch (\DomainException) {
+            $increments = GoalLog::parseIncrements(null);
+        }
+        return [
+            'increments' => $increments,
+            'dedupe_key' => GoalLog::dedupeKey(GoalLog::prefix($config, $metric), $today),
         ];
     }
 
