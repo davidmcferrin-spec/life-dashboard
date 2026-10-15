@@ -251,6 +251,58 @@
     }
 
     // -----------------------------------------------------------------
+    // Goal progress — fill is the user accent; past 100% shifts toward --ok
+    // -----------------------------------------------------------------
+    function goalPaint(ratio) {
+        const capped = Math.max(0, Math.min(2, Number(ratio) || 0));
+        const fill = Math.min(1, capped) * 100;
+        const over = Math.max(0, capped - 1);
+        return `--goal-fill:${fill.toFixed(2)}%;--goal-over:${over.toFixed(4)}`;
+    }
+
+    function goal(ctx) {
+        const d = ctx.data;
+        if (d.error) return errorBox(ctx, d.error);
+        tools(ctx, '');
+        const unit = d.metric.unit ? ' ' + d.metric.unit : '';
+        if (d.view === 'week') {
+            const cells = (d.days || []).map((day) => {
+                const cls = [
+                    'ld-goal-cell',
+                    day.today ? 'is-today' : '',
+                    day.future ? 'is-future' : '',
+                    day.ratio > 1 ? 'is-over' : '',
+                ].filter(Boolean).join(' ');
+                const shown = day.value === null || day.future ? '—' : `${day.percent}%`;
+                const label = day.value === null
+                    ? `${day.label} no entry`
+                    : `${day.label} ${fmt.value(d.metric, day.value)}, ${day.percent}% of goal`;
+                return `<div class="${cls}" style="${goalPaint(day.ratio)}" role="img" aria-label="${esc(label)}">
+                    <span class="ld-goal-fill"></span>
+                    <span class="ld-goal-dow">${esc(day.label)}</span>
+                    <span class="ld-goal-cap">${esc(shown)}</span>
+                </div>`;
+            }).join('');
+            tools(ctx, '<span class="ld-sub">0 empty · 100% full · 200%</span>');
+            ctx.body.innerHTML = `<div class="ld-goal-week">${cells}</div>`;
+            return;
+        }
+        const shown = d.value === null ? '—' : fmt.value(d.metric, d.value);
+        const over = d.ratio > 1 ? ' is-over' : '';
+        ctx.body.innerHTML = `
+            <div class="ld-goal-day">
+                <div class="ld-goal-tank${over}" style="${goalPaint(d.ratio)}" role="img"
+                     aria-label="${esc(d.metric.name)} ${esc(shown)}, ${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}">
+                    <span class="ld-goal-fill"></span>
+                </div>
+                <div class="ld-goal-readout">
+                    <div class="ld-stat-value">${esc(shown)}</div>
+                    <div class="ld-sub">${d.percent}% of ${esc(fmt.number(d.goal, 0))}${esc(unit)}</div>
+                </div>
+            </div>`;
+    }
+
+    // -----------------------------------------------------------------
     // Table
     // -----------------------------------------------------------------
     function table(ctx) {
@@ -691,6 +743,6 @@
         }).join('');
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, table, streak, life, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

@@ -46,6 +46,9 @@ final class Services
         $this->metrics = new MetricService($db);
         $this->points  = new DatapointService($db, $this->metrics, $clock);
         $this->habits  = new HabitService($this->metrics, $this->points, $clock);
+        $this->points->afterRecord(function (int $userId, int $metricId, string $localDate, string $source): void {
+            $this->habits->completeFromMetric($userId, $metricId, $localDate, $source);
+        });
         $this->widgets = new WidgetService($db, $this->metrics);
         $this->audit   = new AuditLog($db);
         $this->tokens  = new ApiTokenService($db);

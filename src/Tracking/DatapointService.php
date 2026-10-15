@@ -30,6 +30,19 @@ final class DatapointService
         private readonly Clock $clock,
     ) {}
 
+    /** @var null|\Closure(int, int, string, string): void */
+    private ?\Closure $afterRecord = null;
+
+    /**
+     * Called after a non-habit write. Arguments: user id, metric id, local date, source.
+     *
+     * @param \Closure(int, int, string, string): void $callback
+     */
+    public function afterRecord(\Closure $callback): void
+    {
+        $this->afterRecord = $callback;
+    }
+
     /**
      * Record one value.
      *
@@ -106,7 +119,11 @@ final class DatapointService
             [$metricId, $userId, $this->clock->utcString($ts), $localDate, $value, $note, $source, $dedupe, $metaJson]
         );
 
-        return $this->get($userId, (int) $id);
+        $stored = $this->get($userId, (int) $id);
+        if ($metric['kind'] !== 'habit' && $this->afterRecord !== null) {
+            ($this->afterRecord)($userId, $metricId, $localDate, $source);
+        }
+        return $stored;
     }
 
     /**

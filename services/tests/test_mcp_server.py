@@ -63,6 +63,20 @@ def test_habit_tools_resolve_onto_the_habits_api():
     assert body == {"name": "Water", "key": "water", "icon": "💧", "frequency": "daily", "sort_order": 0}
     method, path, body = resolve("update_habit", {"metric_id": 4, "name": "Lunch", "target": 5})
     assert (method, path, body) == ("POST", "/api/v1/habits/4/update", {"name": "Lunch", "target": 5})
+    method, path, body = resolve("update_habit", {"metric_id": 13, "goal_metric_id": 17, "goal_threshold": 3000})
+    assert (method, path, body) == (
+        "POST",
+        "/api/v1/habits/13/update",
+        {"goal_metric_id": 17, "goal_threshold": 3000},
+    )
+    method, path, body = resolve("create_habit", {"name": "Water", "goal_metric_id": 17, "goal_threshold": 3000})
+    assert body["goal_metric_id"] == 17
+    assert body["goal_threshold"] == 3000
+    method, path, body = resolve("update_habit", {"metric_id": 13, "goal_metric_id": 0})
+    assert body == {"goal_metric_id": 0}
+    schema = {tool["name"]: tool for tool in TOOLS}
+    assert "goal_metric_id" in schema["create_habit"]["inputSchema"]["properties"]
+    assert "goal_threshold" in schema["update_habit"]["inputSchema"]["properties"]
     method, path, body = resolve("archive_habit", {"metric_id": 4, "archived": False})
     assert (method, path, body) == ("POST", "/api/v1/habits/4/archive", {"archived": False})
     method, path, body = resolve("reorder_habits", {"ids": [3, 1, 2]})
