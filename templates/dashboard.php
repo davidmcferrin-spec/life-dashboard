@@ -39,6 +39,7 @@ $starfieldPref  = $prefService->getStarfield($userId);
 // -------------------------------------------------------
 $lifedash = Services::fromDatabase($db);
 $lifedash->widgets->ensureSeeded($userId);
+$lifedash->widgets->ensureCompactRow($userId);
 $widgets  = $lifedash->widgets->list($userId);
 $onBoard  = array_fill_keys(array_column($widgets, 'type'), true);
 $hasAny   = static fn (string ...$types): bool => array_intersect_key($onBoard, array_flip($types)) !== [];

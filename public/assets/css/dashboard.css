@@ -790,13 +790,11 @@ body.is-widget-resizing {
     .dashboard-widgets .widget-row .flight-poll-hint {
         display: none;
     }
+}
 
-    .dashboard-widgets #weather-widget .weather-details {
+@container (max-width: 180px) {
+    .dashboard-widgets #weather-widget .weather-compact {
         grid-template-columns: 1fr;
-    }
-
-    .dashboard-widgets #weather-widget .weather-main-temp {
-        font-size: 1.25rem;
     }
 }
 

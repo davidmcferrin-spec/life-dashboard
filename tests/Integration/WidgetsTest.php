@@ -117,6 +117,30 @@ final class WidgetsTest extends PgsqlTestCase
         $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 10, 'y' => 0, 'w' => 4, 'h' => 4]]);
     }
 
+    public function testCompactRefitRunsOnceAndSkipsALockedCard(): void
+    {
+        $weather = $this->svc->widgets->create($this->user, 'legacy.weather', null, []);
+        $mood = $this->svc->widgets->create($this->user, 'mood', null, []);
+        $stocks = $this->svc->widgets->create($this->user, 'legacy.stocks', null, []);
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $weather['id'], 'x' => 0, 'y' => 0, 'w' => 4, 'h' => 5, 'height_locked' => 0],
+            ['id' => $mood['id'], 'x' => 0, 'y' => 5, 'w' => 6, 'h' => 4, 'height_locked' => 0],
+            ['id' => $stocks['id'], 'x' => 8, 'y' => 0, 'w' => 4, 'h' => 4, 'height_locked' => 1],
+        ]);
+
+        $this->svc->widgets->ensureCompactRow($this->user);
+        $weather = $this->svc->widgets->get($this->user, $weather['id']);
+        $mood = $this->svc->widgets->get($this->user, $mood['id']);
+        $stocks = $this->svc->widgets->get($this->user, $stocks['id']);
+
+        self::assertSame([0, 0, 3, 10, 0], [$weather['x'], $weather['y'], $weather['w'], $weather['h'], $weather['height_locked']]);
+        self::assertSame([3, 0, 3, 8], [$mood['x'], $mood['y'], $mood['w'], $mood['h']]);
+        self::assertSame([8, 4, 8, 1], [$stocks['x'], $stocks['w'], $stocks['h'], $stocks['height_locked']]);
+
+        $this->svc->widgets->ensureCompactRow($this->user);
+        self::assertSame(10, $this->svc->widgets->get($this->user, $weather['id'])['h'], 'a second load does not scale height again');
+    }
+
     public function testWidgetDataForTrackingTypes(): void
     {
         $mood = $this->svc->metrics->ensureMood($this->user);

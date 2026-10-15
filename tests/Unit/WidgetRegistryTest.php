@@ -128,6 +128,65 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(2, $byId[3]['y'], 'the card below stops under the one in its column');
     }
 
+    public function testTopRowDefaultsAreThreeColumns(): void
+    {
+        foreach (['legacy.weather', 'goal', 'mood', 'legacy.todos'] as $type) {
+            $def = WidgetTypeRegistry::get($type);
+            self::assertSame(3, $def['size']['w'], $type);
+            self::assertSame(2, $def['min']['w'], $type);
+            self::assertGreaterThanOrEqual(2, $def['min']['h'], $type);
+        }
+        self::assertSame(12, WidgetTypeRegistry::get('legacy.news')['size']['w']);
+        self::assertSame(3, WidgetTypeRegistry::get('legacy.news')['min']['w']);
+    }
+
+    public function testCompactRefitNarrowsUnlockedDefaultsAndLeavesAResizeAlone(): void
+    {
+        $next = WidgetService::refitCompactRow([
+            ['id' => 1, 'type' => 'legacy.weather', 'x' => 0, 'y' => 0, 'w' => 4, 'h' => 5, 'height_locked' => 0],
+            ['id' => 2, 'type' => 'goal', 'x' => 4, 'y' => 0, 'w' => 6, 'h' => 3, 'height_locked' => 0],
+            ['id' => 3, 'type' => 'mood', 'x' => 0, 'y' => 5, 'w' => 6, 'h' => 5, 'height_locked' => 0],
+            ['id' => 4, 'type' => 'legacy.todos', 'x' => 8, 'y' => 10, 'w' => 4, 'h' => 6, 'height_locked' => 0],
+            ['id' => 5, 'type' => 'goal', 'x' => 0, 'y' => 16, 'w' => 6, 'h' => 3, 'height_locked' => 1],
+            ['id' => 6, 'type' => 'legacy.news', 'x' => 0, 'y' => 20, 'w' => 12, 'h' => 8, 'height_locked' => 0],
+            ['id' => 7, 'type' => 'goal', 'x' => 0, 'y' => 30, 'w' => 5, 'h' => 3, 'height_locked' => 0],
+        ]);
+        $byId = [];
+        foreach ($next as $row) {
+            $byId[$row['id']] = $row;
+        }
+
+        self::assertSame([0, 0, 3, 10], [$byId[1]['x'], $byId[1]['y'], $byId[1]['w'], $byId[1]['h']]);
+        self::assertSame([3, 0, 3, 6], [$byId[2]['x'], $byId[2]['y'], $byId[2]['w'], $byId[2]['h']]);
+        self::assertSame([6, 0, 3, 10], [$byId[3]['x'], $byId[3]['y'], $byId[3]['w'], $byId[3]['h']]);
+        self::assertSame([9, 0, 3, 12], [$byId[4]['x'], $byId[4]['y'], $byId[4]['w'], $byId[4]['h']]);
+        self::assertSame(6, $byId[5]['w'], 'a resized goal keeps its width');
+        self::assertSame(0, $byId[5]['x'], 'a resized goal keeps its column');
+        self::assertSame(1, $byId[5]['height_locked']);
+        self::assertSame(6, $byId[5]['h'], 'locked height doubles with the shorter row');
+        self::assertGreaterThanOrEqual(10, $byId[5]['y']);
+        self::assertSame(12, $byId[6]['w']);
+        self::assertSame(0, $byId[6]['x']);
+        self::assertSame(5, $byId[7]['w'], 'a width that is not an old default stays');
+        self::assertSame(0, $byId[7]['x']);
+
+        $under = WidgetService::refitCompactRow([
+            ['id' => 1, 'type' => 'legacy.news', 'x' => 0, 'y' => 0, 'w' => 12, 'h' => 4, 'height_locked' => 1],
+            ['id' => 2, 'type' => 'legacy.weather', 'x' => 0, 'y' => 4, 'w' => 4, 'h' => 2, 'height_locked' => 0],
+            ['id' => 3, 'type' => 'goal', 'x' => 4, 'y' => 4, 'w' => 6, 'h' => 2, 'height_locked' => 0],
+            ['id' => 4, 'type' => 'mood', 'x' => 0, 'y' => 8, 'w' => 4, 'h' => 2, 'height_locked' => 0],
+            ['id' => 5, 'type' => 'legacy.todos', 'x' => 4, 'y' => 8, 'w' => 4, 'h' => 2, 'height_locked' => 0],
+        ]);
+        $byId = [];
+        foreach ($under as $row) {
+            $byId[$row['id']] = $row;
+        }
+        self::assertSame([0, 0, 12, 8], [$byId[1]['x'], $byId[1]['y'], $byId[1]['w'], $byId[1]['h']]);
+        self::assertSame(8, $byId[2]['y'], 'cards do not jump above a locked full-width widget');
+        self::assertSame([0, 3, 6, 9], [$byId[2]['x'], $byId[3]['x'], $byId[4]['x'], $byId[5]['x']]);
+        self::assertSame([$byId[2]['y'], $byId[2]['y'], $byId[2]['y']], [$byId[3]['y'], $byId[4]['y'], $byId[5]['y']]);
+    }
+
     /**
      * @return iterable<string, array{string, array<string, mixed>, string}>
      */

@@ -6,6 +6,8 @@
  *     12-column flow of the desktop widths, never as a 1-column layout.
  *   - Unlocked widgets size to their content, then pack upward (column kept).
  *     A resize sets height_locked so that height stays. Fit clears it.
+ *   - Rows are 32px (was 64) so a vertical resize steps half as far. Width still
+ *     snaps to one of 12 columns; top-row cards can step down to 2 columns.
  *   - Layout is saved debounced. Automatic fitting does not write while a
  *     native widget is still loading, and a phone fit is visual only.
  *   - Native widgets render from /api/v1/widgets/{id}/data via LD.renderers;
@@ -36,7 +38,7 @@
 
     const grid = GS.init({
         column: COLUMNS,
-        cellHeight: 64,
+        cellHeight: 32,
         margin: 6,
         float: false,
         animate: true,

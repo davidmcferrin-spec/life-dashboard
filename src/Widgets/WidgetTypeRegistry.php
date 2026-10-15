@@ -45,7 +45,7 @@ final class WidgetTypeRegistry
             'mood' => [
                 'label' => 'Mood', 'category' => 'tracking', 'singleton' => false,
                 'description' => 'Log how you feel (1–5) with an optional note; recent trend.',
-                'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 3],
+                'size' => ['w' => 3, 'h' => 3], 'min' => ['w' => 2, 'h' => 2],
                 'fields' => [
                     'metric_id' => ['type' => 'metric', 'label' => 'Scale metric (empty = Mood)', 'kinds' => ['scale']],
                     'days'      => ['type' => 'enum', 'label' => 'Trend', 'options' => ['14' => '14 days', '30' => '30 days', '90' => '90 days'], 'default' => '30'],
@@ -77,7 +77,7 @@ final class WidgetTypeRegistry
             'goal' => [
                 'label' => 'Goals', 'category' => 'tracking', 'singleton' => false,
                 'description' => 'One to four number metrics in a single card. Each row shows today, or seven days, against its goal (full at 100%, a different shade through 200%). Amount metrics tap to add; count metrics use pips.',
-                'size' => ['w' => 6, 'h' => 3], 'min' => ['w' => 4, 'h' => 2],
+                'size' => ['w' => 3, 'h' => 3], 'min' => ['w' => 2, 'h' => 2],
                 'fields' => [
                     'metric_ids' => ['type' => 'metrics', 'label' => 'Goals', 'kinds' => ['number'], 'min_items' => 1, 'max_items' => 4],
                     'view'       => ['type' => 'enum', 'label' => 'View', 'options' => ['day' => 'Today', 'week' => 'This week'], 'default' => 'day'],
@@ -238,12 +238,12 @@ final class WidgetTypeRegistry
 
             // ---------------- legacy (personal-dashboard) ----------------
             'legacy.bookmarks'  => self::legacy('Bookmarks', 'Folders of links with favicons.', 4, 6),
-            'legacy.weather'    => self::legacy('Weather', 'Current conditions and forecast.', 4, 5),
+            'legacy.weather'    => self::legacy('Weather', 'Current conditions and forecast.', 3, 3, 2, 2),
             'legacy.flights'    => self::legacy('Flights', 'Flight watches (ADS-B / FlightAware).', 4, 5),
             'legacy.packages'   => self::legacy('Packages', 'Package tracking.', 4, 5),
             'legacy.pings'      => self::legacy('System status', 'Ping / HTTP checks.', 4, 5),
             'legacy.stocks'     => self::legacy('Stocks', 'Stock watchlist.', 4, 5),
-            'legacy.todos'      => self::legacy('Todos', 'Todo lists with tabs.', 4, 6),
+            'legacy.todos'      => self::legacy('Todos', 'Todo lists with tabs.', 3, 4, 2, 2),
             'legacy.clipboards' => self::legacy('Cloud clipboards', 'Pinned clipboards with Markdown preview.', 12, 6),
             'legacy.news'       => self::legacy('News feed', 'Merged RSS feed of your pinned sources.', 12, 8),
         ];
@@ -466,12 +466,12 @@ final class WidgetTypeRegistry
     /**
      * @return array<string, mixed>
      */
-    private static function legacy(string $label, string $description, int $w, int $h): array
+    private static function legacy(string $label, string $description, int $w, int $h, int $minW = 3, int $minH = 2): array
     {
         return [
             'label' => $label, 'category' => 'dashboard', 'singleton' => true,
             'description' => $description,
-            'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => 3, 'h' => 2],
+            'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => $minW, 'h' => $minH],
             'fields' => [],
         ];
     }

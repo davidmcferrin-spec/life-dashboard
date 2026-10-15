@@ -26,7 +26,20 @@ final class WidgetService
     public const MAX_WIDGETS = 60;
     public const BOARD = 'home';
     public const CHANGERS = ['user', 'ai', 'system'];
+    /** One-time narrow of unlocked Weather / Goals / Mood / Todos that still use a previous default width. */
+    public const COMPACT_PREF = 'layout_compact_row_v1';
+    public const COMPACT_WIDTH = 3;
+    /** Grid row in px. Was 64; existing card heights are doubled once so a locked card keeps its pixel size. */
+    public const CELL_HEIGHT = 32;
+    public const PREV_CELL_HEIGHT = 64;
     private const SEEDED_PREF = 'dashboard_grid_seeded';
+    /** Catalog and seed widths from before the 3-column top row. A hand resize sets height_locked and is left alone. */
+    private const COMPACT_OLD_WIDTHS = [
+        'legacy.weather' => [4, 6],
+        'goal'           => [4, 6],
+        'mood'           => [4, 6],
+        'legacy.todos'   => [4, 6],
+    ];
 
     public function __construct(
         private readonly Database $db,
@@ -322,6 +335,183 @@ final class WidgetService
     }
 
     /**
+     * Narrow unlocked Weather, Goals, Mood and Todos cards that still have a
+     * previous default width (4 or 6) to 3 columns, then sit those cards in
+     * reading order on that row. A resize lock keeps its width and column.
+     * Every other card keeps its width and column; packUp only slides cards up.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    public static function refitCompactRow(array $items): array
+    {
+        $nodes = array_values($items);
+        $eligible = [];
+        foreach ($nodes as $i => $it) {
+            if (self::isCompactCandidate($it)) {
+                $eligible[] = $i;
+            }
+        }
+        if ($eligible === []) {
+            return self::packUp($nodes);
+        }
+
+        $minY = min(array_map(static fn (int $i): int => (int) $nodes[$i]['y'], $eligible));
+        usort($eligible, static function (int $a, int $b) use ($nodes): int {
+            return [(int) $nodes[$a]['y'], (int) $nodes[$a]['x'], (int) ($nodes[$a]['id'] ?? 0)]
+                <=> [(int) $nodes[$b]['y'], (int) $nodes[$b]['x'], (int) ($nodes[$b]['id'] ?? 0)];
+        });
+
+        $skip = array_flip($eligible);
+        $obstacles = [];
+        foreach ($nodes as $i => $it) {
+            if (!isset($skip[$i])) {
+                $obstacles[] = $it;
+            }
+        }
+
+        foreach ($eligible as $i) {
+            $it = $nodes[$i];
+            $h = max(1, (int) $it['h']);
+            [$x, $y] = self::firstCompactSlot($minY, self::COMPACT_WIDTH, $h, $obstacles);
+            $it['w'] = self::COMPACT_WIDTH;
+            $it['x'] = $x;
+            $it['y'] = $y;
+            $nodes[$i] = $it;
+            $obstacles[] = $it;
+        }
+
+        // Placement used the old row size. Double every height so 32px rows match the previous 64px rows,
+        // then push anything a taller card now covers and pack the gaps.
+        $scale = intdiv(self::PREV_CELL_HEIGHT, self::CELL_HEIGHT);
+        foreach ($nodes as $i => $it) {
+            $nodes[$i]['h'] = max(1, min(24, (int) $it['h'] * $scale));
+        }
+
+        return self::packUp(self::pushApart($nodes));
+    }
+
+    /**
+     * Once per user, after the grid exists. Cards the user has resized stay put.
+     */
+    public function ensureCompactRow(int $userId): void
+    {
+        $prefs = new PreferenceService($this->db);
+        if ($prefs->get($userId, self::COMPACT_PREF) === '1') {
+            return;
+        }
+
+        $this->db->transaction(function (Database $db) use ($userId, $prefs): void {
+            $db->fetchScalar('SELECT pg_advisory_xact_lock(?, ?)', [0x4c45, $userId]);
+            if ($prefs->get($userId, self::COMPACT_PREF) === '1') {
+                return;
+            }
+            $items = $this->list($userId);
+            if ($items !== []) {
+                $payload = [];
+                foreach (self::refitCompactRow($items) as $it) {
+                    $payload[] = [
+                        'id' => $it['id'],
+                        'x' => $it['x'],
+                        'y' => $it['y'],
+                        'w' => $it['w'],
+                        'h' => $it['h'],
+                        'height_locked' => (int) ($it['height_locked'] ?? 0),
+                    ];
+                }
+                $this->saveLayout($userId, $payload);
+            }
+            $prefs->set($userId, self::COMPACT_PREF, '1');
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $it
+     */
+    private static function isCompactCandidate(array $it): bool
+    {
+        if ((int) ($it['height_locked'] ?? 0) === 1) {
+            return false;
+        }
+        $old = self::COMPACT_OLD_WIDTHS[(string) ($it['type'] ?? '')] ?? null;
+        return $old !== null && in_array((int) ($it['w'] ?? 0), $old, true);
+    }
+
+    /**
+     * First 3-column slot at or below $minY that does not touch $obstacles.
+     *
+     * @param list<array<string, mixed>> $obstacles
+     * @return array{0: int, 1: int}
+     */
+    private static function firstCompactSlot(int $minY, int $w, int $h, array $obstacles): array
+    {
+        $limit = $minY + $h + 4;
+        foreach ($obstacles as $o) {
+            $limit = max($limit, (int) $o['y'] + (int) $o['h'] + $h);
+        }
+        for ($y = max(0, $minY); $y <= $limit; $y++) {
+            for ($x = 0; $x + $w <= self::COLUMNS; $x += $w) {
+                if (!self::rectHits($x, $y, $w, $h, $obstacles)) {
+                    return [$x, $y];
+                }
+            }
+        }
+        return [0, $limit];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rects
+     */
+    private static function rectHits(int $x, int $y, int $w, int $h, array $rects): bool
+    {
+        foreach ($rects as $o) {
+            $ox = (int) $o['x'];
+            $oy = (int) $o['y'];
+            if ($x < $ox + (int) $o['w'] && $x + $w > $ox && $y < $oy + (int) $o['h'] && $y + $h > $oy) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Move the lower of two overlapping cards down until columns no longer intersect.
+     * Width and column stay. Used after a compact card grows into the card below it.
+     *
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    private static function pushApart(array $items): array
+    {
+        $n = count($items);
+        for ($guard = 0; $guard < $n * 24; $guard++) {
+            $moved = false;
+            for ($i = 0; $i < $n; $i++) {
+                for ($j = $i + 1; $j < $n; $j++) {
+                    $a = $items[$i];
+                    $b = $items[$j];
+                    if (!self::rectHits((int) $a['x'], (int) $a['y'], (int) $a['w'], (int) $a['h'], [$b])) {
+                        continue;
+                    }
+                    $pushI = ((int) $a['y'] > (int) $b['y']
+                        || ((int) $a['y'] === (int) $b['y'] && (int) ($a['id'] ?? 0) > (int) ($b['id'] ?? 0)))
+                        ? $i : $j;
+                    $other = $items[$pushI === $i ? $j : $i];
+                    $newY = (int) $other['y'] + (int) $other['h'];
+                    if ((int) $items[$pushI]['y'] !== $newY) {
+                        $items[$pushI]['y'] = $newY;
+                        $moved = true;
+                    }
+                }
+            }
+            if (!$moved) {
+                break;
+            }
+        }
+        return $items;
+    }
+
+    /**
      * First load after upgrade: build the grid from legacy preferences. Runs once per user.
      */
     public function ensureSeeded(int $userId): void
@@ -348,8 +538,8 @@ final class WidgetService
     }
 
     /**
-     * Legacy visible widgets in their saved order, packed 3 per row on a 12-col grid,
-     * with the new habits + mood on top and clipboards/news full width below.
+     * Legacy visible widgets in their saved order, packed 4 per row on a 12-col grid,
+     * with habits and a 3-column mood on top and clipboards/news full width below.
      *
      * @return list<array{0: string, 1: int, 2: int, 3: int, 4: int}>
      */
@@ -360,7 +550,7 @@ final class WidgetService
         $visible = $prefs->getWidgetVisibility($userId);
         $order   = $prefs->getWidgetOrder($userId);
 
-        $plan = [['habits', 0, 0, 6, 5], ['mood', 6, 0, 6, 5]];
+        $plan = [['habits', 0, 0, 6, 5], ['mood', 6, 0, 3, 4]];
         $y = 5;
         $col = 0;
         $rowH = 0;
@@ -369,9 +559,9 @@ final class WidgetService
                 continue;
             }
             $h = $id === 'bookmarks' || $id === 'todos' ? 6 : 5;
-            $plan[] = ['legacy.' . $id, $col * 4, $y, 4, $h];
+            $plan[] = ['legacy.' . $id, $col * 3, $y, 3, $h];
             $rowH = max($rowH, $h);
-            if (++$col === 3) {
+            if (++$col === 4) {
                 $col = 0;
                 $y += $rowH;
                 $rowH = 0;
