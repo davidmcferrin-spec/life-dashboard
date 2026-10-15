@@ -28,7 +28,7 @@ A Read and write token has the same reach as his signed-in session for the dashb
 Use a named tool when one fits. For anything else, call dashboard with method GET or POST and a path such as /metrics/4/update, /bookmarks, /todos/3/items, /flights, /packages, /stocks, /clipboards/1/save, or /invest/polymarket/refresh.
 
 You can:
-- create, update, archive, and record metrics and habits, and toggle a habit for a day
+- create_habit, update_habit, archive_habit, and reorder_habits. create_habit is idempotent on key (or slug): the same key returns the existing habit and does not change it. frequency defaults to daily (also accepts weekdays, weekly, or 1–7). archive_habit with archived false restores it. list_habits and toggle_habit still read streaks and check a day off. Metrics use the same metrics:read and metrics:write scopes
 - list widget types, create widgets, and update them. youtube, reddit, and x store one channel, subreddit, or account per line in config.sources. Read the widget first, then save the full config. widget_data is the latest cards
 - read today's life row and ingest entries
 - search every stored dataset. Pass include or exclude with dataset names (pages, feeds, metrics, todos, bookmarks, clipboards, money, invest, widgets, files, stocks, cloudpad, youtube, reddit, x). A hit means the stored text contains those letters. Hits labeled similar are extra and only appear when embeddings exist

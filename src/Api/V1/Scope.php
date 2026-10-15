@@ -26,8 +26,10 @@ final class Scope
 
     public const TODO_ENTITIES = ['todo', 'todo_category'];
 
+    public const METRIC_ENTITIES = ['habit'];
+
     public const AUDIT_ENTITIES = [
-        'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category',
+        'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
     ];
 
     /**
@@ -127,6 +129,9 @@ final class Scope
         }
         if (self::allows($granted, 'todos:read')) {
             $allow = array_merge($allow, self::TODO_ENTITIES);
+        }
+        if (self::allows($granted, 'metrics:read')) {
+            $allow = array_merge($allow, self::METRIC_ENTITIES);
         }
         if ($entity !== null && !in_array($entity, $allow, true)) {
             throw new ForbiddenException('This token cannot read that audit entity.');

@@ -101,6 +101,25 @@ final class ApiV1
             null,
             (int) ($_GET['days'] ?? 7)
         )));
+        $r->post('/api/v1/habits', fn () => $this->run(function (int $u): array {
+            $createdBy = $this->runner->actor()->kind === 'ai' ? 'ai' : 'user';
+            return ['habit' => $this->svc->habits->create($u, $this->body(), $createdBy)];
+        }, 200, true));
+        $r->post('/api/v1/habits/reorder', fn () => $this->run(function (int $u): array {
+            $ids = $this->body()['ids'] ?? null;
+            if (!is_array($ids) || !array_is_list($ids)) {
+                throw ValidationException::withFields(['ids' => 'ids must be a list of habit ids.']);
+            }
+            return $this->svc->habits->reorder($u, $ids);
+        }, 200, true));
+        $r->post('/api/v1/habits/{id}/update', fn (array $p) => $this->run(fn (int $u) => [
+            'habit' => $this->svc->habits->update($u, self::id($p), $this->body()),
+        ], 200, true));
+        $r->post('/api/v1/habits/{id}/archive', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $body = $this->body();
+            $archived = array_key_exists('archived', $body) ? (bool) $body['archived'] : true;
+            return ['habit' => $this->svc->habits->setArchived($u, self::id($p), $archived)];
+        }, 200, true));
         $r->post('/api/v1/habits/{id}/toggle', fn (array $p) => $this->run(fn (int $u) => $this->svc->habits->toggle(
             $u,
             self::id($p),

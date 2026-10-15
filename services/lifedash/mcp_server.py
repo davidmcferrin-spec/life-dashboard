@@ -95,6 +95,73 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "create_habit",
+        "description": (
+            "Create a habit on the dashboard. key (or slug) is idempotent: if that key already "
+            "exists, the existing habit is returned unchanged. frequency defaults to daily. "
+            "Also accepts weekdays, weekly, or a number 1–7 (days per week). icon is an emoji. "
+            "color is #rrggbb."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "key": {"type": "string"},
+                "slug": {"type": "string"},
+                "icon": {"type": "string"},
+                "color": {"type": "string"},
+                "frequency": {"type": ["string", "integer"]},
+                "target": {"type": ["string", "integer"]},
+                "sort_order": {"type": "integer"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_habit",
+        "description": "Change a habit's name, icon, color, frequency, or sort order. The key cannot change.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "metric_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "icon": {"type": "string"},
+                "color": {"type": "string"},
+                "frequency": {"type": ["string", "integer"]},
+                "target": {"type": ["string", "integer"]},
+                "sort_order": {"type": "integer"},
+            },
+            "required": ["metric_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_habit",
+        "description": "Hide a habit. Pass archived false to restore it. Check-ins are kept.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "metric_id": {"type": "integer"},
+                "archived": {"type": "boolean"},
+            },
+            "required": ["metric_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "reorder_habits",
+        "description": "Set habit display order. ids is the order to show, first id first.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "ids": {"type": "array", "items": {"type": "integer"}},
+            },
+            "required": ["ids"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "list_widgets",
         "description": "Dashboard widgets.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -856,6 +923,20 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "toggle_habit":
         body = {"date": args["date"]} if args.get("date") else {}
         return "POST", f"/api/v1/habits/{int(args['metric_id'])}/toggle", body
+    if name == "create_habit":
+        body = _pick(args, ("name", "key", "slug", "icon", "color", "frequency", "target", "sort_order"))
+        return "POST", "/api/v1/habits", body
+    if name == "update_habit":
+        body = _pick(args, ("name", "icon", "color", "frequency", "target", "sort_order"))
+        return "POST", f"/api/v1/habits/{int(args['metric_id'])}/update", body
+    if name == "archive_habit":
+        body = {"archived": bool(args["archived"])} if "archived" in args else {}
+        return "POST", f"/api/v1/habits/{int(args['metric_id'])}/archive", body
+    if name == "reorder_habits":
+        ids = args.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("ids must be a list of habit ids.")
+        return "POST", "/api/v1/habits/reorder", {"ids": [int(i) for i in ids]}
     if name == "list_widgets":
         return "GET", "/api/v1/widgets", None
     if name == "widget_data":
