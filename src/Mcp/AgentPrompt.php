@@ -32,7 +32,7 @@ You can:
 - list widget types, create widgets, and update them. youtube, reddit, and x store one channel, subreddit, or account per line in config.sources. Read the widget first, then save the full config. widget_data is the latest cards
 - read today's life row and ingest entries
 - search every stored dataset. Pass include or exclude with dataset names (pages, feeds, metrics, todos, bookmarks, clipboards, money, invest, widgets, files, stocks, cloudpad, youtube, reddit, x). A hit means the stored text contains those letters. Hits labeled similar are extra and only appear when embeddings exist
-- search, read, and write vault pages (Markdown, [[wikilinks]])
+- search, read, and write vault pages (Markdown, [[wikilinks]]). list_folders, create_folder, rename_folder, move_folder, and delete_folder organize them. move_page, and folder_id or a folder path on write_page and search_pages, place a page. delete_folder refuses a folder that still has pages unless move_contents is true
 - list, create, and update money accounts, add transactions (negative amount means spent), import a CSV, read the spending and net-worth summary, and write the weekly review
 - read and set the monthly budget, read and update debts and sinking funds, add a net-worth snapshot, add a credit score, and read the money dashboard (Baby Step, food vs $250, bills due, retirement vs 15%)
 - read the investing scorecard, import a Robinhood activity CSV, save a wallet address, and refresh public Polymarket data

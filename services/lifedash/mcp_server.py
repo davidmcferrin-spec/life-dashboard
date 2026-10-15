@@ -154,10 +154,14 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "search_pages",
-        "description": "Search the markdown vault, or list recent pages when q is empty.",
+        "description": "Search the markdown vault, or list recent pages when q is empty. folder_id or folder (a path like Travel/2026) limits the search. folder_id 0 is the root.",
         "inputSchema": {
             "type": "object",
-            "properties": {"q": {"type": "string"}},
+            "properties": {
+                "q": {"type": "string"},
+                "folder_id": {"type": "integer"},
+                "folder": {"type": "string"},
+            },
             "additionalProperties": False,
         },
     },
@@ -173,7 +177,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "write_page",
-        "description": "Create a vault page, or update it when page_id is set. Body is Markdown; use [[wikilinks]].",
+        "description": "Create a vault page, or update it when page_id is set. Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026) places it. folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -181,8 +185,81 @@ TOOLS: list[dict[str, Any]] = [
                 "title": {"type": "string"},
                 "body": {"type": "string"},
                 "kind": {"type": "string"},
+                "folder_id": {"type": ["integer", "null"]},
+                "folder": {"type": "string"},
             },
             "required": ["title"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_folders",
+        "description": "Vault folders as a tree. Pages without a folder are at the root.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "create_folder",
+        "description": "Create a vault folder. parent_id nests it. Omit parent_id for the root.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "parent_id": {"type": ["integer", "null"]},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "rename_folder",
+        "description": "Rename a vault folder.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": "integer"},
+                "name": {"type": "string"},
+            },
+            "required": ["folder_id", "name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "move_folder",
+        "description": "Move a vault folder. parent_id null places it at the root.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": "integer"},
+                "parent_id": {"type": ["integer", "null"]},
+            },
+            "required": ["folder_id", "parent_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "delete_folder",
+        "description": "Delete a vault folder. It must be empty unless move_contents is true, which moves pages and child folders to the parent.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": "integer"},
+                "move_contents": {"type": "boolean"},
+            },
+            "required": ["folder_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "move_page",
+        "description": "Move a vault page into a folder. folder_id null, or folder \"root\", places it at the root. folder is a path like Travel/2026.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "folder_id": {"type": ["integer", "null"]},
+                "folder": {"type": "string"},
+            },
+            "required": ["page_id"],
             "additionalProperties": False,
         },
     },
@@ -578,15 +655,41 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         body = {k: args[k] for k in ("entries", "records") if k in args}
         return "POST", "/api/v1/life/ingest", body
     if name == "search_pages":
-        query = ("?" + urlencode({"q": args["q"]})) if args.get("q") else ""
-        return "GET", "/api/v1/pages" + query, None
+        query = {}
+        if args.get("q"):
+            query["q"] = args["q"]
+        if "folder_id" in args and args["folder_id"] is not None:
+            query["folder_id"] = int(args["folder_id"])
+        elif "folder_id" in args and args["folder_id"] is None:
+            query["folder_id"] = 0
+        if args.get("folder"):
+            query["folder"] = args["folder"]
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/pages" + suffix, None
     if name == "get_page":
         return "GET", f"/api/v1/pages/{int(args['page_id'])}", None
     if name == "write_page":
-        body = {k: args[k] for k in ("title", "body", "kind") if k in args}
+        body = {k: args[k] for k in ("title", "body", "kind", "folder_id", "folder") if k in args}
         if args.get("page_id"):
             return "POST", f"/api/v1/pages/{int(args['page_id'])}/update", body
         return "POST", "/api/v1/pages", body
+    if name == "list_folders":
+        return "GET", "/api/v1/pages/folders", None
+    if name == "create_folder":
+        body = {"name": args["name"]}
+        if "parent_id" in args:
+            body["parent_id"] = args["parent_id"]
+        return "POST", "/api/v1/pages/folders", body
+    if name == "rename_folder":
+        return "POST", f"/api/v1/pages/folders/{int(args['folder_id'])}", {"name": args["name"]}
+    if name == "move_folder":
+        return "POST", f"/api/v1/pages/folders/{int(args['folder_id'])}/move", {"parent_id": args.get("parent_id")}
+    if name == "delete_folder":
+        body = {"move_contents": bool(args["move_contents"])} if "move_contents" in args else {}
+        return "POST", f"/api/v1/pages/folders/{int(args['folder_id'])}/delete", body
+    if name == "move_page":
+        body = {k: args[k] for k in ("folder_id", "folder") if k in args}
+        return "POST", f"/api/v1/pages/{int(args['page_id'])}/move", body
     if name == "money_summary":
         return "GET", "/api/v1/money/summary" + _query(args, ("from", "to")), None
     if name == "list_accounts":

@@ -71,17 +71,55 @@ final class ExtendedApi
             $this->hook($p['token'] ?? '');
         });
 
-        $r->get('/api/v1/pages', fn () => $this->run(fn (int $u) => [
-            'pages' => $this->svc->pages->list($u, self::strParam('q'), (int) ($_GET['limit'] ?? 100)),
-        ]));
+        $r->get('/api/v1/pages', fn () => $this->run(function (int $u): array {
+            [$folderId, $folderSet] = $this->folderFilter($u);
+            return ['pages' => $this->svc->pages->list($u, self::strParam('q'), (int) ($_GET['limit'] ?? 100), $folderId, $folderSet)];
+        }));
         $r->post('/api/v1/pages', fn () => $this->run(function (int $u): array {
             $actor = $this->runner->actor();
             return ['page' => $this->svc->pages->create($u, $this->runner->body(), $actor->kind, $actor->tool)];
         }, 201, true));
+        $r->get('/api/v1/pages/folders', fn () => $this->run(fn (int $u) => [
+            'folders' => $this->svc->pages->folderTree($u),
+        ]));
+        $r->post('/api/v1/pages/folders', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            $actor = $this->runner->actor();
+            $parent = self::nullableId($b['parent_id'] ?? null);
+            return ['folder' => $this->svc->pages->createFolder($u, (string) ($b['name'] ?? ''), $parent, $actor->kind, $actor->tool)];
+        }, 201, true));
+        $r->post('/api/v1/pages/folders/{id}/move', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if (!array_key_exists('parent_id', $b)) {
+                throw ValidationException::withFields(['parent_id' => 'parent_id is required. Use null for the root.']);
+            }
+            $actor = $this->runner->actor();
+            return ['folder' => $this->svc->pages->moveFolder($u, self::id($p), self::nullableId($b['parent_id']), $actor->kind, $actor->tool)];
+        }, 200, true));
+        $r->post('/api/v1/pages/folders/{id}/delete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $move = array_key_exists('move_contents', $b) && filter_var($b['move_contents'], FILTER_VALIDATE_BOOLEAN);
+            $actor = $this->runner->actor();
+            $this->svc->pages->deleteFolder($u, self::id($p), $move, $actor->kind, $actor->tool);
+            return ['ok' => true, 'folder_id' => self::id($p)];
+        }, 200, true));
+        $r->post('/api/v1/pages/folders/{id}', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $actor = $this->runner->actor();
+            return ['folder' => $this->svc->pages->renameFolder($u, self::id($p), (string) ($this->runner->body()['name'] ?? ''), $actor->kind, $actor->tool)];
+        }, 200, true));
         $r->get('/api/v1/pages/graph', fn () => $this->run(fn (int $u) => $this->svc->pages->graph($u)));
         $r->get('/api/v1/pages/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'page' => $this->svc->pages->get($u, self::id($p)),
         ]));
+        $r->post('/api/v1/pages/{id}/move', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if (!array_key_exists('folder_id', $b) && !array_key_exists('folder', $b)) {
+                throw ValidationException::withFields(['folder_id' => 'folder_id is required. Use null for the root.']);
+            }
+            $actor = $this->runner->actor();
+            $this->svc->pages->movePage($u, self::id($p), $this->svc->pages->folderFromInput($u, $b), $actor->kind, $actor->tool);
+            return ['page' => $this->svc->pages->get($u, self::id($p))];
+        }, 200, true));
         $r->post('/api/v1/pages/{id}/update', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $actor = $this->runner->actor();
             return ['page' => $this->svc->pages->update($u, self::id($p), $this->runner->body(), $actor->kind, $actor->tool)];
@@ -309,6 +347,39 @@ final class ExtendedApi
             array_map('trim', explode(',', (string) $value)),
             static fn (string $part): bool => $part !== ''
         ));
+    }
+
+    /**
+     * @return array{0: ?int, 1: bool}
+     */
+    private function folderFilter(int $userId): array
+    {
+        if (array_key_exists('folder_id', $_GET) && $_GET['folder_id'] !== '') {
+            $raw = (string) $_GET['folder_id'];
+            if ($raw === '0' || $raw === 'root') {
+                return [null, true];
+            }
+            return [(int) $raw, true];
+        }
+        $path = self::strParam('folder');
+        if ($path === null) {
+            return [null, false];
+        }
+        if (strcasecmp($path, 'root') === 0) {
+            return [null, true];
+        }
+        return [$this->svc->pages->folderIdByPath($userId, $path), true];
+    }
+
+    private static function nullableId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0' || $value === 'root') {
+            return null;
+        }
+        if (!is_numeric($value) || (int) $value < 1) {
+            throw ValidationException::withFields(['folder_id' => 'Use a folder id, or null for the root.']);
+        }
+        return (int) $value;
     }
 
     private static function strParam(string $name): ?string

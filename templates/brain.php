@@ -30,6 +30,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
     <aside class="brain-side">
         <div class="brain-side-bar">
             <input id="brain-search" type="search" class="input w-full" placeholder="Search" autocomplete="off">
+            <button type="button" id="brain-folder" class="btn text-xs" title="New folder">Folder</button>
             <button type="button" id="brain-new" class="btn text-xs" title="New page">+</button>
         </div>
         <div id="brain-tree" class="brain-tree"></div>
@@ -52,6 +53,12 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
             </div>
         </div>
         <input id="brain-title" class="brain-title" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
+        <div class="brain-crumbs-row">
+            <nav id="brain-crumbs" class="brain-crumbs" aria-label="Folder"></nav>
+            <label class="brain-move-label">Move
+                <select id="brain-move" class="input text-xs" aria-label="Move page to folder"></select>
+            </label>
+        </div>
         <div class="brain-split" id="brain-split">
             <textarea id="brain-body" class="brain-editor" placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
             <div id="brain-preview" class="brain-preview km" hidden></div>
@@ -70,6 +77,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-markdown.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

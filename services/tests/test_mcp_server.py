@@ -20,8 +20,25 @@ def test_resolve_record_and_page_update():
     method, path, body = resolve("record_datapoint", {"metric_id": 4, "value": 3, "dedupe_key": "day:2026-10-06"})
     assert (method, path) == ("POST", "/api/v1/metrics/4/datapoints")
     assert body["dedupe_key"] == "day:2026-10-06"
-    method, path, body = resolve("write_page", {"page_id": 9, "title": "Notes", "body": "[[Home]]"})
+    method, path, body = resolve("write_page", {"page_id": 9, "title": "Notes", "body": "[[Home]]", "folder": "Travel/2026"})
     assert (method, path, body["title"]) == ("POST", "/api/v1/pages/9/update", "Notes")
+    assert body["folder"] == "Travel/2026"
+    method, path, body = resolve("search_pages", {"q": "pack", "folder_id": 3})
+    assert method == "GET"
+    assert "q=pack" in path
+    assert "folder_id=3" in path
+    method, path, body = resolve("list_folders", {})
+    assert (method, path, body) == ("GET", "/api/v1/pages/folders", None)
+    method, path, body = resolve("create_folder", {"name": "Travel", "parent_id": None})
+    assert (method, path, body) == ("POST", "/api/v1/pages/folders", {"name": "Travel", "parent_id": None})
+    method, path, body = resolve("rename_folder", {"folder_id": 2, "name": "Trips"})
+    assert (method, path, body) == ("POST", "/api/v1/pages/folders/2", {"name": "Trips"})
+    method, path, body = resolve("move_folder", {"folder_id": 2, "parent_id": None})
+    assert (method, path, body) == ("POST", "/api/v1/pages/folders/2/move", {"parent_id": None})
+    method, path, body = resolve("delete_folder", {"folder_id": 2, "move_contents": True})
+    assert (method, path, body) == ("POST", "/api/v1/pages/folders/2/delete", {"move_contents": True})
+    method, path, body = resolve("move_page", {"page_id": 9, "folder_id": 2})
+    assert (method, path, body) == ("POST", "/api/v1/pages/9/move", {"folder_id": 2})
 
 
 def test_money_and_widget_writes():
