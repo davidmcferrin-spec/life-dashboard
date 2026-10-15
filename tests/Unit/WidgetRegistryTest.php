@@ -13,10 +13,10 @@ use PHPUnit\Framework\TestCase;
 
 final class WidgetRegistryTest extends TestCase
 {
-    /** Fake metric lookup: 1 = number, 2 = habit, 3 = scale; anything else missing. */
+    /** Fake metric lookup: 1 and 4 = number, 2 = habit, 3 = scale; anything else missing. */
     private static function finder(): callable
     {
-        $metrics = [1 => 'number', 2 => 'habit', 3 => 'scale'];
+        $metrics = [1 => 'number', 2 => 'habit', 3 => 'scale', 4 => 'number'];
         return static fn (int $id): ?array => isset($metrics[$id]) ? ['id' => $id, 'name' => "M{$id}", 'kind' => $metrics[$id], 'archived' => false] : null;
     }
 
@@ -51,12 +51,29 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(['metric_ids' => [], 'days' => '7'], WidgetTypeRegistry::validateConfig('habits', [], self::finder()));
         self::assertSame(['days' => '30'], WidgetTypeRegistry::validateConfig('mood', ['metric_id' => ''], self::finder()), 'empty = default Mood');
         self::assertSame(
-            ['metric_id' => 1, 'view' => 'week', 'increments' => '250,500', 'dedupe_prefix' => ''],
+            ['metric_ids' => [1], 'view' => 'week', 'logs' => ['1' => ['increments' => '250,500']]],
             WidgetTypeRegistry::validateConfig('goal', ['metric_id' => '1', 'view' => 'week'], self::finder())
         );
         self::assertSame(
-            ['metric_id' => 1, 'view' => 'day', 'increments' => '100,250', 'dedupe_prefix' => 'walk'],
+            ['metric_ids' => [1], 'view' => 'day', 'logs' => ['1' => ['increments' => '100,250', 'dedupe_prefix' => 'walk']]],
             WidgetTypeRegistry::validateConfig('goal', ['metric_id' => 1, 'increments' => '100, 250', 'dedupe_prefix' => 'walk'], self::finder())
+        );
+        self::assertSame(
+            [
+                'metric_ids' => [1, 4],
+                'view' => 'day',
+                'logs' => [
+                    '1' => ['mode' => 'amount', 'increments' => '250,500'],
+                    '4' => ['increments' => '1', 'mode' => 'count'],
+                ],
+            ],
+            WidgetTypeRegistry::validateConfig('goal', [
+                'metric_ids' => [1, 4, 1],
+                'logs' => [
+                    '1' => ['mode' => 'amount'],
+                    '4' => ['mode' => 'count', 'increments' => '1'],
+                ],
+            ], self::finder())
         );
     }
 
@@ -75,9 +92,16 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame([250.0, 500.0], GoalLog::parseIncrements(null));
         self::assertSame([250.0, 500.0], GoalLog::parseIncrements('250, 500'));
         self::assertSame('water', GoalLog::prefix([], ['key' => 'water_ml', 'id' => 17]));
+        self::assertSame('movement', GoalLog::prefix([], ['key' => 'movement_sessions', 'id' => 18]));
         self::assertSame('steps', GoalLog::prefix([], ['key' => 'steps', 'id' => 3]));
         self::assertSame('walk', GoalLog::prefix(['dedupe_prefix' => 'walk'], ['key' => 'water_ml', 'id' => 17]));
         self::assertSame('water:2026-10-15', GoalLog::dedupeKey('water', '2026-10-15'));
+        self::assertSame('movement:2026-10-15', GoalLog::dedupeKey('movement', '2026-10-15'));
+        self::assertSame('count', GoalLog::mode(['key' => 'movement_sessions', 'unit' => '', 'config' => ['goal' => 3]]));
+        self::assertSame('amount', GoalLog::mode(['key' => 'water_ml', 'unit' => 'ml', 'config' => ['goal' => 3000]]));
+        self::assertSame(6, GoalLog::pipCount(3));
+        self::assertSame([17], GoalLog::metricIds(['metric_id' => 17]));
+        self::assertSame([17, 18], GoalLog::metricIds(['metric_ids' => [17, 18]]));
 
         $flow = WidgetService::pack([
             ['id' => 1, 'w' => 8, 'h' => 3],
@@ -119,10 +143,11 @@ final class WidgetRegistryTest extends TestCase
         yield 'too many metrics'     => ['chart', ['metric_ids' => [1, 2, 3, 1, 2]], 'config.metric_ids'];
         yield 'metrics not a list'   => ['chart', ['metric_ids' => ['a' => 1]], 'config.metric_ids'];
         yield 'gauge max <= min'     => ['gauge', ['metric_id' => 1, 'min' => 10, 'max' => 10], 'config.max'];
-        yield 'goal needs number'    => ['goal', ['metric_id' => 2], 'config.metric_id'];
+        yield 'goal needs number'    => ['goal', ['metric_id' => 2], 'config.metric_ids'];
         yield 'goal view'            => ['goal', ['metric_id' => 1, 'view' => 'month'], 'config.view'];
-        yield 'goal increments'      => ['goal', ['metric_id' => 1, 'increments' => '0,250'], 'config.increments'];
-        yield 'goal prefix'          => ['goal', ['metric_id' => 1, 'dedupe_prefix' => 'water:'], 'config.dedupe_prefix'];
+        yield 'goal increments'      => ['goal', ['metric_id' => 1, 'increments' => '0,250'], 'config.logs'];
+        yield 'goal prefix'          => ['goal', ['metric_id' => 1, 'dedupe_prefix' => 'water:'], 'config.logs'];
+        yield 'goal too many'        => ['goal', ['metric_ids' => [1, 1, 1, 1, 1]], 'config.metric_ids'];
         yield 'legacy takes no cfg'  => ['legacy.weather', ['city' => 'x'], 'config'];
         yield 'unknown type'         => ['nope', [], 'type'];
     }

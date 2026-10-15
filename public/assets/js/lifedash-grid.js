@@ -431,8 +431,14 @@
             document.getElementById('ld-config-save').textContent = widget ? 'Save' : 'Add widget';
             const ms = await metrics();
             fieldsEl.innerHTML = fieldHtml('title', { type: 'string', label: 'Title (optional)', max: 120 }, widget ? widget.title : '', ms, t.label)
-                + Object.entries(t.fields || {}).map(([name, f]) =>
-                    fieldHtml(name, f, widget ? widget.config[name] : f.default, ms)).join('');
+                + Object.entries(t.fields || {}).map(([name, f]) => {
+                    let value = widget ? widget.config[name] : f.default;
+                    if (widget && t.type === 'goal' && name === 'metric_ids' && (!value || !value.length) && widget.config.metric_id) {
+                        value = [widget.config.metric_id];
+                    }
+                    return fieldHtml(name, f, value, ms);
+                }).join('');
+            if (t.type === 'goal') bindGoalLogFields(ms, widget ? widget.config : {});
             form.querySelector('input, select')?.focus();
         } catch (e) {
             fieldsEl.innerHTML = `<p class="ld-error">${esc(e.message)}</p>`;
@@ -471,6 +477,8 @@
                         : '<p class="empty-state mono text-xs">No metrics yet.</p>'
                 }</div>${err}</div>`;
             }
+            case 'goal_logs':
+                return `<div class="ld-field"><span>${esc(f.label || name)}</span><div class="ld-goal-log-cfg" data-goal-logs></div>${err}</div>`;
             default: {
                 const ph = esc(placeholder || f.placeholder || '');
                 if ((f.max || 255) > 2000) {
@@ -482,12 +490,89 @@
         }
     }
 
+    function inferGoalMode(metric) {
+        const unit = String(metric?.unit || '').trim().toLowerCase();
+        const key = String(metric?.key || '');
+        if (['session', 'sessions', 'count', 'times'].includes(unit)) return 'count';
+        if (key === 'movement_sessions' || key.endsWith('_sessions') || key.endsWith('_count')) return 'count';
+        if (unit) return 'amount';
+        const goal = Number(metric?.config?.goal);
+        if (Number.isInteger(goal) && goal >= 1 && goal <= 12) return 'count';
+        return 'amount';
+    }
+
+    function bindGoalLogFields(ms, saved) {
+        const box = document.querySelector('[data-multi="metric_ids"]');
+        const host = document.querySelector('[data-goal-logs]');
+        if (!box || !host) return;
+        const logs = saved.logs || {};
+        const legacyId = saved.metric_id ? String(saved.metric_id) : '';
+        const paint = () => {
+            const typed = {};
+            host.querySelectorAll('[data-log-for]').forEach((row) => {
+                typed[row.dataset.logFor] = {
+                    mode: row.querySelector('[data-log-mode]')?.value,
+                    increments: row.querySelector('[data-log-inc]')?.value || '',
+                    dedupe_prefix: row.querySelector('[data-log-prefix]')?.value || '',
+                };
+            });
+            const checked = [...box.querySelectorAll('input:checked')].map((i) => i.value);
+            host.innerHTML = checked.map((id) => {
+                const metric = ms.find((m) => String(m.id) === String(id)) || { id, name: id };
+                const savedEntry = typed[id] || logs[id] || logs[String(Number(id))] || {};
+                if (!savedEntry.increments && String(id) === legacyId && saved.increments) {
+                    savedEntry.increments = saved.increments;
+                }
+                if (!savedEntry.dedupe_prefix && String(id) === legacyId && saved.dedupe_prefix) {
+                    savedEntry.dedupe_prefix = saved.dedupe_prefix;
+                }
+                const mode = savedEntry.mode || inferGoalMode(metric);
+                const incs = savedEntry.increments || (mode === 'count' ? '1' : '250,500');
+                return `<div class="ld-goal-log-row" data-log-for="${esc(id)}">
+                    <span>${esc(metric.name || id)}</span>
+                    <select class="input text-sm" data-log-mode>
+                        <option value="amount" ${mode === 'amount' ? 'selected' : ''}>Amount</option>
+                        <option value="count" ${mode === 'count' ? 'selected' : ''}>Count</option>
+                    </select>
+                    <input class="input text-sm" data-log-inc value="${esc(incs)}" placeholder="250,500" aria-label="Quick-add amounts for ${esc(metric.name || id)}" ${mode === 'count' ? 'hidden' : ''}>
+                    <input class="input text-sm" data-log-prefix value="${esc(savedEntry.dedupe_prefix || '')}" placeholder="key prefix" maxlength="40" aria-label="Daily key prefix for ${esc(metric.name || id)}">
+                </div>`;
+            }).join('') || '<p class="empty-state mono text-xs">Choose 1–4 metrics.</p>';
+            host.querySelectorAll('[data-log-mode]').forEach((sel) => {
+                sel.addEventListener('change', () => {
+                    const row = sel.closest('[data-log-for]');
+                    const inc = row.querySelector('[data-log-inc]');
+                    const count = sel.value === 'count';
+                    inc.hidden = count;
+                    if (count && inc.value.trim() === '') inc.value = '1';
+                    if (!count && (inc.value.trim() === '' || inc.value.trim() === '1')) inc.value = '250,500';
+                });
+            });
+        };
+        box.addEventListener('change', paint);
+        paint();
+    }
+
     function readConfigForm(t) {
         const form = document.getElementById('ld-config-form');
         const config = {};
         Object.entries(t.fields || {}).forEach(([name, f]) => {
             if (f.type === 'metrics') {
                 config[name] = [...form.querySelectorAll(`[data-multi="${name}"] input:checked`)].map((i) => Number(i.value));
+                return;
+            }
+            if (f.type === 'goal_logs') {
+                const logs = {};
+                form.querySelectorAll('[data-log-for]').forEach((row) => {
+                    const id = row.dataset.logFor;
+                    const entry = { mode: row.querySelector('[data-log-mode]')?.value || 'amount' };
+                    const inc = row.querySelector('[data-log-inc]');
+                    if (inc && inc.value.trim() !== '') entry.increments = inc.value.trim();
+                    const pre = row.querySelector('[data-log-prefix]');
+                    if (pre && pre.value.trim() !== '') entry.dedupe_prefix = pre.value.trim();
+                    logs[id] = entry;
+                });
+                config.logs = logs;
                 return;
             }
             const input = form.elements[name];

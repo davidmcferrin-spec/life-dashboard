@@ -189,6 +189,96 @@ final class GoalProgressTest extends PgsqlTestCase
         }
     }
 
+    public function testSeveralGoalsShareOneCardAndCountsUsePips(): void
+    {
+        $water = $this->svc->metrics->create($this->user, [
+            'name' => 'Water',
+            'key'  => 'water_ml',
+            'kind' => 'number',
+            'unit' => 'ml',
+            'config' => ['goal' => 3000, 'decimals' => 0],
+        ]);
+        $move = $this->svc->metrics->create($this->user, [
+            'name' => 'Movement',
+            'key'  => 'movement_sessions',
+            'kind' => 'number',
+            'config' => ['goal' => 3, 'decimals' => 0],
+        ]);
+        $steps = $this->svc->metrics->create($this->user, [
+            'name' => 'Steps',
+            'key'  => 'steps',
+            'kind' => 'number',
+            'unit' => 'steps',
+            'config' => ['goal' => 8000],
+        ]);
+        $habit = $this->svc->habits->create($this->user, [
+            'name' => 'Water',
+            'key'  => 'water',
+            'goal_metric_id' => $water['id'],
+        ]);
+        $widget = $this->svc->widgets->create($this->user, 'goal', 'Goals', [
+            'metric_ids' => [$water['id'], $move['id'], $steps['id']],
+            'view' => 'day',
+            'logs' => [
+                (string) $water['id'] => ['increments' => '250,500'],
+                (string) $move['id'] => ['mode' => 'count', 'increments' => '1'],
+                (string) $steps['id'] => ['increments' => '1000'],
+            ],
+        ]);
+        self::assertSame([$water['id'], $move['id'], $steps['id']], $widget['config']['metric_ids']);
+
+        $added = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 250, 'widget', $water['id']);
+        self::assertSame('water:2026-10-15', $added['dedupe_key']);
+        self::assertSame(250.0, $added['value']);
+        $again = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 2750, 'widget', $water['id']);
+        self::assertSame(3000.0, $again['value']);
+        self::assertTrue($this->doneOn('2026-10-15', $habit['id']));
+        $waterRows = array_values(array_filter(
+            $this->svc->points->list($this->user, $water['id'], '2026-10-15', '2026-10-15', 10),
+            static fn (array $r): bool => $r['dedupe_key'] === 'water:2026-10-15'
+        ));
+        self::assertCount(1, $waterRows);
+
+        $pip = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 1, 'widget', $move['id']);
+        self::assertSame('movement:2026-10-15', $pip['dedupe_key']);
+        self::assertSame(1.0, $pip['value']);
+        $pip = $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 1, 'widget', $move['id']);
+        self::assertSame(2.0, $pip['value']);
+        $moveRows = array_values(array_filter(
+            $this->svc->points->list($this->user, $move['id'], '2026-10-15', '2026-10-15', 10),
+            static fn (array $r): bool => $r['dedupe_key'] === 'movement:2026-10-15'
+        ));
+        self::assertCount(1, $moveRows);
+
+        $data = $pip['data'];
+        self::assertCount(3, $data['goals']);
+        self::assertSame('amount', $data['goals'][0]['mode']);
+        self::assertSame('count', $data['goals'][1]['mode']);
+        self::assertSame(6, $data['goals'][1]['pips']);
+        self::assertSame(2.0, $data['goals'][1]['value']);
+        self::assertSame(67, $data['goals'][1]['percent']);
+        self::assertSame('amount', $data['goals'][2]['mode']);
+        self::assertSame([1000.0], $data['goals'][2]['increments']);
+
+        try {
+            $this->svc->widgetData->adjustGoal($this->user, $widget['id'], 1, 'widget');
+            self::fail('logged without a metric');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('metric_id', $e->fields());
+        }
+
+        $week = $this->svc->widgets->create($this->user, 'goal', 'Goals this week', [
+            'metric_ids' => [$water['id'], $move['id']],
+            'view' => 'week',
+        ]);
+        $weekData = $this->svc->widgetData->forWidget($this->user, $week['id']);
+        self::assertCount(2, $weekData['goals']);
+        self::assertCount(7, $weekData['goals'][0]['days']);
+        self::assertCount(7, $weekData['goals'][1]['days']);
+        self::assertSame(100, $weekData['goals'][0]['days'][3]['percent']);
+        self::assertSame('movement:2026-10-15', $weekData['goals'][1]['dedupe_key']);
+    }
+
     public function testThresholdOverridesTheMetricGoalAndRejectsAHabitLink(): void
     {
         $steps = $this->svc->metrics->create($this->user, [
