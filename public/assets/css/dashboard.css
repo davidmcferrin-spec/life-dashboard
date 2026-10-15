@@ -1057,6 +1057,59 @@ html[data-theme="dark"] .feed-tag-8 { border-color: rgba(129, 140, 248, 0.35); c
 html[data-theme="dark"] .feed-tag-9 { border-color: rgba(163, 230, 53, 0.35); color: #a3e635; }
 html[data-theme="dark"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35); color: #f472b6; }
 
+/* Same 11 source hues as Dark, brightened for the glass panel and
+   tinted toward the user's HUD accent so badges stay distinct from chrome. */
+html[data-theme="jarvis"] .feed-tag {
+    background: color-mix(in srgb, currentColor 16%, transparent);
+    box-shadow: 0 0 10px color-mix(in srgb, currentColor 34%, transparent);
+    text-shadow: 0 0 8px color-mix(in srgb, currentColor 50%, transparent);
+}
+
+html[data-theme="jarvis"] .feed-tag-0 {
+    color: color-mix(in srgb, #93c5fd 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #60a5fa 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-1 {
+    color: color-mix(in srgb, #c4b5fd 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #a78bfa 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-2 {
+    color: color-mix(in srgb, #86efac 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #4ade80 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-3 {
+    color: color-mix(in srgb, #fdba74 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #fb923c 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-4 {
+    color: color-mix(in srgb, #67e8f9 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #22d3ee 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-5 {
+    color: color-mix(in srgb, #fda4af 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #fb7185 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-6 {
+    color: color-mix(in srgb, #fde047 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #facc15 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-7 {
+    color: color-mix(in srgb, #5eead4 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #2dd4bf 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-8 {
+    color: color-mix(in srgb, #a5b4fc 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #818cf8 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-9 {
+    color: color-mix(in srgb, #d9f99d 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #a3e635 58%, var(--hud-accent, var(--accent)));
+}
+html[data-theme="jarvis"] .feed-tag-10 {
+    color: color-mix(in srgb, #f9a8d4 82%, var(--hud-accent, var(--accent)));
+    border-color: color-mix(in srgb, #f472b6 58%, var(--hud-accent, var(--accent)));
+}
+
 /* News feed filters */
 .news-filter-bar {
     align-items: flex-start;
