@@ -15,6 +15,32 @@ BASE=${LIFEDASH_BASE_DIR:-/srv/lifedash}
 APP=$BASE/app
 USER_=lifedash
 
+# chmod lines that touch the checkout. Capital X keeps a file's executable bit
+# as git recorded it: a 100644 file stays non-executable, a 100755 file stays
+# executable. Do not chmod +x tracked files here.
+lifedash_apply_code_modes() {
+    local app=$1
+    chmod -R u+rwX,g+rX,g-w,o-rwx "$app"
+    chmod o+x "$app"
+    if [[ -d $app/public ]]; then
+        chmod -R o+rX "$app/public"
+    fi
+    if [[ -d $app/storage ]]; then
+        chmod -R u+rwX,g+rwX,o-rwx "$app/storage"
+    fi
+}
+
+# Porcelain of tracked changes, including file-mode changes. Empty when clean.
+lifedash_tracked_dirt() {
+    local app=$1
+    [[ -e $app/.git ]] || return 0
+    git -C "$app" -c "safe.directory=$app" -c core.fileMode=true status --porcelain --untracked-files=no
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+    return 0
+fi
+
 [[ $EUID -eq 0 ]] || { echo "lifedash-perms: run as root" >&2; exit 1; }
 [[ -d $APP ]] || { echo "lifedash-perms: $APP not found" >&2; exit 66; }
 
@@ -23,10 +49,8 @@ chmod 0751 "$BASE"
 
 # Code: read-only to the app user, invisible to everyone else…
 chown -R root:"$USER_" "$APP"
-chmod -R u+rwX,g+rX,g-w,o-rwx "$APP"
-# …except traversal to public/ and public/ itself for Apache.
-chmod o+x "$APP"
-chmod -R o+rX "$APP/public"
+before_dirt=$(lifedash_tracked_dirt "$APP")
+lifedash_apply_code_modes "$APP"
 # Executable bits come from git (mode 100755). A local chmod +x dirties the
 # worktree and blocks git pull --ff-only, so this only warns.
 for f in "$APP/setup.sh" "$APP/deploy/provision.sh" "$APP"/deploy/bin/*; do
@@ -40,4 +64,10 @@ for d in storage storage/logs storage/cache storage/sessions storage/uploads; do
     install -d "$APP/$d"
 done
 chown -R "$USER_":"$USER_" "$APP/storage"
-chmod -R u+rwX,g+rwX,o-rwx "$APP/storage"
+lifedash_apply_code_modes "$APP"
+after_dirt=$(lifedash_tracked_dirt "$APP")
+if [[ $before_dirt != "$after_dirt" ]]; then
+    echo "lifedash-perms: permission update dirtied tracked files:" >&2
+    echo "$after_dirt" >&2
+    exit 1
+fi

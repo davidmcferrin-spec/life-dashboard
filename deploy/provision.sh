@@ -149,6 +149,7 @@ if ! id "$APP_USER" >/dev/null 2>&1; then
 fi
 # Fresh clones are root:root 0755 — apply the real model (Apache needs o+x on the
 # path and read on public/; the app needs storage/ writable, including subdirs from git).
+# Refuses to continue if the chmod model dirties a tracked file.
 bash "$APP_DIR/deploy/bin/lifedash-perms"
 info "permissions applied (code root:lifedash read-only, storage/ writable, public/ readable by Apache)"
 install -d -m 0700 /etc/lifedash /var/backups/lifedash
@@ -417,6 +418,7 @@ dpkg-reconfigure -f noninteractive unattended-upgrades >/dev/null
 
 # -----------------------------------------------------------------------------
 step "Start services"
+# Refuses to continue if the chmod model dirties a tracked file.
 bash "$APP_DIR/deploy/bin/lifedash-perms"
 systemctl enable --now postgresql >/dev/null
 systemctl restart "php$PHP_VER-fpm"

@@ -18,7 +18,12 @@ die() { echo "[lifedash-deploy] ERROR: $*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
 cd "$APP_DIR"
 
+# shellcheck source=deploy/lib/prepare-workdir.sh
+source "$APP_DIR/deploy/lib/prepare-workdir.sh"
+
 if $PULL; then
+    log "prepare checkout (core.fileMode false; drop mode-only diffs)"
+    lifedash_prepare_workdir "$APP_DIR"
     log "git pull --ff-only"
     git -c safe.directory="$APP_DIR" pull --ff-only || die "pull failed (local changes or diverged history)"
 fi
