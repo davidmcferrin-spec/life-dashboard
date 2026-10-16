@@ -15,6 +15,7 @@ use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
+use Dashboard\Shopping\ShoppingService;
 use Dashboard\Support\Clock;
 use Dashboard\Todo\TodoService;
 use Dashboard\Widgets\WidgetDataService;
@@ -40,6 +41,7 @@ final class Services
     public readonly SearchService $search;
     public readonly RedditService $reddit;
     public readonly TodoService $todos;
+    public readonly ShoppingService $shopping;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -60,6 +62,7 @@ final class Services
         $this->search  = new SearchService($db);
         $this->reddit  = new RedditService($db);
         $this->todos   = TodoService::fromDatabase($db);
+        $this->shopping = new ShoppingService($db, $clock);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,
@@ -73,6 +76,7 @@ final class Services
             $this->pages,
             new MediaService($db),
             $this->reddit,
+            $this->shopping,
         );
     }
 

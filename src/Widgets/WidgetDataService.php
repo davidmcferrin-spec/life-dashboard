@@ -8,6 +8,7 @@ use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
 use Dashboard\Reddit\RedditService;
+use Dashboard\Shopping\ShoppingService;
 use Dashboard\Life\LifeService;
 use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
@@ -40,6 +41,7 @@ final class WidgetDataService
         private readonly PageService $pages,
         private readonly MediaService $media,
         private readonly RedditService $reddit,
+        private readonly ShoppingService $shopping,
     ) {}
 
     /**
@@ -60,6 +62,7 @@ final class WidgetDataService
             'table'  => $this->tableData($userId, $c),
             'streak'    => $this->streakData($userId, $c),
             'life'      => $this->lifeData($userId),
+            'shopping'  => $this->shoppingData($userId, $c),
             'spending'  => $this->spendingData($userId, $c),
             'networth'       => $this->networthData($userId),
             'baby_step'      => $this->planCard($this->plan->babyStep($userId)),
@@ -79,6 +82,21 @@ final class WidgetDataService
             'custom'    => $this->customData($userId, $c),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private function shoppingData(int $userId, array $config): array
+    {
+        $listId = (int) ($config['list_id'] ?? 0);
+        $hours = (int) ($config['clear_hours'] ?? 24);
+        try {
+            return $this->shopping->board($userId, $listId, $hours);
+        } catch (NotFoundException) {
+            return $this->shopping->board($userId, 0, $hours);
+        }
     }
 
     /**

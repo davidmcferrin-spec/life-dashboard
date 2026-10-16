@@ -219,6 +219,17 @@ def test_money_tools_resolve_onto_the_money_api():
     assert (method, path, body) == ("GET", "/api/v1/todos/categories", None)
     method, path, body = resolve("create_todo_category", {"name": "Travel"})
     assert (method, path, body) == ("POST", "/api/v1/todos/categories", {"name": "Travel"})
+    method, path, body = resolve("add_shopping_items", {"list_id": 3, "items": ["2 lb chicken", {"name": "milk"}]})
+    assert (method, path) == ("POST", "/api/v1/shopping/items")
+    assert body["list_id"] == 3
+    assert body["items"][0] == "2 lb chicken"
+    method, path, body = resolve("check_shopping_item", {"item_id": 9, "bought": False})
+    assert (method, path, body) == ("POST", "/api/v1/shopping/items/9/check", {"bought": False})
+    method, path, body = resolve("clear_bought", {"list_id": 3})
+    assert (method, path, body) == ("POST", "/api/v1/shopping/lists/3/clear-bought", {})
+    method, path, body = resolve("list_shopping_items", {"list_id": 3, "clear_hours": 12})
+    assert method == "GET"
+    assert "list_id=3" in path and "clear_hours=12" in path
     names = [tool["name"] for tool in TOOLS]
     for name in (
         "add_transactions", "list_transactions", "get_budget", "set_budget_line", "get_debts",
@@ -227,6 +238,8 @@ def test_money_tools_resolve_onto_the_money_api():
         "set_category_cap", "add_net_worth_snapshot",
         "add_credit_score", "get_dashboard_summary", "money_summary", "weekly_review", "get_audit_log",
         "list_todos", "create_todo", "update_todo", "complete_todo", "list_todo_categories", "create_todo_category",
+        "list_shopping_lists", "create_shopping_list", "list_shopping_items", "add_shopping_items",
+        "update_shopping_item", "check_shopping_item", "remove_shopping_item", "clear_bought",
     ):
         assert name in names
 

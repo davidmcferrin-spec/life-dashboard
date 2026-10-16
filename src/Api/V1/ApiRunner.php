@@ -231,6 +231,9 @@ final class ApiRunner
             '/todos/categories'     => 'todo_category',
             '/todos/items'          => 'todo',
             '/habits'               => 'habit',
+            '/shopping/clear-bought' => 'shopping_item',
+            '/shopping/items'       => 'shopping_item',
+            '/shopping/lists'       => 'shopping_list',
         ];
         foreach ($map as $fragment => $entity) {
             if (str_contains($path, $fragment)) {
@@ -245,7 +248,7 @@ final class ApiRunner
      */
     public static function entityIdFromPayload(array $payload): ?int
     {
-        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction', 'habit'] as $key) {
+        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction', 'habit', 'item', 'list'] as $key) {
             $row = $payload[$key] ?? null;
             if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
                 return (int) $row['id'];
@@ -261,7 +264,7 @@ final class ApiRunner
 
     public static function entityIdFromPath(string $path): ?int
     {
-        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|items|categories|habits)/(\d+)\b#', $path, $m) === 1) {
+        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|items|categories|habits|lists)/(\d+)\b#', $path, $m) === 1) {
             return (int) $m[1];
         }
         return null;
