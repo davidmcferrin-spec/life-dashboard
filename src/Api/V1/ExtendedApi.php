@@ -377,6 +377,56 @@ final class ExtendedApi
         $r->post('/api/v1/todos/items/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'todo' => $this->todo(fn () => $this->svc->todos->agentUpdate($u, self::id($p), $this->runner->body())),
         ], 200, true));
+
+        $r->get('/api/v1/shopping/lists', fn () => $this->run(fn (int $u) => [
+            'lists' => $this->svc->shopping->lists($u),
+        ]));
+        $r->post('/api/v1/shopping/lists', fn () => $this->run(fn (int $u) => [
+            'list' => $this->svc->shopping->createList($u, (string) ($this->runner->body()['name'] ?? '')),
+        ], 201, true));
+        $r->post('/api/v1/shopping/lists/{id}/clear-bought', fn (array $p) => $this->run(fn (int $u) => [
+            'cleared' => $this->svc->shopping->clearBought($u, self::id($p)),
+            'list'    => ['id' => self::id($p)],
+        ], 200, true));
+        $r->post('/api/v1/shopping/clear-bought', fn () => $this->run(fn (int $u) => [
+            'cleared' => $this->svc->shopping->clearBought($u, null),
+        ], 200, true));
+        $r->get('/api/v1/shopping/items', fn () => $this->run(function (int $u): array {
+            $listId = isset($_GET['list_id']) && $_GET['list_id'] !== '' ? (int) $_GET['list_id'] : null;
+            $include = !isset($_GET['include_bought']) || filter_var($_GET['include_bought'], FILTER_VALIDATE_BOOLEAN);
+            $hours = isset($_GET['clear_hours']) ? (int) $_GET['clear_hours'] : 24;
+            return ['items' => $this->svc->shopping->items($u, $listId, $include, $hours)];
+        }));
+        $r->post('/api/v1/shopping/items', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            $listId = (int) ($b['list_id'] ?? 0);
+            $raw = $b['items'] ?? null;
+            if ($raw === null && (isset($b['text']) || isset($b['name']))) {
+                $raw = [$b];
+            }
+            if (!is_array($raw)) {
+                throw ValidationException::withFields(['items' => 'Add at least one item.']);
+            }
+            $items = $this->svc->shopping->addItems($u, $listId, array_values($raw), $this->addedBy());
+            return [
+                'items'   => $items,
+                'item'    => $items[0] ?? null,
+                'list_id' => $listId,
+            ];
+        }, 201, true));
+        $r->post('/api/v1/shopping/items/{id}/check', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $bought = !array_key_exists('bought', $b) || filter_var($b['bought'], FILTER_VALIDATE_BOOLEAN);
+            return ['item' => $this->svc->shopping->checkItem($u, self::id($p), $bought)];
+        }, 200, true));
+        $r->post('/api/v1/shopping/items/{id}/delete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $id = self::id($p);
+            $this->svc->shopping->removeItem($u, $id);
+            return ['id' => $id, 'removed' => true];
+        }, 200, true));
+        $r->post('/api/v1/shopping/items/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'item' => $this->svc->shopping->updateItem($u, self::id($p), $this->runner->body()),
+        ], 200, true));
     }
 
     private function weeklyReview(): void
@@ -386,6 +436,11 @@ final class ExtendedApi
         $this->runner->run(function (int $u) use ($write): array {
             return ['page' => $this->svc->money->weeklyReview($u, $write)];
         }, $write ? 201 : 200, true);
+    }
+
+    private function addedBy(): string
+    {
+        return $this->runner->actor()->kind === 'ai' ? 'agent' : 'user';
     }
 
     /**

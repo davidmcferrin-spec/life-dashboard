@@ -69,6 +69,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] MCP money tools on the existing server, money-only token expiry (90 days), ~60 req/min per token in `lifedash-mcp`, read+write audit without sensitive values. Tunnel + Access: `docs/deploy/cloudflare-access.md`
 - [x] Positions, Robinhood activity CSV, public Polymarket data-API refresh, scorecard widget. No trade placement
 - [x] Widget type `custom`: sandboxed srcdoc, `window.__DATA__.metrics`
+- [x] Shopping lists (`shopping_lists`, `shopping_items`): widget `shopping` with quick-add, aisle groups, and list tabs. MCP: `list_shopping_lists`, `create_shopping_list`, `list_shopping_items`, `add_shopping_items`, `update_shopping_item`, `check_shopping_item`, `remove_shopping_item`, `clear_bought` (`shopping:read` / `shopping:write`)
 
 **Reddit tracking**
 - Settings `/settings/reddit` holds the tracked list (name, hot/new/top, include/exclude words). The rotating `reddit` card still reads its own widget sources via RSS into `media_cards`.

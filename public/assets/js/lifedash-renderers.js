@@ -965,6 +965,110 @@
         }).join('');
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    function shopQty(item) {
+        const q = Number(item.quantity);
+        if (!Number.isFinite(q)) return '';
+        const shown = Math.abs(q - Math.round(q)) < 0.001 ? String(Math.round(q)) : String(Math.round(q * 1000) / 1000);
+        if (q === 1 && !item.unit) return '';
+        return shown + (item.unit ? ' ' + item.unit : '');
+    }
+
+    function shopping(ctx) {
+        const d = ctx.data || {};
+        const lists = d.lists || [];
+        const host = ctx.body.closest('.grid-stack-item');
+        let active = Number(host && host.dataset.shopList);
+        if (!lists.some((list) => list.id === active)) active = lists[0] ? lists[0].id : 0;
+        const list = lists.find((row) => row.id === active) || null;
+        const boughtOpen = host && host.dataset.shopBought === '1';
+
+        const tabs = lists.map((row) =>
+            `<button type="button" class="ld-shop-tab${row.id === active ? ' is-on' : ''}" data-shop-tab="${row.id}" aria-pressed="${row.id === active}">${esc(row.name)}<span>${row.open_count}</span></button>`
+        ).join('');
+
+        const groups = list ? (list.groups || []).map((group) => {
+            const rows = group.items.map((item) => shopRow(item, false)).join('');
+            return `<div class="ld-shop-cat">${esc(group.category)}</div>${rows}`;
+        }).join('') : '';
+
+        const bought = list ? (list.bought || []) : [];
+        const boughtRows = bought.map((item) => shopRow(item, true)).join('');
+        const boughtBlock = bought.length
+            ? `<button type="button" class="ld-shop-bought-toggle" data-shop-bought aria-expanded="${boughtOpen}">Bought · ${bought.length}</button>
+               <div class="ld-shop-bought${boughtOpen ? '' : ' hidden'}">${boughtRows}</div>`
+            : '';
+
+        const empty = list && !(list.groups || []).length
+            ? '<p class="empty-state mono text-xs">Nothing open. Add an item below.</p>'
+            : '';
+
+        ctx.body.innerHTML = `
+            <div class="ld-shop">
+                <div class="ld-shop-tabs" role="tablist">${tabs}</div>
+                <form class="ld-shop-add" data-shop-add>
+                    <input class="input" name="text" maxlength="160" placeholder="2 lb chicken" aria-label="Add item" autocomplete="off">
+                    <button type="submit" class="btn text-xs">Add</button>
+                </form>
+                <div class="ld-shop-items">${groups}${empty}${boughtBlock}</div>
+            </div>`;
+
+        ctx.body.querySelectorAll('[data-shop-tab]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (host) host.dataset.shopList = btn.dataset.shopTab;
+                shopping(ctx);
+            });
+        });
+        const form = ctx.body.querySelector('[data-shop-add]');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const text = new FormData(form).get('text');
+                if (!text || !String(text).trim() || !list) return;
+                guarded(form.querySelector('button'), async () => {
+                    await api.post('/shopping/items', { list_id: list.id, items: [String(text).trim()] });
+                    await ctx.refresh();
+                });
+            });
+        }
+        ctx.body.querySelectorAll('[data-shop-check]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                guarded(btn, async () => {
+                    await api.post(`/shopping/items/${btn.dataset.shopCheck}/check`, { bought: btn.dataset.bought !== '1' });
+                    await ctx.refresh();
+                });
+            });
+        });
+        ctx.body.querySelectorAll('[data-shop-remove]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                guarded(btn, async () => {
+                    await api.post(`/shopping/items/${btn.dataset.shopRemove}/delete`, {});
+                    await ctx.refresh();
+                });
+            });
+        });
+        const toggle = ctx.body.querySelector('[data-shop-bought]');
+        if (toggle) {
+            toggle.addEventListener('click', () => {
+                if (host) host.dataset.shopBought = host.dataset.shopBought === '1' ? '0' : '1';
+                shopping(ctx);
+            });
+        }
+    }
+
+    function shopRow(item, bought) {
+        const qty = shopQty(item);
+        const meta = [qty, item.store || '', item.notes || ''].filter(Boolean).join(' · ');
+        return `<div class="ld-shop-row${bought ? ' is-bought' : ''}">
+            <button type="button" class="ld-check${bought ? ' is-done' : ''}" data-shop-check="${item.id}" data-bought="${bought ? '1' : '0'}"
+                aria-pressed="${bought}" aria-label="${esc(bought ? 'Return' : 'Buy')} ${esc(item.name)}">✓</button>
+            <div class="min-w-0">
+                <div class="ld-shop-name">${esc(item.name)}</div>
+                ${meta ? `<div class="ld-shop-meta">${esc(meta)}</div>` : ''}
+            </div>
+            <button type="button" class="ld-shop-x" data-shop-remove="${item.id}" aria-label="Remove ${esc(item.name)}">✕</button>
+        </div>`;
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();
