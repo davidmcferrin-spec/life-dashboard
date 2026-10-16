@@ -1,4 +1,4 @@
-<div class="flex items-center justify-between mb-2 dashboard-widget-head">
+<div class="flex items-center justify-between dashboard-widget-head weather-head">
     <h2 class="section-title">Weather</h2>
     <div class="flex items-center gap-2">
         <a href="/settings/weather" class="nav-link mono text-xs">Manage</a>

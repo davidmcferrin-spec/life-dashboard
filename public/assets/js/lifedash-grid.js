@@ -1,13 +1,20 @@
 /**
  * lifedash-grid.js — the dashboard widget grid.
  *
- *   - GridStack 12-column grid (1 column under 700px). Drag and resize snap
- *     to the grid. Edit works on a phone too: a reorder is saved as a
- *     12-column flow of the desktop widths, never as a 1-column layout.
+ *   - Canonical layout is 12 columns, stored on dashboard_widgets. The grid
+ *     shows 12 columns under 1600px, 18 from 1600 to 3439, and 24 from 3440.
+ *     Under 700px it is one column. A phone reorder is saved as a 12-column
+ *     flow of the desktop widths, never as a 1-column layout.
+ *   - Wider screens keep each card's column count and flow them left to right,
+ *     so more cards share a row. A card that already spans all 12 columns spans
+ *     the current grid. A drag or resize on 18 or 24 columns is saved for that
+ *     width only; the 12-column x/y/w stay put.
  *   - Unlocked widgets size to their content, then pack upward (column kept).
  *     A resize sets height_locked so that height stays. Fit clears it.
- *   - Layout is saved debounced. Automatic fitting does not write while a
- *     native widget is still loading, and a phone fit is visual only.
+ *   - Rows are 32px. Width snaps to one column of the current grid; top-row
+ *     cards can step down to 2 columns.
+ *   - Layout is saved debounced. Automatic fitting writes heights only on a
+ *     wide screen, and does not write while a native widget is still loading.
  *   - Native widgets render from /api/v1/widgets/{id}/data via LD.renderers;
  *     legacy widgets are server-rendered partials with their own scripts.
  *   - LD.grid.handleEvent() receives realtime events from lifedash-realtime.js.
@@ -23,6 +30,7 @@
     if (!boardEl || !gridEl || !GS) return;
 
     const COLUMNS = 12;
+    const WIDE = [18, 24];
     const NARROW_PX = 700;
 
     /** id → { widget, data, el, body, tools, loading, queued } */
@@ -30,21 +38,69 @@
     let editing = false;
     let typesCache = null;
     let metricsCache = null;
+    /** Column count last projected from the canonical (or saved wide) layout. */
+    let projectedCols = 0;
 
     const initialEl = document.getElementById('ld-initial');
     const initial = initialEl ? JSON.parse(initialEl.textContent || '[]') : [];
+    const layoutsEl = document.getElementById('ld-layouts');
+    const savedLayouts = {};
+    try {
+        const raw = layoutsEl ? JSON.parse(layoutsEl.textContent || '{}') : {};
+        if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+            Object.keys(raw).forEach((k) => { savedLayouts[Number(k)] = raw[k]; });
+        }
+    } catch (e) { /* project from the 12-column layout */ }
+
+    let gridApi = null;
+
+    /**
+     * GridStack calls this with (newCols, oldCols, placed, remaining).
+     * Nodes left in `remaining` are dropped, and a cached wider layout is
+     * restored into `placed` before we run, so rewrite both lists from the
+     * canonical records. Mirrors WidgetService::projectColumns.
+     */
+    function projectLayout(newCols, _oldCols, placed, remaining) {
+        const all = placed.concat(remaining);
+        placed.length = 0;
+        remaining.length = 0;
+        if (gridApi && gridApi.engine) gridApi.engine._layouts = [];
+        const pos = positionsFor(all, newCols);
+        const byId = new Map(pos.map((p) => [Number(p.id), p]));
+        all.forEach((n) => {
+            const p = byId.get(Number(n.id));
+            if (p) {
+                n.x = p.x;
+                n.y = p.y;
+                n.w = p.w;
+                n.h = p.h;
+            }
+            placed.push(n);
+        });
+        projectedCols = newCols;
+    }
 
     const grid = GS.init({
         column: COLUMNS,
-        cellHeight: 64,
+        cellHeight: 32,
         margin: 6,
         float: false,
         animate: true,
         staticGrid: true,
         handle: '.ld-drag',
         resizable: { handles: 'e,se,s,sw,w' },
-        columnOpts: { breakpoints: [{ w: NARROW_PX, c: 1 }], layout: 'list' },
+        columnOpts: {
+            breakpointForWindow: true,
+            columnMax: 24,
+            breakpoints: [
+                { w: 3439, c: 18 },
+                { w: 1599, c: 12 },
+                { w: NARROW_PX, c: 1, layout: 'list' },
+            ],
+            layout: projectLayout,
+        },
     }, gridEl);
+    gridApi = grid;
 
     // -----------------------------------------------------------------
     // Widget registry + rendering
@@ -161,6 +217,7 @@
         gridEl.appendChild(el);
         grid.makeWidget(el, { id: String(w.id), x: w.x, y: w.y, w: w.w, h: w.h, minW: w.min_w, minH: w.min_h });
         register(w, el);
+        if (grid.getColumn() !== 1) projectInPlace();
         const fit = el.querySelector('.ld-fit');
         if (fit && fitObserver) fitObserver.observe(fit);
         document.getElementById('ld-empty')?.remove();
@@ -192,6 +249,8 @@
         editBtn.setAttribute('aria-pressed', String(on));
         if (!on) {
             saveLayout.flush();
+            saveWide.flush();
+            saveHeights.flush();
             scheduleFit();
         }
     }
@@ -215,6 +274,81 @@
         });
     }
 
+    function canonicalOf(node) {
+        const w = widgets.get(Number(node.id))?.widget;
+        if (w) return { id: Number(w.id), x: w.x, y: w.y, w: w.w, h: w.h };
+        return {
+            id: Number(node.id),
+            x: node.x || 0,
+            y: node.y || 0,
+            w: node.w || 1,
+            h: node.h || 1,
+        };
+    }
+
+    // Mirrors WidgetService::projectColumns.
+    function projectColumns(items, columns) {
+        const nodes = items.slice().sort((a, b) => a.y - b.y || a.x - b.x || (a.id || 0) - (b.id || 0));
+        if (columns === COLUMNS) return nodes;
+        let x = 0;
+        let y = 0;
+        let rowH = 0;
+        const out = [];
+        nodes.forEach((it) => {
+            const storedW = Math.max(1, it.w | 0);
+            const h = Math.max(1, Math.min(24, it.h | 0));
+            const w = storedW >= COLUMNS ? columns : Math.max(1, Math.min(columns, storedW));
+            if (x > 0 && x + w > columns) {
+                y += rowH;
+                x = 0;
+                rowH = 0;
+            }
+            out.push({ id: it.id, x, y, w, h });
+            x += w;
+            rowH = Math.max(rowH, h);
+        });
+        return out;
+    }
+
+    function savedCovering(cols, ids) {
+        const saved = savedLayouts[cols];
+        if (!Array.isArray(saved) || !saved.length) return null;
+        const have = new Set(saved.map((s) => Number(s.id)));
+        if (!ids.every((id) => have.has(Number(id)))) return null;
+        return saved;
+    }
+
+    function positionsFor(nodes, cols) {
+        const canon = nodes.filter((n) => n.id !== undefined).map(canonicalOf);
+        const saved = cols === COLUMNS ? null : savedCovering(cols, canon.map((c) => c.id));
+        if (saved) {
+            const byId = new Map(saved.map((s) => [Number(s.id), s]));
+            return canon.map((c) => {
+                const s = byId.get(c.id);
+                return { id: c.id, x: s.x, y: s.y, w: s.w, h: c.h };
+            });
+        }
+        return projectColumns(canon, cols);
+    }
+
+    function projectInPlace() {
+        const cols = grid.getColumn();
+        if (cols === 1) return;
+        if (grid.engine) grid.engine._layouts = [];
+        const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
+        const pos = positionsFor(nodes, cols);
+        const byId = new Map(pos.map((p) => [Number(p.id), p]));
+        grid.batchUpdate();
+        nodes.forEach((n) => {
+            const p = byId.get(Number(n.id));
+            if (!p) return;
+            if (n.x !== p.x || n.y !== p.y || n.w !== p.w || n.h !== p.h) {
+                grid.update(n.el, { x: p.x, y: p.y, w: p.w, h: p.h });
+            }
+        });
+        grid.batchUpdate(false);
+    }
+
     function sameLayout(items) {
         return items.every((it) => {
             const w = widgets.get(it.id)?.widget;
@@ -223,20 +357,53 @@
         });
     }
 
-    async function postLayout(items, pack) {
+    function applyHeight(entry, it) {
+        entry.widget.h = it.h;
+        if (it.height_locked !== undefined) entry.widget.height_locked = it.height_locked ? 1 : 0;
+    }
+
+    async function postLayout(items, opts) {
+        opts = opts || {};
         if (!items.length) return;
-        if (!pack && sameLayout(items)) return;
+        if (opts.columns) {
+            if (sameAsSaved(opts.columns, items)) return;
+        } else if (opts.heightsOnly) {
+            if (sameHeights(items)) return;
+        } else if (!opts.pack && sameLayout(items)) return;
         try {
             status('Saving…', 'sticky');
-            const res = await api.post('/layout', pack ? { items, pack: true } : { items });
-            (res.items || items).forEach((it) => {
-                const entry = widgets.get(it.id);
-                if (!entry) return;
-                Object.assign(entry.widget, {
-                    x: it.x, y: it.y, w: it.w, h: it.h,
-                    height_locked: it.height_locked === undefined ? entry.widget.height_locked : (it.height_locked ? 1 : 0),
+            const body = { items };
+            if (opts.pack) body.pack = true;
+            if (opts.heightsOnly) body.heights_only = true;
+            if (opts.columns) body.columns = opts.columns;
+            const res = await api.post('/layout', body);
+            const saved = res.items || items;
+            if (opts.columns || opts.heightsOnly) {
+                if (opts.columns) {
+                    savedLayouts[opts.columns] = saved.map((it) => ({
+                        id: it.id, x: it.x, y: it.y, w: it.w, h: it.h,
+                    }));
+                }
+                saved.forEach((it) => {
+                    const entry = widgets.get(it.id);
+                    if (entry) applyHeight(entry, it);
                 });
-            });
+            } else {
+                let geometry = false;
+                saved.forEach((it) => {
+                    const entry = widgets.get(it.id);
+                    if (!entry) return;
+                    const w = entry.widget;
+                    if (w.x !== it.x || w.y !== it.y || w.w !== it.w) geometry = true;
+                    Object.assign(w, {
+                        x: it.x, y: it.y, w: it.w, h: it.h,
+                        height_locked: it.height_locked === undefined ? w.height_locked : (it.height_locked ? 1 : 0),
+                    });
+                });
+                if (geometry) {
+                    WIDE.forEach((c) => { delete savedLayouts[c]; });
+                }
+            }
             status('Layout saved');
         } catch (e) {
             status(`Layout not saved: ${e.message}`, 'error');
@@ -245,8 +412,52 @@
 
     const saveLayout = debounce(() => {
         if (grid.getColumn() !== COLUMNS) return;
-        postLayout(desktopItems(), false);
+        postLayout(desktopItems(), {});
     }, 600);
+
+    const saveWide = debounce(() => {
+        const cols = grid.getColumn();
+        if (!WIDE.includes(cols)) return;
+        const items = layoutNodes().map((n) => {
+            const w = widgets.get(Number(n.id)).widget;
+            return {
+                id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h,
+                height_locked: w.height_locked ? 1 : 0,
+            };
+        });
+        postLayout(items, { columns: cols });
+    }, 600);
+
+    const saveHeights = debounce(() => {
+        if (!WIDE.includes(grid.getColumn())) return;
+        postLayout(heightItems(), { heightsOnly: true });
+    }, 600);
+
+    function heightItems() {
+        return layoutNodes().map((n) => {
+            const w = widgets.get(Number(n.id)).widget;
+            return { id: Number(n.id), h: n.h, height_locked: w.height_locked ? 1 : 0 };
+        });
+    }
+
+    function sameHeights(items) {
+        return items.every((it) => {
+            const w = widgets.get(it.id)?.widget;
+            return w && w.h === it.h && (w.height_locked ? 1 : 0) === it.height_locked;
+        });
+    }
+
+    function sameAsSaved(cols, items) {
+        const saved = savedLayouts[cols];
+        if (!Array.isArray(saved) || saved.length !== items.length) return false;
+        const byId = new Map(saved.map((s) => [Number(s.id), s]));
+        return items.every((it) => {
+            const s = byId.get(it.id);
+            const w = widgets.get(it.id)?.widget;
+            return s && w && s.x === it.x && s.y === it.y && s.w === it.w && s.h === it.h
+                && (w.height_locked ? 1 : 0) === (it.height_locked ? 1 : 0);
+        });
+    }
 
     // Phone reorder: keep each widget's desktop width and flow them in the
     // visual order. The 1-column x/w is never written.
@@ -258,11 +469,14 @@
                 const w = widgets.get(Number(n.id)).widget;
                 return { id: Number(n.id), w: w.w, h: n.h, height_locked: w.height_locked ? 1 : 0 };
             });
-        postLayout(items, true);
+        postLayout(items, { pack: true });
     }
 
     grid.on('change', () => {
-        if (editing && grid.getColumn() === COLUMNS) saveLayout();
+        if (!editing || grid.isIgnoreChangeCB()) return;
+        const cols = grid.getColumn();
+        if (cols === COLUMNS) saveLayout();
+        else if (WIDE.includes(cols)) saveWide();
     });
 
     grid.on('resizestart', (_e, el) => {
@@ -272,11 +486,11 @@
     });
 
     grid.on('dragstop', () => {
-        if (editing && grid.getColumn() !== COLUMNS) saveMobileOrder();
+        if (editing && grid.getColumn() === 1) saveMobileOrder();
     });
 
     grid.on('resizestop', () => {
-        if (grid.getColumn() !== COLUMNS) saveMobileOrder();
+        if (grid.getColumn() === 1) saveMobileOrder();
     });
 
     // -----------------------------------------------------------------
@@ -293,11 +507,15 @@
             el.classList.remove('ld-h-lock');
             widgets.get(id).widget.height_locked = 0;
             fitItem(el);
-            if (grid.getColumn() === COLUMNS) {
+            const cols = grid.getColumn();
+            if (cols === 1) {
+                saveMobileOrder();
+            } else if (WIDE.includes(cols)) {
+                packUp();
+                saveWide();
+            } else {
                 packUp();
                 saveLayout();
-            } else {
-                saveMobileOrder();
             }
         } else if (btn.dataset.action === 'configure') {
             openConfig(widgets.get(id).widget);
@@ -740,11 +958,18 @@
             return;
         }
         applyWidget(w);
-        // Position changes from another device: apply unless the user is mid-edit here.
+        // Position changes from another device. Wide screens keep a saved
+        // arrangement and only take the shared height; otherwise reflow.
         const entry = widgets.get(id);
         const n = entry.el.gridstackNode;
-        if (!editing && grid.getColumn() === COLUMNS && n && (n.x !== w.x || n.y !== w.y || n.w !== w.w || n.h !== w.h)) {
+        const cols = grid.getColumn();
+        if (editing || !n) return;
+        if (cols === COLUMNS && (n.x !== w.x || n.y !== w.y || n.w !== w.w || n.h !== w.h)) {
             grid.update(entry.el, { x: w.x, y: w.y, w: w.w, h: w.h });
+        } else if (WIDE.includes(cols)) {
+            const ids = layoutNodes().map((node) => Number(node.id));
+            if (!savedCovering(cols, ids)) projectInPlace();
+            else if (n.h !== w.h) grid.update(entry.el, { h: w.h });
         }
     }
 
@@ -791,7 +1016,7 @@
 
     // Gravity pack: move each widget up, keep its column. Mirrors WidgetService::packUp.
     function packUp() {
-        if (grid.getColumn() !== COLUMNS) return;
+        if (grid.getColumn() === 1) return;
         const nodes = grid.engine.nodes.slice().sort((a, b) => a.y - b.y || a.x - b.x);
         nodes.forEach((n) => {
             if (n.locked) return;
@@ -813,9 +1038,12 @@
         fitting = true;
         try {
             grid.getGridItems().forEach(fitItem);
-            if (grid.getColumn() === COLUMNS) packUp();
+            if (grid.getColumn() !== 1) packUp();
             const busy = [...widgets.values()].some((entry) => entry.loading);
-            if (!busy && grid.getColumn() === COLUMNS) saveLayout();
+            if (!busy) {
+                if (WIDE.includes(grid.getColumn())) saveHeights();
+                else if (grid.getColumn() === COLUMNS) saveLayout();
+            }
         } finally {
             fitting = false;
         }
@@ -832,6 +1060,21 @@
         const fit = el.querySelector('.ld-fit');
         if (fit && fitObserver) fitObserver.observe(fit);
     });
+
+    // Flow canonical 12-column positions onto the viewport's column count.
+    // GridStack may already have switched columns before the nodes existed,
+    // which leaves the stored x/w sitting in the left of a wider grid.
+    if (grid.getColumn() !== 1) projectInPlace();
+    projectedCols = grid.getColumn();
+
+    window.addEventListener('resize', debounce(() => {
+        const cols = grid.getColumn();
+        if (cols === projectedCols) return;
+        projectedCols = cols;
+        if (cols === 1) return;
+        if (grid.engine) grid.engine._layouts = [];
+        projectInPlace();
+    }, 160));
 
     requestAnimationFrame(() => scheduleFit());
 

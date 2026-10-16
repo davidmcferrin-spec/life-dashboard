@@ -117,6 +117,30 @@ final class WidgetsTest extends PgsqlTestCase
         $this->svc->widgets->saveLayout($this->user, [['id' => $w['id'], 'x' => 10, 'y' => 0, 'w' => 4, 'h' => 4]]);
     }
 
+    public function testCompactRefitRunsOnceAndSkipsALockedCard(): void
+    {
+        $weather = $this->svc->widgets->create($this->user, 'legacy.weather', null, []);
+        $mood = $this->svc->widgets->create($this->user, 'mood', null, []);
+        $stocks = $this->svc->widgets->create($this->user, 'legacy.stocks', null, []);
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $weather['id'], 'x' => 0, 'y' => 0, 'w' => 4, 'h' => 5, 'height_locked' => 0],
+            ['id' => $mood['id'], 'x' => 0, 'y' => 5, 'w' => 6, 'h' => 4, 'height_locked' => 0],
+            ['id' => $stocks['id'], 'x' => 8, 'y' => 0, 'w' => 4, 'h' => 4, 'height_locked' => 1],
+        ]);
+
+        $this->svc->widgets->ensureCompactRow($this->user);
+        $weather = $this->svc->widgets->get($this->user, $weather['id']);
+        $mood = $this->svc->widgets->get($this->user, $mood['id']);
+        $stocks = $this->svc->widgets->get($this->user, $stocks['id']);
+
+        self::assertSame([0, 0, 3, 10, 0], [$weather['x'], $weather['y'], $weather['w'], $weather['h'], $weather['height_locked']]);
+        self::assertSame([3, 0, 3, 8], [$mood['x'], $mood['y'], $mood['w'], $mood['h']]);
+        self::assertSame([8, 4, 8, 1], [$stocks['x'], $stocks['w'], $stocks['h'], $stocks['height_locked']]);
+
+        $this->svc->widgets->ensureCompactRow($this->user);
+        self::assertSame(10, $this->svc->widgets->get($this->user, $weather['id'])['h'], 'a second load does not scale height again');
+    }
+
     public function testWidgetDataForTrackingTypes(): void
     {
         $mood = $this->svc->metrics->ensureMood($this->user);
@@ -152,5 +176,53 @@ final class WidgetsTest extends PgsqlTestCase
         self::assertSame(0, (int) $this->db->fetchScalar('SELECT COUNT(*) FROM widget_revisions WHERE widget_id = ?', [$w['id']]));
         $this->expectException(NotFoundException::class);
         $this->svc->widgets->delete($this->user, $w['id']);
+    }
+
+    public function testWideLayoutDoesNotRewriteCanonicalColumns(): void
+    {
+        $a = $this->svc->widgets->create($this->user, 'legacy.weather', null, []);
+        $b = $this->svc->widgets->create($this->user, 'mood', null, []);
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $a['id'], 'x' => 0, 'y' => 0, 'w' => 3, 'h' => 4, 'height_locked' => 0],
+            ['id' => $b['id'], 'x' => 3, 'y' => 0, 'w' => 3, 'h' => 4, 'height_locked' => 0],
+        ]);
+
+        $this->svc->widgets->saveBreakpointLayout($this->user, 18, [
+            ['id' => $a['id'], 'x' => 0, 'y' => 0, 'w' => 5, 'h' => 4],
+            ['id' => $b['id'], 'x' => 5, 'y' => 0, 'w' => 5, 'h' => 4],
+        ]);
+        $got = $this->svc->widgets->get($this->user, $a['id']);
+        self::assertSame([0, 0, 3, 4], [$got['x'], $got['y'], $got['w'], $got['h']]);
+        $layouts = $this->svc->widgets->breakpointLayouts($this->user);
+        self::assertSame(5, $layouts['18'][0]['w']);
+        self::assertSame([], $layouts['24']);
+
+        $this->svc->widgets->saveHeights($this->user, [
+            ['id' => $a['id'], 'h' => 6, 'height_locked' => 1],
+        ]);
+        $got = $this->svc->widgets->get($this->user, $a['id']);
+        self::assertSame([0, 0, 3, 6, 1], [$got['x'], $got['y'], $got['w'], $got['h'], $got['height_locked']]);
+        self::assertCount(2, $this->svc->widgets->breakpointLayouts($this->user)['18']);
+
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $a['id'], 'x' => 0, 'y' => 0, 'w' => 3, 'h' => 7, 'height_locked' => 1],
+        ]);
+        self::assertCount(2, $this->svc->widgets->breakpointLayouts($this->user)['18'], 'a height-only save keeps the wide arrangement');
+
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $a['id'], 'x' => 6, 'y' => 1, 'w' => 4, 'h' => 7, 'height_locked' => 1],
+        ]);
+        self::assertSame([], $this->svc->widgets->breakpointLayouts($this->user)['18']);
+        $got = $this->svc->widgets->get($this->user, $a['id']);
+        self::assertSame([6, 1, 4], [$got['x'], $got['y'], $got['w']]);
+    }
+
+    public function testWideLayoutRejectsAPositionPastItsColumns(): void
+    {
+        $a = $this->svc->widgets->create($this->user, 'legacy.weather', null, []);
+        $this->expectException(ValidationException::class);
+        $this->svc->widgets->saveBreakpointLayout($this->user, 18, [
+            ['id' => $a['id'], 'x' => 12, 'y' => 0, 'w' => 8, 'h' => 4],
+        ]);
     }
 }

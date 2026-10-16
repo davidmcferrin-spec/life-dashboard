@@ -325,21 +325,22 @@ async function loadWeather(lat, lon) {
         }
 
         widget.innerHTML = `
-            <div class="flex items-center gap-2 min-w-0">
-                <img src="https://openweathermap.org/img/wn/${data.icon}@2x.png" alt="${data.description}" class="w-10 h-10 flex-shrink-0">
-                <div class="min-w-0">
-                    <div class="text-primary weather-main-temp text-xl font-light mono">${data.temp}°F</div>
-                    <div class="text-muted text-xs capitalize truncate">${data.description}</div>
+            <div class="weather-compact">
+                <div class="weather-compact-main">
+                    <img src="https://openweathermap.org/img/wn/${data.icon}@2x.png" alt="${data.description}" class="weather-ico" width="36" height="36">
+                    <div class="min-w-0">
+                        <div class="weather-temp">${data.temp}°F</div>
+                        <div class="weather-desc">${data.description}</div>
+                    </div>
                 </div>
+                <div class="weather-details">
+                    <span>Feels <b>${data.feels_like}°</b></span>
+                    <span>Hum <b>${data.humidity}%</b></span>
+                    <span>Wind <b>${data.wind_speed}</b></span>
+                    <span>Vis <b>${data.visibility}mi</b></span>
+                </div>
+                <div class="weather-meta">${data.city} · ${timeAgo(data.fetched_at)}</div>
             </div>
-            <div class="mt-1.5 text-faint widget-mono-sm mono truncate">${data.city}</div>
-            <div class="mt-1.5 weather-details grid grid-cols-2 gap-x-2 gap-y-1 widget-mono-sm mono text-faint">
-                <span class="truncate">Feels <span class="text-secondary">${data.feels_like}°</span></span>
-                <span class="truncate">Hum <span class="text-secondary">${data.humidity}%</span></span>
-                <span class="truncate">Wind <span class="text-secondary">${data.wind_speed}</span></span>
-                <span class="truncate">Vis <span class="text-secondary">${data.visibility}mi</span></span>
-            </div>
-            <div class="mt-1.5 text-faint widget-mono-sm mono">Updated ${timeAgo(data.fetched_at)}</div>
         `;
     } catch (e) {
         widget.innerHTML = '<div class="empty-state mono text-xs">Could not load weather.</div>';

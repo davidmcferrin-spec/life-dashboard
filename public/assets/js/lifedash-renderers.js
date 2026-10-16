@@ -116,7 +116,7 @@
             const label = (cfg.labels && cfg.labels[String(v)]) || String(v);
             const face = fmt.face(m, v);
             buttons += `<button type="button" class="ld-mood-btn${v === current ? ' is-current' : ''}" data-value="${v}"
-                title="${esc(label)}" aria-label="Log ${esc(label)}">${face ? esc(face) : esc(v)}<small>${esc(label)}</small></button>`;
+                title="${esc(label)}" aria-label="Log ${esc(label)}">${face ? esc(face) : esc(v)}</button>`;
         }
 
         const todayLine = d.latest
@@ -130,12 +130,15 @@
 
         ctx.body.innerHTML = `
             <div class="ld-mood-scale">${buttons}</div>
-            <form class="ld-mood-note" data-note>
-                <input class="input" name="note" maxlength="500" placeholder="Note (optional) — then tap a face" aria-label="Mood note" autocomplete="off">
-            </form>
             <div class="ld-mood-foot"><span>${todayLine}</span><span>${esc(avg)}</span></div>
-            <div data-spark style="height:3.25rem;margin-top:0.35rem"></div>
-            ${notes ? `<ul class="ld-notes">${notes}</ul>` : ''}`;
+            <div data-spark class="ld-mood-spark"></div>
+            <details class="ld-mood-note">
+                <summary>Note</summary>
+                <form data-note>
+                    <input class="input" name="note" maxlength="500" placeholder="Optional note, then tap a face" aria-label="Mood note" autocomplete="off">
+                </form>
+                ${notes ? `<ul class="ld-notes">${notes}</ul>` : ''}
+            </details>`;
 
         const noteInput = ctx.body.querySelector('input[name=note]');
         ctx.body.querySelector('[data-note]').addEventListener('submit', (e) => e.preventDefault());
@@ -292,19 +295,6 @@
         return `<span class="ld-goal-ico ld-goal-letter" aria-hidden="true">${esc(letter)}</span>`;
     }
 
-    function goalRing(goal) {
-        const ratio = Math.max(0, Math.min(2, Number(goal.ratio) || 0));
-        const fill = Math.min(1, ratio);
-        const r = 14;
-        const c = 2 * Math.PI * r;
-        const dash = (fill * c).toFixed(2);
-        const over = ratio > 1 ? ' is-over' : '';
-        return `<svg class="ld-goal-ring${over}" viewBox="0 0 36 36" style="${goalPaint(ratio)}" aria-hidden="true">
-            <circle class="ld-goal-ring-track" cx="18" cy="18" r="${r}"/>
-            ${fill > 0 ? `<circle class="ld-goal-ring-value" cx="18" cy="18" r="${r}" stroke-dasharray="${dash} ${c.toFixed(2)}"/>` : ''}
-        </svg>`;
-    }
-
     function goalPips(goal) {
         const total = Math.max(1, Number(goal.pips) || Math.round(Number(goal.goal) * 2) || 1);
         const goalN = Math.max(1, Math.round(Number(goal.goal) || 1));
@@ -377,7 +367,6 @@
         const visual = view === 'week'
             ? `<div class="ld-goal-week">${goalWeekCells(goal)}</div>`
             : (goal.mode === 'count' ? goalPips(goal) : `<div class="ld-goal-track" style="${goalPaint(goal.ratio)}" role="img" aria-label="${esc(label)}"><span class="ld-goal-fill"></span></div>`);
-        const ring = view === 'day' && goal.mode !== 'count' ? goalRing(goal) : '';
         const count = goal.mode === 'count' ? ' is-count' : '';
         return `<div class="ld-goal-row${count}" data-metric="${esc(metric.id)}">
             ${goalMark(goal)}
@@ -386,7 +375,6 @@
                 <div class="ld-goal-nums">${esc(goalReadout(goal))}</div>
                 ${visual}
             </div>
-            ${ring}
             ${goalControls(goal, single)}
         </div>`;
     }

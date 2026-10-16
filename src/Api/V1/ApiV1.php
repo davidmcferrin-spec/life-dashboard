@@ -187,6 +187,27 @@ final class ApiV1
             if (!is_array($items) || !array_is_list($items)) {
                 throw ValidationException::withFields(['items' => 'items must be a list.']);
             }
+            $columns = null;
+            if (array_key_exists('columns', $body) && $body['columns'] !== null && $body['columns'] !== '') {
+                $columns = filter_var($body['columns'], FILTER_VALIDATE_INT);
+                if ($columns !== 18 && $columns !== 24) {
+                    throw ValidationException::withFields(['columns' => 'columns must be 18 or 24.']);
+                }
+            }
+            if ($columns !== null) {
+                $this->svc->widgets->saveBreakpointLayout($u, $columns, $items);
+                return [
+                    'updated'    => $this->svc->widgets->saveHeights($u, $items),
+                    'items'      => $items,
+                    'breakpoint' => $columns,
+                ];
+            }
+            if (!empty($body['heights_only'])) {
+                return [
+                    'updated' => $this->svc->widgets->saveHeights($u, $items),
+                    'items'   => $items,
+                ];
+            }
             if (!empty($body['pack'])) {
                 foreach ($items as $i => $it) {
                     if (!is_array($it)) {
