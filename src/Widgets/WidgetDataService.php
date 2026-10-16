@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Widgets;
 
+use Dashboard\Calls\CallService;
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
@@ -42,6 +43,7 @@ final class WidgetDataService
         private readonly MediaService $media,
         private readonly RedditService $reddit,
         private readonly ShoppingService $shopping,
+        private readonly CallService $calls,
     ) {}
 
     /**
@@ -63,6 +65,7 @@ final class WidgetDataService
             'streak'    => $this->streakData($userId, $c),
             'life'      => $this->lifeData($userId),
             'shopping'  => $this->shoppingData($userId, $c),
+            'calls'     => $this->callsData($userId, $c),
             'spending'  => $this->spendingData($userId, $c),
             'networth'       => $this->networthData($userId),
             'baby_step'      => $this->planCard($this->plan->babyStep($userId)),
@@ -82,6 +85,15 @@ final class WidgetDataService
             'custom'    => $this->customData($userId, $c),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @return array<string, mixed>
+     */
+    private function callsData(int $userId, array $config): array
+    {
+        return $this->calls->board($userId, (int) ($config['limit'] ?? 16));
     }
 
     /**

@@ -227,6 +227,9 @@ final class AuditLog
         'habit'         => ['%/habits%'],
         'shopping_list' => ['%/shopping/lists%'],
         'shopping_item' => ['%/shopping/items%'],
+        'call'          => ['%/api/v1/calls', '%/calls/stats%', '%/calls/query%', '%/calls/lookup%', '%/calls/%/status%', '%/calls/%/todo%'],
+        'contact'       => ['%/calls/contacts%'],
+        'vetted_agency' => ['%/calls/agencies%'],
     ];
 
     /**

@@ -1069,6 +1069,112 @@
         </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    function calls(ctx) {
+        const d = ctx.data || {};
+        const rows = d.calls || [];
+        const counts = d.counts || {};
+        const host = ctx.body.closest('.grid-stack-item');
+        const filter = (host && host.dataset.callFilter) || 'open';
+        const openId = host ? String(host.dataset.callOpen || '') : '';
+        const tabs = [
+            ['open', 'Open', counts.open_returns],
+            ['urgent', 'Urgent', counts.urgent],
+            ['debt', 'Debt', counts.debt],
+            ['vip', 'VIP', counts.vip],
+            ['all', 'All', counts.total],
+        ];
+        const shown = rows.filter((call) => callMatches(call, filter));
+        const tabHtml = tabs.map(([id, label, n]) =>
+            `<button type="button" class="ld-call-tab${id === filter ? ' is-on' : ''}" data-call-filter="${id}" aria-pressed="${id === filter}">${label}<span>${n ?? 0}</span></button>`
+        ).join('');
+        const list = shown.length
+            ? shown.map((call) => callRow(call, String(call.id) === openId)).join('')
+            : '<p class="empty-state mono text-xs">Nothing in this view.</p>';
+        ctx.body.innerHTML = `<div class="ld-call"><div class="ld-call-tabs" role="tablist">${tabHtml}</div><div class="ld-call-list">${list}</div></div>`;
+        ctx.body.querySelectorAll('[data-call-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (host) host.dataset.callFilter = btn.dataset.callFilter;
+                calls(ctx);
+            });
+        });
+        ctx.body.querySelectorAll('[data-call-open]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                if (!host) return;
+                host.dataset.callOpen = host.dataset.callOpen === btn.dataset.callOpen ? '' : btn.dataset.callOpen;
+                calls(ctx);
+            });
+        });
+        ctx.body.querySelectorAll('[data-call-status]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                guarded(btn, async () => {
+                    await api.post(`/calls/${btn.dataset.callId}/status`, { status: btn.dataset.callStatus });
+                    await ctx.refresh();
+                });
+            });
+        });
+    }
+
+    function callMatches(call, filter) {
+        if (filter === 'open') return !!call.open_return;
+        if (filter === 'urgent') return call.urgency === 'urgent' || call.category === 'urgent';
+        if (filter === 'debt') return call.category === 'debt_collector';
+        if (filter === 'vip') return !!call.vip;
+        return true;
+    }
+
+    function callRow(call, open) {
+        const who = call.name || call.contact_name || call.company || 'Unknown';
+        const company = call.company && call.company !== who ? call.company : '';
+        const number = call.callback_display || call.phone_display || '';
+        const href = call.callback_tel || call.phone_tel || '';
+        const phone = number
+            ? (href ? `<a class="ld-call-phone" href="${esc(href)}">${esc(number)}</a>` : `<span class="ld-call-phone">${esc(number)}</span>`)
+            : '';
+        const badges = [];
+        if (call.urgency === 'urgent' || call.category === 'urgent') badges.push('<span class="ld-call-badge is-urgent">Urgent</span>');
+        else if (call.urgency === 'high') badges.push('<span class="ld-call-badge is-high">High</span>');
+        if (call.category === 'debt_collector') {
+            const verdict = (call.debt && call.debt.verdict) ? call.debt.verdict.replaceAll('_', ' ') : 'unverified';
+            badges.push(`<span class="ld-call-badge is-debt is-${esc((call.debt && call.debt.verdict) || 'unverified')}">Debt · ${esc(verdict)}</span>`);
+        }
+        if (call.vip) badges.push(`<span class="ld-call-badge is-vip">VIP${call.vip_tier ? ' · ' + esc(call.vip_tier) : ''}</span>`);
+        const urgent = call.urgency === 'urgent' || call.category === 'urgent';
+        const detail = open ? callDetail(call) : '';
+        const statuses = ['returned', 'resolved', 'spam'].map((status) =>
+            `<button type="button" class="ld-call-status${call.status === status ? ' is-on' : ''}" data-call-id="${call.id}" data-call-status="${status}">${status}</button>`
+        ).join('');
+        return `<article class="ld-call-row${urgent ? ' is-urgent' : ''}${open ? ' is-open' : ''}">
+            <button type="button" class="ld-call-main" data-call-open="${call.id}" aria-expanded="${open}">
+                <span class="ld-call-name">${esc(who)}${company ? ` <em>${esc(company)}</em>` : ''}</span>
+                ${call.reason ? `<span class="ld-call-meta">${esc(call.reason)}</span>` : ''}
+                ${badges.length ? `<span class="ld-call-badges">${badges.join('')}</span>` : ''}
+            </button>
+            ${phone ? `<div class="ld-call-meta">${phone}</div>` : ''}
+            ${detail}
+            <div class="ld-call-actions">${statuses}</div>
+        </article>`;
+    }
+
+    function callDetail(call) {
+        const bits = [];
+        if (call.call_at_display) bits.push(`<p>${esc(call.call_at_display)} · ${esc(call.direction)}${call.handled_by ? ' · ' + esc(call.handled_by) : ''}</p>`);
+        if (call.summary) bits.push(`<p>${esc(call.summary)}</p>`);
+        if (call.notes) bits.push(`<p class="ld-call-notes">${esc(call.notes)}</p>`);
+        if (call.deadline) bits.push(`<p>Deadline ${esc(call.deadline)}</p>`);
+        if (call.phone_display && call.callback_display && call.phone_display !== call.callback_display) {
+            bits.push(`<p>Called ${call.phone_tel ? `<a class="ld-call-phone" href="${esc(call.phone_tel)}">${esc(call.phone_display)}</a>` : esc(call.phone_display)}</p>`);
+        }
+        const debt = call.debt;
+        if (debt) {
+            const money = debt.amount_claimed == null ? '' : ' · $' + Number(debt.amount_claimed).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const last4 = debt.reference_last4 ? ` · ····${esc(debt.reference_last4)}` : '';
+            bits.push(`<p>${esc(debt.agency || debt.collector_name || 'Collector')}${money}${last4}</p>`);
+            if (debt.verification_notes) bits.push(`<p class="ld-call-notes">${esc(debt.verification_notes)}</p>`);
+        }
+        return `<div class="ld-call-detail">${bits.join('')}</div>`;
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

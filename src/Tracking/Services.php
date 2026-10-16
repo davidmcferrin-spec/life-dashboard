@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Tracking;
 
 use Dashboard\Audit\AuditLog;
+use Dashboard\Calls\CallService;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\DB\Database;
 use Dashboard\Invest\InvestService;
@@ -42,6 +43,7 @@ final class Services
     public readonly RedditService $reddit;
     public readonly TodoService $todos;
     public readonly ShoppingService $shopping;
+    public readonly CallService $calls;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -63,6 +65,7 @@ final class Services
         $this->reddit  = new RedditService($db);
         $this->todos   = TodoService::fromDatabase($db);
         $this->shopping = new ShoppingService($db, $clock);
+        $this->calls = new CallService($db, $clock);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,
@@ -77,6 +80,7 @@ final class Services
             new MediaService($db),
             $this->reddit,
             $this->shopping,
+            $this->calls,
         );
     }
 
