@@ -119,6 +119,15 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 3],
                 'fields' => [],
             ],
+            'shopping' => [
+                'label' => 'Shopping', 'category' => 'life', 'singleton' => false,
+                'description' => 'Lists such as Groceries or Costco. Quick-add parses “2 lb chicken”, groups by aisle, and checks items off.',
+                'size' => ['w' => 4, 'h' => 6], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => [
+                    'list_id'     => ['type' => 'int', 'label' => 'One list (0 = tabs for every list)', 'min' => 0, 'max' => 1000000000, 'default' => 0],
+                    'clear_hours' => ['type' => 'int', 'label' => 'Clear bought items after (hours, 0 = keep)', 'min' => 0, 'max' => 168, 'default' => 24],
+                ],
+            ],
             'spending' => [
                 'label' => 'Spending', 'category' => 'money', 'singleton' => false,
                 'description' => 'Outflows by category over a period.',

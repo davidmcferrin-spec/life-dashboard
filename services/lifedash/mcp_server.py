@@ -776,7 +776,102 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {"name": {"type": "string"}},
+        "required": ["name"],
+        "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_shopping_lists",
+        "description": "Shopping lists for this user, such as Groceries, Costco, or Hardware. The first call creates Groceries when none exist.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "create_shopping_list",
+        "description": "Create a shopping list. The same name returns the existing list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"name": {"type": "string"}},
             "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_shopping_items",
+        "description": "Items on a shopping list. Bought items older than clear_hours are removed. clear_hours 0 keeps them.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "integer"},
+                "include_bought": {"type": "boolean"},
+                "clear_hours": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_shopping_items",
+        "description": (
+            "Add items to a list. Each item is a string such as '2 lb chicken', or an object with "
+            "name, quantity, unit, store, category, and notes. An open item with the same name and unit "
+            "gets its quantity increased. Category is guessed from the name when omitted."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "list_id": {"type": "integer"},
+                "items": {"type": "array", "items": {"type": ["string", "object"]}},
+            },
+            "required": ["list_id", "items"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_shopping_item",
+        "description": "Change an item's name, quantity, unit, store, category, or notes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "quantity": {"type": "number"},
+                "unit": {"type": "string"},
+                "store": {"type": "string"},
+                "category": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["item_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "check_shopping_item",
+        "description": "Mark a shopping item bought. Pass bought false to return it to the list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "item_id": {"type": "integer"},
+                "bought": {"type": "boolean"},
+            },
+            "required": ["item_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "remove_shopping_item",
+        "description": "Delete one shopping item.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"item_id": {"type": "integer"}},
+            "required": ["item_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "clear_bought",
+        "description": "Remove every bought item on a list. Omit list_id to clear every list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"list_id": {"type": "integer"}},
             "additionalProperties": False,
         },
     },
@@ -1117,6 +1212,26 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/todos/categories", None
     if name == "create_todo_category":
         return "POST", "/api/v1/todos/categories", {"name": args["name"]}
+    if name == "list_shopping_lists":
+        return "GET", "/api/v1/shopping/lists", None
+    if name == "create_shopping_list":
+        return "POST", "/api/v1/shopping/lists", {"name": args["name"]}
+    if name == "list_shopping_items":
+        return "GET", "/api/v1/shopping/items" + _query(args, ("list_id", "include_bought", "clear_hours")), None
+    if name == "add_shopping_items":
+        return "POST", "/api/v1/shopping/items", {"list_id": int(args["list_id"]), "items": args["items"]}
+    if name == "update_shopping_item":
+        body = _pick(args, ("name", "quantity", "unit", "store", "category", "notes"))
+        return "POST", f"/api/v1/shopping/items/{int(args['item_id'])}", body
+    if name == "check_shopping_item":
+        body = {} if "bought" not in args else {"bought": bool(args["bought"])}
+        return "POST", f"/api/v1/shopping/items/{int(args['item_id'])}/check", body
+    if name == "remove_shopping_item":
+        return "POST", f"/api/v1/shopping/items/{int(args['item_id'])}/delete", {}
+    if name == "clear_bought":
+        if args.get("list_id"):
+            return "POST", f"/api/v1/shopping/lists/{int(args['list_id'])}/clear-bought", {}
+        return "POST", "/api/v1/shopping/clear-bought", {}
     if name == "get_dashboard_summary":
         return "GET", "/api/v1/money/dashboard", None
     if name == "invest_scorecard":

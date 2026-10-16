@@ -225,6 +225,8 @@ final class AuditLog
         'todo'          => ['%/todos/items%'],
         'todo_category' => ['%/todos/categories%'],
         'habit'         => ['%/habits%'],
+        'shopping_list' => ['%/shopping/lists%'],
+        'shopping_item' => ['%/shopping/items%'],
     ];
 
     /**
