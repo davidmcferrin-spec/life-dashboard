@@ -26,6 +26,11 @@ final class WidgetService
     /** Display columns above the canonical 12. Positions for these live in user preferences. */
     public const WIDE_COLUMNS = [18, 24];
     public const COLUMN_MAX = 24;
+    /** Viewport widths that switch column count. Hysteresis keeps a drag from flipping back. */
+    public const BREAK_NARROW = 700;
+    public const BREAK_WIDE = 1600;
+    public const BREAK_ULTRA = 3440;
+    public const BREAK_HYSTERESIS = 120;
     public const MAX_WIDGETS = 60;
     public const BOARD = 'home';
     public const CHANGERS = ['user', 'ai', 'system'];
@@ -328,7 +333,42 @@ final class WidgetService
 
     public static function layoutPrefKey(int $columns): string
     {
-        return 'dashboard_layout_' . $columns;
+        return 'dashboard_layout_v2_' . $columns;
+    }
+
+    /**
+     * Column count for a viewport width. `$previous` is the count already on
+     * screen; within {@see BREAK_HYSTERESIS} px of a boundary it stays put so a
+     * resize does not re-pack until the pointer has clearly crossed.
+     */
+    public static function columnsForWidth(int $width, ?int $previous = null): int
+    {
+        $narrow = self::BREAK_NARROW;
+        $wide = self::BREAK_WIDE;
+        $ultra = self::BREAK_ULTRA;
+        $h = self::BREAK_HYSTERESIS;
+        if ($previous === 1 && $width < $narrow + $h) {
+            return 1;
+        }
+        if ($previous === 24 && $width >= $ultra - $h) {
+            return 24;
+        }
+        if ($previous === 18 && $width < $ultra && $width >= $wide - $h) {
+            return 18;
+        }
+        if ($previous === self::COLUMNS && $width > $narrow && $width < $wide) {
+            return self::COLUMNS;
+        }
+        if ($width <= $narrow) {
+            return 1;
+        }
+        if ($width < $wide) {
+            return self::COLUMNS;
+        }
+        if ($width < $ultra) {
+            return 18;
+        }
+        return 24;
     }
 
     /**
@@ -518,10 +558,13 @@ final class WidgetService
     }
 
     /**
-     * Flow a 12-column layout onto a wider grid.
-     * Each card keeps its stored column count, so a 3-column card stays 3 and
-     * more of them share a row. A card that already spans the canonical grid
-     * spans the new one. At 12 columns the positions are unchanged.
+     * Map a 12-column layout onto another column count without reordering.
+     *
+     * Each card keeps its row. Width and x scale with the column edges, so a
+     * card the user sized keeps the same fraction of the grid. A card that
+     * already spans all 12 columns spans the new grid. A row that does not
+     * fill the grid is shifted so its occupied span is centered, unless that
+     * shift would cover another card.
      *
      * @param list<array<string, mixed>> $items
      * @return list<array<string, mixed>>
@@ -529,37 +572,115 @@ final class WidgetService
     public static function projectColumns(array $items, int $columns): array
     {
         $columns = max(1, $columns);
+        $from = self::COLUMNS;
         $nodes = array_values($items);
         usort($nodes, static function (array $a, array $b): int {
             return [(int) ($a['y'] ?? 0), (int) ($a['x'] ?? 0), (int) ($a['id'] ?? 0)]
                 <=> [(int) ($b['y'] ?? 0), (int) ($b['x'] ?? 0), (int) ($b['id'] ?? 0)];
         });
-        if ($columns === self::COLUMNS) {
+        if ($columns !== $from) {
+            foreach ($nodes as $i => $it) {
+                $x = max(0, (int) ($it['x'] ?? 0));
+                $w = max(1, (int) ($it['w'] ?? 1));
+                $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+                $y = max(0, (int) ($it['y'] ?? 0));
+                if ($w >= $from) {
+                    $it['x'] = 0;
+                    $it['w'] = $columns;
+                } else {
+                    $x1 = intdiv($x * $columns, $from);
+                    $x2 = intdiv(($x + $w) * $columns, $from);
+                    $it['x'] = min($columns - 1, $x1);
+                    $it['w'] = max(1, min($columns - (int) $it['x'], $x2 - $x1));
+                }
+                $it['y'] = $y;
+                $it['h'] = $h;
+                $nodes[$i] = $it;
+            }
+        }
+        return self::centerOccupied($nodes, $columns);
+    }
+
+    /**
+     * Shift each row so the columns it occupies sit in the middle of the grid.
+     * Rows that already span the grid stay put. A shift that would overlap a
+     * card on another row is skipped. If the whole layout is inset, one more
+     * shift centers that bounding span.
+     *
+     * @param list<array<string, mixed>> $nodes
+     * @return list<array<string, mixed>>
+     */
+    public static function centerOccupied(array $nodes, int $columns): array
+    {
+        $columns = max(1, $columns);
+        $groups = [];
+        foreach ($nodes as $i => $it) {
+            $groups[(int) ($it['y'] ?? 0)][] = $i;
+        }
+        foreach ($groups as $idxs) {
+            $min = min(array_map(static fn (int $i): int => (int) $nodes[$i]['x'], $idxs));
+            $max = max(array_map(static fn (int $i): int => (int) $nodes[$i]['x'] + (int) $nodes[$i]['w'], $idxs));
+            $span = $max - $min;
+            if ($span <= 0 || $span >= $columns) {
+                continue;
+            }
+            $offset = intdiv($columns - $span, 2) - $min;
+            if ($offset === 0) {
+                continue;
+            }
+            $moved = [];
+            foreach ($idxs as $i) {
+                $trial = $nodes[$i];
+                $trial['x'] = (int) $trial['x'] + $offset;
+                $moved[$i] = $trial;
+            }
+            $hit = false;
+            foreach ($nodes as $j => $other) {
+                if (isset($moved[$j])) {
+                    continue;
+                }
+                foreach ($moved as $trial) {
+                    if (self::rectsOverlap($trial, $other)) {
+                        $hit = true;
+                        break 2;
+                    }
+                }
+            }
+            if ($hit) {
+                continue;
+            }
+            foreach ($moved as $i => $trial) {
+                $nodes[$i] = $trial;
+            }
+        }
+
+        if ($nodes === []) {
             return $nodes;
         }
-        $x = 0;
-        $y = 0;
-        $rowH = 0;
-        $out = [];
-        foreach ($nodes as $it) {
-            $storedW = max(1, (int) ($it['w'] ?? 1));
-            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
-            $w = $storedW >= self::COLUMNS ? $columns : max(1, min($columns, $storedW));
-            if ($x > 0 && $x + $w > $columns) {
-                $y += $rowH;
-                $x = 0;
-                $rowH = 0;
+        $min = min(array_map(static fn (array $it): int => (int) $it['x'], $nodes));
+        $max = max(array_map(static fn (array $it): int => (int) $it['x'] + (int) $it['w'], $nodes));
+        $span = $max - $min;
+        if ($span > 0 && $span < $columns) {
+            $offset = intdiv($columns - $span, 2) - $min;
+            if ($offset !== 0) {
+                foreach ($nodes as $i => $it) {
+                    $nodes[$i]['x'] = (int) $it['x'] + $offset;
+                }
             }
-            $row = $it;
-            $row['x'] = $x;
-            $row['y'] = $y;
-            $row['w'] = $w;
-            $row['h'] = $h;
-            $out[] = $row;
-            $x += $w;
-            $rowH = max($rowH, $h);
         }
-        return $out;
+        return $nodes;
+    }
+
+    /**
+     * @param array<string, mixed> $a
+     * @param array<string, mixed> $b
+     */
+    private static function rectsOverlap(array $a, array $b): bool
+    {
+        return (int) $a['x'] < (int) $b['x'] + (int) $b['w']
+            && (int) $a['x'] + (int) $a['w'] > (int) $b['x']
+            && (int) $a['y'] < (int) $b['y'] + (int) $b['h']
+            && (int) $a['y'] + (int) $a['h'] > (int) $b['y'];
     }
 
     /**

@@ -3,18 +3,23 @@
  *
  *   - Canonical layout is 12 columns, stored on dashboard_widgets. The grid
  *     shows 12 columns under 1600px, 18 from 1600 to 3439, and 24 from 3440.
- *     Under 700px it is one column. A phone reorder is saved as a 12-column
- *     flow of the desktop widths, never as a 1-column layout.
- *   - Wider screens keep each card's column count and flow them left to right,
- *     so more cards share a row. A card that already spans all 12 columns spans
- *     the current grid. A drag or resize on 18 or 24 columns is saved for that
- *     width only; the 12-column x/y/w stay put.
- *   - Unlocked widgets size to their content, then pack upward (column kept).
- *     A resize sets height_locked so that height stays. Fit clears it.
+ *     Under 700px it is one column. Crossing a boundary waits out a 120px
+ *     band and a short pause, then scales each card's edges. Cards keep
+ *     their row and their share of the width. A short row is centered.
+ *     Inside a breakpoint the column count stays put, so a window resize
+ *     only scales pixels. A phone reorder is saved as a 12-column flow of
+ *     the desktop widths, never as a 1-column layout.
+ *   - A drag or resize on 18 or 24 columns is saved for that width only;
+ *     the 12-column x/y/w stay put.
+ *   - Unlocked widgets size to their content in place. Extra rows open
+ *     below that card and every card under it shifts down together, so a
+ *     neighbor never changes column or swaps rows. A resize sets
+ *     height_locked so that height stays. The Fit button clears it and packs.
  *   - Rows are 32px. Width snaps to one column of the current grid; top-row
  *     cards can step down to 2 columns.
- *   - Layout is saved debounced. Automatic fitting writes heights only on a
- *     wide screen, and does not write while a native widget is still loading.
+ *   - Layout is saved debounced. Automatic fitting runs when content
+ *     arrives and when the column count changes. It does not run while the
+ *     window stays inside a breakpoint, and it does not write positions.
  *   - Native widgets render from /api/v1/widgets/{id}/data via LD.renderers;
  *     legacy widgets are server-rendered partials with their own scripts.
  *   - LD.grid.handleEvent() receives realtime events from lifedash-realtime.js.
@@ -31,7 +36,22 @@
 
     const COLUMNS = 12;
     const WIDE = [18, 24];
-    const NARROW_PX = 700;
+    const BREAK_NARROW = 700;
+    const BREAK_WIDE = 1600;
+    const BREAK_ULTRA = 3440;
+    const HYSTERESIS = 120;
+
+    // Keep in step with WidgetService::columnsForWidth.
+    function columnsForWidth(width, previous) {
+        if (previous === 1 && width < BREAK_NARROW + HYSTERESIS) return 1;
+        if (previous === 24 && width >= BREAK_ULTRA - HYSTERESIS) return 24;
+        if (previous === 18 && width < BREAK_ULTRA && width >= BREAK_WIDE - HYSTERESIS) return 18;
+        if (previous === COLUMNS && width > BREAK_NARROW && width < BREAK_WIDE) return COLUMNS;
+        if (width <= BREAK_NARROW) return 1;
+        if (width < BREAK_WIDE) return COLUMNS;
+        if (width < BREAK_ULTRA) return 18;
+        return 24;
+    }
 
     /** id → { widget, data, el, body, tools, loading, queued } */
     const widgets = new Map();
@@ -68,12 +88,15 @@
         const pos = positionsFor(all, newCols);
         const byId = new Map(pos.map((p) => [Number(p.id), p]));
         all.forEach((n) => {
+            const fittedH = n.h;
             const p = byId.get(Number(n.id));
             if (p) {
                 n.x = p.x;
                 n.y = p.y;
                 n.w = p.w;
-                n.h = p.h;
+                // Keep a content-sized height. commitPositions opens rows
+                // under it; resetting h here would collapse that and overlap.
+                n.h = fittedH || p.h;
             }
             placed.push(n);
         });
@@ -84,21 +107,11 @@
         column: COLUMNS,
         cellHeight: 32,
         margin: 6,
-        float: false,
-        animate: true,
+        float: true,
+        animate: false,
         staticGrid: true,
         handle: '.ld-drag',
         resizable: { handles: 'e,se,s,sw,w' },
-        columnOpts: {
-            breakpointForWindow: true,
-            columnMax: 24,
-            breakpoints: [
-                { w: 3439, c: 18 },
-                { w: 1599, c: 12 },
-                { w: NARROW_PX, c: 1, layout: 'list' },
-            ],
-            layout: projectLayout,
-        },
     }, gridEl);
     gridApi = grid;
 
@@ -154,7 +167,7 @@
         }
     }
 
-    function render(entry) {
+    function render(entry, opts) {
         const renderer = window.LD.renderers[entry.widget.type];
         if (!renderer || !entry.data) return;
         const title = entry.el.querySelector('.ld-w-title');
@@ -171,7 +184,9 @@
             console.error('[lifedash] render failed', entry.widget, e);
             entry.body.innerHTML = '<p class="ld-error">This widget could not be displayed.</p>';
         }
-        scheduleFit();
+        // A chart redraws when its box changes size. That is not new content,
+        // and refitting here would move rows during a window resize.
+        if (!opts || opts.fit !== false) scheduleFit();
     }
 
     // Charts are drawn at pixel size: redraw when the widget resizes.
@@ -179,7 +194,7 @@
         items.forEach((it) => {
             const id = Number(it.target.closest('.grid-stack-item')?.dataset.widgetId);
             const entry = widgets.get(id);
-            if (entry && entry.data && ['chart', 'mood'].includes(entry.widget.type)) render(entry);
+            if (entry && entry.data && ['chart', 'mood'].includes(entry.widget.type)) render(entry, { fit: false });
         });
     }, 120)) : null;
 
@@ -218,8 +233,6 @@
         grid.makeWidget(el, { id: String(w.id), x: w.x, y: w.y, w: w.w, h: w.h, minW: w.min_w, minH: w.min_h });
         register(w, el);
         if (grid.getColumn() !== 1) projectInPlace();
-        const fit = el.querySelector('.ld-fit');
-        if (fit && fitObserver) fitObserver.observe(fit);
         document.getElementById('ld-empty')?.remove();
         if (flash) {
             el.classList.add('ld-flash');
@@ -286,28 +299,61 @@
         };
     }
 
-    // Mirrors WidgetService::projectColumns.
+    function rectsOverlap(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // Mirrors WidgetService::projectColumns / centerOccupied.
     function projectColumns(items, columns) {
+        const from = COLUMNS;
         const nodes = items.slice().sort((a, b) => a.y - b.y || a.x - b.x || (a.id || 0) - (b.id || 0));
-        if (columns === COLUMNS) return nodes;
-        let x = 0;
-        let y = 0;
-        let rowH = 0;
-        const out = [];
-        nodes.forEach((it) => {
-            const storedW = Math.max(1, it.w | 0);
+        const scaled = nodes.map((it) => {
+            const x = Math.max(0, it.x | 0);
+            const w = Math.max(1, it.w | 0);
             const h = Math.max(1, Math.min(24, it.h | 0));
-            const w = storedW >= COLUMNS ? columns : Math.max(1, Math.min(columns, storedW));
-            if (x > 0 && x + w > columns) {
-                y += rowH;
-                x = 0;
-                rowH = 0;
-            }
-            out.push({ id: it.id, x, y, w, h });
-            x += w;
-            rowH = Math.max(rowH, h);
+            const y = Math.max(0, it.y | 0);
+            if (columns === from) return { ...it, x, y, w, h };
+            if (w >= from) return { ...it, x: 0, y, w: columns, h };
+            const x1 = Math.floor(x * columns / from);
+            const x2 = Math.floor((x + w) * columns / from);
+            const nx = Math.min(columns - 1, x1);
+            return { ...it, x: nx, y, w: Math.max(1, Math.min(columns - nx, x2 - x1)), h };
         });
-        return out;
+        return centerOccupied(scaled, columns);
+    }
+
+    function centerOccupied(nodes, columns) {
+        const groups = new Map();
+        nodes.forEach((it, i) => {
+            const y = it.y | 0;
+            if (!groups.has(y)) groups.set(y, []);
+            groups.get(y).push(i);
+        });
+        groups.forEach((idxs) => {
+            const min = Math.min(...idxs.map((i) => nodes[i].x));
+            const max = Math.max(...idxs.map((i) => nodes[i].x + nodes[i].w));
+            const span = max - min;
+            if (span <= 0 || span >= columns) return;
+            const offset = Math.floor((columns - span) / 2) - min;
+            if (!offset) return;
+            const moved = new Map();
+            idxs.forEach((i) => moved.set(i, { ...nodes[i], x: nodes[i].x + offset }));
+            const hit = nodes.some((other, j) => {
+                if (moved.has(j)) return false;
+                return [...moved.values()].some((trial) => rectsOverlap(trial, other));
+            });
+            if (hit) return;
+            moved.forEach((trial, i) => { nodes[i] = trial; });
+        });
+        if (!nodes.length) return nodes;
+        const min = Math.min(...nodes.map((it) => it.x));
+        const max = Math.max(...nodes.map((it) => it.x + it.w));
+        const span = max - min;
+        if (span > 0 && span < columns) {
+            const offset = Math.floor((columns - span) / 2) - min;
+            if (offset) nodes.forEach((it) => { it.x += offset; });
+        }
+        return nodes;
     }
 
     function savedCovering(cols, ids) {
@@ -331,22 +377,47 @@
         return projectColumns(canon, cols);
     }
 
-    function projectInPlace() {
+    function writeNode(node) {
+        grid._writePosAttr(node.el, node);
+    }
+
+    /**
+     * Paint the projected columns without GridStack's collision solver.
+     * A card taller than its saved height opens that many rows at its saved
+     * bottom; every card that starts there or lower moves down by the same
+     * amount. x and w stay on the projection, so order does not change.
+     */
+    function commitPositions() {
         const cols = grid.getColumn();
-        if (cols === 1) return;
-        if (grid.engine) grid.engine._layouts = [];
+        if (cols === 1 || !grid.engine) return;
+        grid.engine._layouts = [];
         const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
-        const pos = positionsFor(nodes, cols);
-        const byId = new Map(pos.map((p) => [Number(p.id), p]));
-        grid.batchUpdate();
-        nodes.forEach((n) => {
-            const p = byId.get(Number(n.id));
-            if (!p) return;
-            if (n.x !== p.x || n.y !== p.y || n.w !== p.w || n.h !== p.h) {
-                grid.update(n.el, { x: p.x, y: p.y, w: p.w, h: p.h });
-            }
+        const base = positionsFor(nodes, cols);
+        const byId = new Map(base.map((p) => [Number(p.id), p]));
+        const inserts = [];
+        base.forEach((b) => {
+            const node = nodes.find((n) => Number(n.id) === Number(b.id));
+            const h = node ? node.h : b.h;
+            const delta = h - b.h;
+            if (delta > 0) inserts.push({ atY: b.y + b.h, delta });
         });
-        grid.batchUpdate(false);
+        nodes.forEach((n) => {
+            const b = byId.get(Number(n.id));
+            if (!b) return;
+            let shift = 0;
+            inserts.forEach((ins) => {
+                if (b.y >= ins.atY) shift += ins.delta;
+            });
+            n.x = b.x;
+            n.y = b.y + shift;
+            n.w = b.w;
+            writeNode(n);
+        });
+        grid._updateContainerHeight();
+    }
+
+    function projectInPlace() {
+        commitPositions();
     }
 
     function sameLayout(items) {
@@ -428,8 +499,10 @@
         postLayout(items, { columns: cols });
     }, 600);
 
+    // Heights are shared across breakpoints. Column positions stay on the
+    // canonical row (or the saved wide arrangement) and are not written here.
     const saveHeights = debounce(() => {
-        if (!WIDE.includes(grid.getColumn())) return;
+        if (grid.getColumn() === 1) return;
         postLayout(heightItems(), { heightsOnly: true });
     }, 600);
 
@@ -964,13 +1037,16 @@
         const n = entry.el.gridstackNode;
         const cols = grid.getColumn();
         if (editing || !n) return;
-        if (cols === COLUMNS && (n.x !== w.x || n.y !== w.y || n.w !== w.w || n.h !== w.h)) {
-            grid.update(entry.el, { x: w.x, y: w.y, w: w.w, h: w.h });
-        } else if (WIDE.includes(cols)) {
+        if (cols === 1) return;
+        n.h = w.h;
+        if (WIDE.includes(cols)) {
             const ids = layoutNodes().map((node) => Number(node.id));
-            if (!savedCovering(cols, ids)) projectInPlace();
-            else if (n.h !== w.h) grid.update(entry.el, { h: w.h });
+            if (savedCovering(cols, ids)) {
+                writeNode(n);
+                return;
+            }
         }
+        commitPositions();
     }
 
     function handleEvent(evt) {
@@ -1007,11 +1083,34 @@
     // -----------------------------------------------------------------
     const FIT_MAX = { goal: 6, chart: 8, mood: 8, habits: 10, 'legacy.news': 8, 'legacy.clipboards': 8 };
 
+    // Cell count for the content, without GridStack moveNode (that solver
+    // pushes a neighbor onto another row).
+    function measureContentCells(el) {
+        const node = el.gridstackNode;
+        if (!node || !el.clientHeight) return node ? node.h : 1;
+        const cell = grid.getCellHeight(true);
+        if (!cell) return node.h;
+        const box = el.querySelector('.grid-stack-item-content');
+        const inner = box ? box.firstElementChild : null;
+        if (!inner) return node.h;
+        const pad = el.clientHeight - box.clientHeight;
+        const currentInner = node.h ? node.h * cell - pad : box.clientHeight;
+        const measured = inner.getBoundingClientRect().height;
+        if (measured === currentInner) return node.h;
+        const px = (node.h ? node.h * cell : el.clientHeight) + (measured - currentInner);
+        let cells = Math.ceil(px / cell);
+        const cap = FIT_MAX[el.dataset.widgetType] || 8;
+        if (cells > cap) cells = cap;
+        if (node.minH && cells < node.minH) cells = node.minH;
+        if (node.maxH && cells > node.maxH) cells = node.maxH;
+        return Math.max(1, cells);
+    }
+
     function fitItem(el) {
         const node = el.gridstackNode;
         if (!node || el.classList.contains('ld-h-lock')) return;
-        node.sizeToContent = FIT_MAX[el.dataset.widgetType] || 8;
-        grid.resizeToContent(el);
+        const cells = measureContentCells(el);
+        if (cells !== node.h) node.h = cells;
     }
 
     // Gravity pack: move each widget up, keep its column. Mirrors WidgetService::packUp.
@@ -1037,44 +1136,48 @@
         if (fitting || editing) return;
         fitting = true;
         try {
-            grid.getGridItems().forEach(fitItem);
-            if (grid.getColumn() !== 1) packUp();
+            if (grid.getColumn() === 1) return;
             const busy = [...widgets.values()].some((entry) => entry.loading);
-            if (!busy) {
-                if (WIDE.includes(grid.getColumn())) saveHeights();
-                else if (grid.getColumn() === COLUMNS) saveLayout();
-            }
+            if (busy) return;
+            grid.getGridItems().forEach(fitItem);
+            commitPositions();
         } finally {
             fitting = false;
         }
     }
 
-    const fitObserver = 'ResizeObserver' in window
-        ? new ResizeObserver(debounce(() => { if (!editing && !fitting) scheduleFit(); }, 150))
-        : null;
-
     initial.forEach((w) => {
         const el = gridEl.querySelector(`.grid-stack-item[data-widget-id="${w.id}"]`);
         if (!el) return;
         register(w, el);
-        const fit = el.querySelector('.ld-fit');
-        if (fit && fitObserver) fitObserver.observe(fit);
     });
 
-    // Flow canonical 12-column positions onto the viewport's column count.
-    // GridStack may already have switched columns before the nodes existed,
-    // which leaves the stored x/w sitting in the left of a wider grid.
-    if (grid.getColumn() !== 1) projectInPlace();
-    projectedCols = grid.getColumn();
+    // Scale the 12-column records onto the viewport once. Later resizes stay
+    // on that column count until the pointer rests past the hysteresis band.
+    function applyColumns(cols, animate) {
+        if (grid.engine) grid.engine._layouts = [];
+        grid.setAnimation(!!animate);
+        if (cols === 1) {
+            if (grid.getColumn() !== 1) grid.column(1, 'list');
+        } else if (grid.getColumn() !== cols) {
+            grid.column(cols, projectLayout);
+        } else {
+            projectInPlace();
+        }
+        if (cols !== 1) commitPositions();
+        projectedCols = grid.getColumn();
+        // Content is already on screen, so fit in this turn. One paint, one move.
+        if (animate) runFit();
+        else requestAnimationFrame(() => grid.setAnimation(true));
+    }
+
+    applyColumns(columnsForWidth(window.innerWidth, null), false);
 
     window.addEventListener('resize', debounce(() => {
-        const cols = grid.getColumn();
-        if (cols === projectedCols) return;
-        projectedCols = cols;
-        if (cols === 1) return;
-        if (grid.engine) grid.engine._layouts = [];
-        projectInPlace();
-    }, 160));
+        const next = columnsForWidth(window.innerWidth, grid.getColumn());
+        if (next === grid.getColumn()) return;
+        applyColumns(next, true);
+    }, 220));
 
     requestAnimationFrame(() => scheduleFit());
 
