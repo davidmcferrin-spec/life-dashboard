@@ -560,11 +560,12 @@ final class WidgetService
     /**
      * Map a 12-column layout onto another column count without reordering.
      *
-     * Each card keeps its row and its column count, so a 3-column card stays
-     * 3 columns wide when the screen grows from 12 to 18 or 24. Extra columns
-     * are room for more cards on a row. A card wider than the grid is clamped.
-     * A row that does not fill the grid is shifted so its occupied span is
-     * centered, unless that shift would cover another card.
+     * Each card keeps its column count, so a 3-column card stays 3 columns
+     * wide (the same pixel width) when the screen grows from 12 to 18 or 24.
+     * Cards are placed in their current reading order, and a wider grid fits
+     * more of them on each row. A card wider than the grid is clamped. A row
+     * that does not fill the grid is centered when that does not cover another
+     * card. The 12-column layout is not repacked.
      *
      * @param list<array<string, mixed>> $items
      * @return list<array<string, mixed>>
@@ -578,24 +579,27 @@ final class WidgetService
             return [(int) ($a['y'] ?? 0), (int) ($a['x'] ?? 0), (int) ($a['id'] ?? 0)]
                 <=> [(int) ($b['y'] ?? 0), (int) ($b['x'] ?? 0), (int) ($b['id'] ?? 0)];
         });
-        if ($columns !== $from) {
-            foreach ($nodes as $i => $it) {
-                $x = max(0, (int) ($it['x'] ?? 0));
-                $w = max(1, (int) ($it['w'] ?? 1));
-                $h = max(1, min(24, (int) ($it['h'] ?? 1)));
-                $y = max(0, (int) ($it['y'] ?? 0));
-                if ($w > $columns) {
-                    $w = $columns;
-                    $x = 0;
-                } elseif ($x + $w > $columns) {
-                    $x = $columns - $w;
-                }
-                $it['x'] = $x;
-                $it['w'] = $w;
-                $it['y'] = $y;
-                $it['h'] = $h;
-                $nodes[$i] = $it;
+        if ($columns === $from) {
+            return self::centerOccupied($nodes, $columns);
+        }
+        $cursorX = 0;
+        $cursorY = 0;
+        $rowH = 0;
+        foreach ($nodes as $i => $it) {
+            $w = max(1, min($columns, (int) ($it['w'] ?? 1)));
+            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+            if ($cursorX > 0 && $cursorX + $w > $columns) {
+                $cursorY += $rowH;
+                $cursorX = 0;
+                $rowH = 0;
             }
+            $it['x'] = $cursorX;
+            $it['y'] = $cursorY;
+            $it['w'] = $w;
+            $it['h'] = $h;
+            $nodes[$i] = $it;
+            $cursorX += $w;
+            $rowH = max($rowH, $h);
         }
         return self::centerOccupied($nodes, $columns);
     }
@@ -603,8 +607,7 @@ final class WidgetService
     /**
      * Shift each row so the columns it occupies sit in the middle of the grid.
      * Rows that already span the grid stay put. A shift that would overlap a
-     * card on another row is skipped. If the whole layout is inset, one more
-     * shift centers that bounding span.
+     * card on another row is skipped.
      *
      * @param list<array<string, mixed>> $nodes
      * @return list<array<string, mixed>>
@@ -653,20 +656,6 @@ final class WidgetService
             }
         }
 
-        if ($nodes === []) {
-            return $nodes;
-        }
-        $min = min(array_map(static fn (array $it): int => (int) $it['x'], $nodes));
-        $max = max(array_map(static fn (array $it): int => (int) $it['x'] + (int) $it['w'], $nodes));
-        $span = $max - $min;
-        if ($span > 0 && $span < $columns) {
-            $offset = intdiv($columns - $span, 2) - $min;
-            if ($offset !== 0) {
-                foreach ($nodes as $i => $it) {
-                    $nodes[$i]['x'] = (int) $it['x'] + $offset;
-                }
-            }
-        }
         return $nodes;
     }
 

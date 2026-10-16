@@ -281,32 +281,28 @@ final class WidgetRegistryTest extends TestCase
         foreach (WidgetService::projectColumns($items, 18) as $row) {
             $wide[$row['id']] = $row;
         }
-        self::assertSame(0, $wide[1]['y']);
-        self::assertSame(0, $wide[4]['y']);
         self::assertSame(3, $wide[1]['w'], 'a 3-column card stays 3 columns on a wider grid');
-        self::assertSame(5, $wide[5]['y'], 'a lower card is not pulled onto the first row');
-        self::assertSame(6, $wide[6]['y']);
+        self::assertSame(0, $wide[5]['y'], 'a card that fits moves up onto the first row');
+        self::assertSame(4, $wide[5]['w']);
         self::assertSame(8, $wide[6]['w'], 'an 8-column card keeps its column count');
         self::assertSame(12, $wide[7]['w'], 'a full-width card stays 12 columns instead of stretching');
-        self::assertSame(30, $wide[8]['y']);
         self::assertSame(6, $wide[8]['w']);
-        $min = min(array_map(static fn (array $row): int => (int) $row['x'], $wide));
-        $max = max(array_map(static fn (array $row): int => (int) $row['x'] + (int) $row['w'], $wide));
-        self::assertLessThanOrEqual(1, abs($min - (18 - $max)), 'the occupied block is centered');
+        self::assertSame(1, $wide[1]['x']);
+        self::assertSame(13, $wide[5]['x']);
+        self::assertSame(1, 18 - ($wide[5]['x'] + $wide[5]['w']), 'the first row has equal empty columns on each side');
 
         $ultra = [];
         foreach (WidgetService::projectColumns($items, 24) as $row) {
             $ultra[$row['id']] = $row;
         }
-        self::assertSame(6, $ultra[6]['y']);
+        self::assertSame(0, $ultra[6]['y'], 'six cards share the first row when 24 columns fit');
         self::assertSame(8, $ultra[6]['w']);
         self::assertSame(12, $ultra[7]['w']);
         self::assertSame(3, $ultra[1]['w']);
-        self::assertSame(0, $ultra[1]['y']);
-        self::assertSame(0, $ultra[4]['y']);
-        $umin = min(array_map(static fn (array $row): int => (int) $row['x'], $ultra));
-        $umax = max(array_map(static fn (array $row): int => (int) $row['x'] + (int) $row['w'], $ultra));
-        self::assertLessThanOrEqual(1, abs($umin - (24 - $umax)), 'the occupied block is centered');
+        self::assertSame(0, $ultra[1]['x'], 'a full row starts at the left edge');
+        self::assertSame(16, $ultra[6]['x']);
+        self::assertSame(3, $ultra[7]['x']);
+        self::assertSame(3, 24 - ($ultra[8]['x'] + $ultra[8]['w']), 'a short row is centered');
 
         $order = WidgetService::projectColumns($items, 18);
         $xs = [];

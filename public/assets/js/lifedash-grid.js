@@ -7,7 +7,7 @@
  *     keeps its pixel width. The grid is that many columns wide and centered;
  *     a wider window adds columns (more cards per row) instead of stretching
  *     cards. Crossing a boundary waits out a 120px band and a short pause.
- *     Cards keep their row and their column count. A short row is centered.
+ *     Cards keep their column count and their reading order. A short row is centered.
  *     Inside a breakpoint the column count stays put, so a window resize
  *     only changes the side margins. A phone reorder is saved as a 12-column
  *     flow of the desktop widths, never as a 1-column layout.
@@ -311,23 +311,32 @@
     function projectColumns(items, columns) {
         const from = COLUMNS;
         const nodes = items.slice().sort((a, b) => a.y - b.y || a.x - b.x || (a.id || 0) - (b.id || 0));
-        const scaled = nodes.map((it) => {
-            const x = Math.max(0, it.x | 0);
-            const w = Math.max(1, it.w | 0);
+        if (columns === from) {
+            return centerOccupied(nodes.map((it) => ({
+                ...it,
+                x: Math.max(0, it.x | 0),
+                y: Math.max(0, it.y | 0),
+                w: Math.max(1, it.w | 0),
+                h: Math.max(1, Math.min(24, it.h | 0)),
+            })), columns);
+        }
+        let cursorX = 0;
+        let cursorY = 0;
+        let rowH = 0;
+        const flowed = nodes.map((it) => {
+            const w = Math.max(1, Math.min(columns, it.w | 0));
             const h = Math.max(1, Math.min(24, it.h | 0));
-            const y = Math.max(0, it.y | 0);
-            if (columns === from) return { ...it, x, y, w, h };
-            let nx = x;
-            let nw = w;
-            if (nw > columns) {
-                nx = 0;
-                nw = columns;
-            } else if (nx + nw > columns) {
-                nx = columns - nw;
+            if (cursorX > 0 && cursorX + w > columns) {
+                cursorY += rowH;
+                cursorX = 0;
+                rowH = 0;
             }
-            return { ...it, x: nx, y, w: nw, h };
+            const placed = { ...it, x: cursorX, y: cursorY, w, h };
+            cursorX += w;
+            rowH = Math.max(rowH, h);
+            return placed;
         });
-        return centerOccupied(scaled, columns);
+        return centerOccupied(flowed, columns);
     }
 
     function centerOccupied(nodes, columns) {
@@ -353,14 +362,6 @@
             if (hit) return;
             moved.forEach((trial, i) => { nodes[i] = trial; });
         });
-        if (!nodes.length) return nodes;
-        const min = Math.min(...nodes.map((it) => it.x));
-        const max = Math.max(...nodes.map((it) => it.x + it.w));
-        const span = max - min;
-        if (span > 0 && span < columns) {
-            const offset = Math.floor((columns - span) / 2) - min;
-            if (offset) nodes.forEach((it) => { it.x += offset; });
-        }
         return nodes;
     }
 
