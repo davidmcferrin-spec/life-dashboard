@@ -31,6 +31,17 @@ final class WidgetService
     public const BREAK_WIDE = 1600;
     public const BREAK_ULTRA = 3440;
     public const BREAK_HYSTERESIS = 120;
+    /**
+     * Fluid columns stop growing at these widths (px). The block is then
+     * centered. Keys are the column counts from columnsForWidth().
+     *
+     * @var array<int, int>
+     */
+    public const GRID_MAX_WIDTH = [
+        12 => 1600,
+        18 => 2400,
+        24 => 3200,
+    ];
     public const MAX_WIDGETS = 60;
     public const BOARD = 'home';
     public const CHANGERS = ['user', 'ai', 'system'];
@@ -560,11 +571,12 @@ final class WidgetService
     /**
      * Map a 12-column layout onto another column count without reordering.
      *
-     * Each card keeps its row. Width and x scale with the column edges, so a
-     * card the user sized keeps the same fraction of the grid. A card that
-     * already spans all 12 columns spans the new grid. A row that does not
-     * fill the grid is shifted so its occupied span is centered, unless that
-     * shift would cover another card.
+     * Each card keeps its column count, so a 3-column card stays 3 columns
+     * wide (the same pixel width) when the screen grows from 12 to 18 or 24.
+     * Cards are placed in their current reading order, and a wider grid fits
+     * more of them on each row. A card wider than the grid is clamped. A row
+     * that does not fill the grid is centered when that does not cover another
+     * card. The 12-column layout is not repacked.
      *
      * @param list<array<string, mixed>> $items
      * @return list<array<string, mixed>>
@@ -578,25 +590,27 @@ final class WidgetService
             return [(int) ($a['y'] ?? 0), (int) ($a['x'] ?? 0), (int) ($a['id'] ?? 0)]
                 <=> [(int) ($b['y'] ?? 0), (int) ($b['x'] ?? 0), (int) ($b['id'] ?? 0)];
         });
-        if ($columns !== $from) {
-            foreach ($nodes as $i => $it) {
-                $x = max(0, (int) ($it['x'] ?? 0));
-                $w = max(1, (int) ($it['w'] ?? 1));
-                $h = max(1, min(24, (int) ($it['h'] ?? 1)));
-                $y = max(0, (int) ($it['y'] ?? 0));
-                if ($w >= $from) {
-                    $it['x'] = 0;
-                    $it['w'] = $columns;
-                } else {
-                    $x1 = intdiv($x * $columns, $from);
-                    $x2 = intdiv(($x + $w) * $columns, $from);
-                    $it['x'] = min($columns - 1, $x1);
-                    $it['w'] = max(1, min($columns - (int) $it['x'], $x2 - $x1));
-                }
-                $it['y'] = $y;
-                $it['h'] = $h;
-                $nodes[$i] = $it;
+        if ($columns === $from) {
+            return self::centerOccupied($nodes, $columns);
+        }
+        $cursorX = 0;
+        $cursorY = 0;
+        $rowH = 0;
+        foreach ($nodes as $i => $it) {
+            $w = max(1, min($columns, (int) ($it['w'] ?? 1)));
+            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+            if ($cursorX > 0 && $cursorX + $w > $columns) {
+                $cursorY += $rowH;
+                $cursorX = 0;
+                $rowH = 0;
             }
+            $it['x'] = $cursorX;
+            $it['y'] = $cursorY;
+            $it['w'] = $w;
+            $it['h'] = $h;
+            $nodes[$i] = $it;
+            $cursorX += $w;
+            $rowH = max($rowH, $h);
         }
         return self::centerOccupied($nodes, $columns);
     }
@@ -604,8 +618,7 @@ final class WidgetService
     /**
      * Shift each row so the columns it occupies sit in the middle of the grid.
      * Rows that already span the grid stay put. A shift that would overlap a
-     * card on another row is skipped. If the whole layout is inset, one more
-     * shift centers that bounding span.
+     * card on another row is skipped.
      *
      * @param list<array<string, mixed>> $nodes
      * @return list<array<string, mixed>>
@@ -654,20 +667,6 @@ final class WidgetService
             }
         }
 
-        if ($nodes === []) {
-            return $nodes;
-        }
-        $min = min(array_map(static fn (array $it): int => (int) $it['x'], $nodes));
-        $max = max(array_map(static fn (array $it): int => (int) $it['x'] + (int) $it['w'], $nodes));
-        $span = $max - $min;
-        if ($span > 0 && $span < $columns) {
-            $offset = intdiv($columns - $span, 2) - $min;
-            if ($offset !== 0) {
-                foreach ($nodes as $i => $it) {
-                    $nodes[$i]['x'] = (int) $it['x'] + $offset;
-                }
-            }
-        }
         return $nodes;
     }
 

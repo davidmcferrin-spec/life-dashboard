@@ -256,7 +256,7 @@ final class WidgetRegistryTest extends TestCase
         self::assertCount(365, WidgetDataService::bucketKeys('day', '2025-09-26', '2026-09-25'));
     }
 
-    public function testProjectColumnsScalesInPlaceAndCentersAShortRow(): void
+    public function testProjectColumnsKeepsWidthsAndCentersAShortRow(): void
     {
         $items = [
             ['id' => 1, 'x' => 0, 'y' => 0, 'w' => 3, 'h' => 3],
@@ -281,26 +281,28 @@ final class WidgetRegistryTest extends TestCase
         foreach (WidgetService::projectColumns($items, 18) as $row) {
             $wide[$row['id']] = $row;
         }
-        self::assertSame(0, $wide[1]['y']);
-        self::assertSame(0, $wide[4]['y']);
-        self::assertSame(5, $wide[5]['y'], 'a lower card is not pulled onto the first row');
-        self::assertSame(6, $wide[6]['y']);
-        self::assertSame(12, $wide[6]['w'], 'an 8-column card keeps two thirds of the grid');
-        self::assertSame(18, $wide[1]['x'] + $wide[1]['w'] + $wide[2]['w'] + $wide[3]['w'] + $wide[4]['w']);
-        self::assertSame([0, 18], [$wide[7]['x'], $wide[7]['w']]);
-        self::assertSame(30, $wide[8]['y']);
-        self::assertSame(9, $wide[8]['w']);
-        self::assertGreaterThan(0, $wide[8]['x']);
+        self::assertSame(3, $wide[1]['w'], 'a 3-column card stays 3 columns on a wider grid');
+        self::assertSame(0, $wide[5]['y'], 'a card that fits moves up onto the first row');
+        self::assertSame(4, $wide[5]['w']);
+        self::assertSame(8, $wide[6]['w'], 'an 8-column card keeps its column count');
+        self::assertSame(12, $wide[7]['w'], 'a full-width card stays 12 columns instead of stretching');
+        self::assertSame(6, $wide[8]['w']);
+        self::assertSame(1, $wide[1]['x']);
+        self::assertSame(13, $wide[5]['x']);
+        self::assertSame(1, 18 - ($wide[5]['x'] + $wide[5]['w']), 'the first row has equal empty columns on each side');
 
         $ultra = [];
         foreach (WidgetService::projectColumns($items, 24) as $row) {
             $ultra[$row['id']] = $row;
         }
-        self::assertSame(6, $ultra[6]['y']);
-        self::assertSame(16, $ultra[6]['w']);
-        self::assertSame(24, $ultra[7]['w']);
-        self::assertSame(0, $ultra[1]['y']);
-        self::assertSame(0, $ultra[4]['y']);
+        self::assertSame(0, $ultra[6]['y'], 'six cards share the first row when 24 columns fit');
+        self::assertSame(8, $ultra[6]['w']);
+        self::assertSame(12, $ultra[7]['w']);
+        self::assertSame(3, $ultra[1]['w']);
+        self::assertSame(0, $ultra[1]['x'], 'a full row starts at the left edge');
+        self::assertSame(16, $ultra[6]['x']);
+        self::assertSame(3, $ultra[7]['x']);
+        self::assertSame(3, 24 - ($ultra[8]['x'] + $ultra[8]['w']), 'a short row is centered');
 
         $order = WidgetService::projectColumns($items, 18);
         $xs = [];
@@ -312,6 +314,12 @@ final class WidgetRegistryTest extends TestCase
         $sorted = $xs;
         sort($sorted);
         self::assertSame($sorted, $xs, 'left-to-right order on a row is unchanged');
+    }
+
+    public function testGridMaxWidthCapsEachBreakpoint(): void
+    {
+        self::assertSame([12 => 1600, 18 => 2400, 24 => 3200], WidgetService::GRID_MAX_WIDTH);
+        self::assertArrayNotHasKey(1, WidgetService::GRID_MAX_WIDTH);
     }
 
     public function testColumnsForWidthHoldsStillInsideTheHysteresisBand(): void

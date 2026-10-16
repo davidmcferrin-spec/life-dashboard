@@ -3,12 +3,17 @@
  *
  *   - Canonical layout is 12 columns, stored on dashboard_widgets. The grid
  *     shows 12 columns under 1600px, 18 from 1600 to 3439, and 24 from 3440.
- *     Under 700px it is one column. Crossing a boundary waits out a 120px
- *     band and a short pause, then scales each card's edges. Cards keep
- *     their row and their share of the width. A short row is centered.
+ *     Under 700px it is one column. Columns are a share of the grid (fluid)
+ *     until a cap: 1600px at 12 columns, 2400px at 18, 3200px at 24. Past
+ *     the cap the grid stops growing and sits in the center with equal
+ *     margins. The cap is a user setting (data-grid-cap), on by default.
+ *     A wider window adds columns and flows more cards onto each row.
+ *     Crossing a boundary waits out a 120px band and a short pause.
+ *     Cards keep their column count and their reading order. A short row is centered.
  *     Inside a breakpoint the column count stays put, so a window resize
- *     only scales pixels. A phone reorder is saved as a 12-column flow of
- *     the desktop widths, never as a 1-column layout.
+ *     only grows columns until the cap, then only the side margins change.
+ *     A phone reorder is saved as a 12-column flow of the desktop widths,
+ *     never as a 1-column layout.
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
  *   - Unlocked widgets size to their content in place. Extra rows open
@@ -40,6 +45,9 @@
     const BREAK_WIDE = 1600;
     const BREAK_ULTRA = 3440;
     const HYSTERESIS = 120;
+    /** Keep in step with WidgetService::GRID_MAX_WIDTH. */
+    const GRID_MAX = { 12: 1600, 18: 2400, 24: 3200 };
+    const capEnabled = gridEl.dataset.gridCap !== '0';
 
     // Keep in step with WidgetService::columnsForWidth.
     function columnsForWidth(width, previous) {
@@ -307,19 +315,32 @@
     function projectColumns(items, columns) {
         const from = COLUMNS;
         const nodes = items.slice().sort((a, b) => a.y - b.y || a.x - b.x || (a.id || 0) - (b.id || 0));
-        const scaled = nodes.map((it) => {
-            const x = Math.max(0, it.x | 0);
-            const w = Math.max(1, it.w | 0);
+        if (columns === from) {
+            return centerOccupied(nodes.map((it) => ({
+                ...it,
+                x: Math.max(0, it.x | 0),
+                y: Math.max(0, it.y | 0),
+                w: Math.max(1, it.w | 0),
+                h: Math.max(1, Math.min(24, it.h | 0)),
+            })), columns);
+        }
+        let cursorX = 0;
+        let cursorY = 0;
+        let rowH = 0;
+        const flowed = nodes.map((it) => {
+            const w = Math.max(1, Math.min(columns, it.w | 0));
             const h = Math.max(1, Math.min(24, it.h | 0));
-            const y = Math.max(0, it.y | 0);
-            if (columns === from) return { ...it, x, y, w, h };
-            if (w >= from) return { ...it, x: 0, y, w: columns, h };
-            const x1 = Math.floor(x * columns / from);
-            const x2 = Math.floor((x + w) * columns / from);
-            const nx = Math.min(columns - 1, x1);
-            return { ...it, x: nx, y, w: Math.max(1, Math.min(columns - nx, x2 - x1)), h };
+            if (cursorX > 0 && cursorX + w > columns) {
+                cursorY += rowH;
+                cursorX = 0;
+                rowH = 0;
+            }
+            const placed = { ...it, x: cursorX, y: cursorY, w, h };
+            cursorX += w;
+            rowH = Math.max(rowH, h);
+            return placed;
         });
-        return centerOccupied(scaled, columns);
+        return centerOccupied(flowed, columns);
     }
 
     function centerOccupied(nodes, columns) {
@@ -345,14 +366,6 @@
             if (hit) return;
             moved.forEach((trial, i) => { nodes[i] = trial; });
         });
-        if (!nodes.length) return nodes;
-        const min = Math.min(...nodes.map((it) => it.x));
-        const max = Math.max(...nodes.map((it) => it.x + it.w));
-        const span = max - min;
-        if (span > 0 && span < columns) {
-            const offset = Math.floor((columns - span) / 2) - min;
-            if (offset) nodes.forEach((it) => { it.x += offset; });
-        }
         return nodes;
     }
 
@@ -1158,6 +1171,24 @@
 
     // Scale the 12-column records onto the viewport once. Later resizes stay
     // on that column count until the pointer rests past the hysteresis band.
+    /**
+     * Columns stay a fraction of the grid. The grid itself stops at the
+     * breakpoint cap and is centered by CSS. One column, and the uncapped
+     * setting, fill the board.
+     */
+    function applyGridCap(cols) {
+        gridEl.style.width = '';
+        gridEl.classList.remove('ld-cols-fixed');
+        const max = capEnabled ? GRID_MAX[cols] : 0;
+        if (!max) {
+            gridEl.style.maxWidth = '';
+            gridEl.classList.remove('ld-cols-capped');
+            return;
+        }
+        gridEl.style.maxWidth = max + 'px';
+        gridEl.classList.add('ld-cols-capped');
+    }
+
     function applyColumns(cols, animate) {
         if (grid.engine) grid.engine._layouts = [];
         grid.setAnimation(!!animate);
@@ -1169,6 +1200,7 @@
             projectInPlace();
         }
         if (cols !== 1) commitPositions();
+        applyGridCap(grid.getColumn());
         projectedCols = grid.getColumn();
         // Content is already on screen, so fit in this turn. One paint, one move.
         if (animate) runFit();
@@ -1179,7 +1211,10 @@
 
     window.addEventListener('resize', debounce(() => {
         const next = columnsForWidth(window.innerWidth, grid.getColumn());
-        if (next === grid.getColumn()) return;
+        if (next === grid.getColumn()) {
+            applyGridCap(next);
+            return;
+        }
         applyColumns(next, true);
     }, 220));
 
