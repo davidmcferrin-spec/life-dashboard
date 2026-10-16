@@ -1711,8 +1711,8 @@ html[data-theme="jarvis"] #weather-widget img {
     }
 }
 
-/* Wide and ultrawide: the dashboard fills the viewport. Header, search and
-   clocks grow with it; the grid column count is chosen in lifedash-grid.js. */
+/* Wide and ultrawide: header, search and clocks use the viewport. The widget
+   grid stays a fixed column pitch and is centered (lifedash-grid.js). */
 .dash-main {
     box-sizing: border-box;
     max-width: none;

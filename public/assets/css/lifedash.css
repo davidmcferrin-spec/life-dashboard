@@ -33,6 +33,13 @@
 
 .ld-grid { min-height: 4rem; }
 
+/* Fixed column pitch (see COL_PX in lifedash-grid.js). The width is set in
+   pixels from the column count; auto margins center that block. */
+.ld-grid.ld-cols-fixed {
+    margin-left: auto;
+    margin-right: auto;
+}
+
 /* -------------------------------------------------------
    Widget chrome
    ------------------------------------------------------- */

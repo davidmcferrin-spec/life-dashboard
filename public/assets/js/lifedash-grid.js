@@ -3,12 +3,14 @@
  *
  *   - Canonical layout is 12 columns, stored on dashboard_widgets. The grid
  *     shows 12 columns under 1600px, 18 from 1600 to 3439, and 24 from 3440.
- *     Under 700px it is one column. Crossing a boundary waits out a 120px
- *     band and a short pause, then scales each card's edges. Cards keep
- *     their row and their share of the width. A short row is centered.
+ *     Under 700px it is one column. Each column is a fixed 100px, so a card
+ *     keeps its pixel width. The grid is that many columns wide and centered;
+ *     a wider window adds columns (more cards per row) instead of stretching
+ *     cards. Crossing a boundary waits out a 120px band and a short pause.
+ *     Cards keep their row and their column count. A short row is centered.
  *     Inside a breakpoint the column count stays put, so a window resize
- *     only scales pixels. A phone reorder is saved as a 12-column flow of
- *     the desktop widths, never as a 1-column layout.
+ *     only changes the side margins. A phone reorder is saved as a 12-column
+ *     flow of the desktop widths, never as a 1-column layout.
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
  *   - Unlocked widgets size to their content in place. Extra rows open
@@ -40,6 +42,8 @@
     const BREAK_WIDE = 1600;
     const BREAK_ULTRA = 3440;
     const HYSTERESIS = 120;
+    /** Pixel pitch of one column, including GridStack's margin (the gap). */
+    const COL_PX = 100;
 
     // Keep in step with WidgetService::columnsForWidth.
     function columnsForWidth(width, previous) {
@@ -313,11 +317,15 @@
             const h = Math.max(1, Math.min(24, it.h | 0));
             const y = Math.max(0, it.y | 0);
             if (columns === from) return { ...it, x, y, w, h };
-            if (w >= from) return { ...it, x: 0, y, w: columns, h };
-            const x1 = Math.floor(x * columns / from);
-            const x2 = Math.floor((x + w) * columns / from);
-            const nx = Math.min(columns - 1, x1);
-            return { ...it, x: nx, y, w: Math.max(1, Math.min(columns - nx, x2 - x1)), h };
+            let nx = x;
+            let nw = w;
+            if (nw > columns) {
+                nx = 0;
+                nw = columns;
+            } else if (nx + nw > columns) {
+                nx = columns - nw;
+            }
+            return { ...it, x: nx, y, w: nw, h };
         });
         return centerOccupied(scaled, columns);
     }
@@ -1154,6 +1162,28 @@
 
     // Scale the 12-column records onto the viewport once. Later resizes stay
     // on that column count until the pointer rests past the hysteresis band.
+    /**
+     * Size the grid to column-count × 100px and center it. One column fills
+     * the board. If the fixed block cannot fit, fall back to the board width
+     * so a narrow window does not scroll sideways.
+     */
+    function pinColumnWidth(cols) {
+        if (!cols || cols <= 1) {
+            gridEl.style.width = '';
+            gridEl.classList.remove('ld-cols-fixed');
+            return;
+        }
+        const avail = boardEl.clientWidth;
+        const want = cols * COL_PX;
+        if (avail > 0 && want > avail + 1) {
+            gridEl.style.width = '100%';
+            gridEl.classList.remove('ld-cols-fixed');
+            return;
+        }
+        gridEl.style.width = want + 'px';
+        gridEl.classList.add('ld-cols-fixed');
+    }
+
     function applyColumns(cols, animate) {
         if (grid.engine) grid.engine._layouts = [];
         grid.setAnimation(!!animate);
@@ -1165,6 +1195,7 @@
             projectInPlace();
         }
         if (cols !== 1) commitPositions();
+        pinColumnWidth(grid.getColumn());
         projectedCols = grid.getColumn();
         // Content is already on screen, so fit in this turn. One paint, one move.
         if (animate) runFit();
@@ -1175,7 +1206,10 @@
 
     window.addEventListener('resize', debounce(() => {
         const next = columnsForWidth(window.innerWidth, grid.getColumn());
-        if (next === grid.getColumn()) return;
+        if (next === grid.getColumn()) {
+            pinColumnWidth(next);
+            return;
+        }
         applyColumns(next, true);
     }, 220));
 

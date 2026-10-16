@@ -154,7 +154,7 @@ $timezones = [
     </section>
 
     <!-- -------------------------------------------------------
-         WIDGET GRID (12 / 18 / 24 columns by viewport, centered rows; 1 column under 700px)
+         WIDGET GRID (12 / 18 / 24 fixed-width columns, centered block; 1 column under 700px)
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
         <div class="ld-toolbar">

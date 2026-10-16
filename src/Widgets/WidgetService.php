@@ -560,11 +560,11 @@ final class WidgetService
     /**
      * Map a 12-column layout onto another column count without reordering.
      *
-     * Each card keeps its row. Width and x scale with the column edges, so a
-     * card the user sized keeps the same fraction of the grid. A card that
-     * already spans all 12 columns spans the new grid. A row that does not
-     * fill the grid is shifted so its occupied span is centered, unless that
-     * shift would cover another card.
+     * Each card keeps its row and its column count, so a 3-column card stays
+     * 3 columns wide when the screen grows from 12 to 18 or 24. Extra columns
+     * are room for more cards on a row. A card wider than the grid is clamped.
+     * A row that does not fill the grid is shifted so its occupied span is
+     * centered, unless that shift would cover another card.
      *
      * @param list<array<string, mixed>> $items
      * @return list<array<string, mixed>>
@@ -584,15 +584,14 @@ final class WidgetService
                 $w = max(1, (int) ($it['w'] ?? 1));
                 $h = max(1, min(24, (int) ($it['h'] ?? 1)));
                 $y = max(0, (int) ($it['y'] ?? 0));
-                if ($w >= $from) {
-                    $it['x'] = 0;
-                    $it['w'] = $columns;
-                } else {
-                    $x1 = intdiv($x * $columns, $from);
-                    $x2 = intdiv(($x + $w) * $columns, $from);
-                    $it['x'] = min($columns - 1, $x1);
-                    $it['w'] = max(1, min($columns - (int) $it['x'], $x2 - $x1));
+                if ($w > $columns) {
+                    $w = $columns;
+                    $x = 0;
+                } elseif ($x + $w > $columns) {
+                    $x = $columns - $w;
                 }
+                $it['x'] = $x;
+                $it['w'] = $w;
                 $it['y'] = $y;
                 $it['h'] = $h;
                 $nodes[$i] = $it;
