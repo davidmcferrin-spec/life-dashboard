@@ -256,7 +256,7 @@ final class WidgetRegistryTest extends TestCase
         self::assertCount(365, WidgetDataService::bucketKeys('day', '2025-09-26', '2026-09-25'));
     }
 
-    public function testProjectColumnsFlowsNarrowCardsAndSpansFullBleed(): void
+    public function testProjectColumnsScalesInPlaceAndCentersAShortRow(): void
     {
         $items = [
             ['id' => 1, 'x' => 0, 'y' => 0, 'w' => 3, 'h' => 3],
@@ -266,40 +266,70 @@ final class WidgetRegistryTest extends TestCase
             ['id' => 5, 'x' => 8, 'y' => 5, 'w' => 4, 'h' => 3],
             ['id' => 6, 'x' => 0, 'y' => 6, 'w' => 8, 'h' => 8],
             ['id' => 7, 'x' => 0, 'y' => 20, 'w' => 12, 'h' => 4],
+            ['id' => 8, 'x' => 0, 'y' => 30, 'w' => 6, 'h' => 4],
         ];
         $same = [];
         foreach (WidgetService::projectColumns($items, 12) as $row) {
             $same[$row['id']] = $row;
         }
-        self::assertSame([8, 5, 4], [$same[5]['x'], $same[5]['y'], $same[5]['w']], '12 columns keep the saved position');
+        self::assertSame([0, 0, 3], [$same[1]['x'], $same[1]['y'], $same[1]['w']]);
+        self::assertSame(6, $same[6]['y'], 'a card stays on its row');
         self::assertSame(8, $same[6]['w']);
+        self::assertSame([3, 30, 6], [$same[8]['x'], $same[8]['y'], $same[8]['w']], 'a short row is centered');
 
         $wide = [];
         foreach (WidgetService::projectColumns($items, 18) as $row) {
             $wide[$row['id']] = $row;
         }
-        self::assertSame([0, 0, 3], [$wide[1]['x'], $wide[1]['y'], $wide[1]['w']]);
-        self::assertSame([12, 0, 4], [$wide[5]['x'], $wide[5]['y'], $wide[5]['w']], 'a later narrow card joins the first row');
-        self::assertSame(8, $wide[6]['w'], 'an 8-column card is not scaled');
-        self::assertGreaterThan(0, $wide[6]['y']);
+        self::assertSame(0, $wide[1]['y']);
+        self::assertSame(0, $wide[4]['y']);
+        self::assertSame(5, $wide[5]['y'], 'a lower card is not pulled onto the first row');
+        self::assertSame(6, $wide[6]['y']);
+        self::assertSame(12, $wide[6]['w'], 'an 8-column card keeps two thirds of the grid');
+        self::assertSame(18, $wide[1]['x'] + $wide[1]['w'] + $wide[2]['w'] + $wide[3]['w'] + $wide[4]['w']);
         self::assertSame([0, 18], [$wide[7]['x'], $wide[7]['w']]);
+        self::assertSame(30, $wide[8]['y']);
+        self::assertSame(9, $wide[8]['w']);
+        self::assertGreaterThan(0, $wide[8]['x']);
 
         $ultra = [];
         foreach (WidgetService::projectColumns($items, 24) as $row) {
             $ultra[$row['id']] = $row;
         }
-        self::assertSame([16, 0, 8], [$ultra[6]['x'], $ultra[6]['y'], $ultra[6]['w']]);
+        self::assertSame(6, $ultra[6]['y']);
+        self::assertSame(16, $ultra[6]['w']);
         self::assertSame(24, $ultra[7]['w']);
-        self::assertGreaterThan(0, $ultra[7]['y']);
+        self::assertSame(0, $ultra[1]['y']);
+        self::assertSame(0, $ultra[4]['y']);
 
-        $eight = [];
-        for ($i = 1; $i <= 8; $i++) {
-            $eight[] = ['id' => $i, 'x' => (($i - 1) % 4) * 3, 'y' => intdiv($i - 1, 4) * 3, 'w' => 3, 'h' => 3];
+        $order = WidgetService::projectColumns($items, 18);
+        $xs = [];
+        foreach ($order as $row) {
+            if ((int) $row['y'] === 0) {
+                $xs[] = (int) $row['x'];
+            }
         }
-        $row = WidgetService::projectColumns($eight, 24);
-        self::assertSame(0, $row[0]['y']);
-        self::assertSame(0, $row[7]['y']);
-        self::assertSame(21, $row[7]['x']);
-        self::assertSame(3, $row[7]['w']);
+        $sorted = $xs;
+        sort($sorted);
+        self::assertSame($sorted, $xs, 'left-to-right order on a row is unchanged');
+    }
+
+    public function testColumnsForWidthHoldsStillInsideTheHysteresisBand(): void
+    {
+        self::assertSame(12, WidgetService::columnsForWidth(1280));
+        self::assertSame(12, WidgetService::columnsForWidth(1024));
+        self::assertSame(18, WidgetService::columnsForWidth(1920));
+        self::assertSame(18, WidgetService::columnsForWidth(2560));
+        self::assertSame(24, WidgetService::columnsForWidth(3440));
+        self::assertSame(1, WidgetService::columnsForWidth(700));
+
+        self::assertSame(12, WidgetService::columnsForWidth(1599, 12));
+        self::assertSame(18, WidgetService::columnsForWidth(1600, 12));
+        self::assertSame(18, WidgetService::columnsForWidth(1500, 18), 'dragging back a little does not return to 12');
+        self::assertSame(12, WidgetService::columnsForWidth(1479, 18));
+        self::assertSame(24, WidgetService::columnsForWidth(3320, 24));
+        self::assertSame(18, WidgetService::columnsForWidth(3319, 24));
+        self::assertSame(1, WidgetService::columnsForWidth(750, 1));
+        self::assertSame(12, WidgetService::columnsForWidth(820, 1));
     }
 }
