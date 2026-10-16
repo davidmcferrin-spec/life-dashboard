@@ -1712,7 +1712,7 @@ html[data-theme="jarvis"] #weather-widget img {
 }
 
 /* Wide and ultrawide: header, search and clocks use the viewport. The widget
-   grid stays a fixed column pitch and is centered (lifedash-grid.js). */
+   grid stays fluid until its breakpoint cap, then centers (lifedash-grid.js). */
 .dash-main {
     box-sizing: border-box;
     max-width: none;

@@ -26,6 +26,7 @@ $themePref        = $prefService->getTheme($userId);
 $clockFormat         = $prefService->getClockFormat($userId);
 $showBroadcastWeek   = $prefService->getShowBroadcastWeek($userId);
 $showBookmarkIcons   = $prefService->getShowBookmarkIcons($userId);
+$gridMaxWidth        = $prefService->getGridMaxWidth($userId);
 $showAiPresence      = $prefService->getAiPresence($userId);
 $pageTitle        = 'Dashboard';
 $extraStyles      = ['/assets/vendor/gridstack-12.6.0/gridstack.min.css', '/assets/css/lifedash.css'];
@@ -154,7 +155,7 @@ $timezones = [
     </section>
 
     <!-- -------------------------------------------------------
-         WIDGET GRID (12 / 18 / 24 fixed-width columns, centered block; 1 column under 700px)
+         WIDGET GRID (12 / 18 / 24 fluid columns, capped and centered; 1 column under 700px)
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
         <div class="ld-toolbar">
@@ -171,7 +172,7 @@ $timezones = [
         </p>
         <?php endif; ?>
 
-        <div id="ld-grid" class="grid-stack dashboard-widgets ld-grid">
+        <div id="ld-grid" class="grid-stack dashboard-widgets ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
             <?php foreach ($widgets as $w):
                 $legacyKey = WidgetTypeRegistry::isLegacy($w['type']) ? substr($w['type'], 7) : null;
                 $partial   = $legacyKey !== null ? __DIR__ . '/partials/widgets/' . $legacyKey . '.php' : null;

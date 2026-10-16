@@ -31,11 +31,15 @@
     gap: 0;
 }
 
-.ld-grid { min-height: 4rem; }
+.ld-grid {
+    margin-left: auto;
+    margin-right: auto;
+    min-height: 4rem;
+    width: 100%;
+}
 
-/* Fixed column pitch (see COL_PX in lifedash-grid.js). The width is set in
-   pixels from the column count; auto margins center that block. */
-.ld-grid.ld-cols-fixed {
+/* Cap is set in px from lifedash-grid.js (1600 / 2400 / 3200). */
+.ld-grid.ld-cols-capped {
     margin-left: auto;
     margin-right: auto;
 }

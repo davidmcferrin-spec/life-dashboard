@@ -316,6 +316,12 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame($sorted, $xs, 'left-to-right order on a row is unchanged');
     }
 
+    public function testGridMaxWidthCapsEachBreakpoint(): void
+    {
+        self::assertSame([12 => 1600, 18 => 2400, 24 => 3200], WidgetService::GRID_MAX_WIDTH);
+        self::assertArrayNotHasKey(1, WidgetService::GRID_MAX_WIDTH);
+    }
+
     public function testColumnsForWidthHoldsStillInsideTheHysteresisBand(): void
     {
         self::assertSame(12, WidgetService::columnsForWidth(1280));

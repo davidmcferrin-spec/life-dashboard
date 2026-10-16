@@ -31,6 +31,17 @@ final class WidgetService
     public const BREAK_WIDE = 1600;
     public const BREAK_ULTRA = 3440;
     public const BREAK_HYSTERESIS = 120;
+    /**
+     * Fluid columns stop growing at these widths (px). The block is then
+     * centered. Keys are the column counts from columnsForWidth().
+     *
+     * @var array<int, int>
+     */
+    public const GRID_MAX_WIDTH = [
+        12 => 1600,
+        18 => 2400,
+        24 => 3200,
+    ];
     public const MAX_WIDGETS = 60;
     public const BOARD = 'home';
     public const CHANGERS = ['user', 'ai', 'system'];

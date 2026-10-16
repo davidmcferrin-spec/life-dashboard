@@ -42,6 +42,7 @@ final class PreferenceService
     public const KEY_TODO_WIDGET_LIST_ID      = 'todo_widget_list_id';
     public const KEY_SHOW_BOOKMARK_ICONS      = 'show_bookmark_icons';
     public const KEY_AI_PRESENCE              = 'ai_presence';
+    public const KEY_GRID_MAX_WIDTH           = 'grid_max_width';
 
     /** @var array<string, string> widget id => user_preferences.pref_key */
     public const WIDGET_DEFAULTS_SEEDED_KEYS = [
@@ -284,6 +285,19 @@ final class PreferenceService
     public function setAiPresence(int $userId, bool $enabled): void
     {
         $this->set($userId, self::KEY_AI_PRESENCE, $enabled ? '1' : '0');
+    }
+
+    /** Cap the widget grid at the breakpoint max-width and center it. Default on. */
+    public function getGridMaxWidth(int $userId): bool
+    {
+        $raw = $this->get($userId, self::KEY_GRID_MAX_WIDTH, '1') ?? '1';
+
+        return $raw === '1' || $raw === 'true';
+    }
+
+    public function setGridMaxWidth(int $userId, bool $enabled): void
+    {
+        $this->set($userId, self::KEY_GRID_MAX_WIDTH, $enabled ? '1' : '0');
     }
 
     /**

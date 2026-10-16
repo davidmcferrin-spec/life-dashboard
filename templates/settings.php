@@ -20,6 +20,7 @@ $clockFormat      = $prefs->getClockFormat($userId);
 $showBroadcastWeek = $prefs->getShowBroadcastWeek($userId);
 $showBookmarkIcons = $prefs->getShowBookmarkIcons($userId);
 $showAiPresence = $prefs->getAiPresence($userId);
+$gridMaxWidth = $prefs->getGridMaxWidth($userId);
 $pageTitle        = 'Settings';
 $flash            = $_SESSION['settings_flash'] ?? null;
 unset($_SESSION['settings_flash']);
@@ -143,6 +144,12 @@ require __DIR__ . '/settings/_shell-top.php';
                                 <?= $showAiPresence ? 'checked' : '' ?>>
                             Show the AI presence sprite
                         </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                            <input type="checkbox" name="grid_max_width" value="1"
+                                <?= $gridMaxWidth ? 'checked' : '' ?>>
+                            Cap the widget grid and center it
+                        </label>
+                        <p class="text-faint text-xs mono mt-1">Columns stay fluid up to 1600px (12 columns), 2400px (18), or 3200px (24). A wider window keeps that width, with equal space on both sides. Turn this off and the grid fills the window.</p>
                         <p class="text-faint text-xs mono mt-1">When an agent uses a token, a small core drifts across the dashboard and names the token and the tool. It fades after about 30 seconds of quiet. Reduced motion keeps a still badge. The bubble never includes notes or account numbers.</p>
                     </div>
 

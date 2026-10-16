@@ -34,6 +34,7 @@ final class PreferencesHandler
             'clock_format'         => $this->prefs->getClockFormat($userId),
             'show_broadcast_week'  => $this->prefs->getShowBroadcastWeek($userId),
             'show_bookmark_icons'  => $this->prefs->getShowBookmarkIcons($userId),
+            'grid_max_width'       => $this->prefs->getGridMaxWidth($userId),
             'starfield_background' => $this->prefs->getStarfield($userId),
             'focus_clock'          => $this->prefs->getFocusClock($userId),
         ]);
@@ -112,6 +113,13 @@ final class PreferencesHandler
             $this->prefs->setShowBookmarkIcons(
                 $userId,
                 filter_var($body['show_bookmark_icons'], FILTER_VALIDATE_BOOLEAN),
+            );
+        }
+
+        if (array_key_exists('grid_max_width', $body)) {
+            $this->prefs->setGridMaxWidth(
+                $userId,
+                filter_var($body['grid_max_width'], FILTER_VALIDATE_BOOLEAN),
             );
         }
 
