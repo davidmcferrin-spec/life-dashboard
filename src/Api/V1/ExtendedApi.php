@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\Deploy\DeployService;
 use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Router\Router;
 use Dashboard\Support\Clock;
+use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\UnauthorizedException;
 use Dashboard\Support\ValidationException;
@@ -31,8 +33,53 @@ final class ExtendedApi
             if (!is_array($scopes)) {
                 throw ValidationException::withFields(['scopes' => 'scopes must be a list.']);
             }
-            return ['token' => $this->svc->tokens->create($u, (string) ($b['name'] ?? 'Agent'), $scopes, isset($b['expires_at']) ? (string) $b['expires_at'] : null)];
+            $admin = (int) $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$u]) === 1;
+            return ['token' => $this->svc->tokens->create($u, (string) ($b['name'] ?? 'Agent'), $scopes, isset($b['expires_at']) ? (string) $b['expires_at'] : null, $admin)];
         }, 201, true));
+        $r->get('/api/v1/system/deploy/status', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            return $this->deploy()->status();
+        }, 200, false, 'system:read'));
+        $r->get('/api/v1/system/deploy/log', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            $job = isset($_GET['job_id']) ? (string) $_GET['job_id'] : null;
+            return $this->deploy()->log($job);
+        }, 200, false, 'system:read'));
+        $r->post('/api/v1/system/deploy/mcp-updates', fn () => $this->run(function (int $u): array {
+            if ($this->runner->grantedScopes() !== null) {
+                throw new ForbiddenException('Only an admin session can change MCP updates.');
+            }
+            $this->assertSystemAdmin($u);
+            $b = $this->runner->body();
+            if (array_diff(array_keys($b), ['enabled']) !== []) {
+                throw ValidationException::withFields(['body' => 'Only enabled is accepted.']);
+            }
+            if (!array_key_exists('enabled', $b) || !is_bool($b['enabled'])) {
+                throw ValidationException::withFields(['enabled' => 'enabled must be true or false.']);
+            }
+            return $this->deploy()->setMcpUpdates($b['enabled'], $u);
+        }, 200, true, 'system:deploy'));
+        $r->post('/api/v1/system/deploy', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            $b = $this->runner->body();
+            if (array_diff(array_keys($b), ['confirm_sha', 'dry_run']) !== []) {
+                throw ValidationException::withFields(['body' => 'Only confirm_sha and dry_run are accepted.']);
+            }
+            $dry = false;
+            if (array_key_exists('dry_run', $b)) {
+                if (!is_bool($b['dry_run'])) {
+                    throw ValidationException::withFields(['dry_run' => 'dry_run must be true or false.']);
+                }
+                $dry = $b['dry_run'];
+            }
+            return $this->deploy()->request(
+                (string) ($b['confirm_sha'] ?? ''),
+                $dry,
+                $u,
+                $this->runner->tokenId(),
+                $this->runner->tokenName(),
+            );
+        }, 202, true, 'system:deploy'));
         $r->post('/api/v1/tokens/{id}/revoke', fn (array $p) => $this->run(fn (int $u) => [
             'token' => $this->svc->tokens->revoke($u, self::id($p)),
         ], 200, true));
@@ -520,9 +567,12 @@ final class ExtendedApi
     /**
      * @param callable(int): array<string, mixed> $fn
      */
-    private function run(callable $fn, int $status = 200, bool $mutating = false): void
+    /**
+     * @param list<string>|string|null $scope
+     */
+    private function run(callable $fn, int $status = 200, bool $mutating = false, array|string|null $scope = null): void
     {
-        $this->runner->run($fn, $status, $mutating);
+        $this->runner->run($fn, $status, $mutating, $scope);
     }
 
     private function hook(string $token): void
@@ -602,5 +652,21 @@ final class ExtendedApi
     {
         $v = $_GET[$name] ?? null;
         return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    private function deploy(): DeployService
+    {
+        return new DeployService($this->svc->db);
+    }
+
+    private function assertSystemAdmin(int $userId): void
+    {
+        if ($this->runner->grantedScopes() !== null) {
+            return;
+        }
+        $flag = $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
+        if ((int) $flag !== 1) {
+            throw new ForbiddenException('System tools require an admin session.');
+        }
     }
 }

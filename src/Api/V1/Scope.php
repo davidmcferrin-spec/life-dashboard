@@ -11,6 +11,8 @@ use Dashboard\Support\ValidationException;
  * Bearer scopes are "{area}:read" or "{area}:write".
  * The required scope is inferred from the request path and verb.
  * "read" / "write" are shorthand for every area. "*" is both.
+ * system:read and system:deploy are explicit. They are not areas, and
+ * read, write, and "*" do not grant them.
  */
 final class Scope
 {
@@ -32,10 +34,16 @@ final class Scope
 
     public const CALL_ENTITIES = ['call', 'contact', 'vetted_agency'];
 
+    /** Privileged scopes. Present only when an admin put them on the token. */
+    public const EXPLICIT = ['system:read', 'system:deploy'];
+
+    public const SYSTEM_ENTITIES = ['deploy'];
+
     public const AUDIT_ENTITIES = [
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
+        'deploy',
     ];
 
     /**
@@ -48,10 +56,12 @@ final class Scope
             throw ValidationException::withFields(['scopes' => 'Choose at least one scope.']);
         }
         $out = [];
+        $star = false;
         foreach ($requested as $raw) {
             $scope = strtolower(trim((string) $raw));
             if ($scope === '*' || $scope === 'all') {
-                return ['*'];
+                $star = true;
+                continue;
             }
             if ($scope === 'read' || $scope === 'write') {
                 foreach (self::AREAS as $area) {
@@ -59,10 +69,24 @@ final class Scope
                 }
                 continue;
             }
+            if (in_array($scope, self::EXPLICIT, true)) {
+                $out[] = $scope;
+                continue;
+            }
             if (!preg_match('/^([a-z]+):(read|write)$/', $scope, $m) || !in_array($m[1], self::AREAS, true)) {
                 throw ValidationException::withFields(['scopes' => "Unknown scope '{$scope}'."]);
             }
             $out[] = $scope;
+        }
+        if ($star) {
+            $kept = array_values(array_filter(
+                $out,
+                static fn (string $scope): bool => in_array($scope, self::EXPLICIT, true)
+            ));
+            return array_values(array_unique(array_merge(['*'], $kept)));
+        }
+        if ($out === []) {
+            throw ValidationException::withFields(['scopes' => 'Choose at least one scope.']);
         }
         return array_values(array_unique($out));
     }
@@ -96,6 +120,13 @@ final class Scope
      */
     public static function allows(array $granted, string $required): bool
     {
+        if (in_array($required, self::EXPLICIT, true)) {
+            if (in_array($required, $granted, true)) {
+                return true;
+            }
+            // Deploy can read status and the log. Read cannot deploy.
+            return $required === 'system:read' && in_array('system:deploy', $granted, true);
+        }
         if (in_array('*', $granted, true) || self::hasCore($granted, 'write')) {
             return true;
         }
@@ -144,6 +175,9 @@ final class Scope
         }
         if (self::allows($granted, 'calls:read')) {
             $allow = array_merge($allow, self::CALL_ENTITIES);
+        }
+        if (self::allows($granted, 'system:read')) {
+            $allow = array_merge($allow, self::SYSTEM_ENTITIES);
         }
         if ($entity !== null && !in_array($entity, $allow, true)) {
             throw new ForbiddenException('This token cannot read that audit entity.');

@@ -48,6 +48,22 @@ require __DIR__ . '/_shell-top.php';
                         </select>
                     </label>
                 </div>
+                <?php if ((int) ($user['is_admin'] ?? 0) === 1): ?>
+                <div class="space-y-1">
+                    <label class="flex items-center gap-2 text-sm text-primary">
+                        <input type="checkbox" name="system_read" value="1">
+                        <span><span class="mono">system:read</span> — deploy status and log</span>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-primary">
+                        <input type="checkbox" name="system_deploy" value="1">
+                        <span><span class="mono">system:deploy</span> — queue an update of main</span>
+                    </label>
+                    <p class="text-muted text-xs">
+                        These are not included in Read and write or Read only. Only an admin can add them.
+                        <span class="mono">system:deploy</span> can also read status and the log.
+                    </p>
+                </div>
+                <?php endif; ?>
                 <button type="submit" class="btn-primary">Create token</button>
                 <p id="agent-create-error" class="ld-field-error" role="alert"></p>
             </form>

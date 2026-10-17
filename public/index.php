@@ -30,6 +30,7 @@ use Dashboard\DB\Schema;
 use Dashboard\Router\Router;
 use Dashboard\Settings\FeedPreferenceService;
 use Dashboard\Settings\PreferenceService;
+use Dashboard\Deploy\DeployService;
 use Dashboard\System\SystemHealthService;
 use Dashboard\User\UserService;
 
@@ -353,7 +354,7 @@ $router->post('/api/setup', function () use ($auth, $db): void {
     }
 });
 
-$router->get('/settings/system', function () use ($auth): void {
+$router->get('/settings/system', function () use ($auth, $db): void {
     $user         = $auth->requireAdmin();
     $health       = new SystemHealthService();
     $cronJobs     = $health->getCronJobs();
@@ -363,6 +364,8 @@ $router->get('/settings/system', function () use ($auth): void {
     foreach ($health->jobIds() as $jobId) {
         $logTails[$jobId] = $health->tailLog($jobId);
     }
+
+    $deployStatus = (new DeployService($db))->status();
 
     require VIEWS_DIR . '/settings/system.php';
 });

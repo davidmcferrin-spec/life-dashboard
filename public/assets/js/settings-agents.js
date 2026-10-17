@@ -87,6 +87,8 @@
                     : (access === 'todos'
                         ? ['todos:read', 'todos:write']
                         : (access === 'read' ? ['read'] : ['*'])));
+            if (data.get('system_read')) scopes.push('system:read');
+            if (data.get('system_deploy')) scopes.push('system:deploy');
             const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
             const token = res.token && res.token.token;
             if (!token) {

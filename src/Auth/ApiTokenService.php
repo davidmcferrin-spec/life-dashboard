@@ -28,13 +28,14 @@ final class ApiTokenService
      * @param list<string> $scopes
      * @return array<string, mixed> includes plaintext "token" once
      */
-    public function create(int $userId, string $name, array $scopes, ?string $expiresAt = null): array
+    public function create(int $userId, string $name, array $scopes, ?string $expiresAt = null, bool $admin = false): array
     {
         $name = trim($name);
         if ($name === '' || mb_strlen($name) > 64) {
             throw ValidationException::withFields(['name' => 'Name must be 1–64 characters.']);
         }
         $scopes = Scope::normalize($scopes);
+        self::assertAssignable($scopes, $admin);
         if ($expiresAt !== null && $expiresAt !== '') {
             $dt = \DateTimeImmutable::createFromFormat('Y-m-d', $expiresAt)
                 ?: \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $expiresAt);
@@ -148,6 +149,29 @@ final class ApiTokenService
     /**
      * A money-only token expires in 90 days unless the caller picked a date.
      *
+     * @param list<string> $scopes
+     */
+    /**
+     * system:read and system:deploy are never part of read, write, or "*".
+     * Only an admin session may store them on a token.
+     *
+     * @param list<string> $scopes
+     */
+    public static function assertAssignable(array $scopes, bool $admin): void
+    {
+        if ($admin) {
+            return;
+        }
+        foreach ($scopes as $scope) {
+            if (in_array($scope, Scope::EXPLICIT, true)) {
+                throw ValidationException::withFields([
+                    'scopes' => 'Only an admin can grant system:read or system:deploy.',
+                ]);
+            }
+        }
+    }
+
+    /**
      * @param list<string> $scopes
      */
     public static function isMoneyOnly(array $scopes): bool

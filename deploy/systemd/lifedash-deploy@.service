@@ -1,0 +1,15 @@
+# One queued job. %i is the 32-hex job id. The script rejects anything else.
+# systemctl start lifedash-deploy@<jobid>
+
+[Unit]
+Description=life-dashboard deploy job %i
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-deploy-from-spool --job %i
+TimeoutStartSec=30min
+Nice=10
+PrivateTmp=yes
+NoNewPrivileges=yes

@@ -109,7 +109,7 @@ def test_dashboard_reaches_the_api_and_blocks_tokens_and_trades():
     assert body["title"] == "Notes"
     method, path, body = resolve("dashboard", {"method": "GET", "path": "/clipboards/4"})
     assert (method, path, body) == ("GET", "/api/clipboards/4", None)
-    for blocked in ("/tokens", "/invest/orders", "../etc/passwd", "/files", "/cloudpad", "/bookmarks/2/favicon", "/clipboards/1/shares/link"):
+    for blocked in ("/tokens", "/invest/orders", "../etc/passwd", "/files", "/cloudpad", "/bookmarks/2/favicon", "/clipboards/1/shares/link", "/system/deploy", "/api/v1/system/deploy"):
         try:
             resolve("dashboard", {"method": "POST", "path": blocked, "body": {}})
         except ValueError:
@@ -275,8 +275,33 @@ def test_money_tools_resolve_onto_the_money_api():
         "log_call", "create_call", "get_call", "update_call", "set_call_status", "link_call_todo",
         "list_calls", "search_calls", "call_stats", "lookup_caller", "list_contacts", "upsert_contact",
         "list_vetted_agencies", "upsert_vetted_agency",
+        "deploy_status", "deploy_update", "deploy_log",
     ):
         assert name in names
+
+
+def test_deploy_tools_send_only_the_confirm_sha():
+    method, path, body = resolve("deploy_status", {})
+    assert (method, path, body) == ("GET", "/api/v1/system/deploy/status", None)
+    method, path, body = resolve("deploy_log", {})
+    assert (method, path, body) == ("GET", "/api/v1/system/deploy/log", None)
+    job = "ab" * 16
+    method, path, body = resolve("deploy_log", {"job_id": job})
+    assert (method, path, body) == ("GET", "/api/v1/system/deploy/log?job_id=" + job, None)
+    sha = "cd" * 20
+    method, path, body = resolve("deploy_update", {"confirm_sha": sha, "dry_run": True})
+    assert (method, path, body) == ("POST", "/api/v1/system/deploy", {"confirm_sha": sha, "dry_run": True})
+    for bad in ({"confirm_sha": "main"}, {"confirm_sha": sha.upper()}, {"confirm_sha": sha, "ref": "main"}):
+        try:
+            resolve("deploy_update", bad)
+        except (ValueError, KeyError):
+            continue
+        raise AssertionError(bad)
+    try:
+        resolve("deploy_log", {"job_id": "../etc/passwd"})
+    except ValueError:
+        return
+    raise AssertionError("job id")
 
 
 def test_rate_limit_stops_the_next_call_without_fetching():

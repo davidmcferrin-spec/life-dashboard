@@ -39,6 +39,17 @@ final class PlatformParseTest extends TestCase
         self::assertFalse(Scope::allows(['money:write'], 'todos:write'));
         self::assertTrue(Scope::allows(Scope::normalize(['read']), 'stocks:read'));
         self::assertFalse(Scope::allows(Scope::normalize(['read']), 'stocks:write'));
+        self::assertFalse(Scope::allows(['*'], 'system:deploy'));
+        self::assertFalse(Scope::allows(['*'], 'system:read'));
+        self::assertFalse(Scope::allows(Scope::normalize(['write']), 'system:deploy'));
+        self::assertFalse(Scope::allows(Scope::normalize(['read']), 'system:read'));
+        self::assertTrue(Scope::allows(['system:deploy'], 'system:deploy'));
+        self::assertTrue(Scope::allows(['system:deploy'], 'system:read'));
+        self::assertFalse(Scope::allows(['system:read'], 'system:deploy'));
+        $withDeploy = Scope::normalize(['*', 'system:deploy']);
+        self::assertContains('*', $withDeploy);
+        self::assertContains('system:deploy', $withDeploy);
+        self::assertTrue(Scope::allows($withDeploy, 'system:deploy'));
         self::assertTrue(Scope::sessionOnly('/api/v1/tokens'));
     }
 

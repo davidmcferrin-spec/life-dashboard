@@ -279,7 +279,7 @@ This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at
 | Task | Command |
 |---|---|
 | Re-run full setup | `sudo ./setup.sh` (from a checkout; idempotent) |
-| Deploy latest `main` | `sudo lifedash-deploy` (pull → deps → pre-migration dump → migrate → reload → verify) |
+| Deploy latest `main` | `sudo lifedash-deploy` (pull → deps → pre-migration dump → migrate → reload → verify). Agents can queue the same update: [docs/deploy/self-update.md](docs/deploy/self-update.md) |
 | Edit secrets | `sudo lifedash-env edit` (decrypt → `$EDITOR` → validate → re-encrypt → reload) |
 | List secret key names | `sudo lifedash-env keys` |
 | Run a job now | `sudo systemctl start lifedash-job@feeds` (feeds, flights, packages, pings, stocks, shares, prune) |
