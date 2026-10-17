@@ -23,6 +23,16 @@ final class DeployService
 
     private const LOG_TAIL = 65536;
 
+    private const FETCH_TIMEOUT_SECONDS = 15;
+
+    private const FETCH_CACHE_SECONDS = 60;
+
+    // Destination is the remote-tracking ref. `git fetch origin main` on older
+    // git can update only FETCH_HEAD and leave origin/main where it was.
+    private const ORIGIN_MAIN_REFSPEC = '+refs/heads/main:refs/remotes/origin/main';
+
+    private const FETCH_CACHE_NAME = 'lifedash-origin-fetch';
+
     public function __construct(
         private readonly ?Database $db = null,
         private readonly ?string $appDir = null,
@@ -242,6 +252,7 @@ final class DeployService
             $empty['error'] = 'The app checkout is not a git repository.';
             return $empty;
         }
+        $fetchError = $this->refreshOrigin();
         $origin = $this->git(['rev-parse', '--verify', 'origin/main']);
         $branchName = trim($branch['out']);
         $headSha = $this->shaOrNull($head['out']);
@@ -252,14 +263,111 @@ final class DeployService
             $behind = $this->commits('HEAD', 'origin/main');
             $ahead = $this->commits('origin/main', 'HEAD');
         }
+        $error = $fetchError;
+        if ($error === null && $originSha === null) {
+            $error = 'origin/main is not in this checkout yet.';
+        }
         return [
             'branch' => $branchName !== '' ? $branchName : null,
             'head' => $headSha,
             'origin_main' => $originSha,
             'behind' => $behind,
             'ahead' => $ahead,
-            'error' => $originSha === null ? 'origin/main is not in this checkout yet.' : null,
+            'error' => $error,
         ];
+    }
+
+    /**
+     * Last-known origin/main is still returned when this fails. Callers that
+     * queue a deploy treat a non-null error as a refusal.
+     */
+    private function refreshOrigin(): ?string
+    {
+        $cached = $this->readFetchCache();
+        if ($cached !== false) {
+            return $cached;
+        }
+        $result = $this->git(
+            ['fetch', 'origin', self::ORIGIN_MAIN_REFSPEC],
+            true
+        );
+        if ($result['code'] === 124 || $result['code'] === 137) {
+            $error = 'fetch of origin main timed out';
+        } elseif ($result['code'] !== 0) {
+            $error = $this->fetchFailure($result['err']);
+        } else {
+            $error = null;
+        }
+        $this->writeFetchCache($error);
+        return $error;
+    }
+
+    /**
+     * @return false|string|null false when the stamp is missing or older than the window
+     */
+    private function readFetchCache(): false|string|null
+    {
+        $path = $this->fetchCachePath();
+        if ($path === null || !is_file($path)) {
+            return false;
+        }
+        $mtime = filemtime($path);
+        if ($mtime === false) {
+            return false;
+        }
+        $age = time() - $mtime;
+        if ($age < 0 || $age >= self::FETCH_CACHE_SECONDS) {
+            return false;
+        }
+        $raw = file_get_contents($path);
+        if (!is_string($raw)) {
+            return false;
+        }
+        if ($raw === "ok\n") {
+            return null;
+        }
+        if (preg_match('/\Aerror\n([^\r\n]*)\n\z/', $raw, $match) === 1) {
+            return $match[1] !== '' ? $match[1] : 'fetch of origin main failed';
+        }
+        return false;
+    }
+
+    private function writeFetchCache(?string $error): void
+    {
+        $gitDir = $this->appDir() . '/.git';
+        if (!is_dir($gitDir) || !is_writable($gitDir)) {
+            return;
+        }
+        $line = $error === null ? '' : str_replace(["\r", "\n"], ' ', $error);
+        $body = $error === null ? "ok\n" : "error\n" . $line . "\n";
+        $tmp = $gitDir . '/.' . self::FETCH_CACHE_NAME . '.' . bin2hex(random_bytes(4));
+        if (file_put_contents($tmp, $body, LOCK_EX) === false) {
+            return;
+        }
+        if (!rename($tmp, $gitDir . '/' . self::FETCH_CACHE_NAME)) {
+            @unlink($tmp);
+        }
+    }
+
+    private function fetchCachePath(): ?string
+    {
+        $gitDir = $this->appDir() . '/.git';
+        if (!is_dir($gitDir)) {
+            return null;
+        }
+        return $gitDir . '/' . self::FETCH_CACHE_NAME;
+    }
+
+    private function fetchFailure(string $err): string
+    {
+        // An https remote can echo the userinfo back. git_error is returned to the agent.
+        $err = preg_replace('#https?://[^/\s:@]+:[^@\s/]+@#i', 'https://', $err) ?? $err;
+        $err = preg_replace('/[\x00-\x1F\x7F]/', ' ', $err) ?? '';
+        $err = trim(preg_replace('/\s+/', ' ', $err) ?? '');
+        if ($err === '') {
+            return 'fetch of origin main failed';
+        }
+        return 'fetch of origin main failed: ' . mb_substr($err, 0, 160);
     }
 
     /**
@@ -291,9 +399,10 @@ final class DeployService
     }
 
     /**
+     * @param list<string> $args
      * @return array{code: int, out: string, err: string}
      */
-    private function git(array $args): array
+    private function git(array $args, bool $bounded = false): array
     {
         foreach ($args as $arg) {
             if (!is_string($arg) || str_contains($arg, "\0")) {
@@ -302,8 +411,18 @@ final class DeployService
         }
         $bin = is_executable('/usr/bin/git') ? '/usr/bin/git' : 'git';
         $cmd = array_merge([$bin, '-C', $this->appDir(), '-c', 'safe.directory=' . $this->appDir()], $args);
+        $env = null;
+        if ($bounded) {
+            if (is_executable('/usr/bin/timeout')) {
+                $cmd = array_merge(
+                    ['/usr/bin/timeout', '-k', '5', (string) self::FETCH_TIMEOUT_SECONDS],
+                    $cmd
+                );
+            }
+            $env = $this->fetchEnv();
+        }
         $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-        $proc = proc_open($cmd, $descriptors, $pipes);
+        $proc = proc_open($cmd, $descriptors, $pipes, null, $env);
         if (!is_resource($proc)) {
             return ['code' => 1, 'out' => '', 'err' => 'git could not be started'];
         }
@@ -316,8 +435,28 @@ final class DeployService
         return [
             'code' => $code,
             'out' => is_string($out) ? $out : '',
-            'err' => is_string($err) ? mb_substr($err, 0, 200) : '',
+            'err' => is_string($err) ? mb_substr($err, 0, 2000) : '',
         ];
+    }
+
+    /**
+     * proc_open replaces the environment when the fifth argument is set.
+     *
+     * @return array<string, string>
+     */
+    private function fetchEnv(): array
+    {
+        $base = getenv();
+        $env = [];
+        if (is_array($base)) {
+            foreach ($base as $key => $value) {
+                if (is_string($key) && is_string($value)) {
+                    $env[$key] = $value;
+                }
+            }
+        }
+        $env['GIT_TERMINAL_PROMPT'] = '0';
+        return $env;
     }
 
     /**

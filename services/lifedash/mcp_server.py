@@ -1229,7 +1229,8 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Current commit, origin/main, commits on origin/main that are not checked out (sha and title), "
             "pending migrations, the last deploy, and mcp_updates (whether deploy_update is allowed). "
-            "Requires system:read. Does not deploy."
+            "Fetches origin main first (15s timeout, reused for about 60s). A fetch failure is git_error; "
+            "the last known origin/main is still returned. Requires system:read. Does not deploy."
         ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
@@ -1237,7 +1238,8 @@ TOOLS: list[dict[str, Any]] = [
         "name": "deploy_update",
         "description": (
             "Queue an update of main to confirm_sha. confirm_sha must be the origin/main commit from "
-            "deploy_status, 40 lowercase hex. dry_run checks that and does not deploy. Returns a job id "
+            "deploy_status, 40 lowercase hex. Fetches origin main before that compare and refuses to "
+            "queue while git_error is set. dry_run checks that and does not deploy. Returns a job id "
             "immediately; poll deploy_status and deploy_log. Requires system:deploy. Refused with "
             "'MCP updates are disabled in Settings' until an admin turns Allow MCP updates on. "
             "No other ref or command."
