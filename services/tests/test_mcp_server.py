@@ -230,6 +230,38 @@ def test_money_tools_resolve_onto_the_money_api():
     method, path, body = resolve("list_shopping_items", {"list_id": 3, "clear_hours": 12})
     assert method == "GET"
     assert "list_id=3" in path and "clear_hours=12" in path
+    method, path, body = resolve("log_call", {
+        "direction": "inbound",
+        "source_call_id": "bland-1",
+        "return_needed": False,
+        "debt": {"reference_last4": "4391", "verdict": "suspicious"},
+    })
+    assert (method, path) == ("POST", "/api/v1/calls")
+    assert body["direction"] == "inbound"
+    assert body["return_needed"] is False
+    assert body["debt"]["verdict"] == "suspicious"
+    method, path, body = resolve("create_call", {"direction": "outbound", "phone": "2565550199"})
+    assert (method, path) == ("POST", "/api/v1/calls")
+    method, path, body = resolve("update_call", {"call_id": 4, "notes": "left voicemail", "debt": None})
+    assert (method, path) == ("POST", "/api/v1/calls/4")
+    assert body["debt"] is None
+    assert "call_id" not in body
+    method, path, body = resolve("set_call_status", {"call_id": 4, "status": "returned"})
+    assert (method, path, body) == ("POST", "/api/v1/calls/4/status", {"status": "returned"})
+    method, path, body = resolve("link_call_todo", {"call_id": 4, "todo_id": 8})
+    assert (method, path, body) == ("POST", "/api/v1/calls/4/todo", {"todo_id": 8})
+    method, path, body = resolve("list_calls", {"status": "needs_return", "return_needed": True})
+    assert method == "GET"
+    assert "status=needs_return" in path and "return_needed=True" in path
+    method, path, body = resolve("search_calls", {"q": "Northwind"})
+    assert (method, path, body) == ("GET", "/api/v1/calls/query?q=Northwind", None)
+    method, path, body = resolve("lookup_caller", {"phone": "2565550199"})
+    assert path.startswith("/api/v1/calls/lookup")
+    method, path, body = resolve("call_stats", {})
+    assert (method, path, body) == ("GET", "/api/v1/calls/stats", None)
+    method, path, body = resolve("upsert_vetted_agency", {"name": "Northwind", "verdict": "suspicious"})
+    assert (method, path) == ("POST", "/api/v1/calls/agencies")
+    assert body["verdict"] == "suspicious"
     names = [tool["name"] for tool in TOOLS]
     for name in (
         "add_transactions", "list_transactions", "get_budget", "set_budget_line", "get_debts",
@@ -240,6 +272,9 @@ def test_money_tools_resolve_onto_the_money_api():
         "list_todos", "create_todo", "update_todo", "complete_todo", "list_todo_categories", "create_todo_category",
         "list_shopping_lists", "create_shopping_list", "list_shopping_items", "add_shopping_items",
         "update_shopping_item", "check_shopping_item", "remove_shopping_item", "clear_bought",
+        "log_call", "create_call", "get_call", "update_call", "set_call_status", "link_call_todo",
+        "list_calls", "search_calls", "call_stats", "lookup_caller", "list_contacts", "upsert_contact",
+        "list_vetted_agencies", "upsert_vetted_agency",
     ):
         assert name in names
 

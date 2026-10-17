@@ -119,6 +119,14 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 3],
                 'fields' => [],
             ],
+            'calls' => [
+                'label' => 'Call log', 'category' => 'life', 'singleton' => false,
+                'description' => 'Open returns first, with urgent, VIP, and debt-collector badges. Tap a row for the summary.',
+                'size' => ['w' => 4, 'h' => 6], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => [
+                    'limit' => ['type' => 'int', 'label' => 'Rows', 'min' => 3, 'max' => 40, 'default' => 16],
+                ],
+            ],
             'shopping' => [
                 'label' => 'Shopping', 'category' => 'life', 'singleton' => false,
                 'description' => 'Lists such as Groceries or Costco. Quick-add parses “2 lb chicken”, groups by aisle, and checks items off.',

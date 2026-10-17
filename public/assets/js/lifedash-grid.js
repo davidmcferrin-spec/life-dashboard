@@ -1090,6 +1090,12 @@
             case 'shopping_items':
                 refreshTypes(['shopping']);
                 break;
+            case 'calls':
+            case 'call_debt':
+            case 'contacts':
+            case 'vetted_agencies':
+                refreshTypes(['calls']);
+                break;
             default:
                 break;
         }
@@ -1098,7 +1104,7 @@
     // -----------------------------------------------------------------
     // Boot
     // -----------------------------------------------------------------
-    const FIT_MAX = { goal: 6, chart: 8, mood: 8, habits: 10, shopping: 12, 'legacy.news': 8, 'legacy.clipboards': 8 };
+    const FIT_MAX = { goal: 6, chart: 8, mood: 8, habits: 10, shopping: 12, calls: 12, 'legacy.news': 8, 'legacy.clipboards': 8 };
 
     // Cell count for the content, without GridStack moveNode (that solver
     // pushes a neighbor onto another row).

@@ -19,7 +19,7 @@ final class Scope
 
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
-        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping',
+        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls',
     ];
 
     public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
@@ -30,9 +30,12 @@ final class Scope
 
     public const SHOPPING_ENTITIES = ['shopping_list', 'shopping_item'];
 
+    public const CALL_ENTITIES = ['call', 'contact', 'vetted_agency'];
+
     public const AUDIT_ENTITIES = [
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
+        'call', 'contact', 'vetted_agency',
     ];
 
     /**
@@ -138,6 +141,9 @@ final class Scope
         }
         if (self::allows($granted, 'shopping:read')) {
             $allow = array_merge($allow, self::SHOPPING_ENTITIES);
+        }
+        if (self::allows($granted, 'calls:read')) {
+            $allow = array_merge($allow, self::CALL_ENTITIES);
         }
         if ($entity !== null && !in_array($entity, $allow, true)) {
             throw new ForbiddenException('This token cannot read that audit entity.');

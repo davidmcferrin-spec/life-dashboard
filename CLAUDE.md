@@ -70,6 +70,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] Positions, Robinhood activity CSV, public Polymarket data-API refresh, scorecard widget. No trade placement
 - [x] Widget type `custom`: sandboxed srcdoc, `window.__DATA__.metrics`
 - [x] Shopping lists (`shopping_lists`, `shopping_items`): widget `shopping` with quick-add, aisle groups, and list tabs. MCP: `list_shopping_lists`, `create_shopping_list`, `list_shopping_items`, `add_shopping_items`, `update_shopping_item`, `check_shopping_item`, `remove_shopping_item`, `clear_bought` (`shopping:read` / `shopping:write`)
+- [x] Call log (`calls`, `call_debt`, `contacts`, `vetted_agencies`): widget `calls` (open returns, urgent, VIP, debt verdict). MCP: `log_call` / `create_call`, `get_call`, `update_call`, `set_call_status`, `link_call_todo`, `list_calls`, `search_calls`, `call_stats`, `lookup_caller`, `list_contacts`, `upsert_contact`, `list_vetted_agencies`, `upsert_vetted_agency` (`calls:read` / `calls:write`). Reference numbers are last-4 only; SSN-shaped values are rejected
 
 **Reddit tracking**
 - Settings `/settings/reddit` holds the tracked list (name, hot/new/top, include/exclude words). The rotating `reddit` card still reads its own widget sources via RSS into `media_cards`.

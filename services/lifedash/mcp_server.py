@@ -30,6 +30,101 @@ SUPPORTED_PROTOCOLS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
 
 Fetch = Callable[[str, str, dict[str, Any] | None, str, str], tuple[int, Any]]
 
+_DEBT_PROPS: dict[str, Any] = {
+    "collector_name": {"type": "string"},
+    "agency": {"type": "string"},
+    "agency_address": {"type": "string"},
+    "agency_phone": {"type": "string"},
+    "website": {"type": "string"},
+    "original_creditor": {"type": "string"},
+    "reference_last4": {"type": "string"},
+    "amount_claimed": {"type": "number"},
+    "debt_date": {"type": "string"},
+    "validation_requested": {"type": "boolean"},
+    "verdict": {
+        "type": "string",
+        "enum": ["unverified", "likely_legit", "unclear", "suspicious", "known_scam"],
+    },
+    "scam_reasons": {"type": "string"},
+    "verification_notes": {"type": "string"},
+    "cfpb_complaints": {"type": "string"},
+    "state_license": {"type": "string"},
+    "ag_ftc_warnings": {"type": "string"},
+    "evidence_urls": {"type": "array", "items": {"type": "string"}},
+    "vetted_at": {"type": "string"},
+    "referred_to_penny": {"type": "boolean"},
+}
+
+_CALL_PROPS: dict[str, Any] = {
+    "call_at": {"type": "string"},
+    "direction": {"type": "string", "enum": ["inbound", "outbound"]},
+    "phone": {"type": "string"},
+    "callback_number": {"type": "string"},
+    "name": {"type": "string"},
+    "company": {"type": "string"},
+    "category": {
+        "type": "string",
+        "enum": ["work", "personal", "vip", "debt_collector", "spam", "urgent"],
+    },
+    "reason": {"type": "string"},
+    "summary": {"type": "string"},
+    "notes": {"type": "string"},
+    "urgency": {"type": "string", "enum": ["low", "normal", "high", "urgent"]},
+    "deadline": {"type": "string"},
+    "return_needed": {"type": "boolean"},
+    "status": {
+        "type": "string",
+        "enum": [
+            "new", "needs_return", "returned", "waiting", "resolved",
+            "spam", "ignored", "escalated_to_penny",
+        ],
+    },
+    "duration_sec": {"type": "integer"},
+    "transcript_url": {"type": "string"},
+    "recording_url": {"type": "string"},
+    "transcript_text": {"type": "string"},
+    "has_recording": {"type": "boolean"},
+    "source": {"type": "string", "enum": ["ai", "manual", "bland"]},
+    "source_call_id": {"type": "string"},
+    "linked_todo_id": {"type": ["integer", "null"]},
+    "contact_id": {"type": ["integer", "null"]},
+    "handled_by": {"type": "string", "enum": ["claire", "cos", "david"]},
+    "notified_david": {"type": "boolean"},
+    "notified_at": {"type": "string"},
+    "debt": {
+        "type": ["object", "null"],
+        "properties": _DEBT_PROPS,
+        "additionalProperties": False,
+    },
+}
+
+_CONTACT_PROPS: dict[str, Any] = {
+    "id": {"type": "integer"},
+    "name": {"type": "string"},
+    "phones": {"type": "array", "items": {"type": "string"}},
+    "relationship": {"type": "string"},
+    "vip_tier": {"type": "string"},
+    "handling_rule": {"type": "string"},
+    "notes": {"type": "string"},
+}
+
+_AGENCY_PROPS: dict[str, Any] = {
+    "id": {"type": "integer"},
+    "name": {"type": "string"},
+    "phones": {"type": "array", "items": {"type": "string"}},
+    "website": {"type": "string"},
+    "verdict": {
+        "type": "string",
+        "enum": ["unverified", "likely_legit", "unclear", "suspicious", "known_scam"],
+    },
+    "notes": {"type": "string"},
+    "evidence_urls": {"type": "array", "items": {"type": "string"}},
+    "vetted_at": {"type": "string"},
+}
+
+_CALL_KEYS = tuple(_CALL_PROPS)
+
+
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_metrics",
@@ -876,6 +971,159 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "log_call",
+        "description": (
+            "Log a call. The same source_call_id updates the existing row. create_call is this tool. "
+            "debt is the collector record. reference_last4 is stored as the last 4 digits. "
+            "Do not send a full account number or an SSN. An SSN-shaped value is rejected."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": _CALL_PROPS,
+            "required": ["direction"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_call",
+        "description": "Alias of log_call. Upserts on source_call_id and accepts every call field.",
+        "inputSchema": {
+            "type": "object",
+            "properties": _CALL_PROPS,
+            "required": ["direction"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_call",
+        "description": "One call, including debt, contact, transcript, and recording fields.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"call_id": {"type": "integer"}},
+            "required": ["call_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_call",
+        "description": (
+            "Change any call field. Pass debt to replace the collector record, or debt null to remove it. "
+            "Omitted fields stay as they are. reference_last4 is last 4 only."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"call_id": {"type": "integer"}, **_CALL_PROPS},
+            "required": ["call_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_call_status",
+        "description": "Set status. Returned, resolved, spam, and ignored clear return_needed unless you pass it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "call_id": {"type": "integer"},
+                "status": {
+                    "type": "string",
+                    "enum": ["new", "needs_return", "returned", "waiting", "resolved", "spam", "ignored", "escalated_to_penny"],
+                },
+                "return_needed": {"type": "boolean"},
+            },
+            "required": ["call_id", "status"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "link_call_todo",
+        "description": "Attach a dashboard task to a call. todo_id null clears the link.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "call_id": {"type": "integer"},
+                "todo_id": {"type": ["integer", "null"]},
+            },
+            "required": ["call_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_calls",
+        "description": "Calls, open returns first. Filter by status, category, urgency, return_needed, from, to, phone, or handled_by.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "category": {"type": "string"},
+                "urgency": {"type": "string"},
+                "return_needed": {"type": "boolean"},
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+                "phone": {"type": "string"},
+                "handled_by": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "search_calls",
+        "description": "Find calls by name, phone, company, reason, summary, notes, or transcript.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "q": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["q"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "call_stats",
+        "description": "Counts by category and status, plus open returns, urgent, debt, and VIP.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "lookup_caller",
+        "description": "Match a phone number to a contact and that person's earlier calls.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"phone": {"type": "string"}},
+            "required": ["phone"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_contacts",
+        "description": "Saved contacts: phones, relationship, VIP tier, and the handling rule for Norma.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "upsert_contact",
+        "description": "Create or update a contact. Matches an id, then a phone, then a unique name.",
+        "inputSchema": {
+            "type": "object",
+            "properties": _CONTACT_PROPS,
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_vetted_agencies",
+        "description": "Agencies already vetted, with phones, website, verdict, and evidence URLs.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "upsert_vetted_agency",
+        "description": "Create or update a vetted agency by id or name. Verdict applies to later debt logs that omit one.",
+        "inputSchema": {
+            "type": "object",
+            "properties": _AGENCY_PROPS,
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "search",
         "description": (
             "Search every stored dataset. A hit means the text contains the query letters. "
@@ -985,6 +1233,15 @@ def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
 
 def _pick(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: args[key] for key in keys if key in args and args[key] is not None}
+
+
+def _call_body(args: dict[str, Any]) -> dict[str, Any]:
+    """Every call field the caller sent, including null and false. call_id stays in the path."""
+    body = {key: args[key] for key in _CALL_KEYS if key in args}
+    debt = body.get("debt")
+    if debt is not None and not isinstance(debt, dict):
+        raise ValueError("debt must be an object.")
+    return body
 
 
 _LEGACY = ("bookmarks", "todos", "flights", "packages", "stocks", "clipboards")
@@ -1232,6 +1489,36 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args.get("list_id"):
             return "POST", f"/api/v1/shopping/lists/{int(args['list_id'])}/clear-bought", {}
         return "POST", "/api/v1/shopping/clear-bought", {}
+    if name in ("log_call", "create_call"):
+        return "POST", "/api/v1/calls", _call_body(args)
+    if name == "get_call":
+        return "GET", f"/api/v1/calls/{int(args['call_id'])}", None
+    if name == "update_call":
+        return "POST", f"/api/v1/calls/{int(args['call_id'])}", _call_body(args)
+    if name == "set_call_status":
+        body = {"status": args["status"]}
+        if "return_needed" in args:
+            body["return_needed"] = bool(args["return_needed"])
+        return "POST", f"/api/v1/calls/{int(args['call_id'])}/status", body
+    if name == "link_call_todo":
+        todo = args.get("todo_id")
+        return "POST", f"/api/v1/calls/{int(args['call_id'])}/todo", {"todo_id": todo}
+    if name == "list_calls":
+        return "GET", "/api/v1/calls" + _query(args, ("status", "category", "urgency", "return_needed", "from", "to", "phone", "handled_by", "limit")), None
+    if name == "search_calls":
+        return "GET", "/api/v1/calls/query" + _query(args, ("q", "limit")), None
+    if name == "call_stats":
+        return "GET", "/api/v1/calls/stats", None
+    if name == "lookup_caller":
+        return "GET", "/api/v1/calls/lookup" + _query(args, ("phone",)), None
+    if name == "list_contacts":
+        return "GET", "/api/v1/calls/contacts", None
+    if name == "upsert_contact":
+        return "POST", "/api/v1/calls/contacts", _pick(args, tuple(_CONTACT_PROPS))
+    if name == "list_vetted_agencies":
+        return "GET", "/api/v1/calls/agencies", None
+    if name == "upsert_vetted_agency":
+        return "POST", "/api/v1/calls/agencies", _pick(args, tuple(_AGENCY_PROPS))
     if name == "get_dashboard_summary":
         return "GET", "/api/v1/money/dashboard", None
     if name == "invest_scorecard":

@@ -427,6 +427,66 @@ final class ExtendedApi
         $r->post('/api/v1/shopping/items/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'item' => $this->svc->shopping->updateItem($u, self::id($p), $this->runner->body()),
         ], 200, true));
+
+        // /query, not /search: Scope::forPath would otherwise see the search area.
+        $r->get('/api/v1/calls/stats', fn () => $this->run(fn (int $u) => [
+            'stats' => $this->svc->calls->stats($u),
+        ]));
+        $r->get('/api/v1/calls/query', fn () => $this->run(fn (int $u) => [
+            'calls' => $this->svc->calls->search($u, (string) ($_GET['q'] ?? ''), (int) ($_GET['limit'] ?? 30)),
+        ]));
+        $r->get('/api/v1/calls/lookup', fn () => $this->run(fn (int $u) => [
+            'lookup' => $this->svc->calls->lookup($u, (string) ($_GET['phone'] ?? '')),
+        ]));
+        $r->get('/api/v1/calls/contacts', fn () => $this->run(fn (int $u) => [
+            'contacts' => $this->svc->calls->contacts($u),
+        ]));
+        $r->post('/api/v1/calls/contacts', fn () => $this->run(fn (int $u) => [
+            'contact' => $this->svc->calls->upsertContact($u, $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/calls/agencies', fn () => $this->run(fn (int $u) => [
+            'agencies' => $this->svc->calls->agencies($u),
+        ]));
+        $r->post('/api/v1/calls/agencies', fn () => $this->run(fn (int $u) => [
+            'agency' => $this->svc->calls->upsertAgency($u, $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/calls', fn () => $this->run(function (int $u): array {
+            $filters = [
+                'status'        => self::strParam('status'),
+                'category'      => self::strParam('category'),
+                'urgency'       => self::strParam('urgency'),
+                'handled_by'    => self::strParam('handled_by'),
+                'from'          => self::strParam('from'),
+                'to'            => self::strParam('to'),
+                'phone'         => self::strParam('phone'),
+                'limit'         => (int) ($_GET['limit'] ?? 50),
+            ];
+            if (array_key_exists('return_needed', $_GET) && $_GET['return_needed'] !== '') {
+                $filters['return_needed'] = filter_var($_GET['return_needed'], FILTER_VALIDATE_BOOLEAN);
+            }
+            return ['calls' => $this->svc->calls->listCalls($u, $filters)];
+        }));
+        $r->post('/api/v1/calls', fn () => $this->run(function (int $u): array {
+            $source = $this->runner->actor()->kind === 'ai' ? 'ai' : 'manual';
+            return ['call' => $this->svc->calls->log($u, $this->runner->body(), $source)];
+        }, 201, true));
+        $r->post('/api/v1/calls/{id}/status', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $return = array_key_exists('return_needed', $b) ? filter_var($b['return_needed'], FILTER_VALIDATE_BOOLEAN) : null;
+            return ['call' => $this->svc->calls->setStatus($u, self::id($p), (string) ($b['status'] ?? ''), $return)];
+        }, 200, true));
+        $r->post('/api/v1/calls/{id}/todo', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $todo = $b['todo_id'] ?? $b['linked_todo_id'] ?? null;
+            $id = ($todo === null || $todo === '' || $todo === 0 || $todo === '0') ? null : (int) $todo;
+            return ['call' => $this->svc->calls->linkTodo($u, self::id($p), $id)];
+        }, 200, true));
+        $r->get('/api/v1/calls/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'call' => $this->svc->calls->get($u, self::id($p)),
+        ]));
+        $r->post('/api/v1/calls/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'call' => $this->svc->calls->update($u, self::id($p), $this->runner->body()),
+        ], 200, true));
     }
 
     private function weeklyReview(): void
