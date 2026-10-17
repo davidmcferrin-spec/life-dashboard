@@ -6,6 +6,7 @@ namespace Dashboard\Auth;
 
 use Dashboard\Api\V1\Scope;
 use Dashboard\DB\Database;
+use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
@@ -99,6 +100,73 @@ final class ApiTokenService
             [$id, $userId]
         );
         return $this->get($userId, $id);
+    }
+
+    /**
+     * Rename an active token or replace its scopes. The hash and prefix stay.
+     *
+     * @param list<string> $scopes
+     * @return array{token: array<string, mixed>, previous_name: string, previous_scopes: list<string>}
+     */
+    public function update(int $userId, int $id, string $name, array $scopes): array
+    {
+        $this->requireAdmin($userId);
+        $name = trim($name);
+        if ($name === '' || mb_strlen($name) > 64) {
+            throw ValidationException::withFields(['name' => 'Name must be 1–64 characters.']);
+        }
+        $scopes = Scope::normalize($scopes);
+        self::assertAssignable($scopes, true);
+        $current = $this->get($userId, $id);
+        if ($current['revoked']) {
+            throw new ValidationException('A revoked token cannot be edited.');
+        }
+        $written = $this->db->execute(
+            'UPDATE api_tokens SET name = ?, scopes = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
+            [$name, implode(' ', $scopes), $id, $userId]
+        );
+        if ($written < 1) {
+            throw new ValidationException('A revoked token cannot be edited.');
+        }
+        return [
+            'token'            => $this->get($userId, $id),
+            'previous_name'    => (string) $current['name'],
+            'previous_scopes'  => $current['scopes'],
+        ];
+    }
+
+    /**
+     * Remove a revoked token row.
+     * Audit events keep token_id and token_name inside detail JSON. Nothing references this row.
+     *
+     * @return array{deleted: true, token: array<string, mixed>}
+     */
+    public function delete(int $userId, int $id): array
+    {
+        $this->requireAdmin($userId);
+        $current = $this->get($userId, $id);
+        if (!$current['revoked']) {
+            throw new ValidationException('Revoke the token before deleting it.');
+        }
+        $written = $this->db->execute(
+            'DELETE FROM api_tokens WHERE id = ? AND user_id = ? AND revoked_at IS NOT NULL',
+            [$id, $userId]
+        );
+        if ($written < 1) {
+            throw new NotFoundException('Token not found.');
+        }
+        return [
+            'deleted' => true,
+            'token'   => $current,
+        ];
+    }
+
+    private function requireAdmin(int $userId): void
+    {
+        $flag = $this->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
+        if ((int) $flag !== 1) {
+            throw new ForbiddenException('Only an admin can edit or delete an agent token.');
+        }
     }
 
     /**

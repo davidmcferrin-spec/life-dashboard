@@ -7,21 +7,80 @@
     const headerEl = document.getElementById('agent-token-header');
     const statusEl = document.getElementById('agent-token-status');
 
+    const tokenRoot = document.getElementById('agent-tokens');
+    const admin = tokenRoot.dataset.admin === '1';
+    const areas = JSON.parse(tokenRoot.dataset.areas || '[]');
+    const editModal = document.getElementById('agent-edit-modal');
+    const deleteModal = document.getElementById('agent-delete-modal');
+    let tokenRows = [];
+    let deleteId = 0;
+
     function paintTokens(tokens) {
-        const el = document.getElementById('agent-tokens');
-        el.innerHTML = (tokens || []).map((t) =>
-            `<div class="ld-life-row">
+        tokenRows = tokens || [];
+        tokenRoot.innerHTML = tokenRows.map((t) => {
+            const actions = [];
+            if (!t.revoked && admin) actions.push(`<button type="button" class="btn text-xs" data-edit="${t.id}">Edit</button>`);
+            if (!t.revoked) actions.push(`<button type="button" class="btn text-xs" data-revoke="${t.id}">Revoke</button>`);
+            if (t.revoked && admin) actions.push(`<button type="button" class="btn text-xs" data-delete="${t.id}">Delete</button>`);
+            return `<div class="ld-life-row">
                 <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}${t.expires_at ? ' · expires ' + esc(t.expires_at.slice(0, 10)) : ''}</span></span>
-                ${t.revoked ? '' : `<button type="button" class="btn text-xs" data-revoke="${t.id}">Revoke</button>`}
-            </div>`
-        ).join('') || '<p class="empty-state mono text-xs">No tokens yet.</p>';
+                <span class="ld-metric-actions">${actions.join('')}</span>
+            </div>`;
+        }).join('') || '<p class="empty-state mono text-xs">No tokens yet.</p>';
     }
 
     function paintAudit(events) {
         const el = document.getElementById('agent-audit');
-        el.innerHTML = (events || []).map((e) =>
-            `<div class="ld-life-row"><span>${esc(e.actor)}${e.tool ? ' · ' + esc(e.tool) : ''} ${esc(e.action)}</span><span class="ld-meta">${esc(e.resource || '')}</span></div>`
-        ).join('') || '<p class="empty-state mono text-xs">No writes yet.</p>';
+        el.innerHTML = (events || []).map((e) => {
+            const name = e.detail && e.detail.token_name ? ' · ' + esc(e.detail.token_name) : '';
+            const gone = e.detail && e.detail.deleted ? ' · deleted' : '';
+            return `<div class="ld-life-row"><span>${esc(e.actor)}${e.tool ? ' · ' + esc(e.tool) : ''} ${esc(e.action)}${name}${gone}</span><span class="ld-meta">${esc(e.resource || '')}</span></div>`;
+        }).join('') || '<p class="empty-state mono text-xs">No writes yet.</p>';
+    }
+
+    function findToken(id) {
+        return tokenRows.find((row) => String(row.id) === String(id)) || null;
+    }
+
+    function checksFor(scopes) {
+        const set = new Set(scopes || []);
+        const rest = (scopes || []).filter((scope) => scope !== 'system:read' && scope !== 'system:deploy');
+        const checks = {
+            all: false,
+            read: false,
+            reddit: false,
+            money: false,
+            todos: false,
+            system_read: set.has('system:read'),
+            system_deploy: set.has('system:deploy'),
+        };
+        if (rest.indexOf('*') !== -1) {
+            checks.all = true;
+            return checks;
+        }
+        const readOnly = areas.length > 0
+            && rest.length === areas.length
+            && areas.every((area) => rest.indexOf(area + ':read') !== -1);
+        if (readOnly) {
+            checks.read = true;
+            return checks;
+        }
+        checks.reddit = set.has('reddit:read') || set.has('reddit:write');
+        checks.money = set.has('money:read') || set.has('money:write');
+        checks.todos = set.has('todos:read') || set.has('todos:write');
+        return checks;
+    }
+
+    function openModal(el) {
+        if (!el) return;
+        el.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+    }
+
+    function closeModal(el) {
+        if (!el) return;
+        el.classList.add('hidden');
+        document.body.classList.remove('app-modal-open');
     }
 
     async function load() {
@@ -109,7 +168,10 @@
     });
 
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeTokenModal();
+        if (e.key !== 'Escape') return;
+        if (!modal.classList.contains('hidden')) closeTokenModal();
+        if (editModal && !editModal.classList.contains('hidden')) closeModal(editModal);
+        if (deleteModal && !deleteModal.classList.contains('hidden')) closeModal(deleteModal);
     });
 
     document.getElementById('agent-token-copy').addEventListener('click', (e) => {
@@ -120,11 +182,125 @@
         copyText(headerEl.value, headerEl, e.currentTarget, 'Header copied. Paste it into the Authorization header value.');
     });
 
+    function openEdit(id) {
+        const row = findToken(id);
+        if (!row || !editModal || row.revoked) return;
+        const form = document.getElementById('agent-edit');
+        form.dataset.id = String(row.id);
+        form.elements.name.value = row.name;
+        const checks = checksFor(row.scopes);
+        form.querySelectorAll('[data-access]').forEach((box) => {
+            box.checked = checks[box.value] === true;
+        });
+        form.elements.system_read.checked = checks.system_read;
+        form.elements.system_deploy.checked = checks.system_deploy;
+        document.getElementById('agent-edit-current').textContent = 'Current scopes: ' + row.scopes.join(' ');
+        document.getElementById('agent-edit-error').textContent = '';
+        openModal(editModal);
+        form.elements.name.focus();
+    }
+
+    function openDelete(id) {
+        const row = findToken(id);
+        if (!row || !deleteModal || !row.revoked) return;
+        deleteId = row.id;
+        document.getElementById('agent-delete-name').textContent = row.name;
+        document.getElementById('agent-delete-error').textContent = '';
+        openModal(deleteModal);
+        document.getElementById('agent-delete-confirm').focus();
+    }
+
+    function scopesFromEdit(form) {
+        const scopes = [];
+        form.querySelectorAll('[data-access]:checked').forEach((box) => {
+            if (box.value === 'all') scopes.push('*');
+            else if (box.value === 'read') scopes.push('read');
+            else if (box.value === 'reddit') scopes.push('reddit:read', 'reddit:write');
+            else if (box.value === 'money') scopes.push('money:read', 'money:write');
+            else if (box.value === 'todos') scopes.push('todos:read', 'todos:write');
+        });
+        if (form.elements.system_read.checked) scopes.push('system:read');
+        if (form.elements.system_deploy.checked) scopes.push('system:deploy');
+        return scopes;
+    }
+
+    if (editModal) {
+        editModal.querySelectorAll('[data-access]').forEach((box) => {
+            box.addEventListener('change', () => {
+                if (!box.checked) return;
+                editModal.querySelectorAll('[data-access]').forEach((other) => {
+                    if (other !== box) other.checked = false;
+                });
+            });
+        });
+        editModal.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close]')) closeModal(editModal);
+        });
+        document.getElementById('agent-edit').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const errEl = document.getElementById('agent-edit-error');
+            const submit = form.querySelector('button[type="submit"]');
+            errEl.textContent = '';
+            submit.disabled = true;
+            try {
+                await api.post('/tokens/' + form.dataset.id + '/update', {
+                    name: form.elements.name.value,
+                    scopes: scopesFromEdit(form),
+                });
+                closeModal(editModal);
+                await load();
+            } catch (err) {
+                errEl.textContent = err.message || 'Could not save the token.';
+            } finally {
+                submit.disabled = false;
+            }
+        });
+    }
+
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close]')) closeModal(deleteModal);
+        });
+        document.getElementById('agent-delete-confirm').addEventListener('click', async () => {
+            const errEl = document.getElementById('agent-delete-error');
+            const button = document.getElementById('agent-delete-confirm');
+            errEl.textContent = '';
+            button.disabled = true;
+            try {
+                await api.post('/tokens/' + deleteId + '/delete', {});
+                closeModal(deleteModal);
+                deleteId = 0;
+                await load();
+            } catch (err) {
+                errEl.textContent = err.message || 'Could not delete the token.';
+            } finally {
+                button.disabled = false;
+            }
+        });
+    }
+
     document.getElementById('agent-tokens').addEventListener('click', async (e) => {
+        const edit = e.target.closest('[data-edit]');
+        if (edit) {
+            openEdit(edit.dataset.edit);
+            return;
+        }
+        const del = e.target.closest('[data-delete]');
+        if (del) {
+            openDelete(del.dataset.delete);
+            return;
+        }
         const btn = e.target.closest('[data-revoke]');
         if (!btn) return;
-        await api.post('/tokens/' + btn.dataset.revoke + '/revoke', {});
-        await load();
+        btn.disabled = true;
+        try {
+            await api.post('/tokens/' + btn.dataset.revoke + '/revoke', {});
+            await load();
+        } catch (err) {
+            btn.disabled = false;
+            btn.insertAdjacentHTML('afterend', '<span class="ld-field-error">' + esc(err.message || 'Could not revoke the token.') + '</span>');
+        }
     });
 
     document.getElementById('agent-copy-prompt').addEventListener('click', async () => {
