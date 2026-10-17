@@ -89,3 +89,5 @@ jobs:
         run: node --test tests/js/*.cjs
       - name: Deploy workdir mode cleanup
         run: bash tests/shell/prepare-workdir.sh
+      - name: Deploy confirm-sha guard
+        run: bash tests/shell/deploy-confirm.sh

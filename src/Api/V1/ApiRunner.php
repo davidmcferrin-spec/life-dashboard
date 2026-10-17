@@ -53,6 +53,16 @@ final class ApiRunner
         return $this->grantedScopes;
     }
 
+    public function tokenId(): ?int
+    {
+        return $this->tokenId;
+    }
+
+    public function tokenName(): ?string
+    {
+        return $this->tokenName;
+    }
+
     /**
      * @param callable(int): array<string, mixed> $fn
      * @param list<string>|string|null $scope one required scope, or any of a list
@@ -63,19 +73,28 @@ final class ApiRunner
             $userId = $this->authenticate($mutating, $scope);
             $payload = $fn($userId);
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+            $statusOut = $status;
+            if (isset($payload['http_status']) && is_int($payload['http_status'])) {
+                $statusOut = $payload['http_status'];
+                unset($payload['http_status']);
+            }
+            $deployRead = $method === 'GET' && str_contains(self::safePath(), '/system/deploy');
             if ($mutating) {
                 $this->auditCall($userId, $payload);
-            } elseif ($this->actor()->kind === 'ai' && $method === 'GET' && !self::isMetaRead(self::safePath())) {
+            } elseif (($this->actor()->kind === 'ai' && $method === 'GET' && !self::isMetaRead(self::safePath())) || $deployRead) {
                 $this->auditRead($userId);
             }
-            jsonResponse($payload, $status);
+            jsonResponse($payload, $statusOut);
         } catch (UnauthorizedException $e) {
             jsonResponse(['error' => $e->getMessage()], 401);
         } catch (ForbiddenException $e) {
+            $this->auditDeployFailure($e->getMessage());
             jsonResponse(['error' => $e->getMessage()], 403);
         } catch (NotFoundException $e) {
+            $this->auditDeployFailure($e->getMessage());
             jsonResponse(['error' => $e->getMessage()], 404);
         } catch (ValidationException $e) {
+            $this->auditDeployFailure($e->getMessage());
             jsonResponse(['error' => $e->getMessage(), 'fields' => $e->fields()], 422);
         }
     }
@@ -121,6 +140,9 @@ final class ApiRunner
                 throw new ForbiddenException('Creating and revoking tokens requires a signed-in browser session.');
             }
             $this->grantedScopes = $row['scopes'];
+            $this->actor = new ApiActor('ai', $row['user_id'], $tool);
+            $this->tokenId = (int) $row['id'];
+            $this->tokenName = (string) $row['name'];
             $legacyAudit = str_contains($path, '/audit') && !str_contains($path, '/audit/log');
             if (!str_contains($path, '/agent-prompt') && !$legacyAudit) {
                 $required = $scope ?? Scope::forPath($path, $mutating);
@@ -132,9 +154,6 @@ final class ApiRunner
                     throw new ForbiddenException('Token is missing the ' . $label . ' scope.');
                 }
             }
-            $this->actor = new ApiActor('ai', $row['user_id'], $tool);
-            $this->tokenId = (int) $row['id'];
-            $this->tokenName = (string) $row['name'];
             return $row['user_id'];
         }
 
@@ -199,6 +218,18 @@ final class ApiRunner
     {
         $extra = [];
         $path = self::safePath();
+        if (str_contains($path, '/system/deploy')) {
+            $extra['entity'] = 'deploy';
+            foreach (['job_id', 'confirm_sha', 'dry_run', 'state'] as $key) {
+                if (!array_key_exists($key, $payload)) {
+                    continue;
+                }
+                $value = $payload[$key];
+                if (is_bool($value) || (is_string($value) && preg_match('/^[A-Za-z0-9_:-]{1,80}$/', $value) === 1)) {
+                    $extra[$key] = $value;
+                }
+            }
+        }
         if ($verb === 'read' && str_contains($path, '/api/v1/money/')) {
             $filter = self::moneyFilter($_GET);
             if ($filter !== '') {
@@ -237,6 +268,7 @@ final class ApiRunner
             '/calls/contacts'       => 'contact',
             '/calls/agencies'       => 'vetted_agency',
             '/calls'                => 'call',
+            '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {
             if (str_contains($path, $fragment)) {
@@ -324,6 +356,32 @@ final class ApiRunner
             }
         }
         return null;
+    }
+
+    private function auditDeployFailure(string $message): void
+    {
+        if ($this->actor === null) {
+            return;
+        }
+        $path = self::safePath();
+        if (!str_contains($path, '/system/deploy')) {
+            return;
+        }
+        $extra = [
+            'entity' => 'deploy',
+            'error'  => mb_substr($message, 0, 200),
+        ];
+        $detail = $this->actor->kind === 'ai'
+            ? TokenStamp::detail($this->tokenId, $this->tokenName, 'write', $extra)
+            : $extra;
+        $this->audit->record(
+            $this->actor->userId,
+            $this->actor->kind,
+            $this->actor->tool,
+            is_string($_SERVER['REQUEST_METHOD'] ?? null) ? (string) $_SERVER['REQUEST_METHOD'] : 'POST',
+            $path,
+            $detail
+        );
     }
 
     private static function toolHeader(): ?string

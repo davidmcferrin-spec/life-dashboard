@@ -1,0 +1,15 @@
+# Drain the deploy spool. Started by lifedash-deploy.path when a request appears.
+# Runs as root. PHP and lifedash-mcp are not in this unit.
+
+[Unit]
+Description=life-dashboard deploy queue
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-deploy-from-spool
+TimeoutStartSec=30min
+Nice=10
+PrivateTmp=yes
+NoNewPrivileges=yes

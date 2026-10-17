@@ -49,6 +49,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] `api_tokens` (SHA-256, scopes, prefix) and `audit_events` (actor, tool, resource) with `lifedash_notify`
 - [x] `/api/v1` accepts a browser session (CSRF) or `Authorization: Bearer`; scopes inferred from the path; bearer writes use `source=ai`
 - [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `0.0.0.0:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
+- [x] `system:read` and `system:deploy` are explicit scopes (not implied by `read`, `write`, or `*`). `deploy_status` / `deploy_log` / `deploy_update` queue `lifedash-deploy` via `/var/lib/lifedash/deploy` and `lifedash-deploy.path`; PHP and MCP never get root. See `docs/deploy/self-update.md`
 - [x] `GET /api/v1/agent-prompt` and `/settings/agents` (token shown once, prompt copy, audit trail)
 
 **L3 — Life tracking ✅**
@@ -356,7 +357,7 @@ Legacy URLs `/flights`, `/packages`, `/clipboards` redirect to settings routes.
 - PHP-FPM pool `lifedash` (`/run/php/lifedash.sock`) runs as `lifedash`; Apache vhost rendered from `deploy/apache/lifedash.conf.template` (`lifedash-render-vhost`)
 - Service: `lifedash-push` (realtime WebSocket, `Restart=always`; installed/restarted by `provision.sh` and `lifedash-deploy`)
 - Timers: `lifedash-job-{feeds,flights,pings}` 30/30/15 min, `packages` 2 h, `stocks` 06/12/18 CT, `shares`/`prune` daily, `lifedash-backup` 02:30 CT
-- Install/re-provision: `sudo ./setup.sh` (re-runs reuse `/etc/lifedash/provision.conf`) · Deploy: `sudo lifedash-deploy` (sets `core.fileMode false` and drops mode-only diffs before pull; content changes abort) · secrets: `sudo lifedash-env edit` · tunnel: `sudo lifedash-tunnel-setup <host>`
+- Install/re-provision: `sudo ./setup.sh` (re-runs reuse `/etc/lifedash/provision.conf`) · Deploy: `sudo lifedash-deploy` (sets `core.fileMode false` and drops mode-only diffs before pull; content changes abort). `--confirm-sha` deploys only that `origin/main` commit. Agents queue it through the spool (`docs/deploy/self-update.md`) · secrets: `sudo lifedash-env edit` · tunnel: `sudo lifedash-tunnel-setup <host>`
 - Legacy Dreamhost layout/crontab: see personal-dashboard repo history (`load-app.php` still supports it)
 
 ## Database Tables

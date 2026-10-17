@@ -338,6 +338,19 @@ else
 fi
 
 # -----------------------------------------------------------------------------
+step "Self-update spool"
+# shellcheck source=deploy/lib/deploy-guard.sh
+source "$APP_DIR/deploy/lib/deploy-guard.sh"
+lifedash_install_spool /var/lib/lifedash/deploy "$APP_USER"
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-deploy.service" \
+    "$APP_DIR/deploy/systemd/lifedash-deploy@.service" \
+    "$APP_DIR/deploy/systemd/lifedash-deploy.path" /etc/systemd/system/
+ln -sfn "$APP_DIR/deploy/bin/lifedash-deploy-from-spool" /usr/local/sbin/lifedash-deploy-from-spool
+systemctl daemon-reload
+systemctl enable --now lifedash-deploy.path >/dev/null
+info "lifedash-deploy.path: $(systemctl is-active lifedash-deploy.path)"
+
+# -----------------------------------------------------------------------------
 step "CheckMK local check (if agent installed)"
 if [[ -d /usr/lib/check_mk_agent/local ]]; then
     cat > /usr/lib/check_mk_agent/local/lifedash <<EOF

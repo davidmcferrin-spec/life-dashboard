@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Drain /var/lib/lifedash/deploy/incoming and run lifedash-deploy as root.
+#
+#   lifedash-deploy-from-spool           every queued request, one at a time
+#   lifedash-deploy-from-spool --job ID  that 32-hex job only
+#
+# PHP and lifedash-mcp only create the request file. They do not call this.
+set -euo pipefail
+
+APP_DIR=/srv/lifedash/app
+SPOOL=/var/lib/lifedash/deploy
+INCOMING=$SPOOL/incoming
+STATE=$SPOOL/state
+JOBS=$STATE/jobs
+LOCK=$STATE/deploy.lock
+WINDOW=300
+LIB=$(cd "$(dirname "$0")/../lib" && pwd)
+PY=$(cd "$(dirname "$0")/../../scripts" && pwd)/deploy_request.py
+
+log() { echo "[lifedash-deploy-spool] $*"; }
+die() { echo "[lifedash-deploy-spool] ERROR: $*" >&2; exit 1; }
+
+JOB_FILTER=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --job)
+            [[ $# -ge 2 ]] || die "--job needs a value"
+            JOB_FILTER=$2
+            shift 2
+            [[ $JOB_FILTER =~ ^[0-9a-f]{32}$ ]] || die "job id must be 32 lowercase hex characters"
+            ;;
+        *)
+            die "unknown argument"
+            ;;
+    esac
+done
+
+[[ $EUID -eq 0 ]] || die "run as root"
+
+# shellcheck source=deploy/lib/deploy-guard.sh
+source "$LIB/deploy-guard.sh"
+lifedash_install_spool "$SPOOL" lifedash
+
+exec 9>"$LOCK"
+if ! flock -n 9; then
+    log "another deploy holds the lock"
+    exit 0
+fi
+
+finish_job() {
+    local id=$1 state=$2 sha=$3 token=$4 user=$5 name=$6 summary=$7 update_last=$8
+    python3 "$PY" write \
+        "$JOBS/$id.json" "$STATE/last.json" \
+        "$state" "$id" "$sha" "$token" "$user" "$name" "$summary" "$update_last"
+    if [[ -f $JOBS/$id.json ]]; then
+        chgrp lifedash "$JOBS/$id.json" "$STATE/last.json" 2>/dev/null || true
+        chmod 0640 "$JOBS/$id.json" "$STATE/last.json" 2>/dev/null || true
+    fi
+}
+
+run_one() {
+    local file=$1 base id work parsed sha job token user name logf code
+    base=$(basename "$file")
+    [[ $base =~ ^[0-9a-f]{32}\.json$ ]] || {
+        log "ignoring $base"
+        rm -f -- "$file"
+        return 0
+    }
+    id=${base%.json}
+    work=$JOBS/$id.request.json
+    mv -- "$file" "$work"
+    if ! parsed=$(python3 "$PY" read "$work"); then
+        log "rejected $id (invalid request)"
+        rm -f -- "$work"
+        return 0
+    fi
+    sha=$(printf '%s\n' "$parsed" | sed -n '1p')
+    job=$(printf '%s\n' "$parsed" | sed -n '2p')
+    token=$(printf '%s\n' "$parsed" | sed -n '3p')
+    user=$(printf '%s\n' "$parsed" | sed -n '4p')
+    name=$(printf '%s\n' "$parsed" | sed -n '5p')
+    if [[ $job != "$id" || ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+        log "rejected $id (job or sha mismatch)"
+        rm -f -- "$work"
+        return 0
+    fi
+    set +e
+    python3 "$PY" rate "$STATE/last.json" "$WINDOW"
+    code=$?
+    set -e
+    if [[ $code -eq 3 ]]; then
+        log "rejected $id (rate limit)"
+        finish_job "$id" rejected "$sha" "$token" "$user" "$name" "rate limit" 0
+        rm -f -- "$work"
+        return 0
+    fi
+    if [[ $code -ne 0 ]]; then
+        die "rate check failed ($code)"
+    fi
+    finish_job "$id" running "$sha" "$token" "$user" "$name" "running" 1
+    logf=$JOBS/$id.log
+    : >"$logf"
+    chgrp lifedash "$logf" 2>/dev/null || true
+    chmod 0640 "$logf" 2>/dev/null || true
+    set +e
+    "$APP_DIR/deploy/bin/lifedash-deploy" --confirm-sha "$sha" >>"$logf" 2>&1
+    code=$?
+    set -e
+    if [[ $code -eq 0 ]]; then
+        finish_job "$id" succeeded "$sha" "$token" "$user" "$name" "ok" 1
+        log "ok $id"
+    else
+        finish_job "$id" failed "$sha" "$token" "$user" "$name" "deploy exited $code" 1
+        log "failed $id (exit $code)"
+    fi
+    rm -f -- "$work"
+}
+
+shopt -s nullglob
+files=()
+if [[ -n $JOB_FILTER ]]; then
+    [[ -f $INCOMING/$JOB_FILTER.json ]] || die "no queued request for that job"
+    files=("$INCOMING/$JOB_FILTER.json")
+else
+    files=("$INCOMING"/*.json)
+fi
+
+if [[ ${#files[@]} -eq 0 ]]; then
+    log "queue empty"
+    exit 0
+fi
+
+for file in "${files[@]}"; do
+    run_one "$file"
+done

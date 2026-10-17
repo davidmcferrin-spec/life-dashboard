@@ -1,0 +1,12 @@
+# A new file in the spool starts the root deploy queue.
+# PHP can create the file. It cannot start this unit.
+
+[Unit]
+Description=Watch for life-dashboard deploy requests
+
+[Path]
+PathExistsGlob=/var/lib/lifedash/deploy/incoming/*.json
+Unit=lifedash-deploy.service
+
+[Install]
+WantedBy=multi-user.target

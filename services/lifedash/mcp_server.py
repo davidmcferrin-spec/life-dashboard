@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -1223,6 +1224,40 @@ TOOLS: list[dict[str, Any]] = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "deploy_status",
+        "description": (
+            "Current commit, origin/main, commits on origin/main that are not checked out (sha and title), "
+            "pending migrations, and the last deploy. Requires system:read. Does not deploy."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "deploy_update",
+        "description": (
+            "Queue an update of main to confirm_sha. confirm_sha must be the origin/main commit from "
+            "deploy_status, 40 lowercase hex. dry_run checks that and does not deploy. Returns a job id "
+            "immediately; poll deploy_status and deploy_log. Requires system:deploy. No other ref or command."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "confirm_sha": {"type": "string"},
+                "dry_run": {"type": "boolean"},
+            },
+            "required": ["confirm_sha"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "deploy_log",
+        "description": "Output of the last deploy, or of job_id (32 lowercase hex). Requires system:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"job_id": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -1245,7 +1280,7 @@ def _call_body(args: dict[str, Any]) -> dict[str, Any]:
 
 
 _LEGACY = ("bookmarks", "todos", "flights", "packages", "stocks", "clipboards")
-_CLOSED = ("/favicon", "/capture", "/shares/link", "/files", "/storage", "/cloudpad", "/tokens", "/trade", "/order")
+_CLOSED = ("/favicon", "/capture", "/shares/link", "/files", "/storage", "/cloudpad", "/tokens", "/trade", "/order", "/system")
 
 
 def _api_path(path: str, query: Any = None) -> str:
@@ -1557,6 +1592,33 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "get_reddit_post_comments":
         query = ("?limit=" + str(int(args["limit"]))) if args.get("limit") else ""
         return "GET", f"/api/v1/reddit/posts/{args['post_id']}/comments" + query, None
+    if name == "deploy_status":
+        if args:
+            raise ValueError("deploy_status takes no arguments.")
+        return "GET", "/api/v1/system/deploy/status", None
+    if name == "deploy_log":
+        unknown = set(args) - {"job_id"}
+        if unknown:
+            raise ValueError("deploy_log accepts only job_id.")
+        job = args.get("job_id")
+        if job not in (None, ""):
+            if not isinstance(job, str) or re.fullmatch(r"[0-9a-f]{32}", job) is None:
+                raise ValueError("job_id must be 32 lowercase hex characters.")
+            return "GET", "/api/v1/system/deploy/log?job_id=" + job, None
+        return "GET", "/api/v1/system/deploy/log", None
+    if name == "deploy_update":
+        unknown = set(args) - {"confirm_sha", "dry_run"}
+        if unknown:
+            raise ValueError("deploy_update accepts only confirm_sha and dry_run.")
+        sha = args.get("confirm_sha")
+        if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{40}", sha) is None:
+            raise ValueError("confirm_sha must be 40 lowercase hex characters.")
+        body: dict[str, Any] = {"confirm_sha": sha}
+        if "dry_run" in args:
+            if not isinstance(args["dry_run"], bool):
+                raise ValueError("dry_run must be true or false.")
+            body["dry_run"] = args["dry_run"]
+        return "POST", "/api/v1/system/deploy", body
     if name == "search":
         query = {"q": args["q"]}
         if args.get("include"):

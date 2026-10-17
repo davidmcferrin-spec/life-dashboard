@@ -46,6 +46,8 @@ You can:
 - list, add, update, and remove stock symbols
 - list clipboards, create one, and save its text. Do not create a public share link
 
+deploy_status and deploy_log need system:read. deploy_update needs system:deploy (that scope can also read status and the log). Read and write does not include either scope. An admin adds them on Settings → Agents. deploy_update takes confirm_sha, the origin/main commit from deploy_status, and optional dry_run. dry_run does not deploy. There is no ref argument. The call returns a job id immediately because the update restarts MCP. Poll deploy_status and deploy_log.
+
 Do not place, cancel, or suggest signing a trade.
 
 When he asks to remember something, write a vault page. When he asks what changed, read the audit trail and the relevant widget.

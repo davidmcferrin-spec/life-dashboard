@@ -1,27 +1,63 @@
 #!/usr/bin/env bash
 # lifedash-deploy — update the running app from git.
 #
-#   sudo lifedash-deploy            pull, install deps, migrate, reload, verify
-#   sudo lifedash-deploy --no-pull  same, using the code already on disk
+#   sudo lifedash-deploy                         pull, install deps, migrate, reload, verify
+#   sudo lifedash-deploy --no-pull               same, using the code already on disk
+#   sudo lifedash-deploy --confirm-sha <40 hex>  fetch origin main, deploy only that commit
 #
-# Aborts before touching services if the pull is not a fast-forward or the
+# --confirm-sha is the only accepted commit argument. It must equal origin/main
+# after fetch, and the checkout must be on main. There is no ref or shell argument.
+# Aborts before touching services if the update is not a fast-forward or the
 # migration fails. Takes a pre-migration pg_dump so a bad migration can be undone.
 set -euo pipefail
 
 APP_DIR=/srv/lifedash/app
 VENV=/srv/lifedash/venv
 PULL=true
-[[ ${1:-} == "--no-pull" ]] && PULL=false
+CONFIRM=""
 
 log() { echo "[lifedash-deploy] $*"; }
 die() { echo "[lifedash-deploy] ERROR: $*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --no-pull)
+            PULL=false
+            shift
+            ;;
+        --confirm-sha)
+            [[ $# -ge 2 ]] || die "--confirm-sha needs a value"
+            CONFIRM=$2
+            shift 2
+            ;;
+        *)
+            die "unknown argument"
+            ;;
+    esac
+done
+
+if [[ -n $CONFIRM && $PULL == false ]]; then
+    die "confirm-sha cannot be combined with --no-pull"
+fi
+if [[ -n $CONFIRM && ! $CONFIRM =~ ^[0-9a-f]{40}$ ]]; then
+    die "confirm-sha must be 40 lowercase hex characters"
+fi
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
 cd "$APP_DIR"
 
 # shellcheck source=deploy/lib/prepare-workdir.sh
 source "$APP_DIR/deploy/lib/prepare-workdir.sh"
+# shellcheck source=deploy/lib/deploy-guard.sh
+source "$APP_DIR/deploy/lib/deploy-guard.sh"
 
-if $PULL; then
+if [[ -n $CONFIRM ]]; then
+    log "prepare checkout (core.fileMode false; drop mode-only diffs)"
+    lifedash_prepare_workdir "$APP_DIR"
+    log "fetch origin main and require confirm-sha"
+    lifedash_require_origin_main "$APP_DIR" "$CONFIRM"
+    log "fast-forward to confirm-sha"
+    git -c safe.directory="$APP_DIR" merge --ff-only "$CONFIRM" || die "not a fast-forward"
+elif $PULL; then
     log "prepare checkout (core.fileMode false; drop mode-only diffs)"
     lifedash_prepare_workdir "$APP_DIR"
     log "git pull --ff-only"
@@ -59,7 +95,20 @@ for fpm in $(systemctl list-units --type=service --no-legend 'php*-fpm.service' 
 done
 install -m 0644 "$APP_DIR/deploy/systemd/lifedash-push.service" /etc/systemd/system/
 install -m 0644 "$APP_DIR/deploy/systemd/lifedash-mcp.service" /etc/systemd/system/
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-deploy.service" \
+    "$APP_DIR/deploy/systemd/lifedash-deploy@.service" \
+    "$APP_DIR/deploy/systemd/lifedash-deploy.path" /etc/systemd/system/
+if [[ -f $APP_DIR/deploy/php/lifedash-pool.conf ]]; then
+    php_ver=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+    pool="/etc/php/$php_ver/fpm/pool.d/lifedash.conf"
+    pool_dir=$(dirname "$pool")
+    if [[ -d "$pool_dir" ]]; then
+        install -m 0644 "$APP_DIR/deploy/php/lifedash-pool.conf" "$pool"
+    fi
+fi
+lifedash_install_spool /var/lib/lifedash/deploy lifedash
 systemctl daemon-reload
+systemctl enable lifedash-deploy.path >/dev/null
 
 log "restart realtime push and MCP"
 systemctl enable lifedash-push.service >/dev/null
