@@ -56,4 +56,25 @@
 
     dry.addEventListener('click', function () { submit(true); });
     now.addEventListener('click', function () { submit(false); });
+
+    const toggle = document.getElementById('mcp-updates');
+    const state = document.getElementById('mcp-updates-state');
+    if (toggle) {
+        toggle.addEventListener('change', async () => {
+            const want = toggle.checked;
+            toggle.disabled = true;
+            try {
+                const data = await api.post('/system/deploy/mcp-updates', { enabled: want });
+                if (state) state.textContent = data.mcp_updates ? 'on' : 'off';
+                result.textContent = data.mcp_updates
+                    ? 'MCP updates are allowed.'
+                    : 'MCP updates are disabled.';
+            } catch (err) {
+                toggle.checked = !want;
+                result.textContent = err.message || 'Could not save MCP updates.';
+            } finally {
+                toggle.disabled = false;
+            }
+        });
+    }
 })();

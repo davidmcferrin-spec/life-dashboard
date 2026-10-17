@@ -89,12 +89,17 @@ require __DIR__ . '/_shell-top.php';
                     $deployLast = is_array($deployStatus['last'] ?? null) ? $deployStatus['last'] : null;
                     $deployError = is_string($deployStatus['git_error'] ?? null) ? $deployStatus['git_error'] : '';
                     $deploySpool = (bool) ($deployStatus['spool'] ?? false);
+                    $mcpUpdates = (bool) ($deployStatus['mcp_updates'] ?? false);
                 ?>
                 <dl class="text-sm space-y-1 mb-4">
                     <div class="flex flex-wrap gap-2"><dt class="text-muted">Branch</dt><dd class="mono"><?= e($deployBranch) ?></dd></div>
                     <div class="flex flex-wrap gap-2"><dt class="text-muted">Checked out</dt><dd class="mono"><?= e($deployHead !== '' ? $deployHead : '—') ?></dd></div>
                     <div class="flex flex-wrap gap-2"><dt class="text-muted">origin/main</dt><dd class="mono"><?= e($deployOrigin !== '' ? $deployOrigin : '—') ?></dd></div>
                     <div class="flex flex-wrap gap-2"><dt class="text-muted">Migrations pending</dt><dd class="mono"><?= e($deployPending === [] ? 'none' : implode(', ', array_map('strval', $deployPending))) ?></dd></div>
+                    <div class="flex flex-wrap gap-2">
+                        <dt class="text-muted">MCP updates</dt>
+                        <dd class="mono" id="mcp-updates-state"><?= $mcpUpdates ? 'on' : 'off' ?></dd>
+                    </div>
                     <div class="flex flex-wrap gap-2">
                         <dt class="text-muted">Last deploy</dt>
                         <dd class="mono">
@@ -124,6 +129,13 @@ require __DIR__ . '/_shell-top.php';
                 <?php if (!$deploySpool): ?>
                 <p class="text-warn text-sm mb-3">The deploy spool is not installed yet. Dry run still works. See docs/deploy/self-update.md.</p>
                 <?php endif; ?>
+                <label class="flex items-start gap-2 text-sm text-primary mb-3">
+                    <input type="checkbox" id="mcp-updates" class="mt-1" <?= $mcpUpdates ? 'checked' : '' ?>>
+                    <span>
+                        Allow MCP updates
+                        <span class="block text-muted text-xs">Off until you turn this on. deploy_status and deploy_log still work. deploy_update is refused. Update now on this page is not affected.</span>
+                    </span>
+                </label>
                 <label class="block text-sm text-muted mb-3">
                     Confirm origin/main
                     <input id="deploy-confirm-sha" class="input mono w-full mt-1" readonly value="<?= e($deployOrigin) ?>">

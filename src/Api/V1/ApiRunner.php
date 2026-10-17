@@ -220,7 +220,7 @@ final class ApiRunner
         $path = self::safePath();
         if (str_contains($path, '/system/deploy')) {
             $extra['entity'] = 'deploy';
-            foreach (['job_id', 'confirm_sha', 'dry_run', 'state'] as $key) {
+            foreach (['job_id', 'confirm_sha', 'dry_run', 'state', 'mcp_updates', 'changed', 'previous'] as $key) {
                 if (!array_key_exists($key, $payload)) {
                     continue;
                 }

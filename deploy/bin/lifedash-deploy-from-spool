@@ -84,6 +84,13 @@ run_one() {
         rm -f -- "$work"
         return 0
     fi
+    flag=$(lifedash_read_mcp_updates_flag lifedash)
+    if ! lifedash_mcp_request_allowed "$token" "$flag"; then
+        log "rejected $id (MCP updates are disabled in Settings)"
+        finish_job "$id" rejected "$sha" "$token" "$user" "$name" "MCP updates are disabled in Settings" 0
+        rm -f -- "$work"
+        return 0
+    fi
     set +e
     python3 "$PY" rate "$STATE/last.json" "$WINDOW"
     code=$?

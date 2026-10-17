@@ -76,7 +76,23 @@ final class DeployRequestTest extends TestCase
         self::assertNotSame($status['head'], $status['origin_main']);
         self::assertSame('second', $status['behind'][0]['title'] ?? null);
         self::assertSame([], $status['migrations_pending']);
+        self::assertFalse($status['mcp_updates']);
 
+        try {
+            $svc->request($origin, true, 7, 4, 'Claude');
+            self::fail('A token deploy must wait until MCP updates are enabled.');
+        } catch (ValidationException $e) {
+            self::assertSame(DeployService::MCP_DISABLED, $e->getMessage());
+        }
+        self::assertSame([], glob($spool . '/incoming/*.json') ?: []);
+        $session = $svc->request($origin, true, 7, null, null);
+        self::assertTrue($session['dry_run']);
+        self::assertSame([], glob($spool . '/incoming/*.json') ?: []);
+        self::assertTrue(DeployService::mcpRequestAllowed(false, null));
+        self::assertFalse(DeployService::mcpRequestAllowed(false, 4));
+        self::assertTrue(DeployService::mcpRequestAllowed(true, 4));
+
+        $svc = new DeployService(null, $app, $spool, true);
         $dry = $svc->request($origin, true, 7, 4, "Claude\n<script>");
         self::assertTrue($dry['dry_run']);
         self::assertSame('dry_run', $dry['state']);

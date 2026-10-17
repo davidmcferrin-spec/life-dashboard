@@ -17,6 +17,8 @@ final class DeployService
 {
     public const RATE_LIMIT_SECONDS = 300;
 
+    public const MCP_DISABLED = 'MCP updates are disabled in Settings';
+
     public const SPOOL_DIR = '/var/lib/lifedash/deploy';
 
     private const LOG_TAIL = 65536;
@@ -25,6 +27,7 @@ final class DeployService
         private readonly ?Database $db = null,
         private readonly ?string $appDir = null,
         private readonly ?string $spoolDir = null,
+        private readonly ?bool $mcpUpdates = null,
     ) {}
 
     /**
@@ -47,8 +50,66 @@ final class DeployService
             'spool'               => $this->spoolReady(),
             'rate_limit_seconds'  => self::RATE_LIMIT_SECONDS,
             'rate_limited_until'  => $this->rateLimitedUntil($last),
+            'mcp_updates'         => $this->mcpUpdatesEnabled(),
             'git_error'           => $git['error'],
         ];
+    }
+
+    /**
+     * Absent row and a missing table are off. A token deploy is refused until an admin turns this on.
+     */
+    public function mcpUpdatesEnabled(): bool
+    {
+        if ($this->mcpUpdates !== null) {
+            return $this->mcpUpdates;
+        }
+        if ($this->db === null) {
+            return false;
+        }
+        try {
+            $value = $this->db->fetchScalar(
+                "SELECT enabled FROM server_flags WHERE flag_key = 'mcp_updates'"
+            );
+        } catch (\Throwable) {
+            return false;
+        }
+        return (int) $value === 1;
+    }
+
+    /**
+     * @return array{mcp_updates: bool, changed: bool, previous: bool}
+     */
+    public function setMcpUpdates(bool $enabled, int $userId): array
+    {
+        if ($this->db === null) {
+            throw new ValidationException('MCP updates cannot be stored without a database.');
+        }
+        $previous = $this->mcpUpdatesEnabled();
+        if ($previous === $enabled) {
+            return ['mcp_updates' => $enabled, 'changed' => false, 'previous' => $previous];
+        }
+        $flag = $enabled ? 1 : 0;
+        $this->db->execute(
+            "INSERT INTO server_flags (flag_key, enabled, updated_by_user_id)
+             VALUES ('mcp_updates', ?, ?)
+             ON CONFLICT (flag_key) DO UPDATE
+             SET enabled = EXCLUDED.enabled,
+                 updated_at = (now() AT TIME ZONE 'UTC'),
+                 updated_by_user_id = EXCLUDED.updated_by_user_id",
+            [$flag, $userId]
+        );
+        return ['mcp_updates' => $enabled, 'changed' => true, 'previous' => $previous];
+    }
+
+    /**
+     * Admin session requests have no token. Those still run when MCP updates are off.
+     */
+    public static function mcpRequestAllowed(bool $enabled, ?int $tokenId): bool
+    {
+        if ($tokenId === null || $tokenId < 1) {
+            return true;
+        }
+        return $enabled;
     }
 
     /**
@@ -77,6 +138,9 @@ final class DeployService
      */
     public function request(string $confirmSha, bool $dryRun, int $userId, ?int $tokenId, ?string $tokenName): array
     {
+        if (!self::mcpRequestAllowed($this->mcpUpdatesEnabled(), $tokenId)) {
+            throw new ValidationException(self::MCP_DISABLED);
+        }
         $confirmSha = trim($confirmSha);
         if (preg_match('/^[0-9a-f]{40}$/', $confirmSha) !== 1) {
             throw ValidationException::withFields(['confirm_sha' => 'confirm_sha must be 40 lowercase hex characters.']);

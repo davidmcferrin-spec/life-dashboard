@@ -45,6 +45,20 @@ final class ExtendedApi
             $job = isset($_GET['job_id']) ? (string) $_GET['job_id'] : null;
             return $this->deploy()->log($job);
         }, 200, false, 'system:read'));
+        $r->post('/api/v1/system/deploy/mcp-updates', fn () => $this->run(function (int $u): array {
+            if ($this->runner->grantedScopes() !== null) {
+                throw new ForbiddenException('Only an admin session can change MCP updates.');
+            }
+            $this->assertSystemAdmin($u);
+            $b = $this->runner->body();
+            if (array_diff(array_keys($b), ['enabled']) !== []) {
+                throw ValidationException::withFields(['body' => 'Only enabled is accepted.']);
+            }
+            if (!array_key_exists('enabled', $b) || !is_bool($b['enabled'])) {
+                throw ValidationException::withFields(['enabled' => 'enabled must be true or false.']);
+            }
+            return $this->deploy()->setMcpUpdates($b['enabled'], $u);
+        }, 200, true, 'system:deploy'));
         $r->post('/api/v1/system/deploy', fn () => $this->run(function (int $u): array {
             $this->assertSystemAdmin($u);
             $b = $this->runner->body();

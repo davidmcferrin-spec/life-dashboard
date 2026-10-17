@@ -49,7 +49,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - [x] `api_tokens` (SHA-256, scopes, prefix) and `audit_events` (actor, tool, resource) with `lifedash_notify`
 - [x] `/api/v1` accepts a browser session (CSRF) or `Authorization: Bearer`; scopes inferred from the path; bearer writes use `source=ai`
 - [x] `services/lifedash/mcp_server.py` (`lifedash-mcp`, `0.0.0.0:8765`, tunnel path `/mcp`) forwards tools to `/api/v1` with `X-Lifedash-Tool`
-- [x] `system:read` and `system:deploy` are explicit scopes (not implied by `read`, `write`, or `*`). `deploy_status` / `deploy_log` / `deploy_update` queue `lifedash-deploy` via `/var/lib/lifedash/deploy` and `lifedash-deploy.path`; PHP and MCP never get root. See `docs/deploy/self-update.md`
+- [x] `system:read` and `system:deploy` are explicit scopes (not implied by `read`, `write`, or `*`). `deploy_status` / `deploy_log` / `deploy_update` queue `lifedash-deploy` via `/var/lib/lifedash/deploy` and `lifedash-deploy.path`; PHP and MCP never get root. **Allow MCP updates** (`server_flags.mcp_updates`) defaults off; the admin **Update now** button still queues. See `docs/deploy/self-update.md`
 - [x] `GET /api/v1/agent-prompt` and `/settings/agents` (token shown once, prompt copy, audit trail)
 
 **L3 — Life tracking ✅**

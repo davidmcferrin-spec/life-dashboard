@@ -39,6 +39,16 @@ def whole_int(value: object, positive: bool) -> str:
     return str(value)
 
 
+def token_field(data: dict) -> str:
+    """Null or a missing token id is an admin session. Any other shape is refused."""
+    if "token_id" not in data or data["token_id"] is None:
+        return ""
+    value = data["token_id"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > 999_999_999_999:
+        raise SystemExit(2)
+    return str(value)
+
+
 def cmd_read(path: str) -> None:
     with open(path, encoding="utf-8") as handle:
         data = json.load(handle)
@@ -50,7 +60,7 @@ def cmd_read(path: str) -> None:
         raise SystemExit(2)
     if not isinstance(job, str) or JOB.fullmatch(job) is None:
         raise SystemExit(2)
-    token = whole_int(data.get("token_id"), positive=False)
+    token = token_field(data)
     user = whole_int(data.get("user_id"), positive=True)
     name = clean_name(data.get("token_name"))
     sys.stdout.write(f"{sha}\n{job}\n{token}\n{user}\n{name}\n")

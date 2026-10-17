@@ -120,4 +120,63 @@ python3 "$root/scripts/deploy_request.py" rate "$state" 300 || fail "a rejected 
 printf '{"state":"succeeded","started_at":"%s"}\n' "$old" > "$state"
 python3 "$root/scripts/deploy_request.py" rate "$state" 300 || fail "an old success must be allowed"
 
+lifedash_mcp_request_allowed "" 0 || fail "an admin session was refused while MCP updates are off"
+lifedash_mcp_request_allowed "" 1 || fail "an admin session was refused while MCP updates are on"
+if lifedash_mcp_request_allowed 9 0; then
+    fail "a token request was allowed while MCP updates are off"
+fi
+lifedash_mcp_request_allowed 9 1 || fail "a token request was refused while MCP updates are on"
+if lifedash_mcp_request_allowed 9 ""; then
+    fail "a missing flag allowed a token request"
+fi
+if lifedash_mcp_request_allowed 9 true; then
+    fail "a non-1 flag allowed a token request"
+fi
+
+string_token=$tmp/string-token.json
+python3 - "$string_token" "$sha" "$job" <<'PY'
+import json, sys
+json.dump({"job_id": sys.argv[3], "confirm_sha": sys.argv[2], "token_id": "9"}, open(sys.argv[1], "w"))
+PY
+if python3 "$root/scripts/deploy_request.py" read "$string_token"; then
+    fail "a string token id was treated as a session request"
+fi
+
+fake=$tmp/fakebin
+mkdir -p "$fake" "$tmp/empty"
+cat > "$fake/runuser" <<'EOF'
+#!/usr/bin/env bash
+while [[ $# -gt 0 && $1 != -- ]]; do shift; done
+[[ ${1-} == -- ]] || exit 1
+shift
+exec "$@"
+EOF
+cat > "$fake/psql" <<'EOF'
+#!/usr/bin/env bash
+if [[ ${FAKE_PSQL_FAIL-} == 1 ]]; then
+    exit 1
+fi
+printf '%s' "${FAKE_PSQL_OUT-}"
+EOF
+chmod 0755 "$fake/runuser" "$fake/psql"
+old_path=$PATH
+export PATH="$fake:$PATH"
+export FAKE_PSQL_OUT=
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 0 ]] || fail "an empty flag read was not off"
+export FAKE_PSQL_OUT=1
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 1 ]] || fail "an enabled flag was not on"
+export FAKE_PSQL_OUT=0
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 0 ]] || fail "a disabled flag was not off"
+export FAKE_PSQL_OUT=true
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 0 ]] || fail "a non-1 flag was treated as on"
+export FAKE_PSQL_FAIL=1
+export FAKE_PSQL_OUT=1
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 0 ]] || fail "a failed query was treated as on"
+[[ $(lifedash_read_mcp_updates_flag 'Lifedash') == 0 ]] || fail "a bad database name was queried"
+# shellcheck disable=SC2123
+export PATH="$tmp/empty"
+[[ $(lifedash_read_mcp_updates_flag lifedash) == 0 ]] || fail "a missing database client was treated as on"
+export PATH=$old_path
+unset FAKE_PSQL_OUT FAKE_PSQL_FAIL
+
 echo "ok"
