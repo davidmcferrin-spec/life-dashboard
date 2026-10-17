@@ -27,6 +27,8 @@ require __DIR__ . '/_shell-top.php';
                     Read only cannot change anything.
                     The full token appears once, in a dialog. Writes are marked <span class="text-secondary">source=ai</span> and listed below.
                     If a token is already in the list and you never copied it, revoke it and create a new one.
+                    An admin can change the name and scopes of an active token. The secret stays the same and is not shown again.
+                    Delete removes a revoked token. The audit log keeps its name.
                 </p>
             </header>
 
@@ -70,7 +72,7 @@ require __DIR__ . '/_shell-top.php';
 
             <section class="surface p-4 mb-4">
                 <h2 class="section-title">Tokens</h2>
-                <div id="agent-tokens" class="mt-2"><p class="empty-state mono text-xs">Loading…</p></div>
+                <div id="agent-tokens" class="mt-2" data-admin="<?= (int) ($user['is_admin'] ?? 0) === 1 ? '1' : '0' ?>" data-areas="<?= e(json_encode(\Dashboard\Api\V1\Scope::AREAS, JSON_THROW_ON_ERROR)) ?>"><p class="empty-state mono text-xs">Loading…</p></div>
             </section>
 
             <section class="surface p-4 mb-4">
@@ -128,6 +130,56 @@ require __DIR__ . '/_shell-top.php';
                     </div>
                 </div>
             </div>
+
+            <?php if ((int) ($user['is_admin'] ?? 0) === 1): ?>
+            <div id="agent-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-edit-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h3 id="agent-edit-title" class="section-title text-sm">Edit token</h3>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <p class="text-muted text-sm">The secret does not change and is not shown again. Scope changes apply on the next request.</p>
+                    <form id="agent-edit" class="space-y-3 mt-3">
+                        <label class="block ld-field">
+                            <span>Name</span>
+                            <input name="name" class="input w-full" required maxlength="64" autocomplete="off">
+                        </label>
+                        <fieldset class="space-y-1">
+                            <legend class="text-sm text-primary mb-1">Access</legend>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="all"> Read and write</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="read"> Read only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="reddit"> Reddit only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="money"> Money only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="todos"> Todos only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_read" value="1"> <span class="mono">system:read</span></label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_deploy" value="1"> <span class="mono">system:deploy</span></label>
+                        </fieldset>
+                        <p id="agent-edit-current" class="text-muted text-xs mono"></p>
+                        <p id="agent-edit-error" class="ld-field-error" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Save</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div id="agent-delete-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-delete-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h3 id="agent-delete-title" class="section-title text-sm">Delete token</h3>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <p class="text-muted text-sm">Delete <strong id="agent-delete-name"></strong>? This removes the revoked token. Audit entries keep its name.</p>
+                    <p id="agent-delete-error" class="ld-field-error" role="alert"></p>
+                    <div class="flex flex-wrap gap-2 mt-3">
+                        <button type="button" id="agent-delete-confirm" class="btn-danger text-sm">Delete</button>
+                        <button type="button" class="btn text-sm" data-close>Cancel</button>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
 <?php
 $settingsScripts = [

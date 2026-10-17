@@ -83,6 +83,31 @@ final class ExtendedApi
         $r->post('/api/v1/tokens/{id}/revoke', fn (array $p) => $this->run(fn (int $u) => [
             'token' => $this->svc->tokens->revoke($u, self::id($p)),
         ], 200, true));
+        $r->post('/api/v1/tokens/{id}/update', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if (array_diff(array_keys($b), ['name', 'scopes']) !== []) {
+                throw ValidationException::withFields(['body' => 'Only name and scopes are accepted.']);
+            }
+            if (!isset($b['name']) || !is_string($b['name'])) {
+                throw ValidationException::withFields(['name' => 'Name must be 1–64 characters.']);
+            }
+            if (!isset($b['scopes']) || !is_array($b['scopes'])) {
+                throw ValidationException::withFields(['scopes' => 'scopes must be a list.']);
+            }
+            foreach ($b['scopes'] as $scope) {
+                if (!is_string($scope)) {
+                    throw ValidationException::withFields(['scopes' => 'scopes must be a list.']);
+                }
+            }
+            return $this->svc->tokens->update($u, self::id($p), $b['name'], $b['scopes']);
+        }, 200, true));
+        $r->post('/api/v1/tokens/{id}/delete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if ($b !== []) {
+                throw ValidationException::withFields(['body' => 'Delete takes no fields.']);
+            }
+            return $this->svc->tokens->delete($u, self::id($p));
+        }, 200, true));
 
         $r->get('/api/v1/audit/presence', fn () => $this->run(function (int $u): array {
             $after = filter_var($_GET['after'] ?? 0, FILTER_VALIDATE_INT);

@@ -137,7 +137,7 @@ final class ApiRunner
                 throw new UnauthorizedException('Invalid or expired token.');
             }
             if (Scope::sessionOnly($path)) {
-                throw new ForbiddenException('Creating and revoking tokens requires a signed-in browser session.');
+                throw new ForbiddenException('Creating, editing, revoking, and deleting tokens requires a signed-in browser session.');
             }
             $this->grantedScopes = $row['scopes'];
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);
@@ -230,6 +230,9 @@ final class ApiRunner
                 }
             }
         }
+        if (preg_match('#/api/v1/tokens/\d+#', $path) === 1) {
+            $extra = array_merge($extra, self::tokenChangeDetail($payload));
+        }
         if ($verb === 'read' && str_contains($path, '/api/v1/money/')) {
             $filter = self::moneyFilter($_GET);
             if ($filter !== '') {
@@ -248,6 +251,71 @@ final class ApiRunner
             return $extra;
         }
         return TokenStamp::detail($this->tokenId, $this->tokenName, $verb, $extra);
+    }
+
+    /**
+     * Name and scopes from an edit, revoke, or delete. The plaintext secret is not copied.
+     *
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    public static function tokenChangeDetail(array $payload): array
+    {
+        $row = isset($payload['token']) && is_array($payload['token']) ? $payload['token'] : [];
+        $out = [];
+        if (isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
+            $out['token_id'] = (int) $row['id'];
+        }
+        $name = self::tokenLabel($row['name'] ?? null);
+        if ($name !== null) {
+            $out['token_name'] = $name;
+        }
+        $scopes = self::tokenScopeList($row['scopes'] ?? null);
+        if ($scopes !== []) {
+            $out['scopes'] = $scopes;
+        }
+        $previous = self::tokenLabel($payload['previous_name'] ?? null);
+        if ($previous !== null) {
+            $out['previous_name'] = $previous;
+        }
+        $previousScopes = self::tokenScopeList($payload['previous_scopes'] ?? null);
+        if ($previousScopes !== []) {
+            $out['previous_scopes'] = $previousScopes;
+        }
+        if (($payload['deleted'] ?? false) === true) {
+            $out['deleted'] = true;
+        }
+        return $out;
+    }
+
+    private static function tokenLabel(mixed $value): ?string
+    {
+        if (!is_string($value)) {
+            return null;
+        }
+        $name = trim($value);
+        if ($name === '' || preg_match('/[\x00-\x1F]/', $name) === 1) {
+            return null;
+        }
+        return mb_substr($name, 0, 64);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function tokenScopeList(mixed $value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $scopes = [];
+        foreach ($value as $scope) {
+            if (!is_string($scope) || preg_match('/^[a-z0-9_*:.-]{1,40}$/', $scope) !== 1) {
+                continue;
+            }
+            $scopes[] = $scope;
+        }
+        return $scopes;
     }
 
     public static function entityFromPath(string $path): ?string
