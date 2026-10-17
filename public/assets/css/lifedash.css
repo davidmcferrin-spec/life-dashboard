@@ -212,6 +212,7 @@
 }
 
 .ld-icon-btn:hover { background: var(--row-hover); color: var(--text-primary); }
+.ld-icon-btn.is-on { color: var(--hud-accent, var(--accent)); }
 .ld-icon-btn.ld-danger:hover { color: var(--danger); }
 
 .ld-editing .grid-stack-item-content.ld-w {

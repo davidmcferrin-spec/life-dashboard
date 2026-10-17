@@ -17,9 +17,11 @@
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
  *   - Unlocked widgets size to their content in place. Extra rows open
- *     below that card and every card under it shifts down together, so a
- *     neighbor never changes column or swaps rows. A resize sets
- *     height_locked so that height stays. The Fit button clears it and packs.
+ *     below that card and every unlocked card under it shifts down together,
+ *     so a neighbor never changes column or swaps rows. A resize sets
+ *     height_locked so that height stays. Lock freezes size and position.
+ *     Fit clears both locks and packs. Adding a widget appends it under the
+ *     cards already on screen.
  *   - Rows are 32px. Width snaps to one column of the current grid; top-row
  *     cards can step down to 2 columns.
  *   - Layout is saved debounced. Automatic fitting runs when content
@@ -137,6 +139,7 @@
             queued: false,
         };
         widgets.set(widget.id, entry);
+        applyPin(entry);
         if (entry.body) {
             observeResize(entry);
             loadData(widget.id);
@@ -216,6 +219,7 @@
                 <div class="ld-fit">
                 <div class="ld-edit-bar ld-edit-only">
                     <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
+                    <button type="button" class="ld-icon-btn" data-action="lock" title="Lock size and position" aria-label="Lock size and position" aria-pressed="false">Lock</button>
                     <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
                     <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>
                     <button type="button" class="ld-icon-btn ld-danger" data-action="remove" title="Remove" aria-label="Remove widget">✕</button>
@@ -238,9 +242,17 @@
         el.dataset.widgetType = w.type;
         el.innerHTML = nativeItemHtml(w);
         gridEl.appendChild(el);
-        grid.makeWidget(el, { id: String(w.id), x: w.x, y: w.y, w: w.w, h: w.h, minW: w.min_w, minH: w.min_h });
+        const snapshot = captureNodes();
+        let bottom = 0;
+        snapshot.forEach((n) => { bottom = Math.max(bottom, n.y + n.h); });
+        const cols = grid.getColumn();
+        const width = cols === 1 ? 1 : Math.max(w.min_w || 1, Math.min(cols, w.w));
+        grid.makeWidget(el, {
+            id: String(w.id), x: 0, y: bottom, w: width, h: w.h, minW: w.min_w, minH: w.min_h, autoPosition: false,
+        });
+        restoreNodes(snapshot);
         register(w, el);
-        if (grid.getColumn() !== 1) projectInPlace();
+        if (WIDE.includes(cols)) rememberWide(snapshot, { id: w.id, x: 0, y: bottom, w: width, h: w.h });
         document.getElementById('ld-empty')?.remove();
         if (flash) {
             el.classList.add('ld-flash');
@@ -266,6 +278,7 @@
         editing = on;
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
+        widgets.forEach((entry) => applyPin(entry));
         editBtn.textContent = on ? 'Done' : 'Edit layout';
         editBtn.setAttribute('aria-pressed', String(on));
         if (!on) {
@@ -291,8 +304,92 @@
             return {
                 id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h,
                 height_locked: w.height_locked ? 1 : 0,
+                placement_locked: w.placement_locked ? 1 : 0,
             };
         });
+    }
+
+    function isPinned(node) {
+        return !!widgets.get(Number(node.id))?.widget.placement_locked;
+    }
+
+    function captureNodes() {
+        return layoutNodes().map((n) => ({ id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h }));
+    }
+
+    function restoreNodes(snapshot) {
+        const byId = new Map(snapshot.map((s) => [s.id, s]));
+        layoutNodes().forEach((n) => {
+            const s = byId.get(Number(n.id));
+            if (!s) return;
+            n.x = s.x;
+            n.y = s.y;
+            n.w = s.w;
+            n.h = s.h;
+            writeNode(n);
+        });
+    }
+
+    function rememberWide(snapshot, extra) {
+        const cols = grid.getColumn();
+        const known = new Set(snapshot.map((s) => s.id));
+        const prior = Array.isArray(savedLayouts[cols])
+            ? savedLayouts[cols].filter((s) => known.has(Number(s.id)))
+            : snapshot.slice();
+        const next = prior.concat([extra]);
+        postLayout(next.map((s) => {
+            const w = widgets.get(Number(s.id))?.widget;
+            return {
+                id: Number(s.id),
+                x: s.x,
+                y: s.y,
+                w: s.w,
+                h: s.h,
+                height_locked: w && w.height_locked ? 1 : 0,
+                placement_locked: w && w.placement_locked ? 1 : 0,
+            };
+        }), { columns: cols });
+    }
+
+    function applyPin(entry) {
+        if (!entry) return;
+        const on = !!entry.widget.placement_locked;
+        entry.el.classList.toggle('ld-place-lock', on);
+        entry.el.classList.toggle('ld-h-lock', on || !!entry.widget.height_locked);
+        const btn = entry.el.querySelector('[data-action="lock"]');
+        if (btn) {
+            btn.classList.toggle('is-on', on);
+            btn.textContent = on ? 'Locked' : 'Lock';
+            btn.title = on ? 'Unlock size and position' : 'Lock size and position';
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.setAttribute('aria-label', btn.title);
+        }
+        if (entry.el.gridstackNode) {
+            grid.update(entry.el, { locked: on, noMove: on, noResize: on });
+        }
+    }
+
+    function persistPin(entry) {
+        const w = entry.widget;
+        const node = entry.el.gridstackNode;
+        const onCanon = grid.getColumn() === COLUMNS;
+        const x = onCanon && node ? node.x : w.x;
+        const y = onCanon && node ? node.y : w.y;
+        const width = onCanon && node ? node.w : w.w;
+        const height = node ? node.h : w.h;
+        w.x = x;
+        w.y = y;
+        w.w = width;
+        w.h = height;
+        postLayout([{
+            id: w.id,
+            x,
+            y,
+            w: width,
+            h: height,
+            height_locked: w.height_locked ? 1 : 0,
+            placement_locked: w.placement_locked ? 1 : 0,
+        }], { force: true });
     }
 
     function canonicalOf(node) {
@@ -379,13 +476,29 @@
 
     function positionsFor(nodes, cols) {
         const canon = nodes.filter((n) => n.id !== undefined).map(canonicalOf);
-        const saved = cols === COLUMNS ? null : savedCovering(cols, canon.map((c) => c.id));
-        if (saved) {
-            const byId = new Map(saved.map((s) => [Number(s.id), s]));
-            return canon.map((c) => {
-                const s = byId.get(c.id);
-                return { id: c.id, x: s.x, y: s.y, w: s.w, h: c.h };
-            });
+        if (cols !== COLUMNS) {
+            const saved = savedLayouts[cols];
+            if (Array.isArray(saved) && saved.length) {
+                const byId = new Map(saved.map((s) => [Number(s.id), s]));
+                let bottom = 0;
+                const placed = [];
+                const extra = [];
+                canon.forEach((c) => {
+                    const s = byId.get(c.id);
+                    if (!s) {
+                        extra.push(c);
+                        return;
+                    }
+                    placed.push({ id: c.id, x: s.x, y: s.y, w: s.w, h: c.h });
+                    bottom = Math.max(bottom, s.y + c.h);
+                });
+                extra.forEach((c) => {
+                    const w = Math.max(1, Math.min(cols, c.w));
+                    placed.push({ id: c.id, x: 0, y: bottom, w, h: c.h });
+                    bottom += c.h;
+                });
+                return placed;
+            }
         }
         return projectColumns(canon, cols);
     }
@@ -400,11 +513,89 @@
      * bottom; every card that starts there or lower moves down by the same
      * amount. x and w stay on the projection, so order does not change.
      */
-    function commitPositions() {
+    function nodesOverlap(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function settleAroundPins(nodes) {
+        const list = nodes.filter((n) => n.id !== undefined);
+        const pins = list.filter((n) => isPinned(n));
+        if (!pins.length) return;
+        for (let pass = 0; pass < list.length; pass++) {
+            let moved = false;
+            list.forEach((n) => {
+                if (isPinned(n)) return;
+                pins.forEach((o) => {
+                    if (!nodesOverlap(n, o)) return;
+                    const next = o.y + o.h;
+                    if (n.y < next) {
+                        n.y = next;
+                        moved = true;
+                    }
+                });
+            });
+            if (!moved) break;
+        }
+    }
+
+    function pinSnapshot(nodes) {
+        const pins = new Map();
+        nodes.forEach((n) => {
+            if (!isPinned(n)) return;
+            pins.set(Number(n.id), { x: n.x, y: n.y, w: n.w, h: n.h });
+        });
+        return pins;
+    }
+
+    function restorePins(nodes, pins) {
+        nodes.forEach((n) => {
+            const pos = pins.get(Number(n.id));
+            if (!pos) return;
+            n.x = pos.x;
+            n.y = pos.y;
+            n.w = pos.w;
+            n.h = pos.h;
+        });
+        settleAroundPins(nodes);
+        nodes.forEach(writeNode);
+        grid._updateContainerHeight();
+    }
+
+    /**
+     * Content fit only pushes unlocked cards down. It does not change columns.
+     */
+    function growInPlace(prevHeights) {
+        const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
+        const pins = pinSnapshot(nodes);
+        const inserts = [];
+        nodes.forEach((n) => {
+            if (pins.has(Number(n.id))) return;
+            const prev = prevHeights.has(Number(n.id)) ? prevHeights.get(Number(n.id)) : n.h;
+            const delta = n.h - prev;
+            if (delta > 0) inserts.push({ id: Number(n.id), atY: n.y + prev, delta });
+        });
+        nodes.forEach((n) => {
+            if (pins.has(Number(n.id))) return;
+            let shift = 0;
+            inserts.forEach((ins) => {
+                if (ins.id === Number(n.id)) return;
+                if (n.y >= ins.atY) shift += ins.delta;
+            });
+            if (shift) n.y += shift;
+        });
+        restorePins(nodes, pins);
+    }
+
+    function commitPositions(prevHeights) {
         const cols = grid.getColumn();
         if (cols === 1 || !grid.engine) return;
+        if (prevHeights) {
+            growInPlace(prevHeights);
+            return;
+        }
         grid.engine._layouts = [];
         const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
+        const pins = pinSnapshot(nodes);
         const base = positionsFor(nodes, cols);
         const byId = new Map(base.map((p) => [Number(p.id), p]));
         const inserts = [];
@@ -426,7 +617,7 @@
             n.w = b.w;
             writeNode(n);
         });
-        grid._updateContainerHeight();
+        restorePins(nodes, pins);
     }
 
     function projectInPlace() {
@@ -437,7 +628,8 @@
         return items.every((it) => {
             const w = widgets.get(it.id)?.widget;
             return w && w.x === it.x && w.y === it.y && w.w === it.w && w.h === it.h
-                && (w.height_locked ? 1 : 0) === (it.height_locked ? 1 : 0);
+                && (w.height_locked ? 1 : 0) === (it.height_locked ? 1 : 0)
+                && (w.placement_locked ? 1 : 0) === (it.placement_locked ? 1 : 0);
         });
     }
 
@@ -453,7 +645,7 @@
             if (sameAsSaved(opts.columns, items)) return;
         } else if (opts.heightsOnly) {
             if (sameHeights(items)) return;
-        } else if (!opts.pack && sameLayout(items)) return;
+        } else if (!opts.force && !opts.pack && sameLayout(items)) return;
         try {
             status('Saving…', 'sticky');
             const body = { items };
@@ -553,7 +745,15 @@
             .sort((a, b) => a.y - b.y || a.x - b.x)
             .map((n) => {
                 const w = widgets.get(Number(n.id)).widget;
-                return { id: Number(n.id), w: w.w, h: n.h, height_locked: w.height_locked ? 1 : 0 };
+                return {
+                    id: Number(n.id),
+                    x: w.x,
+                    y: w.y,
+                    w: w.w,
+                    h: n.h,
+                    height_locked: w.height_locked ? 1 : 0,
+                    placement_locked: w.placement_locked ? 1 : 0,
+                };
             });
         postLayout(items, { pack: true });
     }
@@ -588,11 +788,23 @@
         const id = Number(btn.closest('.grid-stack-item')?.dataset.widgetId);
         if (!widgets.has(id)) return;
 
-        if (btn.dataset.action === 'fit') {
+        if (btn.dataset.action === 'lock') {
+            const entry = widgets.get(id);
+            const on = !entry.widget.placement_locked;
+            entry.widget.placement_locked = on ? 1 : 0;
+            if (on) entry.widget.height_locked = 1;
+            applyPin(entry);
+            persistPin(entry);
+        } else if (btn.dataset.action === 'fit') {
             const el = btn.closest('.grid-stack-item');
-            el.classList.remove('ld-h-lock');
-            widgets.get(id).widget.height_locked = 0;
+            const entry = widgets.get(id);
+            entry.widget.height_locked = 0;
+            entry.widget.placement_locked = 0;
+            if (el.gridstackNode) entry.widget.h = el.gridstackNode.h;
+            applyPin(entry);
             fitItem(el);
+            entry.widget.h = el.gridstackNode ? el.gridstackNode.h : entry.widget.h;
+            persistPin(entry);
             const cols = grid.getColumn();
             if (cols === 1) {
                 saveMobileOrder();
@@ -937,7 +1149,7 @@
         if (!entry) return;
         const configChanged = w.version !== entry.widget.version;
         entry.widget = Object.assign(entry.widget, w);
-        entry.el.classList.toggle('ld-h-lock', !!w.height_locked);
+        applyPin(entry);
         const title = entry.el.querySelector('.ld-w-title');
         if (title) title.textContent = w.title || w.label;
         if (configChanged && entry.body) loadData(w.id);
@@ -1162,8 +1374,9 @@
             if (grid.getColumn() === 1) return;
             const busy = [...widgets.values()].some((entry) => entry.loading);
             if (busy) return;
+            const prevHeights = new Map(layoutNodes().map((n) => [Number(n.id), n.h]));
             grid.getGridItems().forEach(fitItem);
-            commitPositions();
+            commitPositions(prevHeights);
         } finally {
             fitting = false;
         }

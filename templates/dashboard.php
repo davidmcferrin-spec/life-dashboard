@@ -180,17 +180,19 @@ $timezones = [
                     continue; // unknown legacy type (should not happen; registry and partials ship together)
                 }
             ?>
-            <div class="grid-stack-item<?= !empty($w['height_locked']) ? ' ld-h-lock' : '' ?>"
+            <div class="grid-stack-item<?= !empty($w['height_locked']) || !empty($w['placement_locked']) ? ' ld-h-lock' : '' ?><?= !empty($w['placement_locked']) ? ' ld-place-lock' : '' ?>"
                  gs-id="<?= (int) $w['id'] ?>"
                  gs-x="<?= (int) $w['x'] ?>" gs-y="<?= (int) $w['y'] ?>"
                  gs-w="<?= (int) $w['w'] ?>" gs-h="<?= (int) $w['h'] ?>"
                  gs-min-w="<?= (int) $w['min_w'] ?>" gs-min-h="<?= (int) $w['min_h'] ?>"
+                 <?php if (!empty($w['placement_locked'])): ?>gs-locked="true" gs-no-move="true" gs-no-resize="true"<?php endif; ?>
                  data-widget-id="<?= (int) $w['id'] ?>"
                  data-widget-type="<?= e($w['type']) ?>">
                 <div class="grid-stack-item-content surface ld-w <?= $legacyKey !== null ? 'ld-w-legacy' : 'ld-w-native' ?>">
                     <div class="ld-fit">
                     <div class="ld-edit-bar ld-edit-only">
                         <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
+                        <button type="button" class="ld-icon-btn<?= !empty($w['placement_locked']) ? ' is-on' : '' ?>" data-action="lock" title="<?= !empty($w['placement_locked']) ? 'Unlock size and position' : 'Lock size and position' ?>" aria-label="<?= !empty($w['placement_locked']) ? 'Unlock size and position' : 'Lock size and position' ?>" aria-pressed="<?= !empty($w['placement_locked']) ? 'true' : 'false' ?>"><?= !empty($w['placement_locked']) ? 'Locked' : 'Lock' ?></button>
                         <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
                         <?php if ($legacyKey === null): ?>
                         <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>

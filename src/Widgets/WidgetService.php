@@ -252,21 +252,46 @@ final class WidgetService
                 }
                 $locked = $flag;
             }
-            $clean[] = [$id, $x, $y, $w, $h, $locked];
+            $placed = null;
+            if (array_key_exists('placement_locked', $it)) {
+                $flag = filter_var($it['placement_locked'], FILTER_VALIDATE_INT);
+                if ($flag !== 0 && $flag !== 1) {
+                    throw ValidationException::withFields(["items.{$i}.placement_locked" => 'placement_locked must be 0 or 1.']);
+                }
+                $placed = $flag;
+            }
+            $clean[] = [$id, $x, $y, $w, $h, $locked, $placed];
         }
 
         return $this->db->transaction(function (Database $db) use ($userId, $clean): int {
             $n = 0;
             $geometry = false;
-            foreach ($clean as [$id, $x, $y, $w, $h, $locked]) {
+            foreach ($clean as [$id, $x, $y, $w, $h, $locked, $placed]) {
                 $prev = $db->fetchOne(
-                    'SELECT grid_x, grid_y, grid_w FROM dashboard_widgets WHERE id = ? AND user_id = ?',
+                    'SELECT grid_x, grid_y, grid_w, grid_h, height_locked, placement_locked FROM dashboard_widgets WHERE id = ? AND user_id = ?',
                     [$id, $userId]
                 );
-                if ($prev !== null && ((int) $prev['grid_x'] !== $x || (int) $prev['grid_y'] !== $y || (int) $prev['grid_w'] !== $w)) {
-                    $geometry = true;
+                if ($prev !== null) {
+                    $rect = self::heldRect(
+                        (int) $prev['placement_locked'] === 1,
+                        $placed,
+                        [
+                            'x' => (int) $prev['grid_x'],
+                            'y' => (int) $prev['grid_y'],
+                            'w' => (int) $prev['grid_w'],
+                            'h' => (int) $prev['grid_h'],
+                        ],
+                        ['x' => $x, 'y' => $y, 'w' => $w, 'h' => $h]
+                    );
+                    $x = $rect['x'];
+                    $y = $rect['y'];
+                    $w = $rect['w'];
+                    $h = $rect['h'];
+                    if ((int) $prev['grid_x'] !== $x || (int) $prev['grid_y'] !== $y || (int) $prev['grid_w'] !== $w) {
+                        $geometry = true;
+                    }
                 }
-                if ($locked === null) {
+                if ($locked === null && $placed === null) {
                     $n += $db->execute(
                         "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
                          WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h) IS DISTINCT FROM (?, ?, ?, ?)",
@@ -274,10 +299,19 @@ final class WidgetService
                     );
                     continue;
                 }
+                if ($placed === null) {
+                    $n += $db->execute(
+                        "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, height_locked = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                         WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h, height_locked) IS DISTINCT FROM (?, ?, ?, ?, ?)",
+                        [$x, $y, $w, $h, $locked ?? 0, $id, $userId, $x, $y, $w, $h, $locked ?? 0]
+                    );
+                    continue;
+                }
+                $heightFlag = $locked !== null ? $locked : (int) ($prev['height_locked'] ?? 0);
                 $n += $db->execute(
-                    "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, height_locked = ?, updated_at = (now() AT TIME ZONE 'UTC')
-                     WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h, height_locked) IS DISTINCT FROM (?, ?, ?, ?, ?)",
-                    [$x, $y, $w, $h, $locked, $id, $userId, $x, $y, $w, $h, $locked]
+                    "UPDATE dashboard_widgets SET grid_x = ?, grid_y = ?, grid_w = ?, grid_h = ?, height_locked = ?, placement_locked = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                     WHERE id = ? AND user_id = ? AND (grid_x, grid_y, grid_w, grid_h, height_locked, placement_locked) IS DISTINCT FROM (?, ?, ?, ?, ?, ?)",
+                    [$x, $y, $w, $h, $heightFlag, $placed, $id, $userId, $x, $y, $w, $h, $heightFlag, $placed]
                 );
             }
             // A real 12-column move makes a saved wide arrangement stale. Height-only
@@ -324,6 +358,13 @@ final class WidgetService
         return $this->db->transaction(function (Database $db) use ($userId, $clean): int {
             $n = 0;
             foreach ($clean as [$id, $h, $locked]) {
+                $pin = $db->fetchScalar(
+                    'SELECT placement_locked FROM dashboard_widgets WHERE id = ? AND user_id = ?',
+                    [$id, $userId]
+                );
+                if ($pin === null || (int) $pin === 1) {
+                    continue;
+                }
                 if ($locked === null) {
                     $n += $db->execute(
                         "UPDATE dashboard_widgets SET grid_h = ?, updated_at = (now() AT TIME ZONE 'UTC')
@@ -500,6 +541,44 @@ final class WidgetService
      */
     public static function pack(array $items, int $columns = self::COLUMNS): array
     {
+        $fixed = [];
+        $flow = [];
+        foreach ($items as $it) {
+            if ((int) ($it['placement_locked'] ?? 0) === 1 && isset($it['x'], $it['y'])) {
+                $row = $it;
+                $row['x'] = max(0, (int) $it['x']);
+                $row['y'] = max(0, (int) $it['y']);
+                $row['w'] = max(1, min($columns, (int) ($it['w'] ?? 1)));
+                $row['h'] = max(1, min(24, (int) ($it['h'] ?? 1)));
+                $fixed[] = $row;
+                continue;
+            }
+            $flow[] = $it;
+        }
+        if ($fixed === []) {
+            return self::packFlow($items, $columns);
+        }
+        $placed = $fixed;
+        foreach ($flow as $it) {
+            $w = max(1, min($columns, (int) ($it['w'] ?? 1)));
+            $h = max(1, min(24, (int) ($it['h'] ?? 1)));
+            [$x, $y] = self::firstFree($placed, $w, $h, $columns);
+            $row = $it;
+            $row['x'] = $x;
+            $row['y'] = $y;
+            $row['w'] = $w;
+            $row['h'] = $h;
+            $placed[] = $row;
+        }
+        return $placed;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $items
+     * @return list<array<string, mixed>>
+     */
+    private static function packFlow(array $items, int $columns): array
+    {
         $x = 0;
         $y = 0;
         $rowH = 0;
@@ -525,6 +604,41 @@ final class WidgetService
     }
 
     /**
+     * @param list<array<string, mixed>> $placed
+     * @return array{0: int, 1: int}
+     */
+    private static function firstFree(array $placed, int $w, int $h, int $columns): array
+    {
+        $limit = $h;
+        foreach ($placed as $o) {
+            $limit = max($limit, (int) $o['y'] + (int) $o['h'] + $h);
+        }
+        for ($y = 0; $y <= $limit; $y++) {
+            for ($x = 0; $x + $w <= $columns; $x++) {
+                if (!self::rectHits($x, $y, $w, $h, $placed)) {
+                    return [$x, $y];
+                }
+            }
+        }
+        return [0, $limit];
+    }
+
+    /**
+     * A locked widget keeps its stored rectangle until the caller clears the lock.
+     *
+     * @param array{x: int, y: int, w: int, h: int} $stored
+     * @param array{x: int, y: int, w: int, h: int} $incoming
+     * @return array{x: int, y: int, w: int, h: int}
+     */
+    public static function heldRect(bool $storedLock, ?int $requestedLock, array $stored, array $incoming): array
+    {
+        if ($storedLock && $requestedLock !== 0) {
+            return $stored;
+        }
+        return $incoming;
+    }
+
+    /**
      * Pull each widget up into the first row where its column is free.
      * Horizontal position stays, so a card the user put on the right stays there.
      *
@@ -539,6 +653,9 @@ final class WidgetService
         });
         $count = count($nodes);
         for ($i = 0; $i < $count; $i++) {
+            if ((int) ($nodes[$i]['placement_locked'] ?? 0) === 1) {
+                continue;
+            }
             $y = (int) $nodes[$i]['y'];
             $h = (int) $nodes[$i]['h'];
             $x = (int) $nodes[$i]['x'];
@@ -778,7 +895,7 @@ final class WidgetService
      */
     private static function isCompactCandidate(array $it): bool
     {
-        if ((int) ($it['height_locked'] ?? 0) === 1) {
+        if ((int) ($it['height_locked'] ?? 0) === 1 || (int) ($it['placement_locked'] ?? 0) === 1) {
             return false;
         }
         $old = self::COMPACT_OLD_WIDTHS[(string) ($it['type'] ?? '')] ?? null;
@@ -949,7 +1066,8 @@ final class WidgetService
             'y'           => (int) $row['grid_y'],
             'w'             => (int) $row['grid_w'],
             'h'             => (int) $row['grid_h'],
-            'height_locked' => (int) ($row['height_locked'] ?? 0),
+            'height_locked'    => (int) ($row['height_locked'] ?? 0),
+            'placement_locked' => (int) ($row['placement_locked'] ?? 0),
             'min_w'         => (int) ($def['min']['w'] ?? 1),
             'min_h'       => (int) ($def['min']['h'] ?? 1),
             'created_by'  => (string) $row['created_by'],

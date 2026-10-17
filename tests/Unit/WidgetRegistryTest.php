@@ -340,4 +340,36 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(1, WidgetService::columnsForWidth(750, 1));
         self::assertSame(12, WidgetService::columnsForWidth(820, 1));
     }
+
+    public function testPlacementLockKeepsItsRectangle(): void
+    {
+        $stored = ['x' => 2, 'y' => 4, 'w' => 3, 'h' => 5];
+        $incoming = ['x' => 0, 'y' => 9, 'w' => 6, 'h' => 2];
+        self::assertSame($stored, WidgetService::heldRect(true, 1, $stored, $incoming));
+        self::assertSame($stored, WidgetService::heldRect(true, null, $stored, $incoming));
+        self::assertSame($incoming, WidgetService::heldRect(true, 0, $stored, $incoming));
+        self::assertSame($incoming, WidgetService::heldRect(false, 1, $stored, $incoming));
+
+        $packed = WidgetService::pack([
+            ['id' => 1, 'x' => 0, 'y' => 0, 'w' => 4, 'h' => 3, 'placement_locked' => 1],
+            ['id' => 2, 'w' => 4, 'h' => 2],
+        ]);
+        $byId = [];
+        foreach ($packed as $row) {
+            $byId[$row['id']] = $row;
+        }
+        self::assertSame([0, 0, 4, 3], [$byId[1]['x'], $byId[1]['y'], $byId[1]['w'], $byId[1]['h']]);
+        self::assertSame([4, 0], [$byId[2]['x'], $byId[2]['y']]);
+
+        $up = WidgetService::packUp([
+            ['id' => 1, 'x' => 0, 'y' => 5, 'w' => 4, 'h' => 2, 'placement_locked' => 1],
+            ['id' => 2, 'x' => 6, 'y' => 8, 'w' => 4, 'h' => 2],
+        ]);
+        $byId = [];
+        foreach ($up as $row) {
+            $byId[$row['id']] = $row;
+        }
+        self::assertSame(5, $byId[1]['y']);
+        self::assertSame(0, $byId[2]['y']);
+    }
 }
