@@ -3,16 +3,35 @@
 # A confirm sha is compared to origin/main after fetch. It is never a ref argument.
 # shellcheck shell=bash
 
+# Fixed refspec so a stale refs/remotes/origin/main cannot survive the fetch.
+# timeout bounds a hung remote. 124 is timeout's exit; 137 is the follow-up SIGKILL.
+lifedash_fetch_origin_main() {
+    local app=$1
+    local -a cmd
+    cmd=(git -C "$app" -c "safe.directory=$app" fetch origin '+refs/heads/main:refs/remotes/origin/main')
+    if command -v timeout >/dev/null 2>&1; then
+        GIT_TERMINAL_PROMPT=0 timeout -k 5 15 "${cmd[@]}"
+        return
+    fi
+    GIT_TERMINAL_PROMPT=0 "${cmd[@]}"
+}
+
 lifedash_require_origin_main() {
-    local app=$1 sha=$2 branch origin
+    local app=$1 sha=$2 branch origin status
     [[ $sha =~ ^[0-9a-f]{40}$ ]] || {
         echo "confirm-sha must be 40 lowercase hex characters" >&2
         return 1
     }
-    git -C "$app" -c safe.directory="$app" fetch origin main >&2 || {
+    status=0
+    lifedash_fetch_origin_main "$app" >&2 || status=$?
+    if [[ $status -eq 124 || $status -eq 137 ]]; then
+        echo "fetch of origin main timed out" >&2
+        return 1
+    fi
+    if [[ $status -ne 0 ]]; then
         echo "fetch of origin main failed" >&2
         return 1
-    }
+    fi
     branch=$(git -C "$app" -c safe.directory="$app" rev-parse --abbrev-ref HEAD)
     [[ $branch == "main" ]] || {
         echo "refusing deploy: branch is ${branch} (main only)" >&2

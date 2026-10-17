@@ -28,6 +28,24 @@ lifedash_apply_code_modes() {
     if [[ -d $app/storage ]]; then
         chmod -R u+rwX,g+rwX,o-rwx "$app/storage"
     fi
+    lifedash_allow_fetch "$app"
+}
+
+# Fetch writes refs and objects. The working tree stays group read-only.
+# config and hooks stay group read-only so the app cannot retarget origin
+# or install a hook that root git would run.
+lifedash_allow_fetch() {
+    local app=$1
+    [[ -d $app/.git ]] || return 0
+    git -C "$app" -c "safe.directory=$app" config core.sharedRepository group
+    chmod -R u+rwX,g+rwX,o-rwx "$app/.git"
+    find "$app/.git" -type d -exec chmod g+s {} +
+    if [[ -f $app/.git/config ]]; then
+        chmod g-w "$app/.git/config"
+    fi
+    if [[ -d $app/.git/hooks ]]; then
+        chmod -R g-w "$app/.git/hooks"
+    fi
 }
 
 # Porcelain of tracked changes, including file-mode changes. Empty when clean.

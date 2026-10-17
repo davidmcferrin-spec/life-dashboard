@@ -26,6 +26,24 @@ sha=$(git -C "$app" rev-parse origin/main)
 
 lifedash_require_origin_main "$app" "$sha" || fail "matching origin/main was refused"
 
+other=$tmp/other
+git clone -q "$origin" "$other"
+git -C "$other" config user.email t@example.com
+git -C "$other" config user.name test
+echo two > "$other/two.txt"
+git -C "$other" add two.txt
+git -C "$other" commit -qm second
+git -C "$other" push -q origin main
+new=$(git -C "$other" rev-parse HEAD)
+git -C "$app" update-ref refs/remotes/origin/main "$sha"
+[[ $(git -C "$app" rev-parse origin/main) == "$sha" ]] || fail "origin/main was not rewound"
+lifedash_require_origin_main "$app" "$new" || fail "a stale origin/main was not refreshed to the fetched commit"
+[[ $(git -C "$app" rev-parse origin/main) == "$new" ]] || fail "fetch did not move origin/main"
+if lifedash_require_origin_main "$app" "$sha" 2>"$tmp/err"; then
+    fail "the pre-fetch sha was accepted"
+fi
+grep -q "origin/main is ${new}" "$tmp/err" || fail "refusal did not name the fetched origin"
+
 bad=$(printf 'b%.0s' {1..40})
 if lifedash_require_origin_main "$app" "$bad" 2>"$tmp/err"; then
     fail "a different sha was accepted"
@@ -43,6 +61,38 @@ if lifedash_require_origin_main "$app" "$sha" 2>"$tmp/err"; then
 fi
 grep -q "main only" "$tmp/err" || fail "side branch error did not say main only"
 git -C "$app" checkout -q main
+
+git -C "$app" remote set-url origin "$tmp/missing.git"
+if lifedash_require_origin_main "$app" "$new" 2>"$tmp/err"; then
+    fail "a missing remote was accepted"
+fi
+grep -q "fetch of origin main failed" "$tmp/err" || fail "fetch failure was not reported"
+git -C "$app" remote set-url origin "$origin"
+
+# shellcheck source=deploy/bin/lifedash-perms
+source "$root/deploy/bin/lifedash-perms"
+lifedash_apply_code_modes "$app"
+shared=$(git -C "$app" -c "safe.directory=$app" config --get core.sharedRepository)
+[[ $shared == group ]] || fail "sharedRepository was not group ($shared)"
+refs_mode=$(stat -c %a "$app/.git/refs")
+if (( (8#$refs_mode & 8#020) == 0 )); then
+    fail ".git/refs is not group-writable ($refs_mode)"
+fi
+if (( (8#$refs_mode & 8#2000) == 0 )); then
+    fail ".git/refs is not setgid ($refs_mode)"
+fi
+cfg_mode=$(stat -c %a "$app/.git/config")
+if (( (8#$cfg_mode & 8#020) != 0 )); then
+    fail ".git/config is group-writable ($cfg_mode)"
+fi
+hooks_mode=$(stat -c %a "$app/.git/hooks")
+if (( (8#$hooks_mode & 8#020) != 0 )); then
+    fail ".git/hooks is group-writable ($hooks_mode)"
+fi
+readme_mode=$(stat -c %a "$app/readme.txt")
+if (( (8#$readme_mode & 8#020) != 0 )); then
+    fail "worktree file is group-writable ($readme_mode)"
+fi
 
 deploy=$root/deploy/bin/lifedash-deploy
 if "$deploy" --confirm-sha abc 2>"$tmp/err"; then

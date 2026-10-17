@@ -64,15 +64,19 @@ final class DeployRequestTest extends TestCase
         $status = $svc->status();
         self::assertSame('main', $status['branch']);
         self::assertSame($origin, $status['origin_main']);
+        self::assertNull($status['git_error']);
         self::assertSame([], $status['behind']);
         self::assertTrue($status['spool']);
 
         $this->commitAndPush($app, 'two', 'second');
-        $this->git($app, ['fetch', 'origin', 'main']);
-        $origin = trim($this->git($app, ['rev-parse', 'origin/main']));
+        $cache = $app . '/.git/lifedash-origin-fetch';
+        if (is_file($cache)) {
+            unlink($cache);
+        }
         $svc = new DeployService(null, $app, $spool);
         $status = $svc->status();
-        self::assertSame($origin, $status['origin_main']);
+        $origin = (string) $status['origin_main'];
+        self::assertMatchesRegularExpression('/^[0-9a-f]{40}$/', $origin);
         self::assertNotSame($status['head'], $status['origin_main']);
         self::assertSame('second', $status['behind'][0]['title'] ?? null);
         self::assertSame([], $status['migrations_pending']);
@@ -157,6 +161,71 @@ final class DeployRequestTest extends TestCase
         } catch (ValidationException $e) {
             self::assertStringContainsString('main', $e->getMessage());
         }
+    }
+
+    public function testStatusRefreshesOriginMainAndCachesTheFetch(): void
+    {
+        [$app, $spool, $origin] = $this->repo();
+        $svc = new DeployService(null, $app, $spool);
+        $first = $svc->status();
+        self::assertSame($origin, $first['origin_main']);
+        self::assertNull($first['git_error']);
+
+        $this->commitAndPush($app, 'two', 'second');
+        $held = $svc->status();
+        self::assertSame($origin, $held['origin_main']);
+        self::assertNull($held['git_error']);
+
+        $cache = $app . '/.git/lifedash-origin-fetch';
+        self::assertFileExists($cache);
+        touch($cache, time() - 30);
+        clearstatcache(true, $cache);
+        $stamp = filemtime($cache);
+        $still = $svc->status();
+        clearstatcache(true, $cache);
+        self::assertSame($stamp, filemtime($cache));
+        self::assertSame($origin, $still['origin_main']);
+
+        touch($cache, time() - 120);
+        $fresh = $svc->status();
+        self::assertNotSame($origin, $fresh['origin_main']);
+        self::assertSame(40, strlen((string) $fresh['origin_main']));
+        self::assertSame('second', $fresh['behind'][0]['title'] ?? null);
+        self::assertSame('main', $fresh['branch']);
+        self::assertNull($fresh['git_error']);
+    }
+
+    public function testFetchFailureStaysInGitErrorAndDoesNotQueue(): void
+    {
+        [$app, $spool, $origin] = $this->repo();
+        $svc = new DeployService(null, $app, $spool, true);
+        $ok = $svc->status();
+        self::assertSame($origin, $ok['origin_main']);
+
+        $this->git($app, ['remote', 'set-url', 'origin', $this->root . '/missing.git']);
+        $cache = $app . '/.git/lifedash-origin-fetch';
+        touch($cache, time() - 120);
+        $status = $svc->status();
+        self::assertSame('main', $status['branch']);
+        self::assertSame($origin, $status['origin_main']);
+        self::assertIsString($status['git_error']);
+        self::assertStringContainsString('fetch of origin main', $status['git_error']);
+
+        try {
+            $svc->request($origin, false, 1, 4, 'Claude');
+            self::fail('A failed fetch must not queue.');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('fetch of origin main', $e->getMessage());
+        }
+        self::assertSame([], glob($spool . '/incoming/*.json') ?: []);
+
+        $this->git($app, ['remote', 'set-url', 'origin', 'https://user:secret@127.0.0.1:1/nope.git']);
+        touch($cache, time() - 120);
+        $leaked = $svc->status();
+        self::assertIsString($leaked['git_error']);
+        self::assertStringNotContainsString('secret', $leaked['git_error']);
+        self::assertStringContainsString('fetch of origin main', $leaked['git_error']);
+        self::assertSame($origin, $leaked['origin_main']);
     }
 
     public function testLogStaysInsideTheSpool(): void
