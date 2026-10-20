@@ -6,6 +6,40 @@ Evolved from [`personal-dashboard`](https://github.com/davidmcferrin-spec/person
 
 > **Status:** Phases L0–L7 are in the tree (foundation through custom widgets). See [Roadmap](#roadmap).
 
+![Dashboard grid in the JARVIS theme](docs/screenshots/dashboard-jarvis.webp)
+
+## Screenshots
+
+These frames use a fictional demo account. Nothing in them is from a live server. Regenerate with `php scripts/seed-demo.php` and `node scripts/capture-screenshots.mjs` (Playwright and `cwebp`).
+
+<table>
+<tr>
+<td width="32%"><img src="docs/screenshots/dashboard-ultrawide.webp" alt="Wide dashboard"><br>Wide desktop, 18 columns</td>
+<td width="32%"><img src="docs/screenshots/dashboard-light.webp" alt="Light theme"><br>Light theme</td>
+<td width="32%"><img src="docs/screenshots/dashboard-dark.webp" alt="Dark theme"><br>Dark theme</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/dashboard-amber.webp" alt="Amber accent"><br>JARVIS theme, amber accent</td>
+<td><img src="docs/screenshots/todos.webp" alt="Todo lists"><br>Todo lists</td>
+<td><img src="docs/screenshots/trackers.webp" alt="Habits and metrics"><br>Habits and metrics</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/money.webp" alt="Money"><br>Balances and transactions</td>
+<td><img src="docs/screenshots/shopping.webp" alt="Shopping lists"><br>Shopping lists</td>
+<td><img src="docs/screenshots/calls.webp" alt="Call log"><br>Call log</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/pantry-phone.webp" alt="Pantry on a phone"><br>Pantry inventory, phone width</td>
+<td><img src="docs/screenshots/pantry-scan-phone.webp" alt="Pantry scan"><br>Pantry scan, phone width</td>
+<td><img src="docs/screenshots/vault.webp" alt="Vault"><br>Vault page</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/settings.webp" alt="Settings"><br>Settings, theme and accent</td>
+<td><img src="docs/screenshots/settings-agents.webp" alt="Agent tokens"><br>Agent tokens, prefixes only</td>
+<td></td>
+</tr>
+</table>
+
 ## Features
 
 - **Widget grid** — drag, resize, add, configure and remove widgets (GridStack, 12 columns; single column on phones). Layout and config live in PostgreSQL, every config change is versioned with one-click restore, and widgets update live over WebSocket
