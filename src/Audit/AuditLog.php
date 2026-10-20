@@ -230,6 +230,10 @@ final class AuditLog
         'call'          => ['%/api/v1/calls', '%/calls/stats%', '%/calls/query%', '%/calls/lookup%', '%/calls/%/status%', '%/calls/%/todo%'],
         'contact'       => ['%/calls/contacts%'],
         'vetted_agency' => ['%/calls/agencies%'],
+        'pantry_lot'    => ['%/pantry/lots%', '%/pantry/consume%', '%/pantry/purge%', '%/pantry/import-order%', '%/pantry/low-stock%'],
+        'product'       => ['%/pantry/products%'],
+        'recipe'        => ['%/pantry/recipes%'],
+        'pantry_category' => ['%/pantry/categories%'],
         'deploy'        => ['%/system/deploy%'],
     ];
 

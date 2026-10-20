@@ -79,7 +79,7 @@ final class ShoppingService
      * @param list<mixed> $rawItems
      * @return list<array<string, mixed>>
      */
-    public function addItems(int $userId, int $listId, array $rawItems, string $addedBy): array
+    public function addItems(int $userId, int $listId, array $rawItems, string $addedBy, bool $skipIfNameOpen = false): array
     {
         $this->requireList($userId, $listId);
         if ($rawItems === []) {
@@ -92,7 +92,7 @@ final class ShoppingService
         $out = [];
         foreach ($rawItems as $i => $raw) {
             try {
-                $out[] = $this->addOne($userId, $listId, $raw, $addedBy);
+                $out[] = $this->addOne($userId, $listId, $raw, $addedBy, $skipIfNameOpen);
             } catch (ValidationException $e) {
                 $fields = [];
                 foreach ($e->fields() as $key => $message) {
@@ -283,9 +283,21 @@ final class ShoppingService
      * @param array<string, mixed>|string $raw
      * @return array<string, mixed>
      */
-    private function addOne(int $userId, int $listId, mixed $raw, string $addedBy): array
+    private function addOne(int $userId, int $listId, mixed $raw, string $addedBy, bool $skipIfNameOpen = false): array
     {
         $parsed = $this->normalizeInput($raw);
+        if ($skipIfNameOpen) {
+            $named = $this->db->fetchOne(
+                'SELECT id FROM shopping_items WHERE list_id = ? AND bought = 0 AND name_key = ?',
+                [$listId, $parsed['name_key']]
+            );
+            if ($named !== null) {
+                $item = $this->itemById($userId, (int) $named['id']);
+                $item['merged'] = false;
+                $item['skipped'] = true;
+                return $item;
+            }
+        }
         $open = $this->scalar(
             'SELECT COUNT(*) FROM shopping_items WHERE list_id = ? AND bought = 0',
             [$listId]

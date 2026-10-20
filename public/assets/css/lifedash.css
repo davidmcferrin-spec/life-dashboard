@@ -1284,3 +1284,75 @@ html[data-theme="jarvis"] .ld-call-badge.is-vip {
     text-shadow: 0 0 8px color-mix(in srgb, var(--hud-accent, var(--accent)) 70%, transparent);
 }
 
+.ld-pantry-nav, .ld-pantry-filters, .ld-pantry-locs, .ld-pantry-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.ld-pantry-nav a, .ld-pantry-filters button, .ld-pantry-actions button {
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    padding: 0.35rem 0.7rem;
+}
+.ld-pantry-nav a.is-on, .ld-pantry-filters button.is-on {
+    border-color: var(--hud-accent, var(--accent));
+    color: var(--text-primary);
+}
+.ld-pantry-group { margin-top: 1rem; }
+.ld-pantry-label {
+    color: var(--text-faint, var(--text-muted));
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    margin: 0.6rem 0 0.25rem;
+    text-transform: uppercase;
+}
+.ld-pantry-lot, .ld-pantry-list { list-style: none; margin: 0; padding: 0; }
+.ld-pantry-lot {
+    border-top: 1px solid var(--surface-border);
+    padding: 0.55rem 0;
+}
+.ld-pantry-lot-main {
+    align-items: baseline;
+    display: flex;
+    gap: 0.6rem;
+    justify-content: space-between;
+}
+.ld-pantry-fresh { color: var(--text-primary); }
+.ld-pantry-soon { color: var(--warn); }
+.ld-pantry-expired { color: var(--danger); }
+.ld-pantry-unknown { color: var(--text-secondary); }
+.ld-pantry-locs button {
+    border: 1px solid var(--surface-border);
+    border-radius: 0.6rem;
+    flex: 1 1 30%;
+    font-size: 1rem;
+    min-height: 3rem;
+    padding: 0.6rem;
+}
+.ld-pantry-locs button.is-on {
+    background: var(--accent-soft);
+    border-color: var(--hud-accent, var(--accent));
+    color: var(--text-primary);
+}
+.ld-pantry-sheet {
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.8rem;
+    margin-top: 0.8rem;
+    padding: 0.8rem;
+}
+.ld-pantry-card .ld-pantry-list li { font-size: 0.8rem; margin: 0.15rem 0; }
+html[data-theme="jarvis"] .ld-pantry-locs button.is-on,
+html[data-theme="jarvis"] .ld-pantry-nav a.is-on {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--hud-accent, var(--accent)) 35%, transparent);
+}
+.ld-pantry-video {
+    background: #000;
+    border-radius: 0.6rem;
+    max-height: 240px;
+    width: 100%;
+}
+

@@ -12,6 +12,7 @@ $userNav = [
     'general'    => ['Dashboard', '/settings'],
     'trackers'   => ['Habits & trackers', '/settings/trackers'],
     'life'       => ['Life', '/settings/life'],
+    'pantry'     => ['Pantry', '/pantry'],
     'money'      => ['Money', '/settings/money'],
     'investing'  => ['Investing', '/settings/investing'],
     'agents'     => ['Agents', '/settings/agents'],

@@ -27,7 +27,8 @@ def test_tools_cover_the_platform_and_never_a_trade():
     assert "dashboard" in names
     assert "create_habit" in names
     assert "reorder_habits" in names
-    assert not any("trade" in name or name.endswith("_order") for name in names)
+    # import_order records a grocery receipt. It does not place a trade.
+    assert not any("trade" in name or (name.endswith("_order") and name != "import_order") for name in names)
 
 
 def test_resolve_record_and_page_update():
@@ -276,8 +277,36 @@ def test_money_tools_resolve_onto_the_money_api():
         "list_calls", "search_calls", "call_stats", "lookup_caller", "list_contacts", "upsert_contact",
         "list_vetted_agencies", "upsert_vetted_agency",
         "deploy_status", "deploy_update", "deploy_log",
+        "list_pantry", "get_product_by_upc", "upsert_product", "list_products",
+        "add_pantry_items", "consume_pantry_item", "split_or_move_lot", "open_lot",
+        "toss_lot", "adjust_lot", "expiring_items", "low_stock", "pantry_stats",
+        "import_order", "list_recipes", "upsert_recipe", "what_can_i_make",
     ):
         assert name in names
+
+
+def test_pantry_tools_map_onto_the_pantry_api():
+    method, path, body = resolve("list_pantry", {"location": "fridge", "expiring_within_days": 3})
+    assert method == "GET"
+    assert path.startswith("/api/v1/pantry/lots?")
+    assert "location=fridge" in path and "expiring_within_days=3" in path
+    method, path, body = resolve("get_product_by_upc", {"upc": "012345678905", "external": True})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/products/upc/012345678905?external=1", None)
+    method, path, body = resolve("get_product_by_upc", {"upc": "012345678905"})
+    assert path.endswith("?external=0")
+    method, path, body = resolve("low_stock", {})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/low-stock", None)
+    method, path, body = resolve("low_stock", {"add_to_shopping_list": True, "list_id": 1})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/low-stock", {"list_id": 1})
+    method, path, body = resolve("split_or_move_lot", {"lot_id": 4, "location": "freezer", "quantity": 2})
+    assert (method, path) == ("POST", "/api/v1/pantry/lots/4/split")
+    assert body["location"] == "freezer"
+    method, path, body = resolve("toss_lot", {"lot_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/lots/4/toss", {})
+    method, path, body = resolve("toss_lot", {"lot_ids": [4, 5]})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/purge", {"lot_ids": [4, 5]})
+    method, path, body = resolve("what_can_i_make", {})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/what-can-i-make", None)
 
 
 def test_deploy_tools_send_only_the_confirm_sha():

@@ -1175,6 +1175,29 @@
         return `<div class="ld-call-detail">${bits.join('')}</div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    function pantry(ctx) {
+        const d = ctx.data || {};
+        const counts = d.counts || {};
+        const expiring = d.expiring || [];
+        const low = d.low_stock || [];
+        const countLine = ['fridge', 'freezer', 'pantry'].map((key) => {
+            const label = key.charAt(0).toUpperCase() + key.slice(1);
+            return label + ' ' + (counts[key] || 0);
+        }).join(' · ');
+        const soon = expiring.map((lot) => {
+            const when = lot.days_left < 0 ? 'expired' : (lot.days_left === 0 ? 'today' : lot.days_left + 'd');
+            return `<li class="ld-pantry-${esc(lot.freshness)}">${esc(lot.name)} <span class="ld-meta">${esc(when)}</span></li>`;
+        }).join('');
+        const lowRows = low.map((row) => `<li>${esc(row.name)} <span class="ld-meta">${esc(row.on_hand)} / ${esc(row.min_on_hand)}</span></li>`).join('');
+        ctx.body.innerHTML = `
+            <div class="ld-pantry-card">
+                <p class="ld-meta">${esc(countLine)}</p>
+                ${soon ? `<p class="ld-pantry-label">Use soon</p><ul class="ld-pantry-list">${soon}</ul>` : '<p class="empty-state mono text-xs">Nothing due soon.</p>'}
+                ${lowRows ? `<p class="ld-pantry-label">Low</p><ul class="ld-pantry-list">${lowRows}</ul>` : ''}
+                <a class="ld-card-title" href="/pantry">Open pantry</a>
+            </div>`;
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();
