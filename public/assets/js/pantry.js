@@ -154,8 +154,8 @@
             } else if (act === 'toss') {
                 api.post('/pantry/lots/' + lot.id + '/toss', {}).then(() => window.location.reload()).catch(fail);
             } else if (act === 'move') {
-                sheet.innerHTML = moveSheet(lot);
-                bindMove(lot);
+                sheet.innerHTML = '';
+                openMove(lot);
             } else if (act === 'edit') {
                 sheet.innerHTML = '';
                 openEdit(lot);
@@ -176,7 +176,83 @@
             <button type="button" data-act="toss" data-id="${id}" data-tip="Take this off the shelf. It stays on the tossed list and is not deleted." aria-label="Toss. Take this off the shelf. It stays on the tossed list and is not deleted.">Toss</button>`;
     }
 
+    function dateParts(iso) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+        if (!match) return { y: '', m: '', d: '' };
+        return { y: match[1], m: String(Number(match[2])), d: String(Number(match[3])) };
+    }
+
+    function dateFields(name, label, iso, required) {
+        const parts = dateParts(iso);
+        const req = required ? ' required' : '';
+        return `<fieldset class="ld-pantry-date mt-2" data-date="${name}">
+            <legend class="text-xs text-muted">${label}</legend>
+            <div class="flex gap-2 mt-1">
+                <label class="text-xs text-muted">Month
+                    <input class="input" name="${name}_m" inputmode="numeric" maxlength="2" placeholder="MM" value="${esc(parts.m)}"${req} aria-label="${label} month">
+                </label>
+                <label class="text-xs text-muted">Day
+                    <input class="input" name="${name}_d" inputmode="numeric" maxlength="2" placeholder="DD" value="${esc(parts.d)}"${req} aria-label="${label} day">
+                </label>
+                <label class="text-xs text-muted">Year
+                    <input class="input" name="${name}_y" inputmode="numeric" maxlength="4" placeholder="YYYY" value="${esc(parts.y)}"${req} aria-label="${label} year">
+                </label>
+            </div>
+        </fieldset>`;
+    }
+
+    function readDate(form, name) {
+        const raw = (part) => String(form.querySelector('[name="' + name + '_' + part + '"]').value || '').trim();
+        const m = raw('m');
+        const d = raw('d');
+        const y = raw('y');
+        if (m === '' && d === '' && y === '') return '';
+        const month = Number(m);
+        const day = Number(d);
+        const year = Number(y);
+        if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(day) || day < 1 || day > 31 || !Number.isInteger(year) || String(year).length !== 4) {
+            return null;
+        }
+        const iso = String(year) + '-' + String(month).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+        const check = new Date(iso + 'T00:00:00');
+        if (check.getFullYear() !== year || check.getMonth() + 1 !== month || check.getDate() !== day) return null;
+        return iso;
+    }
+
+    function writeDate(form, name, iso) {
+        const parts = dateParts(iso);
+        form.querySelector('[name="' + name + '_m"]').value = parts.m;
+        form.querySelector('[name="' + name + '_d"]').value = parts.d;
+        form.querySelector('[name="' + name + '_y"]').value = parts.y;
+    }
+
+    function openMove(lot) {
+        closeEdit();
+        closeMove();
+        const wrap = document.createElement('div');
+        wrap.innerHTML = moveSheet(lot);
+        const modal = wrap.firstElementChild;
+        document.body.appendChild(modal);
+        document.body.classList.add('app-modal-open');
+        bindMove(lot, modal);
+        modal.querySelector('[name="fridge"]')?.focus();
+    }
+
+    function closeMove() {
+        if (onEditKey) {
+            document.removeEventListener('keydown', onEditKey);
+            onEditKey = null;
+        }
+        const modal = document.getElementById('pantry-move-modal');
+        if (!modal) return;
+        modal.remove();
+        if (!document.querySelector('.app-modal')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
     function openEdit(lot) {
+        closeMove();
         closeEdit();
         const wrap = document.createElement('div');
         wrap.innerHTML = editSheet(lot);
@@ -208,18 +284,36 @@
                 <input class="input" name="${place}" inputmode="decimal" value="${value}" aria-label="${label} ${esc(lot.unit)}">
             </label>`;
         };
-        return `<form class="ld-pantry-sheet" id="move-form">
-            <p class="text-sm">Split ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
-            <p class="text-xs text-muted mt-1">Counts are ${esc(lot.unit)}, not packages. They must add up to ${esc(String(lot.quantity))}.</p>
-            ${field('fridge', 'Fridge')}
-            ${field('freezer', 'Freezer')}
-            ${field('pantry', 'Pantry')}
-            <button type="submit" class="btn-primary text-sm mt-2">Split</button>
-        </form>`;
+        return `<div id="pantry-move-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-move-title">
+            <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+            <div class="app-modal-panel surface">
+                <form id="move-form">
+                    <div class="flex items-start justify-between gap-3">
+                        <p id="pantry-move-title" class="text-sm">Split ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <p class="text-xs text-muted mt-1">Counts are ${esc(lot.unit)}, not packages. They must add up to ${esc(String(lot.quantity))}.</p>
+                    ${field('fridge', 'Fridge')}
+                    ${field('freezer', 'Freezer')}
+                    ${field('pantry', 'Pantry')}
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="btn-primary text-sm">Split</button>
+                        <button type="button" class="btn text-sm" data-close>Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>`;
     }
 
-    function bindMove(lot) {
-        const form = document.getElementById('move-form');
+    function bindMove(lot, modal) {
+        const form = modal.querySelector('#move-form');
+        modal.querySelectorAll('[data-close]').forEach((el) => {
+            el.addEventListener('click', () => closeMove());
+        });
+        onEditKey = (event) => {
+            if (event.key === 'Escape') closeMove();
+        };
+        document.addEventListener('keydown', onEditKey);
         form.addEventListener('submit', (event) => {
             event.preventDefault();
             const data = new FormData(form);
@@ -261,9 +355,7 @@
                         <button type="button" data-location="freezer">Freezer</button>
                         <button type="button" data-location="pantry">Pantry</button>
                     </div>
-                    <label class="block text-xs text-muted mt-2">Use by
-                        <input class="input w-full" type="date" name="use_by" value="${esc(lot.use_by || '')}">
-                    </label>
+                    ${dateFields('use_by', 'Use by', lot.use_by || '', false)}
                     <label class="block text-xs text-muted mt-2">Store
                         <input class="input w-full" name="store" value="${esc(lot.store || '')}">
                     </label>
@@ -297,10 +389,15 @@
         form.addEventListener('submit', (event) => {
             event.preventDefault();
             const data = Object.fromEntries(new FormData(form).entries());
+            const useBy = readDate(form, 'use_by');
+            if (useBy === null) {
+                fail({ message: 'Enter the use-by date as month, day, and year.' });
+                return;
+            }
             api.post('/pantry/lots/' + lot.id, {
                 quantity: Number(data.quantity),
                 location: place,
-                use_by: data.use_by || null,
+                use_by: useBy || null,
                 store: data.store || null,
             }).then(() => window.location.reload()).catch(fail);
         });
@@ -432,9 +529,7 @@
                 <button type="button" data-location="freezer">Freezer</button>
                 <button type="button" data-location="pantry">Pantry</button>
             </div>
-            <label class="block text-xs text-muted mt-2">${view === 'scan' ? 'Expiration' : 'Use by'}
-                <input class="input w-full" type="date" name="use_by" ${view === 'scan' ? 'required' : ''} value="${esc(prefill.use_by || suggestUseBy(prefill.shelf, 'fridge'))}">
-            </label>
+            ${dateFields('use_by', view === 'scan' ? 'Expiration' : 'Use by', prefill.use_by || suggestUseBy(prefill.shelf, 'fridge'), view === 'scan')}
             <label class="block text-xs text-muted mt-2">Purchased <input class="input w-full" type="date" name="purchased_at" value="${esc(loading ? today : (prefill.purchased_at || today))}"></label>
             <label class="block text-xs text-muted mt-2">Store <input class="input w-full" name="store" value="${esc(loading ? 'existing' : (prefill.store || ''))}"></label>
             <label class="text-xs text-muted mt-2 flex gap-2 items-center"><input type="checkbox" name="loading" ${loading ? 'checked' : ''}> Loading what is already here</label>
@@ -443,22 +538,26 @@
         host.prepend(wrap.firstElementChild);
         const form = document.getElementById('add-form');
         let place = 'fridge';
-        const useBy = form.querySelector('[name="use_by"]');
-        if (useBy && prefill.use_by) useBy.dataset.touched = '1';
-        useBy?.addEventListener('input', () => { useBy.dataset.touched = '1'; });
+        const dateBox = form.querySelector('[data-date="use_by"]');
+        if (dateBox && prefill.use_by) dateBox.dataset.touched = '1';
+        dateBox?.addEventListener('input', () => { dateBox.dataset.touched = '1'; });
         form.querySelectorAll('[data-location]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 place = btn.dataset.location;
                 form.querySelectorAll('[data-location]').forEach((el) => el.classList.remove('is-on'));
                 btn.classList.add('is-on');
-                if (useBy && useBy.dataset.touched !== '1') {
-                    useBy.value = suggestUseBy(prefill.shelf, place);
+                if (dateBox && dateBox.dataset.touched !== '1') {
+                    writeDate(form, 'use_by', suggestUseBy(prefill.shelf, place));
                 }
             });
         });
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
-            if (!form.reportValidity()) return;
+            const useBy = readDate(form, 'use_by');
+            if (useBy === null || (view === 'scan' && useBy === '')) {
+                fail({ message: 'Enter the expiration as month, day, and year.' });
+                return;
+            }
             const data = Object.fromEntries(new FormData(form).entries());
             sessionStorage.setItem('pantry-loading', data.loading ? '1' : '0');
             try {
@@ -480,7 +579,7 @@
                         location: place,
                         purchased_at: data.purchased_at,
                         store: data.store || null,
-                        use_by: data.use_by || null,
+                        use_by: useBy || null,
                     }],
                 });
                 sheetOpen = false;

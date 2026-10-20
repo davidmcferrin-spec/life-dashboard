@@ -1300,11 +1300,11 @@ html[data-theme="jarvis"] .ld-call-badge.is-vip {
     position: relative;
 }
 .ld-pantry-actions button[data-tip]::after {
-    background: color-mix(in srgb, var(--page-bg) 88%, var(--surface-bg));
+    background: #101820;
     border: 1px solid var(--surface-border);
     border-radius: 0.45rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-    color: var(--text-primary);
+    color: #f3fbff;
     content: attr(data-tip);
     font-size: 0.7rem;
     left: 0;
@@ -1324,6 +1324,17 @@ html[data-theme="jarvis"] .ld-call-badge.is-vip {
 .ld-pantry-actions button[data-tip]:focus-visible::after {
     opacity: 1;
 }
+html[data-theme="light"] .ld-pantry-actions button[data-tip]::after {
+    background: #ffffff;
+    color: #18181b;
+}
+html[data-theme="dark"] .ld-pantry-actions button[data-tip]::after {
+    background: #18181b;
+    color: #fafafa;
+}
+.ld-pantry-date { border: 0; margin: 0; min-width: 0; padding: 0; }
+.ld-pantry-date input { width: 4.2rem; }
+.ld-pantry-date input[name$="_y"] { width: 5.4rem; }
 .ld-pantry-nav a.is-on, .ld-pantry-filters button.is-on {
     border-color: var(--hud-accent, var(--accent));
     color: var(--text-primary);
