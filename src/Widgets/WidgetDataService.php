@@ -8,6 +8,7 @@ use Dashboard\Calls\CallService;
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
+use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Shopping\ShoppingService;
 use Dashboard\Life\LifeService;
@@ -44,6 +45,7 @@ final class WidgetDataService
         private readonly RedditService $reddit,
         private readonly ShoppingService $shopping,
         private readonly CallService $calls,
+        private readonly PantryService $pantry,
     ) {}
 
     /**
@@ -65,6 +67,7 @@ final class WidgetDataService
             'streak'    => $this->streakData($userId, $c),
             'life'      => $this->lifeData($userId),
             'shopping'  => $this->shoppingData($userId, $c),
+            'pantry'    => $this->pantry->summary($userId, (int) ($c['soon_days'] ?? 3)),
             'calls'     => $this->callsData($userId, $c),
             'spending'  => $this->spendingData($userId, $c),
             'networth'       => $this->networthData($userId),

@@ -559,6 +559,83 @@ final class ExtendedApi
         $r->post('/api/v1/calls/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'call' => $this->svc->calls->update($u, self::id($p), $this->runner->body()),
         ], 200, true));
+
+        $this->registerPantry($r);
+    }
+
+    private function registerPantry(Router $r): void
+    {
+        $r->get('/api/v1/pantry/lots', fn () => $this->run(fn (int $u) => $this->svc->pantry->listLots($u, $_GET)));
+        $r->get('/api/v1/pantry/summary', fn () => $this->run(function (int $u): array {
+            $days = isset($_GET['soon_days']) ? (int) $_GET['soon_days'] : 3;
+            return $this->svc->pantry->summary($u, $days);
+        }));
+        $r->get('/api/v1/pantry/expiring', fn () => $this->run(fn (int $u) => $this->svc->pantry->expiring($u, (int) ($_GET['days'] ?? 3))));
+        $r->post('/api/v1/pantry/purge', fn () => $this->run(function (int $u): array {
+            $ids = $this->runner->body()['lot_ids'] ?? [];
+            if (!is_array($ids)) {
+                throw ValidationException::withFields(['lot_ids' => 'lot_ids must be a list.']);
+            }
+            return $this->svc->pantry->toss($u, $ids, $this->actorLabel());
+        }, 200, true));
+        $r->get('/api/v1/pantry/low-stock', fn () => $this->run(fn (int $u) => $this->svc->pantry->lowStock($u, false, null, $this->actorLabel())));
+        $r->post('/api/v1/pantry/low-stock', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $listId = isset($body['list_id']) && $body['list_id'] !== '' ? (int) $body['list_id'] : 1;
+            return $this->svc->pantry->lowStock($u, true, $listId, $this->actorLabel());
+        }, 200, true));
+        $r->get('/api/v1/pantry/stats', fn () => $this->run(fn (int $u) => $this->svc->pantry->stats(
+            $u,
+            isset($_GET['from']) ? (string) $_GET['from'] : null,
+            isset($_GET['to']) ? (string) $_GET['to'] : null
+        )));
+        $r->get('/api/v1/pantry/products', fn () => $this->run(fn (int $u) => [
+            'products' => $this->svc->pantry->listProducts($u, isset($_GET['search']) ? (string) $_GET['search'] : null),
+        ]));
+        $r->post('/api/v1/pantry/products', fn () => $this->run(fn (int $u) => [
+            'product' => $this->svc->pantry->upsertProduct($u, $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/pantry/products/upc/{upc}', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $external = filter_var($_GET['external'] ?? '0', FILTER_VALIDATE_BOOLEAN);
+            return $this->svc->pantry->productByUpc($u, (string) ($p['upc'] ?? ''), $external);
+        }));
+        $r->get('/api/v1/pantry/lookup', fn () => $this->run(function (int $u): array {
+            $external = !isset($_GET['external']) || filter_var($_GET['external'], FILTER_VALIDATE_BOOLEAN);
+            return $this->svc->pantry->productByUpc($u, (string) ($_GET['upc'] ?? ''), $external);
+        }));
+        $r->post('/api/v1/pantry/lots', fn () => $this->run(function (int $u): array {
+            $items = $this->runner->body()['items'] ?? null;
+            if (!is_array($items)) {
+                throw ValidationException::withFields(['items' => 'items must be a list.']);
+            }
+            return $this->svc->pantry->addItems($u, $items, $this->actorLabel());
+        }, 201, true));
+        $r->post('/api/v1/pantry/consume', fn () => $this->run(fn (int $u) => $this->svc->pantry->consume($u, $this->runner->body(), $this->actorLabel()), 200, true));
+        $r->post('/api/v1/pantry/lots/{id}', fn (array $p) => $this->run(fn (int $u) => $this->svc->pantry->adjust($u, self::id($p), $this->runner->body(), $this->actorLabel()), 200, true));
+        $r->post('/api/v1/pantry/lots/{id}/split', fn (array $p) => $this->run(fn (int $u) => $this->svc->pantry->splitOrMove($u, self::id($p), $this->runner->body(), $this->actorLabel()), 200, true));
+        $r->post('/api/v1/pantry/lots/{id}/open', fn (array $p) => $this->run(fn (int $u) => $this->svc->pantry->openLot($u, self::id($p), $this->actorLabel()), 200, true));
+        $r->post('/api/v1/pantry/lots/{id}/toss', fn (array $p) => $this->run(fn (int $u) => $this->svc->pantry->toss($u, [self::id($p)], $this->actorLabel()), 200, true));
+        $r->post('/api/v1/pantry/import-order', fn () => $this->run(fn (int $u) => $this->svc->pantry->importOrder($u, $this->runner->body(), $this->actorLabel()), 200, true));
+        $r->get('/api/v1/pantry/categories', fn () => $this->run(fn (int $u) => ['categories' => $this->svc->pantry->categories($u)]));
+        $r->post('/api/v1/pantry/categories', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            return ['category' => $this->svc->pantry->updateCategory($u, (string) ($body['category'] ?? ''), $body)];
+        }, 200, true));
+        $r->get('/api/v1/pantry/recipes', fn () => $this->run(fn (int $u) => ['recipes' => $this->svc->pantry->listRecipes($u)]));
+        $r->post('/api/v1/pantry/recipes', fn () => $this->run(fn (int $u) => [
+            'recipe' => $this->svc->pantry->upsertRecipe($u, $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/pantry/what-can-i-make', fn () => $this->run(fn (int $u) => $this->svc->pantry->whatCanIMake($u)));
+    }
+
+    private function actorLabel(): string
+    {
+        if ($this->runner->actor()->kind === 'ai') {
+            $name = $this->runner->tokenName();
+            return $name !== null && $name !== '' ? $name : 'agent';
+        }
+        $name = $this->svc->db->fetchScalar('SELECT username FROM users WHERE id = ?', [$this->runner->actor()->userId]);
+        return is_string($name) && $name !== '' ? $name : 'david';
     }
 
     private function weeklyReview(): void

@@ -21,7 +21,7 @@ final class Scope
 
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
-        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls',
+        'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
     ];
 
     public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
@@ -34,6 +34,8 @@ final class Scope
 
     public const CALL_ENTITIES = ['call', 'contact', 'vetted_agency'];
 
+    public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -43,6 +45,7 @@ final class Scope
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
+        'pantry_lot', 'product', 'recipe', 'pantry_category',
         'deploy',
     ];
 
@@ -175,6 +178,9 @@ final class Scope
         }
         if (self::allows($granted, 'calls:read')) {
             $allow = array_merge($allow, self::CALL_ENTITIES);
+        }
+        if (self::allows($granted, 'pantry:read')) {
+            $allow = array_merge($allow, self::PANTRY_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

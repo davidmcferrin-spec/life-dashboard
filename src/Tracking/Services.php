@@ -14,6 +14,7 @@ use Dashboard\Life\LifeService;
 use Dashboard\Media\MediaService;
 use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
+use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
 use Dashboard\Shopping\ShoppingService;
@@ -44,6 +45,7 @@ final class Services
     public readonly TodoService $todos;
     public readonly ShoppingService $shopping;
     public readonly CallService $calls;
+    public readonly PantryService $pantry;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -66,6 +68,7 @@ final class Services
         $this->todos   = TodoService::fromDatabase($db);
         $this->shopping = new ShoppingService($db, $clock);
         $this->calls = new CallService($db, $clock);
+        $this->pantry = new PantryService($db, $clock, $this->shopping);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,
@@ -81,6 +84,7 @@ final class Services
             $this->reddit,
             $this->shopping,
             $this->calls,
+            $this->pantry,
         );
     }
 

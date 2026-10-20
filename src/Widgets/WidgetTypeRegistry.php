@@ -136,6 +136,14 @@ final class WidgetTypeRegistry
                     'clear_hours' => ['type' => 'int', 'label' => 'Clear bought items after (hours, 0 = keep)', 'min' => 0, 'max' => 168, 'default' => 24],
                 ],
             ],
+            'pantry' => [
+                'label' => 'Pantry', 'category' => 'life', 'singleton' => false,
+                'description' => 'Counts by fridge, freezer, and pantry, plus items to use soon and anything below its par level.',
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [
+                    'soon_days' => ['type' => 'int', 'label' => 'Use soon within (days)', 'min' => 1, 'max' => 30, 'default' => 3],
+                ],
+            ],
             'spending' => [
                 'label' => 'Spending', 'category' => 'money', 'singleton' => false,
                 'description' => 'Outflows by category over a period.',

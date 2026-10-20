@@ -198,6 +198,11 @@ $router->get('/todos', function () use ($auth): void {
     require VIEWS_DIR . '/todos.php';
 });
 
+$router->get('/pantry', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/pantry.php';
+});
+
 $router->get('/clock', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/clock.php';
@@ -1277,6 +1282,11 @@ $router->get('/brain/graph', function () use ($auth): void {
 $router->get('/settings/agents', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings/agents.php';
+});
+
+$router->get('/settings/pantry', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/settings/pantry.php';
 });
 
 $router->get('/settings/life', function () use ($auth, $lifedash): void {

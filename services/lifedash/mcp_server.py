@@ -17,7 +17,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from . import __version__
@@ -1225,6 +1225,226 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "list_pantry",
+        "description": "On-hand pantry lots. Filter by location (pantry, fridge, freezer), category, status, search, or expiring_within_days. Each lot includes use_by and freshness.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string"},
+                "category": {"type": "string"},
+                "status": {"type": "string"},
+                "search": {"type": "string"},
+                "expiring_within_days": {"type": "integer"},
+                "soon_days": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_product_by_upc",
+        "description": "Look up a UPC in the local catalog. external true also asks Open Food Facts, then UPCitemdb, and does not save a product. A miss leaves the name blank.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "upc": {"type": "string"},
+                "external": {"type": "boolean"},
+            },
+            "required": ["upc"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "upsert_product",
+        "description": "Create or update a catalog product. Pass product_id to edit. Shelf-life days left empty inherit the category default.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "product_id": {"type": "integer"},
+                "upc": {"type": "string"},
+                "name": {"type": "string"},
+                "brand": {"type": "string"},
+                "category": {"type": "string"},
+                "default_size": {"type": "string"},
+                "default_unit": {"type": "string"},
+                "shelf_life_pantry_days": {"type": "integer"},
+                "shelf_life_fridge_days": {"type": "integer"},
+                "shelf_life_freezer_days": {"type": "integer"},
+                "opened_life_days": {"type": "integer"},
+                "min_on_hand": {"type": "number"},
+                "image_url": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_products",
+        "description": "Product catalog, including produce with no UPC. search matches name, brand, or UPC.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"search": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_pantry_items",
+        "description": "Add lots. Each item needs upc, product_id, or name. use_by is filled from the location shelf life unless you set it. location is pantry, fridge, or freezer.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "items": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "consume_pantry_item",
+        "description": "Consume a quantity by name, upc, or lot_id. Lots are taken soonest use_by first and can span lots. The lot is marked used at zero.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "upc": {"type": "string"},
+                "lot_id": {"type": "integer"},
+                "quantity": {"type": "number"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "split_or_move_lot",
+        "description": "Move a lot, or split it. pieces is a list of {quantity, location} or {quantity, consume: true} that adds up to the lot. A freezer piece's use_by starts on the move date. An overridden use_by is kept on a whole-lot move unless reset_use_by is true.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lot_id": {"type": "integer"},
+                "location": {"type": "string"},
+                "quantity": {"type": "number"},
+                "reset_use_by": {"type": "boolean"},
+                "pieces": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["lot_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "open_lot",
+        "description": "Mark a lot opened. use_by becomes the earlier of the current date and opened today plus opened life.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"lot_id": {"type": "integer"}},
+            "required": ["lot_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "toss_lot",
+        "description": "Mark one or many lots tossed and log a toss event for each. Use this for a purge.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lot_id": {"type": "integer"},
+                "lot_ids": {"type": "array", "items": {"type": "integer"}},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "adjust_lot",
+        "description": "Change quantity, location, unit, use_by, qty_level, store, or purchased_at. Setting use_by overrides the calculated date. Quantity 0 marks the lot used.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "lot_id": {"type": "integer"},
+                "quantity": {"type": "number"},
+                "location": {"type": "string"},
+                "unit": {"type": "string"},
+                "qty_level": {"type": "string"},
+                "use_by": {"type": "string"},
+                "store": {"type": "string"},
+                "purchased_at": {"type": "string"},
+                "reset_use_by": {"type": "boolean"},
+            },
+            "required": ["lot_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "expiring_items",
+        "description": "On-hand lots due within days, including lots already past use_by. days defaults to 3.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"days": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "low_stock",
+        "description": "Products whose on-hand total is below min_on_hand. add_to_shopping_list adds the shortfall to list_id (default 1, Groceries) and skips a name already unchecked on that list.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "add_to_shopping_list": {"type": "boolean"},
+                "list_id": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "pantry_stats",
+        "description": "Quantity used and tossed per product between from and to (YYYY-MM-DD). Defaults to the last 30 days.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from": {"type": "string"},
+                "to": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "import_order",
+        "description": "Create lots from an order. Each line needs a name, a known UPC, or both. Lines that cannot be matched exactly are returned as unmatched and are not guessed.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "store": {"type": "string"},
+                "order_ref": {"type": "string"},
+                "purchased_at": {"type": "string"},
+                "items": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["items"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_recipes",
+        "description": "Recipes and their ingredients (a product or a category, with an optional quantity).",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "upsert_recipe",
+        "description": "Create a recipe, or replace it when recipe_id is set. ingredients is a list of {product_id or category, quantity, unit}.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "recipe_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "notes": {"type": "string"},
+                "ingredients": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "what_can_i_make",
+        "description": "Rank recipes by how much of each ingredient is on hand, then by the soonest use_by among the matching lots.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "deploy_status",
         "description": (
             "Current commit, origin/main, commits on origin/main that are not checked out (sha and title), "
@@ -1597,6 +1817,59 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "get_reddit_post_comments":
         query = ("?limit=" + str(int(args["limit"]))) if args.get("limit") else ""
         return "GET", f"/api/v1/reddit/posts/{args['post_id']}/comments" + query, None
+    if name == "list_pantry":
+        return "GET", "/api/v1/pantry/lots" + _query(args, ("location", "category", "status", "search", "expiring_within_days", "soon_days")), None
+    if name == "get_product_by_upc":
+        external = "1" if args.get("external") is True else "0"
+        return "GET", "/api/v1/pantry/products/upc/" + quote(str(args["upc"]), safe="") + "?external=" + external, None
+    if name == "upsert_product":
+        return "POST", "/api/v1/pantry/products", _pick(args, (
+            "product_id", "upc", "name", "brand", "category", "default_size", "default_unit",
+            "shelf_life_pantry_days", "shelf_life_fridge_days", "shelf_life_freezer_days",
+            "opened_life_days", "min_on_hand", "image_url", "notes",
+        ))
+    if name == "list_products":
+        return "GET", "/api/v1/pantry/products" + _query(args, ("search",)), None
+    if name == "add_pantry_items":
+        return "POST", "/api/v1/pantry/lots", {"items": args["items"]}
+    if name == "consume_pantry_item":
+        return "POST", "/api/v1/pantry/consume", _pick(args, ("name", "upc", "lot_id", "quantity"))
+    if name == "split_or_move_lot":
+        body = _pick(args, ("location", "quantity", "reset_use_by", "pieces"))
+        return "POST", f"/api/v1/pantry/lots/{int(args['lot_id'])}/split", body
+    if name == "open_lot":
+        return "POST", f"/api/v1/pantry/lots/{int(args['lot_id'])}/open", {}
+    if name == "toss_lot":
+        if args.get("lot_id") and not args.get("lot_ids"):
+            return "POST", f"/api/v1/pantry/lots/{int(args['lot_id'])}/toss", {}
+        ids = args.get("lot_ids") or ([int(args["lot_id"])] if args.get("lot_id") else [])
+        return "POST", "/api/v1/pantry/purge", {"lot_ids": ids}
+    if name == "adjust_lot":
+        body = _pick(args, ("quantity", "location", "unit", "qty_level", "use_by", "store", "purchased_at", "reset_use_by"))
+        return "POST", f"/api/v1/pantry/lots/{int(args['lot_id'])}", body
+    if name == "expiring_items":
+        return "GET", "/api/v1/pantry/expiring" + _query(args, ("days",)), None
+    if name == "low_stock":
+        if args.get("add_to_shopping_list") is True:
+            body = {}
+            if args.get("list_id"):
+                body["list_id"] = int(args["list_id"])
+            return "POST", "/api/v1/pantry/low-stock", body
+        return "GET", "/api/v1/pantry/low-stock", None
+    if name == "pantry_stats":
+        return "GET", "/api/v1/pantry/stats" + _query(args, ("from", "to")), None
+    if name == "import_order":
+        return "POST", "/api/v1/pantry/import-order", _pick(args, ("store", "order_ref", "purchased_at", "items"))
+    if name == "list_recipes":
+        if args:
+            raise ValueError("list_recipes takes no arguments.")
+        return "GET", "/api/v1/pantry/recipes", None
+    if name == "upsert_recipe":
+        return "POST", "/api/v1/pantry/recipes", _pick(args, ("recipe_id", "name", "notes", "ingredients"))
+    if name == "what_can_i_make":
+        if args:
+            raise ValueError("what_can_i_make takes no arguments.")
+        return "GET", "/api/v1/pantry/what-can-i-make", None
     if name == "deploy_status":
         if args:
             raise ValueError("deploy_status takes no arguments.")
