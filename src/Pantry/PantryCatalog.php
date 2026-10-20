@@ -16,15 +16,15 @@ final class PantryCatalog
     /** @var array<string, array{pantry: ?int, fridge: ?int, freezer: ?int, opened: ?int}> */
     public const CATEGORIES = [
         'Produce'    => ['pantry' => 7, 'fridge' => 7, 'freezer' => 240, 'opened' => null],
-        'Dairy'      => ['pantry' => null, 'fridge' => 7, 'freezer' => 90, 'opened' => 7],
+        'Dairy'      => ['pantry' => null, 'fridge' => 21, 'freezer' => 90, 'opened' => 7],
         'Meat'       => ['pantry' => null, 'fridge' => 3, 'freezer' => 120, 'opened' => 2],
-        'Bakery'     => ['pantry' => 5, 'fridge' => 7, 'freezer' => 90, 'opened' => 3],
+        'Bakery'     => ['pantry' => 7, 'fridge' => 7, 'freezer' => 90, 'opened' => 3],
         'Frozen'     => ['pantry' => null, 'fridge' => 2, 'freezer' => 180, 'opened' => 3],
         'Pantry'     => ['pantry' => 365, 'fridge' => 180, 'freezer' => 365, 'opened' => 180],
         'Snacks'     => ['pantry' => 180, 'fridge' => null, 'freezer' => null, 'opened' => 30],
         'Beverages'  => ['pantry' => 180, 'fridge' => 7, 'freezer' => null, 'opened' => 3],
         'Household'  => ['pantry' => null, 'fridge' => null, 'freezer' => null, 'opened' => null],
-        'Other'      => ['pantry' => 30, 'fridge' => 7, 'freezer' => 90, 'opened' => 7],
+        'Other'      => ['pantry' => 30, 'fridge' => 30, 'freezer' => 90, 'opened' => 7],
     ];
 
     /**

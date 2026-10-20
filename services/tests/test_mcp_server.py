@@ -280,7 +280,8 @@ def test_money_tools_resolve_onto_the_money_api():
         "list_pantry", "list_pantry_units", "get_product_by_upc", "upsert_product", "list_products",
         "add_pantry_items", "consume_pantry_item", "split_or_move_lot", "open_lot",
         "toss_lot", "adjust_lot", "expiring_items", "low_stock", "pantry_stats",
-        "import_order", "list_recipes", "upsert_recipe", "what_can_i_make",
+        "import_order", "list_recipes", "upsert_recipe", "update_recipe",
+        "update_pantry_category", "update_pantry_product", "what_can_i_make",
     ):
         assert name in names
 
@@ -311,6 +312,18 @@ def test_pantry_tools_map_onto_the_pantry_api():
     assert (method, path, body) == ("POST", "/api/v1/pantry/purge", {"lot_ids": [4, 5]})
     method, path, body = resolve("what_can_i_make", {})
     assert (method, path, body) == ("GET", "/api/v1/pantry/what-can-i-make", None)
+    method, path, body = resolve("consume_pantry_item", {"lot_id": 4, "quantity": 0.5})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/consume", {"lot_id": 4, "quantity": 0.5})
+    method, path, body = resolve("update_recipe", {"recipe_id": 3, "name": "Soup", "notes": None, "ingredients": []})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/recipes/3", {"name": "Soup", "notes": None, "ingredients": []})
+    method, path, body = resolve("update_pantry_category", {"category": "Dairy", "fridge_days": 21, "opened_days": None})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/categories", {"category": "Dairy", "fridge_days": 21, "opened_days": None})
+    method, path, body = resolve(
+        "update_pantry_product",
+        {"product_id": 8, "opened_life_days": 3, "shelf_life_fridge_days": None},
+    )
+    assert (method, path) == ("POST", "/api/v1/pantry/products/8")
+    assert body == {"opened_life_days": 3, "shelf_life_fridge_days": None}
 
 
 def test_deploy_tools_send_only_the_confirm_sha():

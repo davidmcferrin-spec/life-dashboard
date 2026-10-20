@@ -543,6 +543,225 @@ final class PantryTest extends PgsqlTestCase
         self::assertSame('2026-12-24', $byPlace['freezer']['use_by']);
     }
 
+    public function testFractionalConsumeLeavesHalfThenUsesTheLot(): void
+    {
+        $product = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Apple',
+            'category' => 'Produce',
+            'default_unit' => 'each',
+        ]);
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $product['id'],
+            'quantity' => 1,
+            'unit' => 'each',
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+
+        $half = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id'], 'quantity' => 0.5], 'david');
+        self::assertSame('on_hand', $half['consumed'][0]['status']);
+        self::assertEquals(0.5, $half['consumed'][0]['quantity']);
+
+        $rest = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id'], 'quantity' => 0.5], 'david');
+        self::assertSame('used', $rest['consumed'][0]['status']);
+        self::assertEquals(0.0, $rest['consumed'][0]['quantity']);
+    }
+
+    public function testAdjustReopensAUsedLotAndRefusesATossedOne(): void
+    {
+        $product = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Yogurt',
+            'category' => 'Dairy',
+            'default_unit' => 'each',
+        ]);
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $product['id'],
+            'quantity' => 1,
+            'unit' => 'each',
+            'location' => 'fridge',
+        ]], 'david')['lots'][0];
+        $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id'], 'quantity' => 1], 'david');
+
+        $reopened = $this->svc->pantry->adjust($this->user, $lot['id'], ['quantity' => 0.5], 'david')['lot'];
+        self::assertSame('on_hand', $reopened['status']);
+        self::assertEquals(0.5, $reopened['quantity']);
+
+        $this->svc->pantry->toss($this->user, [$lot['id']], 'david');
+        try {
+            $this->svc->pantry->adjust($this->user, $lot['id'], ['quantity' => 1], 'david');
+            self::fail('expected a tossed lot to stay closed');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('tossed', $e->fields()['lot_id']);
+        }
+    }
+
+    public function testUpdateRecipeReplacesNameNotesAndIngredients(): void
+    {
+        $onion = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Onion', 'category' => 'Produce']);
+        $created = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Soup',
+            'notes' => 'Boil',
+            'ingredients' => [['product_id' => $onion['id'], 'quantity' => 1, 'unit' => 'each']],
+        ]);
+        $updated = $this->svc->pantry->upsertRecipe($this->user, [
+            'recipe_id' => $created['id'],
+            'name' => 'Onion soup',
+            'notes' => 'Simmer',
+            'ingredients' => [
+                ['product_id' => $onion['id'], 'quantity' => 0.5, 'unit' => 'lb'],
+                ['category' => 'Produce'],
+            ],
+        ]);
+        self::assertSame($created['id'], $updated['id']);
+        self::assertSame('Onion soup', $updated['name']);
+        self::assertSame('Simmer', $updated['notes']);
+        self::assertCount(2, $updated['ingredients']);
+        self::assertEquals(0.5, $updated['ingredients'][0]['quantity']);
+        self::assertSame('lb', $updated['ingredients'][0]['unit']);
+        self::assertSame('Produce', $updated['ingredients'][1]['category']);
+        self::assertNull($updated['ingredients'][1]['product_id']);
+    }
+
+    public function testOpenAndResetUseTheEarlierOfOpenedAndLocationLife(): void
+    {
+        $milk = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Milk',
+            'category' => 'Dairy',
+            'default_unit' => 'each',
+            'shelf_life_fridge_days' => 90,
+            'shelf_life_freezer_days' => 90,
+            'opened_life_days' => 3,
+        ]);
+        $stale = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $milk['id'],
+            'quantity' => 2,
+            'location' => 'fridge',
+            'purchased_at' => '2026-09-01',
+            'use_by' => '2026-09-20',
+        ]], 'david')['lots'][0];
+        $opened = $this->svc->pantry->openLot($this->user, $stale['id'], 'david')['lot'];
+        self::assertSame('2026-09-28', $opened['use_by']);
+        self::assertFalse($opened['use_by_overridden']);
+        self::assertNotNull($opened['opened_at']);
+
+        $reset = $this->svc->pantry->adjust($this->user, $stale['id'], ['reset_use_by' => true], 'david')['lot'];
+        self::assertSame('2026-09-28', $reset['use_by']);
+        self::assertNotNull($reset['opened_at']);
+
+        $frozen = $this->svc->pantry->adjust($this->user, $stale['id'], [
+            'location' => 'freezer',
+            'reset_use_by' => true,
+        ], 'david')['lot'];
+        self::assertSame('freezer', $frozen['location']);
+        self::assertSame('2026-09-28', $frozen['use_by']);
+        self::assertNotNull($frozen['opened_at']);
+
+        $splitSource = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $milk['id'],
+            'quantity' => 2,
+            'location' => 'fridge',
+            'purchased_at' => '2026-09-01',
+        ]], 'david')['lots'][0];
+        $this->svc->pantry->openLot($this->user, $splitSource['id'], 'david');
+        $split = $this->svc->pantry->splitOrMove($this->user, $splitSource['id'], [
+            'pieces' => [
+                ['quantity' => 1, 'location' => 'fridge'],
+                ['quantity' => 1, 'location' => 'freezer'],
+            ],
+        ], 'david');
+        $byPlace = [];
+        foreach ($split['lots'] as $child) {
+            $byPlace[$child['location']] = $child;
+            self::assertNotNull($child['opened_at']);
+        }
+        self::assertSame('2026-09-28', $byPlace['fridge']['use_by']);
+        self::assertSame('2026-09-28', $byPlace['freezer']['use_by']);
+
+        $seeded = null;
+        foreach ($this->svc->pantry->listProducts($this->user, 'Onion') as $product) {
+            if ($product['name'] === 'Onion' && $product['source'] === 'produce') {
+                $seeded = $product;
+            }
+        }
+        self::assertNotNull($seeded);
+        $onion = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $seeded['id'],
+            'quantity' => 1,
+            'location' => 'fridge',
+            'purchased_at' => '2026-09-01',
+            'use_by' => '2026-09-20',
+        ]], 'david')['lots'][0];
+        $recomputed = $this->svc->pantry->openLot($this->user, $onion['id'], 'david')['lot'];
+        self::assertSame('2026-10-31', $recomputed['use_by']);
+    }
+
+    public function testCategoryDefaultsUpdateOnlyOldSeedsAndShelfEditsValidate(): void
+    {
+        $by = [];
+        foreach ($this->svc->pantry->categories($this->user) as $row) {
+            $by[$row['category']] = $row;
+        }
+        self::assertSame(21, $by['Dairy']['fridge_days']);
+        self::assertSame(30, $by['Other']['fridge_days']);
+        self::assertSame(7, $by['Bakery']['pantry_days']);
+        self::assertSame(7, $by['Produce']['fridge_days']);
+        self::assertSame(7, $by['Produce']['pantry_days']);
+
+        $this->db->execute("UPDATE category_shelf_life SET fridge_days = 7 WHERE user_id = ? AND category = 'Dairy'", [$this->user]);
+        $this->db->execute("UPDATE category_shelf_life SET fridge_days = 7 WHERE user_id = ? AND category = 'Other'", [$this->user]);
+        $this->db->execute("UPDATE category_shelf_life SET pantry_days = 5 WHERE user_id = ? AND category = 'Bakery'", [$this->user]);
+        $this->db->execute("UPDATE category_shelf_life SET fridge_days = 14 WHERE user_id = ? AND category = 'Produce'", [$this->user]);
+        $this->db->execute("UPDATE category_shelf_life SET fridge_days = 10 WHERE user_id = ? AND category = 'Meat'", [$this->user]);
+        $sql = file_get_contents(dirname(__DIR__, 2) . '/database/pgsql/0028_pantry_shelf_defaults.sql');
+        self::assertNotFalse($sql);
+        $this->db->pdo()->exec((string) $sql);
+
+        $again = [];
+        foreach ($this->svc->pantry->categories($this->user) as $row) {
+            $again[$row['category']] = $row;
+        }
+        self::assertSame(21, $again['Dairy']['fridge_days']);
+        self::assertSame(7, $again['Dairy']['opened_days']);
+        self::assertSame(30, $again['Other']['fridge_days']);
+        self::assertSame(7, $again['Bakery']['pantry_days']);
+        self::assertSame(7, $again['Bakery']['fridge_days']);
+        self::assertSame(14, $again['Produce']['fridge_days']);
+        self::assertSame(10, $again['Meat']['fridge_days']);
+
+        $saved = $this->svc->pantry->updateCategory($this->user, 'Dairy', ['fridge_days' => 18, 'opened_days' => null]);
+        self::assertSame(18, $saved['fridge_days']);
+        self::assertNull($saved['opened_days']);
+        self::assertNull($saved['pantry_days']);
+        foreach ([0, 3651, 1.5] as $bad) {
+            try {
+                $this->svc->pantry->updateCategory($this->user, 'Dairy', ['fridge_days' => $bad]);
+                self::fail('expected days ' . $bad . ' to be rejected');
+            } catch (ValidationException $e) {
+                self::assertArrayHasKey('fridge_days', $e->fields());
+            }
+        }
+
+        $onion = null;
+        foreach ($this->svc->pantry->listProducts($this->user, 'Onion') as $product) {
+            if ($product['name'] === 'Onion') {
+                $onion = $product;
+            }
+        }
+        self::assertNotNull($onion);
+        $tuned = $this->svc->pantry->updateProductShelf($this->user, (int) $onion['id'], [
+            'shelf_life_fridge_days' => 9,
+            'opened_life_days' => null,
+        ]);
+        self::assertSame(9, $tuned['shelf_life_fridge_days']);
+        self::assertNull($tuned['opened_life_days']);
+        self::assertSame(30, $tuned['shelf_life_pantry_days']);
+        try {
+            $this->svc->pantry->updateProductShelf($this->user, (int) $onion['id'], ['shelf_life_fridge_days' => 0]);
+            self::fail('expected a zero shelf life to be rejected');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('shelf_life_fridge_days', $e->fields());
+        }
+    }
+
     /**
      * @return array<string, mixed>
      */
