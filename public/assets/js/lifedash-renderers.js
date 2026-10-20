@@ -1188,7 +1188,12 @@
             const when = lot.days_left < 0 ? 'expired' : (lot.days_left === 0 ? 'today' : lot.days_left + 'd');
             return `<li class="ld-pantry-${esc(lot.freshness)}">${esc(lot.name)} <span class="ld-meta">${esc(when)}</span></li>`;
         }).join('');
-        const lowRows = low.map((row) => `<li>${esc(row.name)} <span class="ld-meta">${esc(row.on_hand)} / ${esc(row.min_on_hand)}</span></li>`).join('');
+        const lowRows = low.map((row) => {
+            const meta = row.qty_level
+                ? String(row.qty_level).replace('_', ' ')
+                : (row.min_on_hand == null ? '' : row.on_hand + ' / ' + row.min_on_hand);
+            return `<li>${esc(row.name)} <span class="ld-meta">${esc(meta)}</span></li>`;
+        }).join('');
         ctx.body.innerHTML = `
             <div class="ld-pantry-card">
                 <p class="ld-meta">${esc(countLine)}</p>

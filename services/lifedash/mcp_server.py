@@ -125,6 +125,9 @@ _AGENCY_PROPS: dict[str, Any] = {
 
 _CALL_KEYS = tuple(_CALL_PROPS)
 
+PANTRY_UNITS = "each, ct, head, bunch, lb, oz, g, kg, gal, qt, pt, ml, l, pkg, bag, box, can, bottle, dozen, slice, piece, serving"
+PANTRY_UNIT_NOTE = " Units: " + PANTRY_UNITS + ". Plurals such as slices, pieces, and servings are accepted."
+
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -1225,6 +1228,11 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "list_pantry_units",
+        "description": "Canonical pantry units. " + PANTRY_UNITS + ". Plurals such as slices, pieces, and servings normalize to the singular.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "list_pantry",
         "description": "Pantry lots. Omit status for on hand. status any is every lot except tossed. Also filter by location (pantry, fridge, freezer), category, search, or expiring_within_days. Each lot includes use_by and freshness.",
         "inputSchema": {
@@ -1255,7 +1263,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "upsert_product",
-        "description": "Create or update a catalog product. Pass product_id to edit. Shelf-life days left empty inherit the category default.",
+        "description": "Create or update a catalog product. Pass product_id to edit. Shelf-life days left empty inherit the category default. units_per_package and piece_unit describe a pack, such as 11 slices. Products with no pack size are unchanged." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1266,6 +1274,8 @@ TOOLS: list[dict[str, Any]] = [
                 "category": {"type": "string"},
                 "default_size": {"type": "string"},
                 "default_unit": {"type": "string"},
+                "units_per_package": {"type": "integer"},
+                "piece_unit": {"type": "string"},
                 "shelf_life_pantry_days": {"type": "integer"},
                 "shelf_life_fridge_days": {"type": "integer"},
                 "shelf_life_freezer_days": {"type": "integer"},
@@ -1289,7 +1299,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "add_pantry_items",
-        "description": "Add lots. Each item needs upc, product_id, or name. use_by is filled from the location shelf life unless you set it. location is pantry, fridge, or freezer.",
+        "description": "Add lots. Each item needs upc, product_id, or name. use_by is filled from the location shelf life unless you set it. location is pantry, fridge, or freezer. When the product has a pack size, a missing unit or a package unit (pkg, box, bag, each) is packages times units_per_package, stored in the piece unit. Passing the piece unit keeps that quantity." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1301,7 +1311,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "consume_pantry_item",
-        "description": "Consume a quantity by name, upc, or lot_id. Lots are taken soonest use_by first and can span lots. The lot is marked used at zero.",
+        "description": "Consume by name, upc, or lot_id. Omit quantity to take one unit. Lots are taken soonest use_by first and can span lots. A counted lot is marked used at zero. A lot with qty_level steps full or most to half, half to low, and low or nearly_empty to empty. Empty marks the lot used.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1315,7 +1325,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "split_or_move_lot",
-        "description": "Move a lot, or split it. pieces is a list of {quantity, location} or {quantity, consume: true} that adds up to the lot. A freezer piece's use_by starts on the move date. An overridden use_by is kept on a whole-lot move unless reset_use_by is true.",
+        "description": "Move a lot, or split it. Quantities are the lot unit (slices or bottles after a pack is expanded), not packages. pieces is a list of {quantity, location} or {quantity, consume: true} that adds up to the lot, so one call can put 2 in the fridge and 2 in the freezer. Each piece keeps the product, unit, and purchase date. A freezer piece's use_by starts on the move date. A fridge or pantry piece counts from the purchase date. An overridden use_by is kept on a whole-lot move unless reset_use_by is true.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1353,7 +1363,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "adjust_lot",
-        "description": "Change quantity, location, unit, use_by, qty_level, store, or purchased_at. Setting use_by overrides the calculated date. Quantity 0 marks the lot used.",
+        "description": "Change quantity, location, unit, use_by, qty_level, store, or purchased_at. qty_level is full, most, half, low, nearly_empty, or empty. Setting use_by overrides the calculated date. Quantity 0 marks the lot used." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1382,7 +1392,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "low_stock",
-        "description": "Products whose on-hand total is below min_on_hand. add_to_shopping_list adds the shortfall to list_id (default 1, Groceries) and skips a name already unchecked on that list.",
+        "description": "Products below min_on_hand, plus on-hand lots at low, nearly_empty, or empty, plus a product whose last lot was used up at empty. add_to_shopping_list adds the shortfall to list_id (default 1, Groceries) and skips a name already unchecked on that list.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1406,7 +1416,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "import_order",
-        "description": "Create lots from an order. Each line needs a name, a known UPC, or both. Lines that cannot be matched exactly are returned as unmatched and are not guessed.",
+        "description": "Create lots from an order. Each line needs a name, a known UPC, or both. Lines that cannot be matched exactly are returned as unmatched and are not guessed. A product with a pack size expands a line that omits unit, or uses pkg, box, bag, or each, into piece units. A line that already uses the piece unit is not expanded." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1817,6 +1827,10 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "get_reddit_post_comments":
         query = ("?limit=" + str(int(args["limit"]))) if args.get("limit") else ""
         return "GET", f"/api/v1/reddit/posts/{args['post_id']}/comments" + query, None
+    if name == "list_pantry_units":
+        if args:
+            raise ValueError("list_pantry_units takes no arguments.")
+        return "GET", "/api/v1/pantry/units", None
     if name == "list_pantry":
         return "GET", "/api/v1/pantry/lots" + _query(args, ("location", "category", "status", "search", "expiring_within_days", "soon_days")), None
     if name == "get_product_by_upc":
@@ -1825,6 +1839,7 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "upsert_product":
         return "POST", "/api/v1/pantry/products", _pick(args, (
             "product_id", "upc", "name", "brand", "category", "default_size", "default_unit",
+            "units_per_package", "piece_unit",
             "shelf_life_pantry_days", "shelf_life_fridge_days", "shelf_life_freezer_days",
             "opened_life_days", "min_on_hand", "image_url", "notes",
         ))

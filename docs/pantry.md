@@ -6,7 +6,7 @@ Shelf-life numbers are reasonable defaults in the style of USDA FoodKeeper; veri
 
 ## Data
 
-- `pantry_products` — catalog. `upc` is unique per user and null for produce. A null shelf-life column inherits `category_shelf_life` for that aisle.
+- `pantry_products` — catalog. `upc` is unique per user and null for produce. A null shelf-life column inherits `category_shelf_life` for that aisle. `units_per_package` and `piece_unit` are optional. Bread can be 11 slices, a soda pack 6 bottles. A null pack size leaves the lot quantity as entered.
 - `pantry_lots` — a quantity in one place (`pantry`, `fridge`, `freezer`). `use_by_overridden` is 1 when the date was typed in.
 - `pantry_events` — append-only `add`, `consume`, `split`, `move`, `open`, `toss`, `adjust`. `by_name` is the signed-in user or the agent token name.
 - `pantry_recipes` and `pantry_recipe_ingredients` — an ingredient is one product or one category.
@@ -21,9 +21,15 @@ The first pantry page or pantry tool call seeds category defaults, common produc
 - A split piece that stays in the same place copies `use_by`, the override, and `opened_at`. A piece that changes place uses the move rule above and does not keep the override, so a fridge pack can stay due soon while the frozen piece is dated from the day it went into the freezer.
 - Opening sets `opened_at`. `use_by` becomes the earlier of the current date and the open date plus opened life. A date that does not move keeps its override. A second open is rejected.
 
-Consume matches one product by exact name, a single fuzzy name, UPC, or `lot_id`. It takes on-hand lots soonest `use_by` first and can span lots. Asking for more than is on hand changes nothing. Quantity zero marks the lot `used`.
+Consume matches one product by exact name, a single fuzzy name, UPC, or `lot_id`. It takes on-hand lots soonest `use_by` first and can span lots. Asking for more than is on hand changes nothing. Omitting quantity takes one unit. Quantity zero marks the lot `used`. A lot with `qty_level` set steps one level per use: full or most to half, half to low, low or nearly empty to empty. Empty sets the level, zeroes the quantity, and marks the lot used.
 
-The inventory page defaults to on hand. Status `any` is every lot except `tossed`. Omitting status on the API still means `on_hand`. Purge marks the selected on-hand lots `tossed` and writes one `toss` event each. Low stock is on-hand quantity below `min_on_hand`. Pushing that list onto shopping skips a name that already has an unchecked row; it does not add to that row's quantity. The default list is id 1 when it belongs to the user, otherwise the list named Groceries.
+`add_pantry_items` and `import_order` expand a packed product when the line omits a unit or uses a package unit (`pkg`, `box`, `bag`, `each`): quantity becomes packages times `units_per_package`, stored in `piece_unit`. A line that already uses the piece unit, such as 2 slices, is stored as that quantity.
+
+Split and move use that piece quantity. A lot of 5 slices can be consumed by 1, then split in one call so 2 stay in the fridge and 2 go to the freezer. The pieces keep the product, unit, and purchase date. The freezer use-by starts on the move date. The fridge use-by is the purchase date plus the fridge life. The pantry page asks for a count in each place, and those counts must add up to the lot.
+
+Units live in `PantryUnits`. `slice`/`slices`, `piece`/`pieces`, and `serving`/`servings` are accepted, along with the older names (`each`, `ct`, `head`, `bunch`, `lb`, `oz`, `g`, `kg`, `gal`, `qt`, `pt`, `ml`, `l`, `pkg`, `bag`, `box`, `can`, `bottle`, `dozen`). `GET /api/v1/pantry/units` and `list_pantry_units` return that list.
+
+The inventory page defaults to on hand. Status `any` is every lot except `tossed`. Omitting status on the API still means `on_hand`. Purge marks the selected on-hand lots `tossed` and writes one `toss` event each. Low stock is on-hand quantity below `min_on_hand`, and also an on-hand lot at low, nearly empty, or empty, and a product whose last lot was used up at empty while nothing is on hand. Pushing that list onto shopping skips a name that already has an unchecked row; it does not add to that row's quantity. The default list is id 1 when it belongs to the user, otherwise the list named Groceries.
 
 `import_order` matches an exact UPC, then an exact unique name. A new name creates a product (`source = order`). Lines that are UPC-only and unknown, ambiguous names, or a name that already has a different UPC come back as `unmatched` and are not guessed.
 
@@ -39,6 +45,6 @@ Server lookup order: local products (12-digit and leading-zero 13-digit forms), 
 
 Scopes `pantry:read` and `pantry:write` appear with the other token areas. Writes are audited as `pantry_lot`, `product`, `recipe`, or `pantry_category`.
 
-Tools: `list_pantry`, `get_product_by_upc`, `upsert_product`, `list_products`, `add_pantry_items`, `consume_pantry_item`, `split_or_move_lot`, `open_lot`, `toss_lot`, `adjust_lot`, `expiring_items`, `low_stock`, `pantry_stats`, `import_order`, `list_recipes`, `upsert_recipe`, `what_can_i_make`.
+Tools: `list_pantry`, `list_pantry_units`, `get_product_by_upc`, `upsert_product`, `list_products`, `add_pantry_items`, `consume_pantry_item`, `split_or_move_lot`, `open_lot`, `toss_lot`, `adjust_lot`, `expiring_items`, `low_stock`, `pantry_stats`, `import_order`, `list_recipes`, `upsert_recipe`, `what_can_i_make`.
 
-No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql`. The catalog fills in on first use.
+No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql` and `database/pgsql/0027_pantry_pack.sql`. The catalog fills in on first use.

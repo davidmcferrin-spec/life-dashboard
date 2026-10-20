@@ -277,7 +277,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "list_calls", "search_calls", "call_stats", "lookup_caller", "list_contacts", "upsert_contact",
         "list_vetted_agencies", "upsert_vetted_agency",
         "deploy_status", "deploy_update", "deploy_log",
-        "list_pantry", "get_product_by_upc", "upsert_product", "list_products",
+        "list_pantry", "list_pantry_units", "get_product_by_upc", "upsert_product", "list_products",
         "add_pantry_items", "consume_pantry_item", "split_or_move_lot", "open_lot",
         "toss_lot", "adjust_lot", "expiring_items", "low_stock", "pantry_stats",
         "import_order", "list_recipes", "upsert_recipe", "what_can_i_make",
@@ -286,6 +286,10 @@ def test_money_tools_resolve_onto_the_money_api():
 
 
 def test_pantry_tools_map_onto_the_pantry_api():
+    method, path, body = resolve("list_pantry_units", {})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/units", None)
+    adjust = next(tool for tool in TOOLS if tool["name"] == "adjust_lot")
+    assert "slice" in adjust["description"] and "serving" in adjust["description"]
     method, path, body = resolve("list_pantry", {"location": "fridge", "expiring_within_days": 3})
     assert method == "GET"
     assert path.startswith("/api/v1/pantry/lots?")

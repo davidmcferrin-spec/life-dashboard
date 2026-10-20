@@ -22,18 +22,6 @@ final class PantryService
 
     private const SOON_DAYS = 3;
 
-    /** @var array<string, string> */
-    private const UNITS = [
-        'each' => 'each', 'ct' => 'ct', 'count' => 'ct',
-        'head' => 'head', 'bunch' => 'bunch',
-        'lb' => 'lb', 'lbs' => 'lb', 'oz' => 'oz',
-        'g' => 'g', 'kg' => 'kg',
-        'gal' => 'gal', 'qt' => 'qt', 'pt' => 'pt',
-        'ml' => 'ml', 'l' => 'l',
-        'pkg' => 'pkg', 'pack' => 'pkg', 'bag' => 'bag', 'box' => 'box',
-        'can' => 'can', 'bottle' => 'bottle', 'dozen' => 'dozen',
-    ];
-
     public function __construct(
         private readonly Database $db,
         private readonly Clock $clock,
@@ -175,26 +163,43 @@ final class PantryService
     {
         $this->ensureDefaults($userId);
         $rows = $this->db->fetchAll(
-            "SELECT p.id, p.name, p.category, p.default_unit, p.min_on_hand,
-                    COALESCE(SUM(l.quantity) FILTER (WHERE l.status = 'on_hand'), 0) AS on_hand
+            "SELECT p.id, p.name, p.category, p.default_unit, p.piece_unit, p.min_on_hand,
+                    COALESCE(SUM(l.quantity) FILTER (WHERE l.status = 'on_hand'), 0) AS on_hand,
+                    BOOL_OR(l.status = 'on_hand' AND l.qty_level IN ('low', 'nearly_empty', 'empty')) AS level_low,
+                    BOOL_OR(l.status = 'used' AND l.qty_level = 'empty') AS emptied,
+                    (ARRAY_AGG(l.qty_level ORDER BY CASE l.qty_level
+                        WHEN 'empty' THEN 0 WHEN 'nearly_empty' THEN 1 WHEN 'low' THEN 2 ELSE 9 END)
+                     FILTER (WHERE l.status = 'on_hand' AND l.qty_level IN ('low', 'nearly_empty', 'empty')))[1] AS level_name
              FROM pantry_products p
              LEFT JOIN pantry_lots l ON l.product_id = p.id AND l.user_id = p.user_id
-             WHERE p.user_id = ? AND p.min_on_hand IS NOT NULL
+             WHERE p.user_id = ?
              GROUP BY p.id
-             HAVING COALESCE(SUM(l.quantity) FILTER (WHERE l.status = 'on_hand'), 0) < p.min_on_hand
+             HAVING (p.min_on_hand IS NOT NULL AND COALESCE(SUM(l.quantity) FILTER (WHERE l.status = 'on_hand'), 0) < p.min_on_hand)
+                OR BOOL_OR(l.status = 'on_hand' AND l.qty_level IN ('low', 'nearly_empty', 'empty'))
+                OR (COALESCE(SUM(l.quantity) FILTER (WHERE l.status = 'on_hand'), 0) = 0
+                    AND BOOL_OR(l.status = 'used' AND l.qty_level = 'empty'))
              ORDER BY p.name_key",
             [$userId]
         );
         $products = [];
         foreach ($rows as $row) {
+            $onHand = $this->num($row['on_hand']);
+            $min = $row['min_on_hand'] !== null ? $this->num($row['min_on_hand']) : null;
+            $belowPar = $min !== null && $onHand + 0.0005 < $min;
+            $levelLow = $this->flag($row['level_low']) || ($onHand <= 0.0005 && $this->flag($row['emptied']));
+            $levelName = $row['level_name'] !== null ? (string) $row['level_name'] : ($levelLow && $onHand <= 0.0005 ? 'empty' : null);
             $products[] = [
                 'product_id' => (int) $row['id'],
                 'name' => (string) $row['name'],
                 'category' => (string) $row['category'],
-                'unit' => $row['default_unit'] !== null ? (string) $row['default_unit'] : null,
-                'min_on_hand' => $this->num($row['min_on_hand']),
-                'on_hand' => $this->num($row['on_hand']),
-                'short_by' => round($this->num($row['min_on_hand']) - $this->num($row['on_hand']), 3),
+                'unit' => $row['piece_unit'] !== null && $row['piece_unit'] !== ''
+                    ? (string) $row['piece_unit']
+                    : ($row['default_unit'] !== null ? (string) $row['default_unit'] : null),
+                'min_on_hand' => $min,
+                'on_hand' => $onHand,
+                'short_by' => $belowPar ? round($min - $onHand, 3) : 1.0,
+                'qty_level' => $levelName,
+                'reason' => $belowPar && $levelLow ? 'both' : ($levelLow ? 'level' : 'par'),
             ];
         }
         $added = [];
@@ -297,6 +302,10 @@ final class PantryService
         $unit = array_key_exists('default_unit', $fields)
             ? $this->nullableUnit($fields['default_unit'])
             : ($existing['default_unit'] ?? null);
+        $pieceUnit = array_key_exists('piece_unit', $fields)
+            ? $this->nullableUnit($fields['piece_unit'])
+            : ($existing['piece_unit'] ?? null);
+        $pack = $this->packCount($fields, $existing);
         $notes = array_key_exists('notes', $fields) ? $this->optionalText($fields['notes'], 2000, 'notes') : ($existing['notes'] ?? null);
         $image = array_key_exists('image_url', $fields) ? $this->imageUrl($fields['image_url']) : ($existing['image_url'] ?? null);
         $days = [
@@ -311,11 +320,13 @@ final class PantryService
             $newId = (int) $this->db->fetchScalar(
                 'INSERT INTO pantry_products (
                     user_id, upc, name, name_key, brand, category, default_size, default_unit,
+                    units_per_package, piece_unit,
                     shelf_life_pantry_days, shelf_life_fridge_days, shelf_life_freezer_days, opened_life_days,
                     min_on_hand, image_url, notes, source
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
                 [
                     $userId, $upc, $name, $this->nameKey($name), $brand, $category, $size, $unit,
+                    $pack, $pieceUnit,
                     $days['shelf_life_pantry_days'], $days['shelf_life_fridge_days'], $days['shelf_life_freezer_days'], $days['opened_life_days'],
                     $min, $image, $notes, 'manual',
                 ]
@@ -325,11 +336,13 @@ final class PantryService
         $this->db->execute(
             'UPDATE pantry_products SET
                 upc = ?, name = ?, name_key = ?, brand = ?, category = ?, default_size = ?, default_unit = ?,
+                units_per_package = ?, piece_unit = ?,
                 shelf_life_pantry_days = ?, shelf_life_fridge_days = ?, shelf_life_freezer_days = ?, opened_life_days = ?,
                 min_on_hand = ?, image_url = ?, notes = ?, source = ?, updated_at = (now() AT TIME ZONE \'UTC\')
              WHERE id = ? AND user_id = ?',
             [
                 $upc, $name, $this->nameKey($name), $brand, $category, $size, $unit,
+                $pack, $pieceUnit,
                 $days['shelf_life_pantry_days'], $days['shelf_life_fridge_days'], $days['shelf_life_freezer_days'], $days['opened_life_days'],
                 $min, $image, $notes, 'manual', (int) $existing['id'], $userId,
             ]
@@ -400,7 +413,8 @@ final class PantryService
     public function consume(int $userId, array $input, string $by): array
     {
         $this->ensureDefaults($userId);
-        $quantity = $this->qty($input['quantity'] ?? 1, 'quantity');
+        $given = $input['quantity'] ?? null;
+        $quantity = $given === null || $given === '' ? '1' : $this->qty($given, 'quantity');
         return $this->db->transaction(function () use ($userId, $input, $by, $quantity): array {
             if (isset($input['lot_id']) && $input['lot_id'] !== '' && $input['lot_id'] !== null) {
                 $productId = (int) $this->lockLot($userId, (int) $input['lot_id'])['product_id'];
@@ -410,7 +424,7 @@ final class PantryService
                 $productId = (int) $product['id'];
                 $only = null;
             }
-            $sql = "SELECT id, quantity FROM pantry_lots
+            $sql = "SELECT id, quantity, qty_level FROM pantry_lots
                     WHERE user_id = ? AND product_id = ? AND status = 'on_hand'";
             $params = [$userId, $productId];
             if ($only !== null) {
@@ -419,11 +433,20 @@ final class PantryService
             }
             $sql .= ' ORDER BY use_by ASC NULLS LAST, purchased_at ASC, id ASC FOR UPDATE';
             $lots = $this->db->fetchAll($sql, $params);
+            $need = (float) $quantity;
+            $levelTracked = false;
             $have = 0.0;
             foreach ($lots as $lot) {
-                $have += (float) $lot['quantity'];
+                if ($this->trackedLevel($lot) !== null) {
+                    $levelTracked = true;
+                    $have += PantryDates::stepsLeft($this->trackedLevel($lot));
+                } else {
+                    $have += (float) $lot['quantity'];
+                }
             }
-            $need = (float) $quantity;
+            if ($levelTracked && abs($need - round($need)) > 0.0005) {
+                throw ValidationException::withFields(['quantity' => 'A level-tracked lot takes a whole number of uses.']);
+            }
             if ($have + 0.0005 < $need) {
                 $name = (string) $this->requireProduct($userId, $productId)['name'];
                 throw ValidationException::withFields([
@@ -436,9 +459,32 @@ final class PantryService
                 if ($left <= 0.0005) {
                     break;
                 }
+                $level = $this->trackedLevel($lot);
+                if ($level !== null) {
+                    $take = min(PantryDates::stepsLeft($level), (int) round($left));
+                    for ($i = 0; $i < $take; $i++) {
+                        $level = PantryDates::nextLevel($level);
+                    }
+                    if ($level === 'empty') {
+                        $this->db->execute(
+                            "UPDATE pantry_lots SET quantity = 0, qty_level = 'empty', status = 'used', updated_at = (now() AT TIME ZONE 'UTC')
+                             WHERE id = ? AND user_id = ?",
+                            [(int) $lot['id'], $userId]
+                        );
+                    } else {
+                        $this->db->execute(
+                            "UPDATE pantry_lots SET qty_level = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+                            [$level, (int) $lot['id'], $userId]
+                        );
+                    }
+                    $this->event($userId, (int) $lot['id'], 'consume', $this->trimNum((float) $take), $by, null);
+                    $touched[] = $this->lot($userId, (int) $lot['id']);
+                    $left = round($left - $take, 3);
+                    continue;
+                }
                 $haveQty = (float) $lot['quantity'];
-                $take = min($haveQty, $left);
-                $remain = round($haveQty - $take, 3);
+                $takeQty = min($haveQty, $left);
+                $remain = round($haveQty - $takeQty, 3);
                 if ($remain <= 0.0005) {
                     $this->db->execute(
                         "UPDATE pantry_lots SET quantity = 0, status = 'used', updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
@@ -450,9 +496,9 @@ final class PantryService
                         [$this->trimNum($remain), (int) $lot['id'], $userId]
                     );
                 }
-                $this->event($userId, (int) $lot['id'], 'consume', $this->trimNum($take), $by, null);
+                $this->event($userId, (int) $lot['id'], 'consume', $this->trimNum($takeQty), $by, null);
                 $touched[] = $this->lot($userId, (int) $lot['id']);
-                $left = round($left - $take, 3);
+                $left = round($left - $takeQty, 3);
             }
             return ['consumed' => $touched, 'quantity' => $need];
         });
@@ -611,10 +657,11 @@ final class PantryService
                     ];
                     continue;
                 }
+                $lineUnit = $line['unit'] ?? null;
                 $lots[] = $this->addOne($userId, [
                     'product_id' => (int) $product['id'],
                     'quantity' => $line['quantity'] ?? $line['qty'] ?? 1,
-                    'unit' => $line['unit'] ?? $product['default_unit'],
+                    'unit' => $lineUnit === '' ? null : $lineUnit,
                     'location' => $line['location'] ?? 'pantry',
                     'purchased_at' => $purchased,
                     'store' => $line['store'] ?? $store,
@@ -889,10 +936,8 @@ final class PantryService
     {
         $product = $this->matchProduct($userId, $raw, true);
         $location = $this->location((string) ($raw['location'] ?? 'pantry'));
-        $unit = isset($raw['unit']) && $raw['unit'] !== '' && $raw['unit'] !== null
-            ? $this->unit((string) $raw['unit'])
-            : ($product['default_unit'] !== null ? (string) $product['default_unit'] : 'each');
-        $quantity = $this->qty($raw['quantity'] ?? 1, 'quantity');
+        $rawUnit = isset($raw['unit']) && $raw['unit'] !== '' && $raw['unit'] !== null ? (string) $raw['unit'] : null;
+        [$quantity, $unit] = $this->scaledQuantity($product, $raw['quantity'] ?? 1, $rawUnit);
         $purchased = isset($raw['purchased_at']) && $raw['purchased_at'] !== ''
             ? $this->date((string) $raw['purchased_at'], 'purchased_at')
             : $this->clock->today();
@@ -1380,6 +1425,8 @@ final class PantryService
             'category' => (string) $row['category'],
             'default_size' => $row['default_size'] !== null ? (string) $row['default_size'] : null,
             'default_unit' => $row['default_unit'] !== null ? (string) $row['default_unit'] : null,
+            'units_per_package' => isset($row['units_per_package']) && $row['units_per_package'] !== null ? (int) $row['units_per_package'] : null,
+            'piece_unit' => isset($row['piece_unit']) && $row['piece_unit'] !== null && $row['piece_unit'] !== '' ? (string) $row['piece_unit'] : null,
             'shelf_life_pantry_days' => $row['shelf_life_pantry_days'] !== null ? (int) $row['shelf_life_pantry_days'] : null,
             'shelf_life_fridge_days' => $row['shelf_life_fridge_days'] !== null ? (int) $row['shelf_life_fridge_days'] : null,
             'shelf_life_freezer_days' => $row['shelf_life_freezer_days'] !== null ? (int) $row['shelf_life_freezer_days'] : null,
@@ -1500,18 +1547,22 @@ final class PantryService
         }
         $value = strtolower(trim((string) $value));
         if (!in_array($value, PantryDates::LEVELS, true)) {
-            throw ValidationException::withFields(['qty_level' => 'Level must be full, most, half, low, or nearly_empty.']);
+            throw ValidationException::withFields(['qty_level' => 'Level must be full, most, half, low, nearly_empty, or empty.']);
         }
         return $value;
     }
 
     private function unit(string $value): string
     {
-        $key = strtolower(trim($value));
-        if (!isset(self::UNITS[$key])) {
-            throw ValidationException::withFields(['unit' => 'Unknown unit.']);
-        }
-        return self::UNITS[$key];
+        return PantryUnits::normalize($value);
+    }
+
+    /**
+     * @return array{units: list<string>}
+     */
+    public function units(): array
+    {
+        return ['units' => PantryUnits::canonical()];
     }
 
     private function nullableUnit(mixed $value): ?string
@@ -1541,6 +1592,76 @@ final class PantryService
         } catch (\InvalidArgumentException) {
             throw ValidationException::withFields([$field => 'Date must be YYYY-MM-DD.']);
         }
+    }
+
+    /**
+     * A missing unit on a packed product means that many packages.
+     * The piece unit, or any other explicit unit, is left as entered.
+     *
+     * @param array<string, mixed> $product
+     * @return array{0: string, 1: string}
+     */
+    private function scaledQuantity(array $product, mixed $quantity, ?string $rawUnit): array
+    {
+        $qty = $this->qty($quantity, 'quantity');
+        $pack = isset($product['units_per_package']) && $product['units_per_package'] !== null
+            ? (int) $product['units_per_package'] : 0;
+        $piece = isset($product['piece_unit']) && $product['piece_unit'] !== null && $product['piece_unit'] !== ''
+            ? (string) $product['piece_unit'] : null;
+        if ($pack >= 2 && $piece !== null) {
+            if ($rawUnit === null) {
+                return [$this->trimNum(round((float) $qty * $pack, 3)), $piece];
+            }
+            $unit = $this->unit($rawUnit);
+            if ($unit === $piece || !in_array($unit, PantryUnits::PACKAGE, true)) {
+                return [$qty, $unit];
+            }
+            return [$this->trimNum(round((float) $qty * $pack, 3)), $piece];
+        }
+        if ($rawUnit !== null) {
+            return [$qty, $this->unit($rawUnit)];
+        }
+        $fallback = isset($product['default_unit']) && $product['default_unit'] !== null && $product['default_unit'] !== ''
+            ? (string) $product['default_unit'] : 'each';
+        return [$qty, $fallback];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @param array<string, mixed>|null $existing
+     */
+    private function packCount(array $fields, ?array $existing): ?int
+    {
+        if (!array_key_exists('units_per_package', $fields)) {
+            if ($existing === null || !isset($existing['units_per_package']) || $existing['units_per_package'] === null) {
+                return null;
+            }
+            return (int) $existing['units_per_package'];
+        }
+        $value = $fields['units_per_package'];
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_numeric($value) || (int) $value < 1 || (int) $value > 10000 || abs((float) $value - (int) $value) > 0.0001) {
+            throw ValidationException::withFields(['units_per_package' => 'Pack size must be a whole number from 1 to 10000.']);
+        }
+        return (int) $value;
+    }
+
+    /**
+     * @param array<string, mixed> $lot
+     */
+    private function trackedLevel(array $lot): ?string
+    {
+        if (!isset($lot['qty_level']) || $lot['qty_level'] === null || $lot['qty_level'] === '') {
+            return null;
+        }
+        return (string) $lot['qty_level'];
+    }
+
+    private function flag(mixed $value): bool
+    {
+        return $value === true || $value === 1 || $value === '1' || $value === 't';
     }
 
     private function qty(mixed $value, string $field): string

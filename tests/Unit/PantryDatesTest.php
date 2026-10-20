@@ -8,6 +8,7 @@ use Dashboard\Api\V1\ApiRunner;
 use Dashboard\Api\V1\Scope;
 use Dashboard\Pantry\PantryCatalog;
 use Dashboard\Pantry\PantryDates;
+use Dashboard\Pantry\PantryUnits;
 use Dashboard\Support\ValidationException;
 use PHPUnit\Framework\TestCase;
 
@@ -41,6 +42,37 @@ final class PantryDatesTest extends TestCase
         $unknown = PantryDates::afterMove('pantry', '2026-09-01', '2026-09-25', '2026-10-01', false, true, null);
         self::assertSame('2026-10-01', $unknown['use_by']);
         self::assertFalse($unknown['overridden']);
+    }
+
+    public function testUnitNamesFoldPluralsAndRejectUnknown(): void
+    {
+        self::assertSame('slice', PantryUnits::normalize('slices'));
+        self::assertSame('piece', PantryUnits::normalize('Pieces'));
+        self::assertSame('serving', PantryUnits::normalize(' servings '));
+        self::assertSame('bottle', PantryUnits::normalize('bottles'));
+        self::assertSame(PantryUnits::CANONICAL, PantryUnits::canonical());
+        try {
+            PantryUnits::normalize('wedge');
+            self::fail('expected an unknown unit');
+        } catch (ValidationException $e) {
+            self::assertSame('Unknown unit.', $e->fields()['unit']);
+        }
+    }
+
+    public function testCondimentLevelsStepTowardEmpty(): void
+    {
+        self::assertSame('half', PantryDates::nextLevel('full'));
+        self::assertSame('half', PantryDates::nextLevel('most'));
+        self::assertSame('low', PantryDates::nextLevel('half'));
+        self::assertSame('empty', PantryDates::nextLevel('low'));
+        self::assertSame('empty', PantryDates::nextLevel('nearly_empty'));
+        self::assertSame('empty', PantryDates::nextLevel('empty'));
+        self::assertSame(3, PantryDates::stepsLeft('full'));
+        self::assertSame(3, PantryDates::stepsLeft('most'));
+        self::assertSame(2, PantryDates::stepsLeft('half'));
+        self::assertSame(1, PantryDates::stepsLeft('low'));
+        self::assertSame(1, PantryDates::stepsLeft('nearly_empty'));
+        self::assertSame(1, PantryDates::stepsLeft('empty'));
     }
 
     public function testOpeningTakesTheEarlierDate(): void
