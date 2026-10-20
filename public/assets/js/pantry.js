@@ -24,6 +24,7 @@
     let lastCode = '';
     let lastAt = 0;
     let sheetOpen = false;
+    let onEditKey = null;
 
     function fail(err) {
         errorEl.textContent = (err && err.fields && Object.values(err.fields)[0]) || (err && err.message) || 'Something went wrong.';
@@ -54,8 +55,8 @@
     function lotRow(lot, extra) {
         return `<li class="ld-pantry-lot" data-lot="${lot.id}">
             <div class="ld-pantry-lot-main">
-                <span>${esc(lot.name)}${lot.brand ? ' <span class="ld-meta">' + esc(lot.brand) + '</span>' : ''}</span>
-                <span class="ld-pantry-${esc(lot.freshness)}">${esc(qtyText(lot))}${lot.use_by ? ' · ' + esc(lot.use_by) : ''}</span>
+                <span class="ld-pantry-name">${esc(lot.name)}${lot.brand ? ' <span class="ld-meta">' + esc(lot.brand) + '</span>' : ''}</span>
+                <span class="ld-pantry-qty ld-pantry-${esc(lot.freshness)}">${esc(qtyText(lot))}${lot.use_by ? ' · ' + esc(lot.use_by) : ''}</span>
             </div>
             <div class="ld-pantry-actions mt-1">${extra}</div>
         </li>`;
@@ -77,14 +78,20 @@
         const catOptions = (cats.categories || []).map((row) =>
             `<option value="${esc(row.category)}"${row.category === category ? ' selected' : ''}>${esc(row.category)}</option>`
         ).join('');
-        const statuses = ['on_hand', 'used', 'tossed', 'expired', 'any'];
-        const statusOptions = statuses.map((value) =>
-            `<option value="${value}"${value === status ? ' selected' : ''}>${value.replace('_', ' ')}</option>`
+        const statuses = [
+            ['on_hand', 'on hand'],
+            ['any', 'any'],
+            ['used', 'used'],
+            ['expired', 'expired'],
+            ['tossed', 'tossed'],
+        ];
+        const statusOptions = statuses.map(([value, label]) =>
+            `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`
         ).join('');
         const filters = `
             <div class="ld-pantry-filters">
                 <input id="pantry-search" class="input flex-1" placeholder="Search" aria-label="Search pantry">
-                <select id="pantry-status" class="input" aria-label="Status">${statusOptions}</select>
+                <select id="pantry-status" class="input" aria-label="Status" title="Any is everything except tossed.">${statusOptions}</select>
                 <select id="pantry-category" class="input" aria-label="Category">
                     <option value="">All categories</option>${catOptions}
                 </select>
@@ -106,13 +113,7 @@
             });
             document.getElementById('pantry-lots').innerHTML = ['fridge', 'freezer', 'pantry'].map((key) => {
                 if (!groups[key].length) return '';
-                const rows = groups[key].map((lot) => lotRow(lot, `
-                    <button type="button" data-act="consume" data-id="${lot.id}">Use</button>
-                    <button type="button" data-act="open" data-id="${lot.id}">Open</button>
-                    <button type="button" data-act="move" data-id="${lot.id}">Move</button>
-                    <button type="button" data-act="edit" data-id="${lot.id}">Edit</button>
-                    <button type="button" data-act="toss" data-id="${lot.id}">Toss</button>
-                `)).join('');
+                const rows = groups[key].map((lot) => lotRow(lot, lotActions(lot))).join('');
                 return `<section class="ld-pantry-group"><h2 class="ld-pantry-label">${esc(key)}</h2><ul>${rows}</ul></section>`;
             }).join('') || '<p class="empty-state mono text-xs mt-4">Nothing matches.</p>';
         };
@@ -120,7 +121,7 @@
         document.getElementById('pantry-search').addEventListener('input', paint);
         document.getElementById('pantry-status').addEventListener('change', (event) => {
             const next = new URLSearchParams();
-            next.set('status', event.target.value);
+            if (event.target.value !== 'on_hand') next.set('status', event.target.value);
             if (category) next.set('category', category);
             go(next.toString());
         });
@@ -156,10 +157,47 @@
                 sheet.innerHTML = moveSheet(lot);
                 bindMove(lot);
             } else if (act === 'edit') {
-                sheet.innerHTML = editSheet(lot);
-                bindEdit(lot);
+                sheet.innerHTML = '';
+                openEdit(lot);
             }
         });
+    }
+
+    function lotActions(lot) {
+        if (lot.status !== 'on_hand') {
+            return `<span class="ld-meta">${esc(String(lot.status || '').replace('_', ' '))}</span>`;
+        }
+        const id = lot.id;
+        return `
+            <button type="button" data-act="consume" data-id="${id}" data-tip="Record some of this as used. The rest stays on hand. Using all of it marks the lot used." aria-label="Use. Record some of this as used. The rest stays on hand. Using all of it marks the lot used.">Use</button>
+            <button type="button" data-act="open" data-id="${id}" data-tip="Mark the package opened. The use-by date may move earlier. The quantity stays the same." aria-label="Open. Mark the package opened. The use-by date may move earlier. The quantity stays the same.">Open</button>
+            <button type="button" data-act="move" data-id="${id}" data-tip="Move all or part of this lot to the fridge, freezer, or pantry." aria-label="Move. Move all or part of this lot to the fridge, freezer, or pantry.">Move</button>
+            <button type="button" data-act="edit" data-id="${id}" data-tip="Change the quantity, place, use-by date, or store." aria-label="Edit. Change the quantity, place, use-by date, or store.">Edit</button>
+            <button type="button" data-act="toss" data-id="${id}" data-tip="Take this off the shelf. It stays on the tossed list and is not deleted." aria-label="Toss. Take this off the shelf. It stays on the tossed list and is not deleted.">Toss</button>`;
+    }
+
+    function openEdit(lot) {
+        closeEdit();
+        const wrap = document.createElement('div');
+        wrap.innerHTML = editSheet(lot);
+        const modal = wrap.firstElementChild;
+        document.body.appendChild(modal);
+        document.body.classList.add('app-modal-open');
+        bindEdit(lot, modal);
+        modal.querySelector('[name="quantity"]')?.focus();
+    }
+
+    function closeEdit() {
+        if (onEditKey) {
+            document.removeEventListener('keydown', onEditKey);
+            onEditKey = null;
+        }
+        const modal = document.getElementById('pantry-edit-modal');
+        if (!modal) return;
+        modal.remove();
+        if (!document.querySelector('.app-modal')) {
+            document.body.classList.remove('app-modal-open');
+        }
     }
 
     function moveSheet(lot) {
@@ -197,29 +235,47 @@
     }
 
     function editSheet(lot) {
-        return `<form class="ld-pantry-sheet" id="edit-form">
-            <p class="text-sm">Edit ${esc(lot.name)}</p>
-            <label class="block text-xs text-muted mt-2">Quantity
-                <input class="input" name="quantity" inputmode="decimal" value="${esc(String(lot.quantity))}">
-            </label>
-            <div class="ld-pantry-locs mt-2">
-                <button type="button" data-location="fridge">Fridge</button>
-                <button type="button" data-location="freezer">Freezer</button>
-                <button type="button" data-location="pantry">Pantry</button>
+        return `<div id="pantry-edit-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-edit-title">
+            <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+            <div class="app-modal-panel surface">
+                <form id="edit-form">
+                    <div class="flex items-start justify-between gap-3">
+                        <p id="pantry-edit-title" class="text-sm">Edit ${esc(lot.name)}</p>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <label class="block text-xs text-muted mt-2">Quantity
+                        <input class="input w-full" name="quantity" inputmode="decimal" value="${esc(String(lot.quantity))}">
+                    </label>
+                    <div class="ld-pantry-locs mt-2">
+                        <button type="button" data-location="fridge">Fridge</button>
+                        <button type="button" data-location="freezer">Freezer</button>
+                        <button type="button" data-location="pantry">Pantry</button>
+                    </div>
+                    <label class="block text-xs text-muted mt-2">Use by
+                        <input class="input w-full" type="date" name="use_by" value="${esc(lot.use_by || '')}">
+                    </label>
+                    <label class="block text-xs text-muted mt-2">Store
+                        <input class="input w-full" name="store" value="${esc(lot.store || '')}">
+                    </label>
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="btn-primary text-sm">Save lot</button>
+                        <button type="button" class="btn text-sm" data-close>Cancel</button>
+                    </div>
+                </form>
             </div>
-            <label class="block text-xs text-muted mt-2">Use by
-                <input class="input" type="date" name="use_by" value="${esc(lot.use_by || '')}">
-            </label>
-            <label class="block text-xs text-muted mt-2">Store
-                <input class="input" name="store" value="${esc(lot.store || '')}">
-            </label>
-            <button type="submit" class="btn-primary text-sm mt-2">Save lot</button>
-        </form>`;
+        </div>`;
     }
 
-    function bindEdit(lot) {
-        const form = document.getElementById('edit-form');
+    function bindEdit(lot, modal) {
+        const form = modal.querySelector('#edit-form');
         let place = lot.location;
+        modal.querySelectorAll('[data-close]').forEach((el) => {
+            el.addEventListener('click', () => closeEdit());
+        });
+        onEditKey = (event) => {
+            if (event.key === 'Escape') closeEdit();
+        };
+        document.addEventListener('keydown', onEditKey);
         form.querySelectorAll('[data-location]').forEach((btn) => {
             if (btn.dataset.location === place) btn.classList.add('is-on');
             btn.addEventListener('click', () => {

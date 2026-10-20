@@ -176,6 +176,9 @@ final class PantryTest extends PgsqlTestCase
         self::assertSame('david', $event['by_name']);
         $still = $this->svc->pantry->listLots($this->user, ['status' => 'on_hand'])['lots'];
         self::assertSame([$soon['id']], array_column($still, 'id'));
+        $any = $this->svc->pantry->listLots($this->user, ['status' => 'any'])['lots'];
+        self::assertNotContains($past['id'], array_column($any, 'id'));
+        self::assertContains($soon['id'], array_column($any, 'id'));
     }
 
     public function testLowStockSkipsAnUncheckedShoppingName(): void

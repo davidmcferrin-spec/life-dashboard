@@ -23,7 +23,7 @@ The first pantry page or pantry tool call seeds category defaults, common produc
 
 Consume matches one product by exact name, a single fuzzy name, UPC, or `lot_id`. It takes on-hand lots soonest `use_by` first and can span lots. Asking for more than is on hand changes nothing. Quantity zero marks the lot `used`.
 
-Purge marks the selected on-hand lots `tossed` and writes one `toss` event each. Low stock is on-hand quantity below `min_on_hand`. Pushing that list onto shopping skips a name that already has an unchecked row; it does not add to that row's quantity. The default list is id 1 when it belongs to the user, otherwise the list named Groceries.
+The inventory page defaults to on hand. Status `any` is every lot except `tossed`. Omitting status on the API still means `on_hand`. Purge marks the selected on-hand lots `tossed` and writes one `toss` event each. Low stock is on-hand quantity below `min_on_hand`. Pushing that list onto shopping skips a name that already has an unchecked row; it does not add to that row's quantity. The default list is id 1 when it belongs to the user, otherwise the list named Groceries.
 
 `import_order` matches an exact UPC, then an exact unique name. A new name creates a product (`source = order`). Lines that are UPC-only and unknown, ambiguous names, or a name that already has a different UPC come back as `unmatched` and are not guessed.
 

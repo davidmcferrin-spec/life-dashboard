@@ -1226,7 +1226,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_pantry",
-        "description": "On-hand pantry lots. Filter by location (pantry, fridge, freezer), category, status, search, or expiring_within_days. Each lot includes use_by and freshness.",
+        "description": "Pantry lots. Omit status for on hand. status any is every lot except tossed. Also filter by location (pantry, fridge, freezer), category, search, or expiring_within_days. Each lot includes use_by and freshness.",
         "inputSchema": {
             "type": "object",
             "properties": {

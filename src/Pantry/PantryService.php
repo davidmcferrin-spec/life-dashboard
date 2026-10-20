@@ -52,7 +52,9 @@ final class PantryService
         $where = ['l.user_id = ?'];
         $params = [$userId];
         $status = $this->optionalEnum($filters['status'] ?? 'on_hand', ['on_hand', 'used', 'tossed', 'expired', 'any'], 'status');
-        if ($status !== 'any') {
+        if ($status === 'any') {
+            $where[] = "l.status <> 'tossed'";
+        } else {
             $where[] = 'l.status = ?';
             $params[] = $status;
         }

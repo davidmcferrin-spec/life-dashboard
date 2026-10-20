@@ -19,7 +19,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
     </div>
 </nav>
 
-<main class="max-w-3xl mx-auto px-4 py-6 space-y-4" id="pantry-app">
+<main class="mx-auto px-4 py-6 space-y-4" id="pantry-app">
     <header>
         <h1 class="text-primary text-xl font-medium">Pantry</h1>
         <p class="text-muted text-sm mt-1">What is on hand, and when to use it.</p>
