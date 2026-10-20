@@ -566,6 +566,7 @@ final class ExtendedApi
     private function registerPantry(Router $r): void
     {
         $r->get('/api/v1/pantry/lots', fn () => $this->run(fn (int $u) => $this->svc->pantry->listLots($u, $_GET)));
+        $r->get('/api/v1/pantry/units', fn () => $this->run(fn (int $u) => $this->svc->pantry->units()));
         $r->get('/api/v1/pantry/summary', fn () => $this->run(function (int $u): array {
             $days = isset($_GET['soon_days']) ? (int) $_GET['soon_days'] : 3;
             return $this->svc->pantry->summary($u, $days);

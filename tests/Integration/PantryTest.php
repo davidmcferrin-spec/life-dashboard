@@ -290,6 +290,259 @@ final class PantryTest extends PgsqlTestCase
         self::assertSame('produce', $onion['source']);
     }
 
+    public function testUnitsAcceptSlicesPiecesAndServings(): void
+    {
+        $units = $this->svc->pantry->units()['units'];
+        self::assertContains('slice', $units);
+        self::assertContains('piece', $units);
+        self::assertContains('serving', $units);
+
+        $product = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Rye',
+            'category' => 'Bakery',
+            'default_unit' => 'slices',
+        ]);
+        self::assertSame('slice', $product['default_unit']);
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $product['id'],
+            'quantity' => 4,
+            'unit' => 'pieces',
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+        self::assertSame('piece', $lot['unit']);
+        $adjusted = $this->svc->pantry->adjust($this->user, $lot['id'], ['unit' => 'slices'], 'david')['lot'];
+        self::assertSame('slice', $adjusted['unit']);
+        $serving = $this->svc->pantry->adjust($this->user, $lot['id'], ['unit' => 'servings'], 'david')['lot'];
+        self::assertSame('serving', $serving['unit']);
+        try {
+            $this->svc->pantry->adjust($this->user, $lot['id'], ['unit' => 'wedge'], 'david');
+            self::fail('expected an unknown unit');
+        } catch (ValidationException $e) {
+            self::assertSame('Unknown unit.', $e->fields()['unit']);
+        }
+    }
+
+    public function testPackSizeExpandsAPackageAndLeavesAPieceCountAlone(): void
+    {
+        $bread = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Bread',
+            'category' => 'Bakery',
+            'default_unit' => 'pkg',
+            'units_per_package' => 11,
+            'piece_unit' => 'slices',
+            'shelf_life_pantry_days' => 5,
+        ]);
+        self::assertSame(11, $bread['units_per_package']);
+        self::assertSame('slice', $bread['piece_unit']);
+
+        $loaf = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $bread['id'],
+            'quantity' => 1,
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+        self::assertEquals(11.0, $loaf['quantity']);
+        self::assertSame('slice', $loaf['unit']);
+
+        $two = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $bread['id'],
+            'quantity' => 2,
+            'unit' => 'slice',
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+        self::assertEquals(2.0, $two['quantity']);
+        self::assertSame('slice', $two['unit']);
+
+        $byWeight = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $bread['id'],
+            'quantity' => 1,
+            'unit' => 'lb',
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+        self::assertEquals(1.0, $byWeight['quantity']);
+        self::assertSame('lb', $byWeight['unit']);
+
+        $rice = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Rice',
+            'category' => 'Pantry',
+            'default_unit' => 'lb',
+        ]);
+        self::assertNull($rice['units_per_package']);
+        $plain = $this->svc->pantry->addItems($this->user, [[
+            'name' => 'Rice',
+            'quantity' => 2,
+            'location' => 'pantry',
+        ]], 'david')['lots'][0];
+        self::assertEquals(2.0, $plain['quantity']);
+        self::assertSame('lb', $plain['unit']);
+
+        $soda = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Dr Pepper',
+            'upc' => '012345678905',
+            'category' => 'Beverages',
+            'units_per_package' => 6,
+            'piece_unit' => 'bottles',
+        ]);
+        $imported = $this->svc->pantry->importOrder($this->user, [
+            'store' => 'Walmart',
+            'items' => [
+                ['upc' => '012345678905', 'qty' => 1, 'unit' => 'pkg'],
+                ['name' => 'Dr Pepper', 'qty' => 2, 'unit' => 'bottle'],
+                ['name' => 'Rice', 'qty' => 1, 'unit' => 'each'],
+            ],
+        ], 'david');
+        self::assertEquals(6.0, $imported['lots'][0]['quantity']);
+        self::assertSame('bottle', $imported['lots'][0]['unit']);
+        self::assertEquals(2.0, $imported['lots'][1]['quantity']);
+        self::assertSame('bottle', $imported['lots'][1]['unit']);
+        self::assertEquals(1.0, $imported['lots'][2]['quantity']);
+        self::assertSame('each', $imported['lots'][2]['unit']);
+        $listed = $this->svc->pantry->listProducts($this->user, 'Dr Pepper');
+        self::assertSame($soda['id'], $listed[0]['id']);
+        self::assertSame(6, $listed[0]['units_per_package']);
+        self::assertSame('bottle', $listed[0]['piece_unit']);
+        $byUpc = $this->svc->pantry->productByUpc($this->user, '012345678905', false);
+        self::assertSame(6, $byUpc['product']['units_per_package']);
+        self::assertSame('bottle', $byUpc['product']['piece_unit']);
+    }
+
+    public function testConsumeWithoutQuantityTakesOneUnit(): void
+    {
+        $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Dasani',
+            'category' => 'Beverages',
+            'default_unit' => 'bottle',
+        ]);
+        $this->svc->pantry->addItems($this->user, [[
+            'name' => 'Dasani',
+            'quantity' => 5,
+            'location' => 'pantry',
+        ]], 'david');
+        $once = $this->svc->pantry->consume($this->user, ['name' => 'Dasani'], 'david');
+        self::assertEquals(1.0, $once['quantity']);
+        self::assertEquals(4.0, $once['consumed'][0]['quantity']);
+        self::assertSame('on_hand', $once['consumed'][0]['status']);
+        $blank = $this->svc->pantry->consume($this->user, ['name' => 'Dasani', 'quantity' => ''], 'david');
+        self::assertEquals(3.0, $blank['consumed'][0]['quantity']);
+    }
+
+    public function testCondimentStepsDownAndLowStockFlagsLowOrEmpty(): void
+    {
+        $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Ketchup',
+            'category' => 'Pantry',
+            'default_unit' => 'bottle',
+        ]);
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'name' => 'Ketchup',
+            'quantity' => 1,
+            'unit' => 'bottle',
+            'qty_level' => 'full',
+            'location' => 'fridge',
+        ]], 'david')['lots'][0];
+        self::assertSame('full', $lot['qty_level']);
+
+        $half = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id']], 'david')['consumed'][0];
+        self::assertSame('half', $half['qty_level']);
+        self::assertSame('on_hand', $half['status']);
+        $low = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id']], 'david')['consumed'][0];
+        self::assertSame('low', $low['qty_level']);
+        self::assertSame('on_hand', $low['status']);
+
+        $flagged = $this->svc->pantry->lowStock($this->user, false, null, 'david')['products'];
+        self::assertSame(['Ketchup'], array_column($flagged, 'name'));
+        self::assertSame('low', $flagged[0]['qty_level']);
+        self::assertSame('level', $flagged[0]['reason']);
+
+        $empty = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id']], 'david')['consumed'][0];
+        self::assertSame('empty', $empty['qty_level']);
+        self::assertSame('used', $empty['status']);
+        self::assertEquals(0.0, $empty['quantity']);
+        $usedUp = $this->svc->pantry->lowStock($this->user, false, null, 'david')['products'];
+        self::assertSame('empty', $usedUp[0]['qty_level']);
+        self::assertSame('level', $usedUp[0]['reason']);
+
+        $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Mustard',
+            'category' => 'Pantry',
+            'default_unit' => 'bottle',
+            'min_on_hand' => 1,
+        ]);
+        $this->svc->pantry->addItems($this->user, [[
+            'name' => 'Mustard',
+            'quantity' => 4,
+            'qty_level' => 'low',
+            'location' => 'fridge',
+        ]], 'david');
+        $both = $this->svc->pantry->lowStock($this->user, false, null, 'david')['products'];
+        $byName = [];
+        foreach ($both as $row) {
+            $byName[$row['name']] = $row;
+        }
+        self::assertSame('level', $byName['Mustard']['reason']);
+        self::assertSame('low', $byName['Mustard']['qty_level']);
+        self::assertEquals(4.0, $byName['Mustard']['on_hand']);
+
+        try {
+            $this->svc->pantry->consume($this->user, ['name' => 'Mustard', 'quantity' => 0.5], 'david');
+            self::fail('expected a whole number of uses');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('whole number', $e->fields()['quantity']);
+        }
+    }
+
+    public function testConsumeOneThenSplitTheRemainingUnitsToFridgeAndFreezer(): void
+    {
+        $bread = $this->svc->pantry->upsertProduct($this->user, [
+            'name' => 'Sourdough',
+            'category' => 'Bakery',
+            'default_unit' => 'pkg',
+            'units_per_package' => 5,
+            'piece_unit' => 'slices',
+            'shelf_life_pantry_days' => 4,
+            'shelf_life_fridge_days' => 7,
+            'shelf_life_freezer_days' => 90,
+        ]);
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $bread['id'],
+            'quantity' => 1,
+            'location' => 'pantry',
+            'purchased_at' => '2026-09-01',
+        ]], 'david')['lots'][0];
+        self::assertEquals(5.0, $lot['quantity']);
+        self::assertSame('slice', $lot['unit']);
+        self::assertSame('2026-09-01', $lot['purchased_at']);
+        self::assertSame('2026-09-05', $lot['use_by']);
+
+        $eaten = $this->svc->pantry->consume($this->user, ['lot_id' => $lot['id']], 'david');
+        self::assertEquals(1.0, $eaten['quantity']);
+        self::assertEquals(4.0, $eaten['consumed'][0]['quantity']);
+        self::assertSame('slice', $eaten['consumed'][0]['unit']);
+        self::assertSame('on_hand', $eaten['consumed'][0]['status']);
+
+        $split = $this->svc->pantry->splitOrMove($this->user, $lot['id'], [
+            'pieces' => [
+                ['quantity' => 2, 'location' => 'fridge'],
+                ['quantity' => 2, 'location' => 'freezer'],
+            ],
+        ], 'david');
+        self::assertSame('used', $split['parent']['status']);
+        self::assertEquals(0.0, $split['parent']['quantity']);
+        self::assertCount(2, $split['lots']);
+        $byPlace = [];
+        foreach ($split['lots'] as $child) {
+            $byPlace[$child['location']] = $child;
+            self::assertSame($bread['id'], $child['product_id']);
+            self::assertSame('slice', $child['unit']);
+            self::assertSame('2026-09-01', $child['purchased_at']);
+            self::assertSame($lot['id'], $child['parent_lot_id']);
+            self::assertFalse($child['use_by_overridden']);
+        }
+        self::assertEquals(2.0, $byPlace['fridge']['quantity']);
+        self::assertSame('2026-09-08', $byPlace['fridge']['use_by']);
+        self::assertEquals(2.0, $byPlace['freezer']['quantity']);
+        self::assertSame('2026-12-24', $byPlace['freezer']['use_by']);
+    }
+
     /**
      * @return array<string, mixed>
      */

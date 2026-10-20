@@ -201,36 +201,46 @@
     }
 
     function moveSheet(lot) {
+        const total = Number(lot.quantity);
+        const field = (place, label) => {
+            const value = place === lot.location ? total : 0;
+            return `<label class="block text-xs text-muted mt-2">${label}
+                <input class="input" name="${place}" inputmode="decimal" value="${value}" aria-label="${label} ${esc(lot.unit)}">
+            </label>`;
+        };
         return `<form class="ld-pantry-sheet" id="move-form">
-            <p class="text-sm">Move ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
-            <div class="ld-pantry-locs mt-2">
-                <button type="button" data-location="fridge">Fridge</button>
-                <button type="button" data-location="freezer">Freezer</button>
-                <button type="button" data-location="pantry">Pantry</button>
-            </div>
-            <label class="block text-xs text-muted mt-2">Quantity to move
-                <input class="input" name="quantity" inputmode="decimal" value="${esc(String(lot.quantity))}">
-            </label>
-            <p class="text-xs text-muted mt-2">Or split a pack. Example: eat 1, freeze 2, keep the rest in the fridge.</p>
-            <button type="submit" class="btn-primary text-sm mt-2">Move</button>
+            <p class="text-sm">Split ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
+            <p class="text-xs text-muted mt-1">Counts are ${esc(lot.unit)}, not packages. They must add up to ${esc(String(lot.quantity))}.</p>
+            ${field('fridge', 'Fridge')}
+            ${field('freezer', 'Freezer')}
+            ${field('pantry', 'Pantry')}
+            <button type="submit" class="btn-primary text-sm mt-2">Split</button>
         </form>`;
     }
 
     function bindMove(lot) {
         const form = document.getElementById('move-form');
-        let place = lot.location;
-        form.querySelectorAll('[data-location]').forEach((btn) => {
-            if (btn.dataset.location === place) btn.classList.add('is-on');
-            btn.addEventListener('click', () => {
-                place = btn.dataset.location;
-                form.querySelectorAll('[data-location]').forEach((el) => el.classList.remove('is-on'));
-                btn.classList.add('is-on');
-            });
-        });
         form.addEventListener('submit', (event) => {
             event.preventDefault();
-            const quantity = Number(new FormData(form).get('quantity'));
-            api.post('/pantry/lots/' + lot.id + '/split', { location: place, quantity }).then(() => window.location.reload()).catch(fail);
+            const data = new FormData(form);
+            const pieces = [];
+            let sum = 0;
+            ['fridge', 'freezer', 'pantry'].forEach((place) => {
+                const quantity = Number(data.get(place) || 0);
+                if (quantity > 0) {
+                    pieces.push({ quantity: quantity, location: place });
+                    sum += quantity;
+                }
+            });
+            const total = Number(lot.quantity);
+            if (!pieces.length || Math.abs(sum - total) > 0.001) {
+                fail({ message: 'Split quantities must add up to ' + total + ' ' + lot.unit + '.' });
+                return;
+            }
+            const body = pieces.length === 1 && pieces[0].quantity === total
+                ? { location: pieces[0].location, quantity: total }
+                : { pieces: pieces };
+            api.post('/pantry/lots/' + lot.id + '/split', body).then(() => window.location.reload()).catch(fail);
         });
     }
 
@@ -342,7 +352,7 @@
             }).slice(0, 40).map((row) => `
                 <li class="ld-pantry-lot">
                     <button type="button" class="text-left w-full" data-product="${row.id}">
-                        ${esc(row.name)} <span class="ld-meta">${esc(row.category)}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
+                        ${esc(row.name)} <span class="ld-meta">${esc(row.category)}${row.units_per_package ? ' · ' + esc(String(row.units_per_package)) + ' ' + esc(row.piece_unit || '') : ''}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
                     </button>
                 </li>`).join('');
         };
@@ -367,6 +377,10 @@
             <label class="block text-xs text-muted mt-2">Category <input class="input w-full" name="category" value="${esc(product.category)}"></label>
             <label class="block text-xs text-muted mt-2">Min on hand <input class="input w-full" name="min_on_hand" value="${esc(product.min_on_hand ?? '')}"></label>
             <div class="grid grid-cols-2 gap-2 mt-2">
+                <label class="text-xs text-muted">Pieces per pack <input class="input w-full" name="units_per_package" inputmode="numeric" value="${esc(product.units_per_package ?? '')}"></label>
+                <label class="text-xs text-muted">Piece unit <input class="input w-full" name="piece_unit" value="${esc(product.piece_unit || '')}" placeholder="slice"></label>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-2">
                 <label class="text-xs text-muted">Pantry days <input class="input w-full" name="shelf_life_pantry_days" value="${esc(life.shelf_life_pantry_days ?? '')}"></label>
                 <label class="text-xs text-muted">Fridge days <input class="input w-full" name="shelf_life_fridge_days" value="${esc(life.shelf_life_fridge_days ?? '')}"></label>
                 <label class="text-xs text-muted">Freezer days <input class="input w-full" name="shelf_life_freezer_days" value="${esc(life.shelf_life_freezer_days ?? '')}"></label>
@@ -383,9 +397,10 @@
             event.preventDefault();
             const data = Object.fromEntries(new FormData(form).entries());
             data.product_id = product.id;
-            ['shelf_life_pantry_days', 'shelf_life_fridge_days', 'shelf_life_freezer_days', 'opened_life_days', 'min_on_hand'].forEach((key) => {
+            ['shelf_life_pantry_days', 'shelf_life_fridge_days', 'shelf_life_freezer_days', 'opened_life_days', 'min_on_hand', 'units_per_package'].forEach((key) => {
                 data[key] = data[key] === '' ? null : Number(data[key]);
             });
+            data.piece_unit = data.piece_unit === '' ? null : data.piece_unit;
             api.post('/pantry/products', data).then(() => window.location.reload()).catch(fail);
         });
         document.getElementById('product-add').addEventListener('click', () => {

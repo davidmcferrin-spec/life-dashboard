@@ -16,7 +16,30 @@ final class PantryDates
 {
     public const LOCATIONS = ['pantry', 'fridge', 'freezer'];
 
-    public const LEVELS = ['full', 'most', 'half', 'low', 'nearly_empty'];
+    public const LEVELS = ['full', 'most', 'half', 'low', 'nearly_empty', 'empty'];
+
+    /**
+     * Condiment steps. most sits with full, nearly_empty sits with low.
+     */
+    public static function nextLevel(string $level): string
+    {
+        return match ($level) {
+            'full', 'most' => 'half',
+            'half' => 'low',
+            'low', 'nearly_empty', 'empty' => 'empty',
+            default => throw new \InvalidArgumentException('Unknown level.'),
+        };
+    }
+
+    public static function stepsLeft(string $level): int
+    {
+        return match ($level) {
+            'full', 'most' => 3,
+            'half' => 2,
+            'low', 'nearly_empty', 'empty' => 1,
+            default => 0,
+        };
+    }
 
     public static function addDays(string $date, int $days): string
     {
