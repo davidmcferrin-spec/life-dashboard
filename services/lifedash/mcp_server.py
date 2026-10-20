@@ -1299,7 +1299,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "add_pantry_items",
-        "description": "Add lots. Each item needs upc, product_id, or name. use_by is filled from the location shelf life unless you set it. location is pantry, fridge, or freezer. When the product has a pack size, a missing unit or a package unit (pkg, box, bag, each) is packages times units_per_package, stored in the piece unit. Passing the piece unit keeps that quantity." + PANTRY_UNIT_NOTE,
+        "description": "Add lots. Each item needs upc, product_id, or name. use_by is filled from the location shelf life unless you set it. Freezer life starts today. Fridge and pantry life starts on the purchase date. location is pantry, fridge, or freezer. When the product has a pack size, a missing unit or a package unit (pkg, box, bag, each) is packages times units_per_package, stored in the piece unit. Passing the piece unit keeps that quantity." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1311,7 +1311,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "consume_pantry_item",
-        "description": "Consume by name, upc, or lot_id. Omit quantity to take one unit. Lots are taken soonest use_by first and can span lots. A counted lot is marked used at zero. A lot with qty_level steps full or most to half, half to low, and low or nearly_empty to empty. Empty marks the lot used.",
+        "description": "Consume by name, upc, or lot_id. Omit quantity to take one unit. Quantity may be a fraction, such as 0.5. Lots are taken soonest use_by first and can span lots. A counted lot stays on hand while any quantity remains and is marked used at zero. A lot with qty_level steps full or most to half, half to low, and low or nearly_empty to empty. Empty marks the lot used.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1325,7 +1325,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "split_or_move_lot",
-        "description": "Move a lot, or split it. Quantities are the lot unit (slices or bottles after a pack is expanded), not packages. pieces is a list of {quantity, location} or {quantity, consume: true} that adds up to the lot, so one call can put 2 in the fridge and 2 in the freezer. Each piece keeps the product, unit, and purchase date. A freezer piece's use_by starts on the move date. A fridge or pantry piece counts from the purchase date. An overridden use_by is kept on a whole-lot move unless reset_use_by is true.",
+        "description": "Move a lot, or split it. Quantities are the lot unit (slices or bottles after a pack is expanded), not packages. pieces is a list of {quantity, location} or {quantity, consume: true} that adds up to the lot, so one call can put 2 in the fridge and 2 in the freezer. Each piece keeps the product, unit, purchase date, and opened_at. A piece that changes place recomputes use_by: freezer life from the move date, fridge or pantry life from the purchase date, and the earlier of that date and opened life when the lot is open. An overridden use_by is kept on a whole-lot move unless reset_use_by is true.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1341,7 +1341,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "open_lot",
-        "description": "Mark a lot opened. use_by becomes the earlier of the current date and opened today plus opened life.",
+        "description": "Mark a lot opened and always recompute use_by. The date is opened today plus opened life when that life is known (the product's opened days, otherwise the category default), otherwise the location life. When both exist, the earlier date wins. Freezer life starts today. Fridge and pantry life starts on the purchase date.",
         "inputSchema": {
             "type": "object",
             "properties": {"lot_id": {"type": "integer"}},
@@ -1363,7 +1363,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "adjust_lot",
-        "description": "Change quantity, location, unit, use_by, qty_level, store, or purchased_at. qty_level is full, most, half, low, nearly_empty, or empty. Setting use_by overrides the calculated date. Quantity 0 marks the lot used." + PANTRY_UNIT_NOTE,
+        "description": "Change quantity, location, unit, use_by, qty_level, store, or purchased_at. qty_level is full, most, half, low, nearly_empty, or empty. Setting use_by overrides the calculated date. Quantity 0 marks the lot used. A quantity above zero puts a used lot back on hand. Tossed and expired lots stay closed. reset_use_by recomputes from opened life and the location life, and keeps the earlier date when the lot is open." + PANTRY_UNIT_NOTE,
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1446,6 +1446,53 @@ TOOLS: list[dict[str, Any]] = [
                 "ingredients": {"type": "array", "items": {"type": "object"}},
             },
             "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_recipe",
+        "description": "Replace a recipe's name, notes, and ingredients. ingredients is a list of {product_id or category, quantity, unit}.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "recipe_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "notes": {"type": ["string", "null"]},
+                "ingredients": {"type": "array", "items": {"type": "object"}},
+            },
+            "required": ["recipe_id", "name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_pantry_category",
+        "description": "Edit one category's shelf-life days. pantry_days, fridge_days, freezer_days, and opened_days are a whole number from 1 to 3650, or null to clear that place. Omitted fields stay as they are. Requires pantry:write, the same scope as the other pantry writes.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string"},
+                "pantry_days": {"type": ["integer", "null"]},
+                "fridge_days": {"type": ["integer", "null"]},
+                "freezer_days": {"type": ["integer", "null"]},
+                "opened_days": {"type": ["integer", "null"]},
+            },
+            "required": ["category"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_pantry_product",
+        "description": "Set a product's own shelf-life days. Each field is a whole number from 1 to 3650, or null so that place inherits the category. Omitted fields stay as they are. Requires pantry:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "product_id": {"type": "integer"},
+                "shelf_life_pantry_days": {"type": ["integer", "null"]},
+                "shelf_life_fridge_days": {"type": ["integer", "null"]},
+                "shelf_life_freezer_days": {"type": ["integer", "null"]},
+                "opened_life_days": {"type": ["integer", "null"]},
+            },
+            "required": ["product_id"],
             "additionalProperties": False,
         },
     },
@@ -1881,6 +1928,19 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/pantry/recipes", None
     if name == "upsert_recipe":
         return "POST", "/api/v1/pantry/recipes", _pick(args, ("recipe_id", "name", "notes", "ingredients"))
+    if name == "update_recipe":
+        body = {key: args[key] for key in ("name", "notes", "ingredients") if key in args}
+        return "POST", f"/api/v1/pantry/recipes/{int(args['recipe_id'])}", body
+    if name == "update_pantry_category":
+        body = {key: args[key] for key in ("category", "pantry_days", "fridge_days", "freezer_days", "opened_days") if key in args}
+        return "POST", "/api/v1/pantry/categories", body
+    if name == "update_pantry_product":
+        body = {
+            key: args[key]
+            for key in ("shelf_life_pantry_days", "shelf_life_fridge_days", "shelf_life_freezer_days", "opened_life_days")
+            if key in args
+        }
+        return "POST", f"/api/v1/pantry/products/{int(args['product_id'])}", body
     if name == "what_can_i_make":
         if args:
             raise ValueError("what_can_i_make takes no arguments.")

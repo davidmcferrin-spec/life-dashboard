@@ -548,12 +548,16 @@ final class PantryService
             }
             $openedOn = $this->clock->today();
             $product = $this->requireProduct($userId, (int) $lot['product_id']);
-            $days = $this->openedDays($userId, $product);
-            $next = PantryDates::afterOpen(
-                $lot['use_by'] !== null ? (string) $lot['use_by'] : null,
+            $next = $this->calculatedUseBy(
+                $userId,
+                $product,
+                (string) $lot['location'],
+                (string) $lot['purchased_at'],
                 $openedOn,
-                $days,
-                (int) $lot['use_by_overridden'] === 1
+                $openedOn,
+                $lot['use_by'] !== null ? (string) $lot['use_by'] : null,
+                false,
+                true
             );
             $this->db->execute(
                 'UPDATE pantry_lots SET opened_at = ?, use_by = ?, use_by_overridden = ?, updated_at = (now() AT TIME ZONE \'UTC\')
@@ -573,8 +577,17 @@ final class PantryService
     {
         return $this->db->transaction(function () use ($userId, $lotId, $fields, $by): array {
             $lot = $this->lockLot($userId, $lotId);
-            $this->requireOnHand($lot);
+            $status = (string) $lot['status'];
+            if ($status === 'tossed' || $status === 'expired') {
+                throw ValidationException::withFields(['lot_id' => 'That lot is ' . $status . '.']);
+            }
+            if ($status !== 'on_hand' && $status !== 'used') {
+                throw ValidationException::withFields(['lot_id' => 'That lot is ' . $status . '.']);
+            }
             $quantity = array_key_exists('quantity', $fields) ? (float) $this->qtyAllowZero($fields['quantity']) : (float) $lot['quantity'];
+            if ($status !== 'on_hand' && $quantity <= 0.0005) {
+                throw ValidationException::withFields(['quantity' => 'Enter a quantity above zero to put this lot back on hand.']);
+            }
             $location = isset($fields['location']) ? $this->location((string) $fields['location']) : (string) $lot['location'];
             $unit = isset($fields['unit']) ? $this->unit((string) $fields['unit']) : (string) $lot['unit'];
             $level = array_key_exists('qty_level', $fields) ? $this->level($fields['qty_level']) : ($lot['qty_level'] !== null ? (string) $lot['qty_level'] : null);
@@ -586,14 +599,16 @@ final class PantryService
             $useBy = $lot['use_by'] !== null ? (string) $lot['use_by'] : null;
             $overridden = (int) $lot['use_by_overridden'] === 1;
             if ($moved || $reset) {
-                $next = PantryDates::afterMove(
+                $next = $this->calculatedUseBy(
+                    $userId,
+                    $product,
                     $location,
                     $purchased,
                     $this->clock->today(),
+                    $lot['opened_at'] !== null ? (string) $lot['opened_at'] : null,
                     $useBy,
                     $overridden,
-                    $reset,
-                    $this->locationDays($userId, $product, $location)
+                    $reset
                 );
                 $useBy = $next['use_by'];
                 $overridden = $next['overridden'];
@@ -724,6 +739,41 @@ final class PantryService
             }
         }
         throw new NotFoundException('Unknown category.');
+    }
+
+    /**
+     * Shelf-life overrides only. Null clears a column so the category default applies.
+     *
+     * @param array<string, mixed> $fields
+     * @return array<string, mixed>
+     */
+    public function updateProductShelf(int $userId, int $productId, array $fields): array
+    {
+        $existing = $this->requireProduct($userId, $productId);
+        $keys = ['shelf_life_pantry_days', 'shelf_life_fridge_days', 'shelf_life_freezer_days', 'opened_life_days'];
+        $seen = false;
+        $values = [];
+        foreach ($keys as $key) {
+            if (array_key_exists($key, $fields)) {
+                $seen = true;
+                $values[] = $this->shelfDays($fields[$key], $key);
+            } else {
+                $values[] = $existing[$key] !== null ? (int) $existing[$key] : null;
+            }
+        }
+        if (!$seen) {
+            throw ValidationException::withFields(['shelf_life_pantry_days' => 'Set pantry, fridge, freezer, or opened days.']);
+        }
+        $values[] = (int) $existing['id'];
+        $values[] = $userId;
+        $this->db->execute(
+            'UPDATE pantry_products SET
+                shelf_life_pantry_days = ?, shelf_life_fridge_days = ?, shelf_life_freezer_days = ?, opened_life_days = ?,
+                updated_at = (now() AT TIME ZONE \'UTC\')
+             WHERE id = ? AND user_id = ?',
+            $values
+        );
+        return $this->publicProduct($userId, $this->requireProduct($userId, (int) $existing['id']));
     }
 
     /**
@@ -944,7 +994,14 @@ final class PantryService
         $explicit = array_key_exists('use_by', $raw) && $raw['use_by'] !== null && $raw['use_by'] !== '';
         $useBy = $explicit
             ? $this->date((string) $raw['use_by'], 'use_by')
-            : PantryDates::initialUseBy($purchased, $this->locationDays($userId, $product, $location));
+            : PantryDates::resolveUseBy(
+                $location,
+                $purchased,
+                $this->clock->today(),
+                null,
+                $this->locationDays($userId, $product, $location),
+                null
+            );
         $id = (int) $this->db->fetchScalar(
             'INSERT INTO pantry_lots (
                 user_id, product_id, quantity, unit, qty_level, location, purchased_at, store, order_ref, unit_price,
@@ -1153,24 +1210,25 @@ final class PantryService
      */
     private function insertChild(int $userId, array $lot, array $product, float $quantity, string $location): array
     {
+        $opened = $lot['opened_at'] !== null ? (string) $lot['opened_at'] : null;
         $samePlace = $location === (string) $lot['location'];
         if ($samePlace) {
             $useBy = $lot['use_by'] !== null ? (string) $lot['use_by'] : null;
             $overridden = (int) $lot['use_by_overridden'] === 1;
-            $opened = $lot['opened_at'] !== null ? (string) $lot['opened_at'] : null;
         } else {
-            $next = PantryDates::afterMove(
+            $next = $this->calculatedUseBy(
+                $userId,
+                $product,
                 $location,
                 (string) $lot['purchased_at'],
                 $this->clock->today(),
+                $opened,
                 $lot['use_by'] !== null ? (string) $lot['use_by'] : null,
                 false,
-                true,
-                $this->locationDays($userId, $product, $location)
+                true
             );
             $useBy = $next['use_by'];
             $overridden = false;
-            $opened = null;
         }
         $id = (int) $this->db->fetchScalar(
             'INSERT INTO pantry_lots (
@@ -1193,14 +1251,16 @@ final class PantryService
     private function moveWhole(int $userId, array $lot, string $location, bool $reset, string $by): array
     {
         $product = $this->requireProduct($userId, (int) $lot['product_id']);
-        $next = PantryDates::afterMove(
+        $next = $this->calculatedUseBy(
+            $userId,
+            $product,
             $location,
             (string) $lot['purchased_at'],
             $this->clock->today(),
+            $lot['opened_at'] !== null ? (string) $lot['opened_at'] : null,
             $lot['use_by'] !== null ? (string) $lot['use_by'] : null,
             (int) $lot['use_by_overridden'] === 1,
-            $reset,
-            $this->locationDays($userId, $product, $location)
+            $reset
         );
         $this->db->execute(
             'UPDATE pantry_lots SET location = ?, use_by = ?, use_by_overridden = ?, updated_at = (now() AT TIME ZONE \'UTC\')
@@ -1288,6 +1348,48 @@ final class PantryService
             "SELECT * FROM pantry_products WHERE user_id = ? AND upc IN ({$marks}) ORDER BY id LIMIT 1",
             array_merge([$userId], $variants)
         );
+    }
+
+    /**
+     * @param array<string, mixed> $product
+     * @return array{use_by: ?string, overridden: bool}
+     */
+    private function calculatedUseBy(
+        int $userId,
+        array $product,
+        string $location,
+        string $purchasedAt,
+        string $asOf,
+        ?string $openedAt,
+        ?string $currentUseBy,
+        bool $overridden,
+        bool $reset,
+    ): array {
+        if ($overridden && !$reset) {
+            return ['use_by' => $currentUseBy, 'overridden' => true];
+        }
+        $openedOn = $this->openedOnDate($openedAt);
+        $locationDays = $this->locationDays($userId, $product, $location);
+        $openedDays = $openedOn !== null ? $this->openedDays($userId, $product) : null;
+        if ($locationDays === null && $openedDays === null) {
+            return ['use_by' => $currentUseBy, 'overridden' => false];
+        }
+        return [
+            'use_by' => PantryDates::resolveUseBy($location, $purchasedAt, $asOf, $openedOn, $locationDays, $openedDays),
+            'overridden' => false,
+        ];
+    }
+
+    private function openedOnDate(?string $openedAt): ?string
+    {
+        if ($openedAt === null || $openedAt === '') {
+            return null;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $openedAt) === 1) {
+            return $openedAt;
+        }
+        $utc = new \DateTimeImmutable($openedAt, new \DateTimeZone('UTC'));
+        return $utc->setTimezone($this->clock->timezone())->format('Y-m-d');
     }
 
     /**
@@ -1748,14 +1850,31 @@ final class PantryService
         if (!array_key_exists($key, $fields)) {
             return $current === null ? null : (int) $current;
         }
-        $value = $fields[$key];
+        return $this->shelfDays($fields[$key], $key);
+    }
+
+    private function shelfDays(mixed $value, string $key): ?int
+    {
         if ($value === null || $value === '') {
             return null;
         }
-        if (!is_numeric($value) || (int) $value < 0 || (int) $value > 3650) {
-            throw ValidationException::withFields([$key => 'Days must be a whole number from 0 to 3650.']);
+        $whole = false;
+        if (is_int($value)) {
+            $whole = true;
+            $days = $value;
+        } elseif (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1) {
+            $whole = true;
+            $days = (int) $value;
+        } elseif (is_float($value) && floor($value) === $value) {
+            $whole = true;
+            $days = (int) $value;
+        } else {
+            $days = 0;
         }
-        return (int) $value;
+        if (!$whole || $days < 1 || $days > 3650) {
+            throw ValidationException::withFields([$key => 'Days must be a whole number from 1 to 3650, or empty.']);
+        }
+        return $days;
     }
 
     private function productName(string $name): string

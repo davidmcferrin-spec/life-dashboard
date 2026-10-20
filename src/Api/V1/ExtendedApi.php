@@ -596,6 +596,9 @@ final class ExtendedApi
         $r->post('/api/v1/pantry/products', fn () => $this->run(fn (int $u) => [
             'product' => $this->svc->pantry->upsertProduct($u, $this->runner->body()),
         ], 200, true));
+        $r->post('/api/v1/pantry/products/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'product' => $this->svc->pantry->updateProductShelf($u, self::id($p), $this->runner->body()),
+        ], 200, true));
         $r->get('/api/v1/pantry/products/upc/{upc}', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $external = filter_var($_GET['external'] ?? '0', FILTER_VALIDATE_BOOLEAN);
             return $this->svc->pantry->productByUpc($u, (string) ($p['upc'] ?? ''), $external);
@@ -626,6 +629,11 @@ final class ExtendedApi
         $r->post('/api/v1/pantry/recipes', fn () => $this->run(fn (int $u) => [
             'recipe' => $this->svc->pantry->upsertRecipe($u, $this->runner->body()),
         ], 200, true));
+        $r->post('/api/v1/pantry/recipes/{id}', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $body = $this->runner->body();
+            $body['recipe_id'] = self::id($p);
+            return ['recipe' => $this->svc->pantry->upsertRecipe($u, $body)];
+        }, 200, true));
         $r->get('/api/v1/pantry/what-can-i-make', fn () => $this->run(fn (int $u) => $this->svc->pantry->whatCanIMake($u)));
     }
 

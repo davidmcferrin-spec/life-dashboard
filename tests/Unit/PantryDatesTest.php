@@ -75,18 +75,23 @@ final class PantryDatesTest extends TestCase
         self::assertSame(1, PantryDates::stepsLeft('empty'));
     }
 
-    public function testOpeningTakesTheEarlierDate(): void
+    public function testResolveUseByTakesTheEarlierOfOpenedAndLocationLife(): void
     {
-        $tight = PantryDates::afterOpen('2026-09-28', '2026-09-25', 2, false);
-        self::assertSame('2026-09-27', $tight['use_by']);
-        self::assertFalse($tight['overridden']);
+        $openedWins = PantryDates::resolveUseBy('fridge', '2026-09-01', '2026-09-25', '2026-09-25', 90, 2);
+        self::assertSame('2026-09-27', $openedWins);
 
-        $kept = PantryDates::afterOpen('2026-09-26', '2026-09-25', 7, true);
-        self::assertSame('2026-09-26', $kept['use_by']);
-        self::assertTrue($kept['overridden']);
+        $locationWins = PantryDates::resolveUseBy('fridge', '2026-09-25', '2026-09-25', '2026-09-25', 3, 30);
+        self::assertSame('2026-09-28', $locationWins);
 
-        $none = PantryDates::afterOpen('2026-09-28', '2026-09-25', null, false);
-        self::assertSame('2026-09-28', $none['use_by']);
+        $freezer = PantryDates::resolveUseBy('freezer', '2026-09-01', '2026-09-25', '2026-09-25', 90, 3);
+        self::assertSame('2026-09-28', $freezer);
+
+        $pantry = PantryDates::resolveUseBy('pantry', '2026-09-01', '2026-09-25', null, 4, 3);
+        self::assertSame('2026-09-05', $pantry);
+
+        self::assertSame('2026-10-02', PantryDates::resolveUseBy('fridge', '2026-09-01', '2026-09-25', '2026-09-25', null, 7));
+        self::assertNull(PantryDates::resolveUseBy('fridge', '2026-09-01', '2026-09-25', '2026-09-25', null, null));
+        self::assertSame('2026-09-25', PantryDates::resolveUseBy('fridge', '2026-09-25', '2026-09-25', null, 0, null));
     }
 
     public function testVaultMarkdownKeepsOnlyRowsWithAUpcAndAName(): void

@@ -146,9 +146,7 @@
             const act = btn.dataset.act;
             const sheet = document.getElementById('pantry-sheet');
             if (act === 'consume') {
-                const raw = window.prompt('How many ' + lot.name + '?', '1');
-                if (!raw) return;
-                api.post('/pantry/consume', { lot_id: lot.id, quantity: Number(raw) }).then(() => window.location.reload()).catch(fail);
+                openConsume(lot);
             } else if (act === 'open') {
                 api.post('/pantry/lots/' + lot.id + '/open', {}).then(() => window.location.reload()).catch(fail);
             } else if (act === 'toss') {
@@ -164,13 +162,18 @@
     }
 
     function lotActions(lot) {
+        const id = lot.id;
+        if (lot.status === 'used') {
+            return `
+            <button type="button" data-act="edit" data-id="${id}" data-tip="Set a quantity above zero to put this lot back on hand." aria-label="Edit. Set a quantity above zero to put this lot back on hand.">Edit</button>
+            <span class="ld-meta">used</span>`;
+        }
         if (lot.status !== 'on_hand') {
             return `<span class="ld-meta">${esc(String(lot.status || '').replace('_', ' '))}</span>`;
         }
-        const id = lot.id;
         return `
-            <button type="button" data-act="consume" data-id="${id}" data-tip="Record some of this as used. The rest stays on hand. Using all of it marks the lot used." aria-label="Use. Record some of this as used. The rest stays on hand. Using all of it marks the lot used.">Use</button>
-            <button type="button" data-act="open" data-id="${id}" data-tip="Mark the package opened. The use-by date may move earlier. The quantity stays the same." aria-label="Open. Mark the package opened. The use-by date may move earlier. The quantity stays the same.">Open</button>
+            <button type="button" data-act="consume" data-id="${id}" data-tip="Record some of this as used. A fraction stays on hand. Using all of it marks the lot used." aria-label="Use. Record some of this as used. A fraction stays on hand. Using all of it marks the lot used.">Use</button>
+            <button type="button" data-act="open" data-id="${id}" data-tip="Mark the package opened and recompute the use-by date. The quantity stays the same." aria-label="Open. Mark the package opened and recompute the use-by date. The quantity stays the same.">Open</button>
             <button type="button" data-act="move" data-id="${id}" data-tip="Move all or part of this lot to the fridge, freezer, or pantry." aria-label="Move. Move all or part of this lot to the fridge, freezer, or pantry.">Move</button>
             <button type="button" data-act="edit" data-id="${id}" data-tip="Change the quantity, place, use-by date, or store." aria-label="Edit. Change the quantity, place, use-by date, or store.">Edit</button>
             <button type="button" data-act="toss" data-id="${id}" data-tip="Take this off the shelf. It stays on the tossed list and is not deleted." aria-label="Toss. Take this off the shelf. It stays on the tossed list and is not deleted.">Toss</button>`;
@@ -229,6 +232,7 @@
     function openMove(lot) {
         closeEdit();
         closeMove();
+        closeConsume();
         const wrap = document.createElement('div');
         wrap.innerHTML = moveSheet(lot);
         const modal = wrap.firstElementChild;
@@ -254,6 +258,7 @@
     function openEdit(lot) {
         closeMove();
         closeEdit();
+        closeConsume();
         const wrap = document.createElement('div');
         wrap.innerHTML = editSheet(lot);
         const modal = wrap.firstElementChild;
@@ -281,7 +286,7 @@
         const field = (place, label) => {
             const value = place === lot.location ? total : 0;
             return `<label class="block text-xs text-muted mt-2">${label}
-                <input class="input" name="${place}" inputmode="decimal" value="${value}" aria-label="${label} ${esc(lot.unit)}">
+                <input class="input" name="${place}" type="number" step="any" min="0" inputmode="decimal" value="${value}" aria-label="${label} ${esc(lot.unit)}">
             </label>`;
         };
         return `<div id="pantry-move-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-move-title">
@@ -348,7 +353,7 @@
                         <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
                     </div>
                     <label class="block text-xs text-muted mt-2">Quantity
-                        <input class="input w-full" name="quantity" inputmode="decimal" value="${esc(String(lot.quantity))}">
+                        <input class="input w-full" name="quantity" type="number" step="any" min="0" inputmode="decimal" value="${esc(String(lot.quantity))}">
                     </label>
                     <div class="ld-pantry-locs mt-2">
                         <button type="button" data-location="fridge">Fridge</button>
@@ -401,6 +406,66 @@
                 store: data.store || null,
             }).then(() => window.location.reload()).catch(fail);
         });
+    }
+
+    function openConsume(lot) {
+        closeMove();
+        closeEdit();
+        closeConsume();
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `<div id="pantry-consume-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-consume-title">
+            <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+            <div class="app-modal-panel surface">
+                <form id="consume-form">
+                    <div class="flex items-start justify-between gap-3">
+                        <p id="pantry-consume-title" class="text-sm">Use ${esc(lot.name)}</p>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <label class="block text-xs text-muted mt-2">Quantity (${esc(lot.unit || 'each')})
+                        <input class="input w-full" name="quantity" type="number" step="any" min="0" inputmode="decimal" value="1" required>
+                    </label>
+                    <p class="text-xs text-muted mt-1">${esc(String(lot.quantity))} on hand. A fraction stays on the lot.</p>
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="btn-primary text-sm">Use</button>
+                        <button type="button" class="btn text-sm" data-close>Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>`;
+        const modal = wrap.firstElementChild;
+        document.body.appendChild(modal);
+        document.body.classList.add('app-modal-open');
+        const form = modal.querySelector('#consume-form');
+        modal.querySelectorAll('[data-close]').forEach((el) => {
+            el.addEventListener('click', () => closeConsume());
+        });
+        onEditKey = (event) => {
+            if (event.key === 'Escape') closeConsume();
+        };
+        document.addEventListener('keydown', onEditKey);
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const quantity = Number(new FormData(form).get('quantity'));
+            if (!Number.isFinite(quantity) || quantity <= 0) {
+                fail({ message: 'Enter a quantity above zero.' });
+                return;
+            }
+            api.post('/pantry/consume', { lot_id: lot.id, quantity: quantity }).then(() => window.location.reload()).catch(fail);
+        });
+        form.querySelector('[name="quantity"]').focus();
+    }
+
+    function closeConsume() {
+        if (onEditKey) {
+            document.removeEventListener('keydown', onEditKey);
+            onEditKey = null;
+        }
+        const modal = document.getElementById('pantry-consume-modal');
+        if (!modal) return;
+        modal.remove();
+        if (!document.querySelector('.app-modal')) {
+            document.body.classList.remove('app-modal-open');
+        }
     }
 
     async function purge() {
@@ -523,7 +588,7 @@
                 <label class="block text-xs text-muted mt-2">Brand <input class="input w-full" name="brand" value="${esc(prefill.brand || '')}"></label>
                 <label class="block text-xs text-muted mt-2">Size <input class="input w-full" name="default_size" value="${esc(prefill.size || '')}"></label>
             `}
-            <label class="block text-xs text-muted mt-2">Quantity <input class="input w-full" name="quantity" inputmode="decimal" value="1"></label>
+            <label class="block text-xs text-muted mt-2">Quantity <input class="input w-full" name="quantity" type="number" step="any" min="0" inputmode="decimal" value="1"></label>
             <div class="ld-pantry-locs mt-2">
                 <button type="button" data-location="fridge" class="is-on">Fridge</button>
                 <button type="button" data-location="freezer">Freezer</button>
@@ -786,9 +851,138 @@
         });
     }
 
+    function formatQty(value) {
+        const q = Number(value);
+        if (!Number.isFinite(q)) return '';
+        return Math.abs(q - Math.round(q)) < 0.001 ? String(Math.round(q)) : String(Math.round(q * 1000) / 1000);
+    }
+
+    function ingredientLine(item) {
+        const bits = [];
+        if (item.quantity !== null && item.quantity !== undefined && item.quantity !== '') bits.push(formatQty(item.quantity));
+        if (item.unit) bits.push(item.unit);
+        bits.push(item.product_id ? item.label : ('category:' + item.category));
+        return bits.join(' ');
+    }
+
+    function parseIngredientLine(line, products) {
+        let text = line.trim();
+        if (!text) return null;
+        let quantity = null;
+        const qtyMatch = text.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+        if (qtyMatch) {
+            quantity = Number(qtyMatch[1]);
+            text = qtyMatch[2];
+        }
+        const cat = text.match(/^(?:([A-Za-z]+)\s+)?category:\s*(.+)$/i);
+        if (cat && (!cat[1] || quantity !== null)) {
+            return {
+                category: cat[2].trim(),
+                quantity: quantity,
+                unit: cat[1] && quantity !== null ? cat[1] : null,
+            };
+        }
+        const named = (label) => (products || []).find((row) => row.name.toLowerCase() === label.toLowerCase());
+        const direct = named(text);
+        if (direct) return { product_id: direct.id, quantity: quantity, unit: null };
+        const split = text.match(/^([A-Za-z]+)\s+(.+)$/);
+        if (split && quantity !== null) {
+            const product = named(split[2]);
+            if (product) return { product_id: product.id, quantity: quantity, unit: split[1] };
+        }
+        return { error: line };
+    }
+
+    function linesToIngredients(raw, products) {
+        const ingredients = [];
+        for (const line of String(raw || '').split('\n').map((row) => row.trim()).filter(Boolean)) {
+            const parsed = parseIngredientLine(line, products);
+            if (!parsed || parsed.error) {
+                return { error: 'No product named ' + line + '. Use category:Produce for an aisle.' };
+            }
+            const item = {};
+            if (parsed.product_id) item.product_id = parsed.product_id;
+            if (parsed.category) item.category = parsed.category;
+            if (parsed.quantity !== null) item.quantity = parsed.quantity;
+            if (parsed.unit) item.unit = parsed.unit;
+            ingredients.push(item);
+        }
+        return { ingredients: ingredients };
+    }
+
+    function closeRecipe() {
+        if (onEditKey) {
+            document.removeEventListener('keydown', onEditKey);
+            onEditKey = null;
+        }
+        const modal = document.getElementById('pantry-recipe-modal');
+        if (!modal) return;
+        modal.remove();
+        if (!document.querySelector('.app-modal')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function openRecipe(recipe, products) {
+        closeRecipe();
+        const lines = (recipe.ingredients || []).map(ingredientLine).join('\n');
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `<div id="pantry-recipe-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-recipe-title">
+            <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+            <div class="app-modal-panel surface">
+                <form id="recipe-edit-form">
+                    <div class="flex items-start justify-between gap-3">
+                        <p id="pantry-recipe-title" class="text-sm">Edit recipe</p>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <label class="block text-xs text-muted mt-2">Name
+                        <input class="input w-full" name="name" required value="${esc(recipe.name)}">
+                    </label>
+                    <label class="block text-xs text-muted mt-2">Notes
+                        <textarea class="input w-full" name="notes" rows="3">${esc(recipe.notes || '')}</textarea>
+                    </label>
+                    <label class="block text-xs text-muted mt-2">Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
+                        <textarea class="input w-full" name="lines" rows="5">${esc(lines)}</textarea>
+                    </label>
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="btn-primary text-sm">Save recipe</button>
+                        <button type="button" class="btn text-sm" data-close>Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>`;
+        const modal = wrap.firstElementChild;
+        document.body.appendChild(modal);
+        document.body.classList.add('app-modal-open');
+        modal.querySelectorAll('[data-close]').forEach((el) => {
+            el.addEventListener('click', () => closeRecipe());
+        });
+        onEditKey = (event) => {
+            if (event.key === 'Escape') closeRecipe();
+        };
+        document.addEventListener('keydown', onEditKey);
+        modal.querySelector('#recipe-edit-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const form = new FormData(event.target);
+            const parsed = linesToIngredients(form.get('lines'), products);
+            if (parsed.error) {
+                fail({ message: parsed.error });
+                return;
+            }
+            api.post('/pantry/recipes/' + recipe.id, {
+                name: form.get('name'),
+                notes: form.get('notes') || null,
+                ingredients: parsed.ingredients,
+            }).then(() => window.location.reload()).catch(fail);
+        });
+        modal.querySelector('[name="name"]').focus();
+    }
+
     async function recipes() {
         const data = await api.get('/pantry/recipes');
         const ideas = await api.get('/pantry/what-can-i-make');
+        const products = await api.get('/pantry/products');
+        const catalog = products.products || [];
         const ranked = (ideas.recipes || []).map((row) =>
             `<li class="ld-pantry-lot">${esc(row.name)} <span class="ld-meta">${Math.round(row.coverage * 100)}%${row.soonest_use_by ? ' · ' + esc(row.soonest_use_by) : ''}${row.missing.length ? ' · missing ' + esc(row.missing.join(', ')) : ''}</span></li>`
         ).join('');
@@ -797,32 +991,38 @@
             <ul>${ranked || '<li class="empty-state mono text-xs">No recipes yet.</li>'}</ul>
             <form id="recipe-form" class="ld-pantry-sheet">
                 <label class="block text-xs text-muted">Name <input class="input w-full" name="name" required></label>
-                <label class="block text-xs text-muted mt-2">Notes <input class="input w-full" name="notes"></label>
-                <label class="block text-xs text-muted mt-2">Ingredients, one per line: product name, or category:Produce
+                <label class="block text-xs text-muted mt-2">Notes <textarea class="input w-full" name="notes" rows="2"></textarea></label>
+                <label class="block text-xs text-muted mt-2">Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
                     <textarea class="input w-full" name="lines" rows="4"></textarea>
                 </label>
                 <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
             </form>
-            <ul class="mt-3">${(data.recipes || []).map((row) => `<li class="text-sm">${esc(row.name)}</li>`).join('')}</ul>`;
-        document.getElementById('recipe-form').addEventListener('submit', async (event) => {
+            <ul class="mt-3" id="recipe-list">${(data.recipes || []).map((row) => `
+                <li class="ld-pantry-lot">
+                    <div class="flex items-center justify-between gap-2">
+                        <span class="text-sm">${esc(row.name)}</span>
+                        <button type="button" data-recipe="${row.id}">Edit</button>
+                    </div>
+                </li>`).join('')}</ul>`;
+        document.getElementById('recipe-list').addEventListener('click', (event) => {
+            const btn = event.target.closest('[data-recipe]');
+            if (!btn) return;
+            const recipe = (data.recipes || []).find((row) => row.id === Number(btn.dataset.recipe));
+            if (recipe) openRecipe(recipe, catalog);
+        });
+        document.getElementById('recipe-form').addEventListener('submit', (event) => {
             event.preventDefault();
             const form = new FormData(event.target);
-            const products = await api.get('/pantry/products');
-            const ingredients = [];
-            for (const line of String(form.get('lines') || '').split('\n').map((row) => row.trim()).filter(Boolean)) {
-                if (line.toLowerCase().startsWith('category:')) {
-                    ingredients.push({ category: line.slice(9).trim() });
-                    continue;
-                }
-                const match = (products.products || []).find((row) => row.name.toLowerCase() === line.toLowerCase());
-                if (!match) {
-                    fail({ message: 'No product named ' + line + '. Use category:Produce for an aisle.' });
-                    return;
-                }
-                ingredients.push({ product_id: match.id });
+            const parsed = linesToIngredients(form.get('lines'), catalog);
+            if (parsed.error) {
+                fail({ message: parsed.error });
+                return;
             }
-            api.post('/pantry/recipes', { name: form.get('name'), notes: form.get('notes') || null, ingredients })
-                .then(() => window.location.reload()).catch(fail);
+            api.post('/pantry/recipes', {
+                name: form.get('name'),
+                notes: form.get('notes') || null,
+                ingredients: parsed.ingredients,
+            }).then(() => window.location.reload()).catch(fail);
         });
     }
 

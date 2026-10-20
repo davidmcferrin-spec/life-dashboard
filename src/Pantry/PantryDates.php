@@ -9,8 +9,9 @@ use DateTimeImmutable;
 /**
  * Use-by arithmetic. Dates are Y-m-d.
  *
- * A null shelf life leaves the current date alone. Zero days is a real life
- * and means the use-by date is the start date.
+ * Zero days is a real life and means the use-by date is the start date.
+ * A null life is left out of resolveUseBy; the caller keeps the current date
+ * only when neither life is known.
  */
 final class PantryDates
 {
@@ -88,25 +89,43 @@ final class PantryDates
         if ($days === null) {
             return ['use_by' => $currentUseBy, 'overridden' => false];
         }
-        $from = $location === 'freezer' ? $movedOn : $purchasedAt;
-        return ['use_by' => self::addDays($from, $days), 'overridden' => false];
+        return [
+            'use_by' => self::resolveUseBy($location, $purchasedAt, $movedOn, null, $days, null),
+            'overridden' => false,
+        ];
     }
 
     /**
-     * Opening tightens use-by to the earlier of the current date and
-     * opened-on plus opened life. A date that does not move keeps its override.
+     * Shared use-by for add, open, reset, and a move.
      *
-     * @return array{use_by: ?string, overridden: bool}
+     * Opened life counts when the lot is open and that life is known.
+     * Freezer life starts on $asOf (the day it is placed or moved). Fridge and
+     * pantry life starts on the purchase date. When both dates exist, the
+     * earlier one is the use-by. A stored date is not an input.
      */
-    public static function afterOpen(?string $currentUseBy, string $openedOn, ?int $openedDays, bool $overridden): array
-    {
-        if ($openedDays === null) {
-            return ['use_by' => $currentUseBy, 'overridden' => $overridden];
+    public static function resolveUseBy(
+        string $location,
+        string $purchasedAt,
+        string $asOf,
+        ?string $openedOn,
+        ?int $locationDays,
+        ?int $openedDays,
+    ): ?string {
+        if (!in_array($location, self::LOCATIONS, true)) {
+            throw new \InvalidArgumentException('Unknown location.');
         }
-        $openedBy = self::addDays($openedOn, $openedDays);
-        if ($currentUseBy === null || $openedBy < $currentUseBy) {
-            return ['use_by' => $openedBy, 'overridden' => false];
+        $unopened = null;
+        if ($locationDays !== null) {
+            $from = $location === 'freezer' ? $asOf : $purchasedAt;
+            $unopened = self::addDays($from, $locationDays);
         }
-        return ['use_by' => $currentUseBy, 'overridden' => $overridden];
+        $opened = null;
+        if ($openedOn !== null && $openedOn !== '' && $openedDays !== null) {
+            $opened = self::addDays($openedOn, $openedDays);
+        }
+        if ($opened !== null && $unopened !== null) {
+            return $opened < $unopened ? $opened : $unopened;
+        }
+        return $opened ?? $unopened;
     }
 }
