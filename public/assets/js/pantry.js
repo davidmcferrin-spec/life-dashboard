@@ -432,7 +432,9 @@
                 <button type="button" data-location="freezer">Freezer</button>
                 <button type="button" data-location="pantry">Pantry</button>
             </div>
-            <label class="block text-xs text-muted mt-2">Use by <input class="input w-full" type="date" name="use_by" value="${esc(prefill.use_by || suggestUseBy(prefill.shelf, 'fridge'))}"></label>
+            <label class="block text-xs text-muted mt-2">${view === 'scan' ? 'Expiration' : 'Use by'}
+                <input class="input w-full" type="date" name="use_by" ${view === 'scan' ? 'required' : ''} value="${esc(prefill.use_by || suggestUseBy(prefill.shelf, 'fridge'))}">
+            </label>
             <label class="block text-xs text-muted mt-2">Purchased <input class="input w-full" type="date" name="purchased_at" value="${esc(loading ? today : (prefill.purchased_at || today))}"></label>
             <label class="block text-xs text-muted mt-2">Store <input class="input w-full" name="store" value="${esc(loading ? 'existing' : (prefill.store || ''))}"></label>
             <label class="text-xs text-muted mt-2 flex gap-2 items-center"><input type="checkbox" name="loading" ${loading ? 'checked' : ''}> Loading what is already here</label>
@@ -456,6 +458,7 @@
         });
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
+            if (!form.reportValidity()) return;
             const data = Object.fromEntries(new FormData(form).entries());
             sessionStorage.setItem('pantry-loading', data.loading ? '1' : '0');
             try {
@@ -495,10 +498,20 @@
         });
     }
 
+    function cameraAvailable() {
+        return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
+    }
+
     async function scan() {
+        const live = cameraAvailable();
         body.innerHTML = `
-            <video id="pantry-video" class="ld-pantry-video" autoplay playsinline muted></video>
-            <button type="button" class="btn-primary text-sm mt-3" id="scan-start">Scan</button>
+            ${live ? '<video id="pantry-video" class="ld-pantry-video" autoplay playsinline muted></video>' : '<p class="text-xs text-muted">This address is not secure, so the camera stays off. Take a photo of the barcode.</p>'}
+            <img id="pantry-photo" class="ld-pantry-video hidden" alt="Barcode photo">
+            <div class="flex gap-2 mt-3">
+                <button type="button" class="btn-primary text-sm" id="scan-start">${live ? 'Scan' : 'Take a photo'}</button>
+                ${live ? '<button type="button" class="btn text-sm" id="scan-photo">Photo</button>' : ''}
+            </div>
+            <input id="pantry-photo-input" class="hidden" type="file" accept="image/*" capture="environment">
             <form id="manual-upc" class="flex gap-2 mt-3">
                 <input class="input flex-1" name="upc" inputmode="numeric" placeholder="Type a UPC" aria-label="UPC">
                 <button type="submit" class="btn">Look up</button>
@@ -511,7 +524,18 @@
             const upc = new FormData(event.target).get('upc');
             if (upc) lookupCode(String(upc));
         });
-        document.getElementById('scan-start').addEventListener('click', startCamera);
+        const photoInput = document.getElementById('pantry-photo-input');
+        photoInput.addEventListener('change', () => {
+            const file = photoInput.files && photoInput.files[0];
+            photoInput.value = '';
+            if (file) decodePhoto(file).catch(fail);
+        });
+        document.getElementById('scan-start').addEventListener('click', () => {
+            if (live) startCamera().catch(fail);
+            else photoInput.click();
+        });
+        const photoBtn = document.getElementById('scan-photo');
+        if (photoBtn) photoBtn.addEventListener('click', () => photoInput.click());
         const produce = await api.get('/pantry/products?search=');
         const list = document.getElementById('produce-list');
         document.getElementById('produce-search').addEventListener('input', (event) => {
@@ -563,12 +587,65 @@
         }
     }
 
+    function readPhoto(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('Could not read that photo.'));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function decodePhoto(file) {
+        clearError();
+        const url = await readPhoto(file);
+        const img = document.getElementById('pantry-photo');
+        img.classList.remove('hidden');
+        await new Promise((resolve, reject) => {
+            img.onload = () => resolve();
+            img.onerror = () => reject(new Error('Could not read that photo.'));
+            img.src = url;
+        });
+        await loadZxing();
+        const reader = new window.ZXing.BrowserMultiFormatReader();
+        try {
+            const result = await reader.decodeFromImageElement(img);
+            acceptCode(result.getText());
+        } catch (err) {
+            if (err && err.name === 'NotFoundException') {
+                fail({ message: 'No barcode in that photo. Fill the frame with the code and try again.' });
+                return;
+            }
+            throw err;
+        }
+    }
+
+    async function openCamera() {
+        const attempts = [
+            { video: { facingMode: { ideal: 'environment' } } },
+            { video: true },
+        ];
+        let last = null;
+        for (const constraints of attempts) {
+            try {
+                return await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (err) {
+                last = err;
+            }
+        }
+        throw last || new Error('Camera is not available.');
+    }
+
     async function startCamera() {
+        if (!cameraAvailable()) {
+            fail({ message: 'This address is not secure, so the camera stays off. Take a photo of the barcode.' });
+            return;
+        }
         const video = document.getElementById('pantry-video');
         if (scanStop) scanStop();
+        const stream = await openCamera();
+        video.srcObject = stream;
         if ('BarcodeDetector' in window) {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-            video.srcObject = stream;
             const detector = new window.BarcodeDetector({ formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8'] });
             let timer = 0;
             const tick = async () => {
