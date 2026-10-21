@@ -234,6 +234,7 @@ final class AuditLog
         'product'       => ['%/pantry/products%'],
         'recipe'        => ['%/pantry/recipes%'],
         'pantry_category' => ['%/pantry/categories%'],
+        'meal_component'  => ['%/pantry/meals%'],
         'deploy'        => ['%/system/deploy%'],
     ];
 

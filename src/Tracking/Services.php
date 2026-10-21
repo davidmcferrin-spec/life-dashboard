@@ -14,6 +14,7 @@ use Dashboard\Life\LifeService;
 use Dashboard\Media\MediaService;
 use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
+use Dashboard\Pantry\MealBuilder;
 use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
@@ -46,6 +47,7 @@ final class Services
     public readonly ShoppingService $shopping;
     public readonly CallService $calls;
     public readonly PantryService $pantry;
+    public readonly MealBuilder $meals;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -69,6 +71,7 @@ final class Services
         $this->shopping = new ShoppingService($db, $clock);
         $this->calls = new CallService($db, $clock);
         $this->pantry = new PantryService($db, $clock, $this->shopping);
+        $this->meals = new MealBuilder($db, $this->shopping, $this->pantry);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,

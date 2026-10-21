@@ -1,5 +1,5 @@
 /**
- * Pantry page: inventory, scan, purge, products, and recipes.
+ * Pantry page: inventory, scan, purge, products, recipes, and the meal builder.
  * BarcodeDetector when the browser has it, otherwise the vendored ZXing build.
  * The file is same-origin because the page CSP only allows scripts from 'self'.
  */
@@ -998,12 +998,17 @@
                 <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
             </form>
             <ul class="mt-3" id="recipe-list">${(data.recipes || []).map((row) => `
-                <li class="ld-pantry-lot">
+                <li class="ld-pantry-lot" id="recipe-${row.id}">
                     <div class="flex items-center justify-between gap-2">
                         <span class="text-sm">${esc(row.name)}</span>
                         <button type="button" data-recipe="${row.id}">Edit</button>
                     </div>
                 </li>`).join('')}</ul>`;
+        const focusId = new URLSearchParams(location.search).get('recipe');
+        if (focusId) {
+            const focus = document.getElementById('recipe-' + focusId);
+            if (focus) focus.scrollIntoView({ block: 'center' });
+        }
         document.getElementById('recipe-list').addEventListener('click', (event) => {
             const btn = event.target.closest('[data-recipe]');
             if (!btn) return;
@@ -1026,6 +1031,116 @@
         });
     }
 
-    const screens = { inventory, scan, purge, products, recipes };
+    const MEAL_FILTERS = [
+        ['protein', 'Protein'],
+        ['base', 'Base'],
+        ['sauce', 'Sauce'],
+        ['side', 'Side'],
+    ];
+    const MEAL_SUPPORT = [
+        ['aromatic', 'Aromatic'],
+        ['vegetable', 'Vegetable'],
+        ['spice', 'Spice'],
+    ];
+    let mealPicks = [];
+
+    function mealChips(rows, pickable) {
+        return (rows || []).map((row) => {
+            const classes = ['ld-meal-chip'];
+            const on = pickable && mealPicks.indexOf(row.id) !== -1;
+            if (on) classes.push('is-on');
+            if (!row.on_hand) classes.push('is-off');
+            if (!pickable) {
+                return `<span class="${classes.join(' ')}">${esc(row.name)}</span>`;
+            }
+            return `<button type="button" class="${classes.join(' ')}" data-pick="${row.id}" data-category="${esc(row.category)}" aria-pressed="${on ? 'true' : 'false'}">${esc(row.name)}</button>`;
+        }).join('');
+    }
+
+    function mealGroup(title, rows, pickable) {
+        const chips = mealChips(rows, pickable);
+        return `<h2 class="ld-pantry-label">${esc(title)}</h2><div class="ld-meal-chips">${chips || '<span class="text-muted text-xs">None for this combo.</span>'}</div>`;
+    }
+
+    async function meals() {
+        clearError();
+        const qs = new URLSearchParams();
+        if (mealPicks.length) qs.set('picks', mealPicks.join(','));
+        const board = await api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : ''));
+        mealPicks = (board.picks || []).map((row) => row.id);
+        const selected = new Set(mealPicks);
+        const made = (board.made_before || []).map((row) =>
+            `<a class="text-sm" href="${esc(row.url)}">${esc(row.name)}</a>`
+        ).join(', ');
+        const only = !!board.on_hand_only;
+        body.innerHTML = `
+            <div class="ld-meal-chips" id="meal-modes">
+                <button type="button" class="ld-meal-chip ld-meal-mode${only ? '' : ' is-on'}" data-hand="0" aria-pressed="${only ? 'false' : 'true'}">Show everything</button>
+                <button type="button" class="ld-meal-chip ld-meal-mode${only ? ' is-on' : ''}" data-hand="1" aria-pressed="${only ? 'true' : 'false'}">Only what I have</button>
+                <button type="button" class="ld-meal-chip" id="meal-clear">Clear</button>
+            </div>
+            <div id="meal-picks">
+            ${MEAL_FILTERS.map(([key, label]) => mealGroup(label, (board.categories || {})[key], true)).join('')}
+            <h2 class="ld-pantry-label">Suggestions</h2>
+            ${MEAL_SUPPORT.map(([key, label]) => mealGroup(label, (board.supporting || {})[key], false)).join('')}
+            </div>
+            <p class="text-sm mt-3" id="meal-made">${made ? 'Made before: ' + made : ''}</p>
+            <p class="text-sm text-muted" id="meal-note"></p>
+            <form id="meal-recipe" class="ld-meal-actions">
+                <input class="input" name="name" placeholder="Recipe name" aria-label="Recipe name" required>
+                <button type="submit" class="btn-primary text-sm">Save as recipe</button>
+                <button type="button" class="btn text-sm" id="meal-groceries">Add missing to Groceries</button>
+            </form>`;
+        body.querySelector('#meal-modes').addEventListener('click', (event) => {
+            const mode = event.target.closest('[data-hand]');
+            if (mode) {
+                api.post('/pantry/meals/view', { on_hand_only: mode.dataset.hand === '1' }).then(() => meals()).catch(fail);
+                return;
+            }
+            if (event.target.closest('#meal-clear')) {
+                mealPicks = [];
+                meals().catch(fail);
+            }
+        });
+        document.getElementById('meal-picks').addEventListener('click', (event) => {
+            const chip = event.target.closest('[data-pick]');
+            if (!chip) return;
+            const id = Number(chip.dataset.pick);
+            const prev = mealPicks.slice();
+            if (selected.has(id)) {
+                mealPicks = mealPicks.filter((pick) => pick !== id);
+            } else {
+                const category = chip.dataset.category;
+                const inCategory = (board.categories[category] || []).filter((row) => selected.has(row.id)).length;
+                if (MEAL_FILTERS.some(([key]) => key === category) && inCategory >= 2) {
+                    fail({ message: 'Pick up to 2 in ' + category + '.' });
+                    return;
+                }
+                mealPicks = prev.concat([id]);
+            }
+            meals().catch((err) => {
+                mealPicks = prev;
+                fail(err);
+            });
+        });
+        document.getElementById('meal-recipe').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const name = new FormData(event.target).get('name');
+            api.post('/pantry/meals/recipe', { name: name, picks: mealPicks }).then((res) => {
+                const id = res.recipe && res.recipe.id;
+                window.location.href = '/pantry?view=recipes' + (id ? '&recipe=' + id : '');
+            }).catch(fail);
+        });
+        document.getElementById('meal-groceries').addEventListener('click', () => {
+            api.post('/pantry/meals/groceries', { picks: mealPicks }).then((res) => {
+                const names = (res.added || []).map((row) => row.name).filter(Boolean);
+                document.getElementById('meal-note').textContent = names.length
+                    ? 'Added to Groceries: ' + names.join(', ')
+                    : 'Nothing missing from Groceries.';
+            }).catch(fail);
+        });
+    }
+
+    const screens = { inventory, scan, purge, products, recipes, meals };
     (screens[view] || inventory)().catch(fail);
 })();

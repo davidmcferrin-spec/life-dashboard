@@ -1,6 +1,6 @@
 <?php
 /**
- * Pantry inventory, scan, purge, and catalog.
+ * Pantry inventory, scan, purge, catalog, recipes, and meal builder.
  *
  * @var array<string, mixed> $user
  */
@@ -30,6 +30,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
         <a href="/pantry?view=purge" data-view="purge">Purge</a>
         <a href="/pantry?view=products" data-view="products">Products</a>
         <a href="/pantry?view=recipes" data-view="recipes">Recipes</a>
+        <a href="/pantry?view=meals" data-view="meals">Meals</a>
         <a href="/settings/pantry">Shelf life</a>
     </nav>
     <p id="pantry-error" class="ld-error hidden"></p>

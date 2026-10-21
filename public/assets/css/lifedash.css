@@ -1405,4 +1405,36 @@ html[data-theme="jarvis"] .ld-pantry-nav a.is-on {
     max-height: 240px;
     width: 100%;
 }
+.ld-meal-chips, .ld-meal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.ld-meal-chip {
+    background: transparent;
+    border: 1px solid var(--surface-border);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    padding: 0.35rem 0.7rem;
+}
+.ld-meal-chip.is-on, .ld-meal-mode.is-on {
+    background: var(--accent-soft);
+    border-color: var(--hud-accent, var(--accent));
+    color: var(--text-primary);
+}
+.ld-meal-chip.is-off {
+    color: var(--text-muted);
+    font-style: italic;
+}
+html[data-theme="jarvis"] .ld-meal-chip.is-on,
+html[data-theme="jarvis"] .ld-meal-mode.is-on {
+    box-shadow: 0 0 12px color-mix(in srgb, var(--hud-accent, var(--accent)) 35%, transparent);
+}
+.ld-meal-actions { margin-top: 0.8rem; }
+@media (max-width: 700px) {
+    .ld-meal-actions .btn,
+    .ld-meal-actions .btn-primary,
+    .ld-meal-actions .input { flex: 1 1 100%; }
+}
 

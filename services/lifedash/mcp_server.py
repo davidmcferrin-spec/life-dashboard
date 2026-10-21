@@ -1502,6 +1502,142 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "list_meal_components",
+        "description": (
+            "Meal builder components. category is protein, base, sauce, side, aromatic, vegetable, or spice. "
+            "on_hand true keeps components whose linked product has an active lot; false keeps the rest; omit it for both. "
+            "Requires pantry:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string"},
+                "on_hand": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_meal_component",
+        "description": (
+            "Add a meal component. category is protein, base, sauce, side, aromatic, vegetable, or spice. "
+            "source is david, past_meal, or research. product_id is optional and may be null. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "category": {"type": "string"},
+                "product_id": {"type": ["integer", "null"]},
+                "notes": {"type": ["string", "null"]},
+                "source": {"type": "string"},
+            },
+            "required": ["name", "category", "source"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_meal_component",
+        "description": (
+            "Change a meal component. Omitted fields stay. product_id null clears the pantry link. "
+            "category and source use the same values as add_meal_component. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "component_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "category": {"type": "string"},
+                "product_id": {"type": ["integer", "null"]},
+                "notes": {"type": ["string", "null"]},
+                "source": {"type": "string"},
+            },
+            "required": ["component_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "remove_meal_component",
+        "description": (
+            "Delete a meal component and the pairings that use it. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"component_id": {"type": "integer"}},
+            "required": ["component_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_meal_pairing",
+        "description": (
+            "Store that two components go together. Pass component_a_id or component_a, and component_b_id or component_b. "
+            "The pair is stored once, with the lower id first, and a second call updates it. "
+            "score is 1 to 5 or null. source is david, past_meal, or research, and is required when the pair is new. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "component_a_id": {"type": "integer"},
+                "component_a": {"type": "string"},
+                "component_b_id": {"type": "integer"},
+                "component_b": {"type": "string"},
+                "score": {"type": ["integer", "null"]},
+                "note": {"type": ["string", "null"]},
+                "source": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "remove_meal_pairing",
+        "description": (
+            "Remove one pairing. Pass component_a_id or component_a, and component_b_id or component_b. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "component_a_id": {"type": "integer"},
+                "component_a": {"type": "string"},
+                "component_b_id": {"type": "integer"},
+                "component_b": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_meal_pairings",
+        "description": "Pairings stored for one component. Requires pantry:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"component_id": {"type": "integer"}},
+            "required": ["component_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "suggest_meal",
+        "description": (
+            "For the picked component ids, return each filter category's components that pair with every pick, "
+            "supporting aromatic, vegetable, and spice suggestions ranked by how many picks they pair with and then by score, "
+            "on-hand flags, and recipes that use exactly those picks. An empty pick list returns every component. "
+            "on_hand_only hides components that are not on hand. There is no meal log. Requires pantry:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "picks": {"type": "array", "items": {"type": "integer"}},
+                "on_hand_only": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "deploy_status",
         "description": (
             "Current commit, origin/main, commits on origin/main that are not checked out (sha and title), "
@@ -1550,6 +1686,43 @@ def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
 
 def _pick(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: args[key] for key in keys if key in args and args[key] is not None}
+
+
+_MEAL_CATEGORIES = ("protein", "base", "sauce", "side", "aromatic", "vegetable", "spice")
+_MEAL_SOURCES = ("david", "past_meal", "research")
+
+
+def _meal_category(value: Any) -> str:
+    text = str(value).strip().lower()
+    if text not in _MEAL_CATEGORIES:
+        raise ValueError("Category must be protein, base, sauce, side, aromatic, vegetable, or spice.")
+    return text
+
+
+def _meal_source(value: Any) -> str:
+    text = str(value).strip().lower()
+    if text not in _MEAL_SOURCES:
+        raise ValueError("Source must be david, past_meal, or research.")
+    return text
+
+
+def _meal_score(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > 5:
+        raise ValueError("Score must be a whole number from 1 to 5, or empty.")
+    return value
+
+
+def _meal_kept(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    body = {key: args[key] for key in keys if key in args}
+    if "category" in body:
+        body["category"] = _meal_category(body["category"])
+    if "source" in body:
+        body["source"] = _meal_source(body["source"])
+    if "score" in body:
+        body["score"] = _meal_score(body["score"])
+    return body
 
 
 def _call_body(args: dict[str, Any]) -> dict[str, Any]:
@@ -1945,6 +2118,46 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args:
             raise ValueError("what_can_i_make takes no arguments.")
         return "GET", "/api/v1/pantry/what-can-i-make", None
+    if name == "list_meal_components":
+        query: dict[str, Any] = {}
+        if args.get("category"):
+            query["category"] = _meal_category(args["category"])
+        if "on_hand" in args and args["on_hand"] is not None:
+            if not isinstance(args["on_hand"], bool):
+                raise ValueError("on_hand must be true or false.")
+            query["on_hand"] = "1" if args["on_hand"] else "0"
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/pantry/meals/components" + suffix, None
+    if name == "add_meal_component":
+        return "POST", "/api/v1/pantry/meals/components", _meal_kept(args, ("name", "category", "product_id", "notes", "source"))
+    if name == "update_meal_component":
+        body = _meal_kept(args, ("name", "category", "product_id", "notes", "source"))
+        return "POST", f"/api/v1/pantry/meals/components/{int(args['component_id'])}", body
+    if name == "remove_meal_component":
+        return "POST", f"/api/v1/pantry/meals/components/{int(args['component_id'])}/remove", {}
+    if name == "add_meal_pairing":
+        return "POST", "/api/v1/pantry/meals/pairings", _meal_kept(
+            args, ("component_a_id", "component_a", "component_b_id", "component_b", "score", "note", "source")
+        )
+    if name == "remove_meal_pairing":
+        return "POST", "/api/v1/pantry/meals/pairings/remove", _meal_kept(
+            args, ("component_a_id", "component_a", "component_b_id", "component_b")
+        )
+    if name == "list_meal_pairings":
+        return "GET", f"/api/v1/pantry/meals/components/{int(args['component_id'])}/pairings", None
+    if name == "suggest_meal":
+        query = {}
+        picks = args.get("picks") or []
+        if picks:
+            if not isinstance(picks, list) or any(isinstance(pick, bool) or not isinstance(pick, int) or pick < 1 for pick in picks):
+                raise ValueError("picks must be a list of component ids.")
+            query["picks"] = ",".join(str(pick) for pick in picks)
+        if "on_hand_only" in args and args["on_hand_only"] is not None:
+            if not isinstance(args["on_hand_only"], bool):
+                raise ValueError("on_hand_only must be true or false.")
+            query["on_hand_only"] = "1" if args["on_hand_only"] else "0"
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/pantry/meals" + suffix, None
     if name == "deploy_status":
         if args:
             raise ValueError("deploy_status takes no arguments.")
