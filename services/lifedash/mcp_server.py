@@ -1625,8 +1625,12 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "For the picked component ids, return each filter category's components that pair with every pick, "
             "supporting aromatic, vegetable, and spice suggestions ranked by how many picks they pair with and then by score, "
-            "on-hand flags, and recipes that use exactly those picks. An empty pick list returns every component. "
-            "on_hand_only hides components that are not on hand. There is no meal log. Requires pantry:read."
+            "and on-hand flags. made_before matches a recipe when its protein, base, sauce, and side ingredients "
+            "are exactly the picks. Aromatic, vegetable, spice, and unmapped ingredients are not compared. "
+            "Each match includes also_uses, a list of those ignored ingredients: name, category or null, "
+            "component_id or null, and on_hand. A recipe with no filter-category ingredient is not a match. "
+            "An empty pick list returns every component. on_hand_only hides components that are not on hand. "
+            "There is no meal log. Requires pantry:read."
         ),
         "inputSchema": {
             "type": "object",

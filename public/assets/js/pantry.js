@@ -1069,9 +1069,14 @@
         const board = await api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : ''));
         mealPicks = (board.picks || []).map((row) => row.id);
         const selected = new Set(mealPicks);
-        const made = (board.made_before || []).map((row) =>
-            `<a class="text-sm" href="${esc(row.url)}">${esc(row.name)}</a>`
-        ).join(', ');
+        const made = (board.made_before || []).map((row) => {
+            const uses = (row.also_uses || []).map((item) => {
+                if (!item || !item.name) return '';
+                return item.on_hand ? esc(item.name) : `<span class="is-off">${esc(item.name)}</span>`;
+            }).filter(Boolean);
+            const extra = uses.length ? `<div class="ld-meal-uses">also uses: ${uses.join(', ')}</div>` : '';
+            return `<div class="ld-meal-made"><a class="text-sm" href="${esc(row.url)}">${esc(row.name)}</a>${extra}</div>`;
+        }).join('');
         const only = !!board.on_hand_only;
         body.innerHTML = `
             <div class="ld-meal-chips" id="meal-modes">
@@ -1084,7 +1089,7 @@
             <h2 class="ld-pantry-label">Suggestions</h2>
             ${MEAL_SUPPORT.map(([key, label]) => mealGroup(label, (board.supporting || {})[key], false)).join('')}
             </div>
-            <p class="text-sm mt-3" id="meal-made">${made ? 'Made before: ' + made : ''}</p>
+            <div class="mt-3" id="meal-made">${made ? '<p class="text-sm">Made before</p>' + made : ''}</div>
             <p class="text-sm text-muted" id="meal-note"></p>
             <form id="meal-recipe" class="ld-meal-actions">
                 <input class="input" name="name" placeholder="Recipe name" aria-label="Recipe name" required>

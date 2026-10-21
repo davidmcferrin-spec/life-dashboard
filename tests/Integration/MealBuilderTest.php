@@ -187,6 +187,7 @@ final class MealBuilderTest extends PgsqlTestCase
         self::assertSame('recipe', $found[0]['kind']);
         self::assertSame($match['id'], $found[0]['id']);
         self::assertSame('/pantry?view=recipes&recipe=' . $match['id'], $found[0]['url']);
+        self::assertSame([], $found[0]['also_uses']);
 
         $byName = $this->svc->pantry->upsertRecipe($this->user, [
             'name' => 'Olive plate',
@@ -198,6 +199,106 @@ final class MealBuilderTest extends PgsqlTestCase
         $saved = $this->svc->meals->saveRecipe($this->user, 'Weeknight beef rice', [$beef['id'], $rice['id']]);
         $again = $this->svc->meals->suggest($this->user, [$beef['id'], $rice['id']], false, false)['made_before'];
         self::assertContains($saved['recipe']['id'], array_column($again, 'id'));
+    }
+
+    public function testMadeBeforeIgnoresSupportingAndUnmappedIngredients(): void
+    {
+        $sausageProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Italian sausage', 'category' => 'Meat']);
+        $riceProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Rice', 'category' => 'Other']);
+        $onionProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Onion', 'category' => 'Produce']);
+        $pepperProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Red bell pepper', 'category' => 'Produce']);
+        $soyProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Soy sauce', 'category' => 'Other']);
+        $bayProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Old Bay', 'category' => 'Other']);
+        $saltProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Salt', 'category' => 'Other']);
+        $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $onionProduct['id'],
+            'quantity' => 1,
+            'location' => 'pantry',
+        ]], 'david');
+
+        $sausage = $this->component('Italian sausage', 'protein', $sausageProduct['id']);
+        $rice = $this->component('Rice', 'base', $riceProduct['id']);
+        $onion = $this->component('Onion', 'aromatic', $onionProduct['id']);
+        $pepper = $this->component('Red bell pepper', 'vegetable', $pepperProduct['id']);
+        $soy = $this->component('Soy sauce', 'sauce', $soyProduct['id']);
+        $bay = $this->component('Old Bay', 'spice', $bayProduct['id']);
+        $this->pair($sausage['id'], $rice['id'], 4);
+        $this->pair($sausage['id'], $soy['id'], 2);
+
+        $italian = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Italian sausage and rice',
+            'ingredients' => [
+                ['product_id' => $sausageProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $onionProduct['id']],
+                ['product_id' => $pepperProduct['id']],
+            ],
+        ]);
+        $withSoy = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Sausage rice and soy',
+            'ingredients' => [
+                ['product_id' => $sausageProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $soyProduct['id']],
+            ],
+        ]);
+        $sausageOnly = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Sausage alone',
+            'ingredients' => [['product_id' => $sausageProduct['id']]],
+        ]);
+        $aromatics = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Onion and Old Bay',
+            'ingredients' => [
+                ['product_id' => $onionProduct['id']],
+                ['product_id' => $bayProduct['id']],
+            ],
+        ]);
+        $withSalt = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Sausage rice and salt',
+            'ingredients' => [
+                ['product_id' => $sausageProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $saltProduct['id']],
+            ],
+        ]);
+
+        $found = $this->svc->meals->suggest($this->user, [$sausage['id'], $rice['id']], false, false)['made_before'];
+        $byId = [];
+        foreach ($found as $row) {
+            $byId[$row['id']] = $row;
+        }
+        self::assertArrayHasKey($italian['id'], $byId);
+        self::assertArrayNotHasKey($withSoy['id'], $byId);
+        self::assertArrayNotHasKey($sausageOnly['id'], $byId);
+        self::assertArrayNotHasKey($aromatics['id'], $byId);
+        self::assertSame([
+            [
+                'name' => 'Onion',
+                'category' => 'aromatic',
+                'component_id' => $onion['id'],
+                'on_hand' => true,
+            ],
+            [
+                'name' => 'Red bell pepper',
+                'category' => 'vegetable',
+                'component_id' => $pepper['id'],
+                'on_hand' => false,
+            ],
+        ], $byId[$italian['id']]['also_uses']);
+        self::assertSame([
+            [
+                'name' => 'Salt',
+                'category' => null,
+                'component_id' => null,
+                'on_hand' => false,
+            ],
+        ], $byId[$withSalt['id']]['also_uses']);
+
+        $sausagePick = $this->svc->meals->suggest($this->user, [$sausage['id']], false, false)['made_before'];
+        $sausageIds = array_column($sausagePick, 'id');
+        self::assertContains($sausageOnly['id'], $sausageIds);
+        self::assertNotContains($aromatics['id'], $sausageIds);
+        self::assertNotContains($italian['id'], $sausageIds);
     }
 
     public function testAddMissingSendsOnlyAbsentPicksToGroceries(): void
