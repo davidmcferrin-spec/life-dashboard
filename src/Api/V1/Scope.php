@@ -34,7 +34,7 @@ final class Scope
 
     public const CALL_ENTITIES = ['call', 'contact', 'vetted_agency'];
 
-    public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category'];
+    public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component'];
 
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
@@ -45,7 +45,7 @@ final class Scope
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
-        'pantry_lot', 'product', 'recipe', 'pantry_category',
+        'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component',
         'deploy',
     ];
 

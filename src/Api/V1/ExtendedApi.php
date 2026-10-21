@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Api\V1;
 
 use Dashboard\Deploy\DeployService;
+use Dashboard\Pantry\MealBuilder;
 use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Router\Router;
 use Dashboard\Support\Clock;
@@ -565,6 +566,71 @@ final class ExtendedApi
 
     private function registerPantry(Router $r): void
     {
+        $r->get('/api/v1/pantry/meals/components', fn () => $this->run(function (int $u): array {
+            $category = isset($_GET['category']) ? (string) $_GET['category'] : null;
+            $onHand = null;
+            if (array_key_exists('on_hand', $_GET) && $_GET['on_hand'] !== '') {
+                $onHand = filter_var($_GET['on_hand'], FILTER_VALIDATE_BOOLEAN);
+            }
+            return $this->svc->meals->listComponents($u, $category, $onHand);
+        }));
+        $r->post('/api/v1/pantry/meals/components', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->addComponent($u, $this->runner->body());
+        }, 201, true));
+        $r->post('/api/v1/pantry/meals/components/{id}/remove', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->removeComponent($u, self::id($p));
+        }, 200, true));
+        $r->get('/api/v1/pantry/meals/components/{id}/pairings', fn (array $p) => $this->run(
+            fn (int $u) => $this->svc->meals->listPairings($u, self::id($p))
+        ));
+        $r->post('/api/v1/pantry/meals/components/{id}', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->updateComponent($u, self::id($p), $this->runner->body());
+        }, 200, true));
+        $r->post('/api/v1/pantry/meals/pairings/remove', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->removePairing($u, $this->runner->body());
+        }, 200, true));
+        $r->post('/api/v1/pantry/meals/pairings', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->addPairing($u, $this->runner->body());
+        }, 200, true));
+        $r->post('/api/v1/pantry/meals/view', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            $body = $this->runner->body();
+            if (!array_key_exists('on_hand_only', $body) || !is_bool($body['on_hand_only'])) {
+                throw ValidationException::withFields(['on_hand_only' => 'on_hand_only must be true or false.']);
+            }
+            return $this->svc->meals->suggest($u, [], $body['on_hand_only'], true);
+        }, 200, true));
+        $r->post('/api/v1/pantry/meals/recipe', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            $body = $this->runner->body();
+            $picks = $body['picks'] ?? [];
+            if (!is_array($picks)) {
+                throw ValidationException::withFields(['picks' => 'picks must be a list of component ids.']);
+            }
+            return $this->svc->meals->saveRecipe($u, (string) ($body['name'] ?? ''), $picks);
+        }, 201, true));
+        $r->post('/api/v1/pantry/meals/groceries', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            $body = $this->runner->body();
+            $picks = $body['picks'] ?? [];
+            if (!is_array($picks)) {
+                throw ValidationException::withFields(['picks' => 'picks must be a list of component ids.']);
+            }
+            return $this->svc->meals->addMissing($u, $picks, $this->addedBy());
+        }, 200, true));
+        $r->get('/api/v1/pantry/meals', fn () => $this->run(function (int $u): array {
+            $picks = self::csv($_GET['picks'] ?? null) ?? [];
+            $only = null;
+            if (array_key_exists('on_hand_only', $_GET) && $_GET['on_hand_only'] !== '') {
+                $only = filter_var($_GET['on_hand_only'], FILTER_VALIDATE_BOOLEAN);
+            }
+            return $this->svc->meals->suggest($u, $picks, $only, false);
+        }));
         $r->get('/api/v1/pantry/lots', fn () => $this->run(fn (int $u) => $this->svc->pantry->listLots($u, $_GET)));
         $r->get('/api/v1/pantry/units', fn () => $this->run(fn (int $u) => $this->svc->pantry->units()));
         $r->get('/api/v1/pantry/summary', fn () => $this->run(function (int $u): array {
@@ -768,6 +834,13 @@ final class ExtendedApi
     private function deploy(): DeployService
     {
         return new DeployService($this->svc->db);
+    }
+
+    private function assertMealWrite(): void
+    {
+        if (!MealBuilder::mcpWriteAllowed($this->deploy()->mcpUpdatesEnabled(), $this->runner->tokenId())) {
+            throw new ForbiddenException(DeployService::MCP_DISABLED);
+        }
     }
 
     private function assertSystemAdmin(int $userId): void

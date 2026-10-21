@@ -35,6 +35,14 @@ The inventory page defaults to on hand. Status `any` is every lot except `tossed
 
 `what_can_i_make` ranks by how many ingredients the stock covers, then by the soonest `use_by` among the lots that counted. A quantity counts only when the units match.
 
+## Meal builder
+
+The Meals tab on `/pantry` plans from components. It does not replace recipes. Filter categories are protein, base, sauce, and side. Aromatic, vegetable, and spice are suggestions for the current picks. A pick list is optional, and each filter category takes at most two. Pairings are stored once, with the lower component id first. The page asks one query for the components that pair with every current pick.
+
+A component is on hand when its linked product has an active lot with quantity left, or a level other than empty. Not-on-hand chips are italic. Only what I have is remembered per user. Save as recipe writes a normal pantry recipe. Add missing to Groceries sends the picks that are not on hand to the Groceries list. There is no meal log. Made before links to a recipe whose ingredients are exactly the picks, matched by product or by name.
+
+`0029_meal_builder.sql` creates `meal_components` and `meal_pairings`. It does not insert food. Claire adds components through MCP. Token writes need Allow MCP updates and `pantry:write`. A signed-in session can still save a recipe and add groceries while that toggle is off. Reads use `pantry:read`.
+
 ## UPC lookup
 
 Scan uses the browser `BarcodeDetector` API (`upc_a`, `upc_e`, `ean_13`, `ean_8`) when the page is a secure context and the browser has that API. If the API is missing, the page loads the vendored `@zxing/library@0.21.3` UMD build at `public/assets/vendor/zxing/zxing-0.21.3.min.js` and reads the camera. On plain HTTP the browser does not expose the camera, so Scan takes a photo and ZXing reads the barcode from that image. The script integrity is `sha384-BzBxP10ZE72aitqj5UMmUsbKFliP/DZqA8Wq+BNNhlIJDGoEd1tpkMYXOg9+n6sB`. The library is Apache-2.0; its license is `public/assets/vendor/zxing/LICENSE`. It is loaded from this origin because the app content security policy allows scripts from `'self'` only. The same code is ignored for 2.5 seconds. Manual entry is on the same page.
@@ -47,8 +55,8 @@ Category shelf lives are per user. New accounts seed Dairy fridge 21 days, Other
 
 `POST /api/v1/pantry/recipes/{id}` and `update_recipe` replace a recipe's name, notes, and ingredients. The recipes page edits that in a dialog.
 
-Scopes `pantry:read` and `pantry:write` appear with the other token areas. Writes are audited as `pantry_lot`, `product`, `recipe`, or `pantry_category`.
+Scopes `pantry:read` and `pantry:write` appear with the other token areas. Writes are audited as `pantry_lot`, `product`, `recipe`, `pantry_category`, or `meal_component`.
 
-Tools: `list_pantry`, `list_pantry_units`, `get_product_by_upc`, `upsert_product`, `update_pantry_product`, `list_products`, `add_pantry_items`, `consume_pantry_item`, `split_or_move_lot`, `open_lot`, `toss_lot`, `adjust_lot`, `expiring_items`, `low_stock`, `pantry_stats`, `import_order`, `list_recipes`, `upsert_recipe`, `update_recipe`, `update_pantry_category`, `what_can_i_make`.
+Tools: `list_pantry`, `list_pantry_units`, `get_product_by_upc`, `upsert_product`, `update_pantry_product`, `list_products`, `add_pantry_items`, `consume_pantry_item`, `split_or_move_lot`, `open_lot`, `toss_lot`, `adjust_lot`, `expiring_items`, `low_stock`, `pantry_stats`, `import_order`, `list_recipes`, `upsert_recipe`, `update_recipe`, `update_pantry_category`, `what_can_i_make`, `list_meal_components`, `add_meal_component`, `update_meal_component`, `remove_meal_component`, `add_meal_pairing`, `remove_meal_pairing`, `list_meal_pairings`, `suggest_meal`.
 
-No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql`, `database/pgsql/0027_pantry_pack.sql`, and `database/pgsql/0028_pantry_shelf_defaults.sql`. The catalog fills in on first use.
+No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql`, `database/pgsql/0027_pantry_pack.sql`, `database/pgsql/0028_pantry_shelf_defaults.sql`, and `database/pgsql/0029_meal_builder.sql`. The catalog fills in on first use. Meal components are not seeded.

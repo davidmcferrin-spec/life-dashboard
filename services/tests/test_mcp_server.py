@@ -282,6 +282,8 @@ def test_money_tools_resolve_onto_the_money_api():
         "toss_lot", "adjust_lot", "expiring_items", "low_stock", "pantry_stats",
         "import_order", "list_recipes", "upsert_recipe", "update_recipe",
         "update_pantry_category", "update_pantry_product", "what_can_i_make",
+        "list_meal_components", "add_meal_component", "update_meal_component", "remove_meal_component",
+        "add_meal_pairing", "remove_meal_pairing", "list_meal_pairings", "suggest_meal",
     ):
         assert name in names
 
@@ -324,6 +326,58 @@ def test_pantry_tools_map_onto_the_pantry_api():
     )
     assert (method, path) == ("POST", "/api/v1/pantry/products/8")
     assert body == {"opened_life_days": 3, "shelf_life_fridge_days": None}
+
+
+def test_meal_builder_tools_map_onto_the_pantry_api():
+    method, path, body = resolve("list_meal_components", {"category": "Protein", "on_hand": True})
+    assert method == "GET"
+    assert path.startswith("/api/v1/pantry/meals/components?")
+    assert "category=protein" in path and "on_hand=1" in path
+    method, path, body = resolve("list_meal_components", {})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/meals/components", None)
+    method, path, body = resolve(
+        "add_meal_component",
+        {"name": "Rice", "category": "base", "source": "David", "product_id": None, "notes": None},
+    )
+    assert (method, path) == ("POST", "/api/v1/pantry/meals/components")
+    assert body["source"] == "david"
+    assert body["product_id"] is None
+    assert body["notes"] is None
+    method, path, body = resolve("update_meal_component", {"component_id": 4, "name": "Brown rice", "product_id": None})
+    assert (method, path) == ("POST", "/api/v1/pantry/meals/components/4")
+    assert body == {"name": "Brown rice", "product_id": None}
+    method, path, body = resolve("remove_meal_component", {"component_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/pantry/meals/components/4/remove", {})
+    method, path, body = resolve(
+        "add_meal_pairing",
+        {"component_a": "Rice", "component_b_id": 2, "score": None, "note": "weeknight", "source": "research"},
+    )
+    assert (method, path) == ("POST", "/api/v1/pantry/meals/pairings")
+    assert body["score"] is None
+    assert body["component_a"] == "Rice"
+    assert body["source"] == "research"
+    method, path, body = resolve("remove_meal_pairing", {"component_a_id": 2, "component_b": "Rice"})
+    assert (method, path) == ("POST", "/api/v1/pantry/meals/pairings/remove")
+    assert body["component_a_id"] == 2 and body["component_b"] == "Rice"
+    method, path, body = resolve("list_meal_pairings", {"component_id": 4})
+    assert (method, path, body) == ("GET", "/api/v1/pantry/meals/components/4/pairings", None)
+    method, path, body = resolve("suggest_meal", {"picks": [2, 4], "on_hand_only": False})
+    assert method == "GET" and body is None
+    assert path.startswith("/api/v1/pantry/meals?")
+    assert "picks=2%2C4" in path or "picks=2,4" in path
+    assert "on_hand_only=0" in path
+    for call, message in (
+        (("add_meal_component", {"name": "X", "category": "grain", "source": "david"}), "Category must be"),
+        (("add_meal_pairing", {"component_a_id": 1, "component_b_id": 2, "source": "web"}), "Source must be"),
+        (("add_meal_pairing", {"component_a_id": 1, "component_b_id": 2, "score": 9, "source": "david"}), "Score must be"),
+        (("suggest_meal", {"picks": ["rice"]}), "picks must be"),
+    ):
+        try:
+            resolve(*call)
+        except ValueError as exc:
+            assert message in str(exc)
+            continue
+        raise AssertionError(message)
 
 
 def test_deploy_tools_send_only_the_confirm_sha():
