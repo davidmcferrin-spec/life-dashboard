@@ -1423,9 +1423,16 @@ html[data-theme="jarvis"] .ld-pantry-nav a.is-on {
     border-color: var(--hud-accent, var(--accent));
     color: var(--text-primary);
 }
-.ld-meal-chip.is-off {
+.ld-meal-chip.is-off,
+.ld-meal-uses .is-off {
     color: var(--text-muted);
     font-style: italic;
+}
+.ld-meal-made { margin-top: 0.35rem; }
+.ld-meal-uses {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    margin-top: 0.15rem;
 }
 html[data-theme="jarvis"] .ld-meal-chip.is-on,
 html[data-theme="jarvis"] .ld-meal-mode.is-on {

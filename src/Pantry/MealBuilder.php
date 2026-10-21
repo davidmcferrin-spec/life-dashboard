@@ -382,65 +382,158 @@ SQL;
     ) THEN 1 ELSE 0 END";
 
     /**
+     * Protein, base, sauce, and side must match the picks.
+     * Aromatics, vegetables, spices, and ingredients with no component are listed, not compared.
+     *
      * @return list<array<string, mixed>>
      */
     private function madeBefore(int $userId, string $csv): array
     {
         $rows = $this->db->fetchAll(
-            'WITH picks AS (
-                SELECT c.id, c.product_id, lower(regexp_replace(trim(c.name), \'\\s+\', \' \', \'g\')) AS name_key
-                FROM meal_components c
-                WHERE c.user_id = ? AND c.id::text IN (
-                    SELECT trim(x) FROM unnest(string_to_array(?, \',\')) AS t(x) WHERE trim(x) <> \'\'
-                )
-             ),
-             pick_n AS (SELECT COUNT(*)::int AS n FROM picks)
-             SELECT r.id, r.name
-             FROM pantry_recipes r
-             CROSS JOIN pick_n
-             WHERE r.user_id = ?
-               AND pick_n.n > 0
-               AND (SELECT COUNT(*) FROM pantry_recipe_ingredients i WHERE i.recipe_id = r.id AND i.user_id = r.user_id) = pick_n.n
-               AND NOT EXISTS (
-                    SELECT 1 FROM picks pk
-                    WHERE NOT EXISTS (
-                        SELECT 1
-                        FROM pantry_recipe_ingredients i
-                        LEFT JOIN pantry_products p ON p.id = i.product_id AND p.user_id = r.user_id
-                        WHERE i.recipe_id = r.id AND i.user_id = r.user_id
-                          AND (
-                            (i.product_id IS NOT NULL AND pk.product_id IS NOT NULL AND i.product_id = pk.product_id)
-                            OR (p.id IS NOT NULL AND lower(regexp_replace(trim(p.name), \'\\s+\', \' \', \'g\')) = pk.name_key)
-                            OR (i.product_id IS NULL AND i.category IS NOT NULL AND lower(i.category) = pk.name_key)
-                          )
-                    )
+            <<<'SQL'
+WITH picks AS (
+    SELECT c.id
+    FROM meal_components c
+    WHERE c.user_id = ? AND c.id::text IN (
+        SELECT trim(x) FROM unnest(string_to_array(?, ',')) AS t(x) WHERE trim(x) <> ''
+    )
+),
+components AS (
+    SELECT c.id, c.name, c.category, c.product_id,
+           lower(regexp_replace(trim(c.name), '\s+', ' ', 'g')) AS name_key,
+           CASE WHEN c.product_id IS NOT NULL AND EXISTS (
+               SELECT 1 FROM pantry_lots l
+               WHERE l.user_id = c.user_id AND l.product_id = c.product_id AND l.status = 'on_hand'
+                 AND (l.quantity > 0 OR (l.qty_level IS NOT NULL AND l.qty_level <> 'empty'))
+           ) THEN 1 ELSE 0 END AS on_hand
+    FROM meal_components c
+    WHERE c.user_id = ?
+),
+mapped AS (
+    SELECT i.id AS ingredient_id,
+           i.recipe_id,
+           i.product_id,
+           COALESCE(p.name, i.category) AS ingredient_name,
+           match.component_id
+    FROM pantry_recipe_ingredients i
+    LEFT JOIN pantry_products p ON p.id = i.product_id AND p.user_id = i.user_id
+    LEFT JOIN LATERAL (
+        SELECT c.id AS component_id
+        FROM components c
+        WHERE (i.product_id IS NOT NULL AND c.product_id IS NOT NULL AND i.product_id = c.product_id)
+           OR (p.id IS NOT NULL AND lower(regexp_replace(trim(p.name), '\s+', ' ', 'g')) = c.name_key)
+           OR (i.product_id IS NULL AND i.category IS NOT NULL
+               AND lower(regexp_replace(trim(i.category), '\s+', ' ', 'g')) = c.name_key)
+        ORDER BY
+            CASE
+                WHEN i.product_id IS NOT NULL AND c.product_id IS NOT NULL AND i.product_id = c.product_id THEN 0
+                WHEN p.id IS NOT NULL AND lower(regexp_replace(trim(p.name), '\s+', ' ', 'g')) = c.name_key THEN 1
+                ELSE 2
+            END,
+            c.id
+        LIMIT 1
+    ) match ON true
+    WHERE i.user_id = ?
+),
+filter_parts AS (
+    SELECT m.recipe_id, m.component_id
+    FROM mapped m
+    JOIN components c ON c.id = m.component_id
+    WHERE c.category IN ('protein', 'base', 'sauce', 'side')
+),
+eligible AS (
+    SELECT r.id, r.name
+    FROM pantry_recipes r
+    WHERE r.user_id = ?
+      AND (SELECT COUNT(DISTINCT fp.component_id) FROM filter_parts fp WHERE fp.recipe_id = r.id) > 0
+      AND (SELECT COUNT(DISTINCT fp.component_id) FROM filter_parts fp WHERE fp.recipe_id = r.id) = (SELECT COUNT(*) FROM picks)
+      AND NOT EXISTS (
+          SELECT 1 FROM picks pk
+          WHERE NOT EXISTS (
+              SELECT 1 FROM filter_parts fp
+              WHERE fp.recipe_id = r.id AND fp.component_id = pk.id
+          )
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM filter_parts fp
+          WHERE fp.recipe_id = r.id
+            AND NOT EXISTS (SELECT 1 FROM picks pk WHERE pk.id = fp.component_id)
+      )
+)
+SELECT e.id, e.name, uses.also_uses
+FROM eligible e
+LEFT JOIN LATERAL (
+    SELECT json_agg(
+               json_build_object(
+                   'name', COALESCE(c.name, m.ingredient_name),
+                   'category', c.category,
+                   'component_id', m.component_id,
+                   'on_hand', CASE
+                       WHEN c.id IS NOT NULL THEN c.on_hand
+                       WHEN m.product_id IS NOT NULL AND EXISTS (
+                           SELECT 1 FROM pantry_lots l
+                           WHERE l.user_id = ? AND l.product_id = m.product_id AND l.status = 'on_hand'
+                             AND (l.quantity > 0 OR (l.qty_level IS NOT NULL AND l.qty_level <> 'empty'))
+                       ) THEN 1
+                       ELSE 0
+                   END
                )
-               AND NOT EXISTS (
-                    SELECT 1
-                    FROM pantry_recipe_ingredients i
-                    LEFT JOIN pantry_products p ON p.id = i.product_id AND p.user_id = r.user_id
-                    WHERE i.recipe_id = r.id AND i.user_id = r.user_id
-                      AND NOT EXISTS (
-                        SELECT 1 FROM picks pk
-                        WHERE (
-                            (i.product_id IS NOT NULL AND pk.product_id IS NOT NULL AND i.product_id = pk.product_id)
-                            OR (p.id IS NOT NULL AND lower(regexp_replace(trim(p.name), \'\\s+\', \' \', \'g\')) = pk.name_key)
-                            OR (i.product_id IS NULL AND i.category IS NOT NULL AND lower(i.category) = pk.name_key)
-                        )
-                      )
-               )
-             ORDER BY r.name, r.id',
-            [$userId, $csv, $userId]
+               ORDER BY m.ingredient_id
+           ) AS also_uses
+    FROM mapped m
+    LEFT JOIN components c ON c.id = m.component_id
+    WHERE m.recipe_id = e.id
+      AND (c.id IS NULL OR c.category IN ('aromatic', 'vegetable', 'spice'))
+) uses ON true
+ORDER BY e.name, e.id
+SQL,
+            [$userId, $csv, $userId, $userId, $userId, $userId]
         );
-        return array_map(static function (array $row): array {
+        $out = [];
+        foreach ($rows as $row) {
             $id = (int) $row['id'];
-            return [
+            $out[] = [
                 'kind' => 'recipe',
                 'id' => $id,
                 'name' => (string) $row['name'],
                 'url' => '/pantry?view=recipes&recipe=' . $id,
+                'also_uses' => $this->alsoUses($row['also_uses'] ?? null),
             ];
-        }, $rows);
+        }
+        return $out;
+    }
+
+    /**
+     * @return list<array{name: string, category: ?string, component_id: ?int, on_hand: bool}>
+     */
+    private function alsoUses(mixed $raw): array
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : [];
+        }
+        if (!is_array($raw)) {
+            return [];
+        }
+        $uses = [];
+        foreach ($raw as $use) {
+            if (!is_array($use)) {
+                continue;
+            }
+            $name = trim((string) ($use['name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $category = $use['category'] ?? null;
+            $componentId = $use['component_id'] ?? null;
+            $uses[] = [
+                'name' => $name,
+                'category' => is_string($category) && $category !== '' ? $category : null,
+                'component_id' => is_numeric($componentId) && (int) $componentId > 0 ? (int) $componentId : null,
+                'on_hand' => $this->flag($use['on_hand'] ?? false),
+            ];
+        }
+        return $uses;
     }
 
     /**
