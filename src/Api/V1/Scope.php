@@ -22,6 +22,7 @@ final class Scope
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
+        'spotify',
     ];
 
     public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
@@ -36,6 +37,8 @@ final class Scope
 
     public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component'];
 
+    public const SPOTIFY_ENTITIES = ['spotify'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -46,6 +49,7 @@ final class Scope
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
         'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component',
+        'spotify',
         'deploy',
     ];
 
@@ -76,6 +80,10 @@ final class Scope
                 $out[] = $scope;
                 continue;
             }
+            if ($scope === 'spotify:playback') {
+                $out[] = $scope;
+                continue;
+            }
             if (!preg_match('/^([a-z]+):(read|write)$/', $scope, $m) || !in_array($m[1], self::AREAS, true)) {
                 throw ValidationException::withFields(['scopes' => "Unknown scope '{$scope}'."]);
             }
@@ -96,6 +104,9 @@ final class Scope
 
     public static function forPath(string $path, bool $write): string
     {
+        if (str_contains($path, '/spotify/playback')) {
+            return 'spotify:playback';
+        }
         $area = 'metrics';
         foreach (self::AREAS as $candidate) {
             if (str_contains($path, '/' . $candidate)) {
@@ -137,6 +148,9 @@ final class Scope
             return true;
         }
         if (in_array($required, $granted, true)) {
+            return true;
+        }
+        if ($required === 'spotify:read' && in_array('spotify:playback', $granted, true)) {
             return true;
         }
         // write implies read for the same area
@@ -181,6 +195,9 @@ final class Scope
         }
         if (self::allows($granted, 'pantry:read')) {
             $allow = array_merge($allow, self::PANTRY_ENTITIES);
+        }
+        if (self::allows($granted, 'spotify:read')) {
+            $allow = array_merge($allow, self::SPOTIFY_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

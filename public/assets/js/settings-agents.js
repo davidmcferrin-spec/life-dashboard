@@ -44,18 +44,21 @@
 
     function checksFor(scopes) {
         const set = new Set(scopes || []);
-        const rest = (scopes || []).filter((scope) => scope !== 'system:read' && scope !== 'system:deploy');
+        const rest = (scopes || []).filter((scope) => scope !== 'system:read' && scope !== 'system:deploy' && scope !== 'spotify:playback');
         const checks = {
             all: false,
             read: false,
             reddit: false,
             money: false,
             todos: false,
+            spotify: false,
             system_read: set.has('system:read'),
             system_deploy: set.has('system:deploy'),
+            spotify_playback: set.has('spotify:playback'),
         };
         if (rest.indexOf('*') !== -1) {
             checks.all = true;
+            checks.spotify_playback = true;
             return checks;
         }
         const readOnly = areas.length > 0
@@ -68,6 +71,7 @@
         checks.reddit = set.has('reddit:read') || set.has('reddit:write');
         checks.money = set.has('money:read') || set.has('money:write');
         checks.todos = set.has('todos:read') || set.has('todos:write');
+        checks.spotify = set.has('spotify:read') || set.has('spotify:write');
         return checks;
     }
 
@@ -145,7 +149,10 @@
                     ? ['money:read', 'money:write']
                     : (access === 'todos'
                         ? ['todos:read', 'todos:write']
-                        : (access === 'read' ? ['read'] : ['*'])));
+                        : (access === 'spotify'
+                            ? ['spotify:read', 'spotify:write']
+                            : (access === 'read' ? ['read'] : ['*']))));
+            if (data.get('spotify_playback')) scopes.push('spotify:playback');
             if (data.get('system_read')) scopes.push('system:read');
             if (data.get('system_deploy')) scopes.push('system:deploy');
             const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
@@ -194,6 +201,7 @@
         });
         form.elements.system_read.checked = checks.system_read;
         form.elements.system_deploy.checked = checks.system_deploy;
+        if (form.elements.spotify_playback) form.elements.spotify_playback.checked = checks.spotify_playback === true;
         document.getElementById('agent-edit-current').textContent = 'Current scopes: ' + row.scopes.join(' ');
         document.getElementById('agent-edit-error').textContent = '';
         openModal(editModal);
@@ -218,7 +226,9 @@
             else if (box.value === 'reddit') scopes.push('reddit:read', 'reddit:write');
             else if (box.value === 'money') scopes.push('money:read', 'money:write');
             else if (box.value === 'todos') scopes.push('todos:read', 'todos:write');
+            else if (box.value === 'spotify') scopes.push('spotify:read', 'spotify:write');
         });
+        if (form.elements.spotify_playback && form.elements.spotify_playback.checked) scopes.push('spotify:playback');
         if (form.elements.system_read.checked) scopes.push('system:read');
         if (form.elements.system_deploy.checked) scopes.push('system:deploy');
         return scopes;

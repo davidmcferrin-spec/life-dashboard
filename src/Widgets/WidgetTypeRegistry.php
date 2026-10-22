@@ -236,6 +236,19 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
                 'fields' => self::carouselFields('Subreddits', "One per line\nnews\nr/programming", false),
             ],
+            'spotify' => [
+                'label' => 'Spotify', 'category' => 'media', 'singleton' => false,
+                'description' => 'Now playing, listening time, and top artists from play history.',
+                'size' => ['w' => 3, 'h' => 3], 'min' => ['w' => 2, 'h' => 2],
+                'fields' => [],
+            ],
+            'spotify_player' => [
+                'label' => 'Spotify player', 'category' => 'media', 'singleton' => false,
+                'floating' => true,
+                'description' => 'A player that floats above every page. It is not placed on the grid.',
+                'size' => ['w' => 3, 'h' => 2], 'min' => ['w' => 2, 'h' => 2],
+                'fields' => [],
+            ],
             'reddit_feed' => [
                 'label' => 'Reddit reader', 'category' => 'media', 'singleton' => false,
                 'description' => 'Recent posts from the subreddits you track on Settings → Reddit.',

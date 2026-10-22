@@ -1203,6 +1203,26 @@
             </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, custom };
+    function spotify(ctx) {
+        const data = ctx.data || {};
+        if (!data.connected) {
+            ctx.body.innerHTML = '<p class="empty-state mono text-xs">Spotify is not connected.</p><a class="ld-card-title" href="/settings/spotify">Connect</a>';
+            return;
+        }
+        const now = data.now;
+        const playing = now && now.name
+            ? `<p class="ld-card-title">${esc(now.name)}</p><p class="ld-meta">${esc((now.artists || []).join(', '))}</p>`
+            : `<p class="ld-meta">${esc(data.now_error || 'Nothing playing')}</p>`;
+        const artists = (data.top_artists || []).map((row) => `${esc(row.name)} ${row.plays}`).join(' · ');
+        ctx.body.innerHTML = `
+            <div class="ld-spotify-card">
+                ${playing}
+                <p class="ld-meta">${data.minutes_today || 0} min today · ${data.minutes_week || 0} min this week</p>
+                ${artists ? `<p class="ld-meta">${artists}</p>` : ''}
+                <a class="ld-card-title" href="/spotify">Playlists</a>
+            </div>`;
+    }
+
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();
