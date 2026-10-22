@@ -1,0 +1,12 @@
+# A new file in the spool starts the root service queue.
+# PHP can create the file. It cannot start this unit.
+
+[Unit]
+Description=Watch for life-dashboard service requests
+
+[Path]
+PathExistsGlob=/var/lib/lifedash/service/incoming/*.json
+Unit=lifedash-service.service
+
+[Install]
+WantedBy=multi-user.target

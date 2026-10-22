@@ -2557,12 +2557,22 @@ def make_handler(
     allow_plain_http: Callable[[], bool] | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     gate = limiter or RequestLimiter()
-    resource = (mcp_public_url or "").strip()
+
+    def current_public() -> str:
+        value = mcp_public_url() if callable(mcp_public_url) else mcp_public_url
+        return (value or "").strip()
+
+    def current_issuer() -> str:
+        value = issuer() if callable(issuer) else issuer
+        return (value or "").strip()
+
     allows = allow_plain_http if allow_plain_http is not None else (lambda: True)
-    auth_headers = {
-        "WWW-Authenticate": www_authenticate(resource),
-        "Cache-Control": "no-store",
-    }
+
+    def auth_headers() -> dict[str, str]:
+        return {
+            "WWW-Authenticate": www_authenticate(current_public()),
+            "Cache-Control": "no-store",
+        }
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -2589,13 +2599,13 @@ def make_handler(
                 message = json.loads(raw.decode("utf-8") or "{}")
             except json.JSONDecodeError:
                 if self._plain_blocked():
-                    self._send(403, plain_http_error(None, resource))
+                    self._send(403, plain_http_error(None, current_public()))
                     return
                 self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
                 return
             if self._plain_blocked():
                 msg_id = message.get("id") if isinstance(message, dict) else None
-                self._send(403, plain_http_error(msg_id, resource))
+                self._send(403, plain_http_error(msg_id, current_public()))
                 return
             # Stateless. A leftover Mcp-Session-Id is ignored; it does not select a tool list.
             auth = self.headers.get("Authorization")
@@ -2604,7 +2614,7 @@ def make_handler(
                 if isinstance(message, list):
                     replies = [r for item in message if isinstance(item, dict) and (r := handle_message(item, auth, fetch, gate)) is not None]
                     status = 401 if any(getattr(item, "http_status", 200) == 401 for item in replies) else 200
-                    self._send(status, replies, auth_headers if status == 401 else None)
+                    self._send(status, replies, auth_headers() if status == 401 else None)
                     return
                 if not isinstance(message, dict):
                     self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}})
@@ -2614,7 +2624,7 @@ def make_handler(
                     self._send(202, None)
                     return
                 status = getattr(reply, "http_status", 200)
-                self._send(status, reply, auth_headers if status == 401 else None)
+                self._send(status, reply, auth_headers() if status == 401 else None)
             finally:
                 _TRANSPORT.reset(token)
 
@@ -2624,19 +2634,22 @@ def make_handler(
                 self._send(200, health_document(listen, port))
                 return
             if self._plain_blocked():
-                self._send(403, plain_http_error(None, resource))
+                self._send(403, plain_http_error(None, current_public()))
                 return
             if path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
-                if not resource or not issuer:
+                public = current_public()
+                origin = current_issuer()
+                if not public or not origin:
                     self._send(503, {"error": "MCP_PUBLIC_URL and PUBLIC_BASE_URL (or APP_URL) must be set."})
                     return
-                self._send(200, protected_resource_document(resource, issuer), {"Cache-Control": "no-store"})
+                self._send(200, protected_resource_document(public, origin), {"Cache-Control": "no-store"})
                 return
             if path == "/.well-known/oauth-authorization-server":
-                if not issuer:
+                origin = current_issuer()
+                if not origin:
                     self._send(503, {"error": "PUBLIC_BASE_URL or APP_URL must be set."})
                     return
-                self._send(200, authorization_server_document(issuer), {"Cache-Control": "no-store"})
+                self._send(200, authorization_server_document(origin), {"Cache-Control": "no-store"})
                 return
             # Streamable HTTP clients GET the MCP path to open an SSE stream.
             # This server has no stream. 200 JSON here makes that probe look
@@ -2668,13 +2681,22 @@ def make_handler(
 
 
 def main() -> None:
+    from .runtime_config import RuntimeSettings, read_setup
+
     config = Config.load()
     setup_logging(config.get("LOG_LEVEL", "INFO"))
-    host = listen_host(config.maybe("MCP_HOST"), config.maybe("MCP_BIND"))
+    runtime = RuntimeSettings(config, lambda: read_setup(config))
+    # Bind is read once. Settings → Setup queues a restart after it changes.
+    host = listen_host(config.maybe("MCP_HOST"), runtime.maybe("MCP_BIND"))
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
-    mcp_public = config.maybe("MCP_PUBLIC_URL") or ""
-    issuer = config.maybe("PUBLIC_BASE_URL") or config.maybe("APP_URL") or ""
+
+    def mcp_public() -> str:
+        return runtime.maybe("MCP_PUBLIC_URL") or ""
+
+    def issuer() -> str:
+        return runtime.maybe("PUBLIC_BASE_URL") or config.maybe("APP_URL") or ""
+
     # Config default until Agents stores mcp_plain_http. The bind above stays put.
     plain = PlainHttpGate(config.bool("MCP_ALLOW_PLAIN_HTTP", True), lambda: read_plain_http_flag(config))
     server = ThreadingHTTPServer(

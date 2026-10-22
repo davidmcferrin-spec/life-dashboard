@@ -107,8 +107,12 @@ if [[ -f $APP_DIR/deploy/php/lifedash-pool.conf ]]; then
     fi
 fi
 lifedash_install_spool /var/lib/lifedash/deploy lifedash
+lifedash_install_spool /var/lib/lifedash/service lifedash
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-service.service" \
+    "$APP_DIR/deploy/systemd/lifedash-service.path" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable lifedash-deploy.path >/dev/null
+systemctl enable lifedash-service.path >/dev/null
 
 log "restart realtime push and MCP"
 systemctl enable lifedash-push.service >/dev/null

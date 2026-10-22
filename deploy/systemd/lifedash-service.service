@@ -1,0 +1,14 @@
+# Drain the service spool. Started by lifedash-service.path when a request appears.
+# Runs as root. PHP and lifedash-mcp are not in this unit.
+
+[Unit]
+Description=life-dashboard service queue
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-service-from-spool
+TimeoutStartSec=2min
+Nice=10
+PrivateTmp=yes
+NoNewPrivileges=yes

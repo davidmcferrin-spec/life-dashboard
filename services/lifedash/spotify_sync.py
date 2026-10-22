@@ -40,19 +40,34 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def execute(command: str, user_id: int | None, playlist_id: int | None) -> dict:
+    from .runtime_config import RuntimeSettings, read_setup
+    from pathlib import Path
+
+    from .token_key import material
+
     cfg = Config.load()
-    client_id = _usable(cfg.maybe("SPOTIFY_CLIENT_ID"))
-    secret = _usable(cfg.maybe("SPOTIFY_CLIENT_SECRET"))
+    runtime = RuntimeSettings(cfg, lambda: read_setup(cfg))
+    client_id = _usable(runtime.maybe("SPOTIFY_CLIENT_ID"))
+    secret = _usable(runtime.maybe("SPOTIFY_CLIENT_SECRET"))
     if command == "tick" and (not client_id or not secret):
         return {"ok": True, "skipped": True, "reason": "Spotify is not configured."}
     if not client_id or not secret:
-        return {"ok": False, "error": "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET before syncing Spotify."}
-    token_secret = _usable(cfg.maybe("SPOTIFY_TOKEN_KEY")) or _usable(cfg.maybe("APP_SECRET"))
-    if not token_secret:
-        return {"ok": False, "error": "Set SPOTIFY_TOKEN_KEY or APP_SECRET before connecting Spotify."}
-    minutes = cfg.int("SPOTIFY_SYNC_MINUTES", 10)
+        return {"ok": False, "error": "Set the Spotify client id and secret on Settings → Setup before syncing."}
+    minutes = runtime.int("SPOTIFY_SYNC_MINUTES", 10)
     conn = connect(cfg, application_name="lifedash-spotify")
     conn.row_factory = dict_row
+    have_accounts = False
+    try:
+        have_accounts = conn.execute("SELECT 1 FROM spotify_account LIMIT 1").fetchone() is not None
+    except Exception:
+        have_accounts = False
+    root = Path(__file__).resolve().parents[2]
+    token_secret = material(
+        root / "storage" / "keys" / "spotify-token.key",
+        runtime.maybe("SPOTIFY_TOKEN_KEY"),
+        cfg.maybe("APP_SECRET"),
+        have_accounts,
+    )
     worker = Worker(conn, SpotifyHttp(), key_bytes(token_secret), client_id, secret, minutes)
     try:
         if command == "tick":

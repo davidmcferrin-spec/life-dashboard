@@ -341,12 +341,14 @@ $router->post('/settings/tokens/expiry', function () use ($auth): void {
 $userService = new UserService($db, $auth);
 
 $router->get('/settings/setup', function () use ($auth, $db): void {
+    \Dashboard\Settings\BrowserOnly::reject();
     $user = $auth->requireAdmin();
     $setupState = (new \Dashboard\Settings\SetupConfig($db))->view();
     require VIEWS_DIR . '/settings/setup.php';
 });
 
 $router->post('/api/setup', function () use ($auth, $db): void {
+    \Dashboard\Settings\BrowserOnly::reject();
     validateCsrf();
     $user = $auth->requireAuth();
     if (!$auth->isAdmin($user)) {
@@ -361,6 +363,75 @@ $router->post('/api/setup', function () use ($auth, $db): void {
         $setup = new \Dashboard\Settings\SetupConfig($db);
         $setup->save((string) ($body['group'] ?? ''), $values, (int) $user['id']);
         jsonResponse(['ok' => true, 'setup' => $setup->view()]);
+    } catch (\InvalidArgumentException $e) {
+        jsonResponse(['error' => $e->getMessage()], 422);
+    }
+});
+
+$router->post('/api/setup/service', function () use ($auth): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $user = $auth->requireAuth();
+    if (!$auth->isAdmin($user)) {
+        jsonResponse(['error' => 'Admin only.'], 403);
+    }
+    $body = json_decode(file_get_contents('php://input') ?: '', true);
+    $action = is_array($body) ? (string) ($body['action'] ?? '') : '';
+    if ($action !== 'restart-mcp') {
+        jsonResponse(['error' => 'Unknown service action.'], 422);
+        return;
+    }
+    try {
+        $queued = (new \Dashboard\Settings\ServiceControl())->request('restart-mcp');
+        jsonResponse(['ok' => true, 'service' => $queued]);
+    } catch (\Throwable $e) {
+        jsonResponse(['error' => $e->getMessage()], 422);
+    }
+});
+
+$router->get('/settings/tunnel', function () use ($auth, $db): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    $user = $auth->requireAdmin();
+    $tunnelPage = new \Dashboard\Settings\TunnelSettings($db);
+    $tunnelPage->queueStatus();
+    $tunnel = $tunnelPage->view();
+    require VIEWS_DIR . '/settings/tunnel.php';
+});
+
+$router->get('/api/settings/tunnel', function () use ($auth, $db): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    $user = $auth->requireAuth();
+    if (!$auth->isAdmin($user)) {
+        jsonResponse(['error' => 'Admin only.'], 403);
+    }
+    $tunnelPage = new \Dashboard\Settings\TunnelSettings($db);
+    $tunnelPage->queueStatus();
+    jsonResponse(['ok' => true, 'tunnel' => $tunnelPage->view()]);
+});
+
+$router->post('/api/settings/tunnel', function () use ($auth, $db): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $user = $auth->requireAuth();
+    if (!$auth->isAdmin($user)) {
+        jsonResponse(['error' => 'Admin only.'], 403);
+    }
+    $body = json_decode(file_get_contents('php://input') ?: '', true);
+    if (!is_array($body)) {
+        jsonResponse(['error' => 'Body must be a JSON object.'], 422);
+        return;
+    }
+    $tunnelPage = new \Dashboard\Settings\TunnelSettings($db);
+    try {
+        $action = (string) ($body['action'] ?? 'save');
+        if ($action === 'save') {
+            $values = is_array($body['values'] ?? null) ? $body['values'] : [];
+            $tunnelPage->save($values, (int) $user['id']);
+        } else {
+            $tunnelPage->act($action);
+        }
+        $tunnelPage->queueStatus();
+        jsonResponse(['ok' => true, 'tunnel' => $tunnelPage->view()]);
     } catch (\InvalidArgumentException $e) {
         jsonResponse(['error' => $e->getMessage()], 422);
     }

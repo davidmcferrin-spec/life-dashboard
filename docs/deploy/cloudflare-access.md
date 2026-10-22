@@ -4,18 +4,16 @@ Two hostnames. `dash.<domain>` is the PHP app (pages, `/ws`, OAuth consent, toke
 
 `cloudflared` connects outbound. The router does not gain a new open port. The LAN UI on the server's own HTTPS name keeps working, including by IP.
 
-```bash
-cloudflared tunnel login
-cloudflared tunnel create lifedash
-cloudflared tunnel route dns lifedash dash.<your-domain>
-cloudflared tunnel route dns lifedash mcp.<your-domain>
-sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>
-sudo lifedash-env set PUBLIC_BASE_URL https://dash.<your-domain>
-sudo lifedash-env set MCP_PUBLIC_URL https://mcp.<your-domain>/mcp
-sudo systemctl restart lifedash-mcp
-```
+Create a remotely managed tunnel in Cloudflare Zero Trust and copy its token. Signed in as an admin:
 
-The script installs `cloudflared.service` from `deploy/systemd/cloudflared.service` and writes `/etc/cloudflared/config.yml`. The credentials file path is a line in that config (`credentials-file`). The file itself stays in `/etc/cloudflared/` and is not committed.
+1. **Settings → Setup → Public URLs.** Dashboard URL `https://dash.<your-domain>`. MCP URL `https://mcp.<your-domain>/mcp`. **Save**, then **Restart MCP service**.
+2. **Settings → Tunnel.** Paste the token. Dashboard hostname `dash.<your-domain>`. MCP hostname `mcp.<your-domain>`. **Save**. Copy these public hostname routes into Zero Trust:
+   - `dash.<your-domain>` → `http://localhost:80`
+   - `mcp.<your-domain>` → `http://localhost:8765`
+
+   **Start**. Status reads Connected or Not connected.
+
+The helper writes the token to `/etc/lifedash/cloudflared.token` (root, mode 0600) and starts `cloudflared.service` from `deploy/systemd/cloudflared.service`. A tunnel that already has `/etc/cloudflared/config.yml` still starts when no token is saved. That file is not committed.
 
 Claude custom connector URL:
 
@@ -27,15 +25,8 @@ Claude discovers OAuth from that origin, registers a public client, and sends th
 
 Do not put a Cloudflare Access service-token policy on `/mcp` for this connector. Claude's browser and token calls do not send those headers. A static bearer token on Settings → Agents still works for an existing bot and does not need OAuth.
 
-`MCP_ALLOW_PLAIN_HTTP` defaults to true. Settings → Agents, **Allow plain HTTP MCP access (LAN IP)**, stores an override in `server_flags` (`mcp_plain_http`). A missing row keeps the config value. The page shows the effective state and whether the config file or that row set it. Each token and OAuth client shows the last hop, HTTP or HTTPS, so you can see that a client has moved before you turn plain HTTP off. The switch is a dashboard form. A bearer token cannot change it.
+Settings → Agents, **Allow plain HTTP MCP access (LAN IP)**, stores the switch in `server_flags` (`mcp_plain_http`). With no row saved, plain HTTP stays allowed. The page shows On or Off. Each token and OAuth client shows the last hop, HTTP or HTTPS, so you can see that a client has moved before you turn plain HTTP off. The checkbox is the switch. A bearer token cannot change it.
 
-Off means a direct `http://<ip>:8765` JSON-RPC call gets HTTP 403 and the message names `MCP_PUBLIC_URL`. The process keeps listening, so the client sees that URL. `/healthz` stays open for local checks. Tunnel traffic is loopback plus `X-Forwarded-Proto: https` and is still accepted. The change applies within a couple of seconds. It does not restart the service and it does not change the bind.
+Off means a direct `http://<ip>:8765` JSON-RPC call gets HTTP 403 and the message names the MCP URL. The process keeps listening, so the client sees that URL. `/healthz` stays open for local checks. Tunnel traffic is loopback plus `X-Forwarded-Proto: https` and is still accepted. The change applies within a couple of seconds. It does not restart the service and it does not change the bind.
 
-`MCP_BIND` defaults to `all` (`0.0.0.0`). `MCP_HOST` is ignored. Leave the bind on `all` until you also want the LAN port closed, then:
-
-```bash
-sudo lifedash-env set MCP_BIND loopback
-sudo systemctl restart lifedash-mcp
-```
-
-The tunnel still dials `127.0.0.1:8765`. Writes from an OAuth client honor the same Allow MCP updates switch as a static token.
+MCP bind defaults to all interfaces (`0.0.0.0`). `MCP_HOST` is ignored. Leave the bind on **All interfaces** until you also want the LAN port closed. Then Settings → Setup → MCP bind → **Loopback only**, **Save**, and **Restart MCP service**. The tunnel still dials `127.0.0.1:8765`. Writes from an OAuth client honor the same Allow MCP updates switch as a static token.

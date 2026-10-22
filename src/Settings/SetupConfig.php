@@ -32,6 +32,10 @@ final class SetupConfig
                 Config::overlay($key, $value);
             }
         }
+        // Kept so a key saved before the file outside the web root still opens old tokens.
+        if (isset($stored['SPOTIFY_TOKEN_KEY']) && trim((string) $stored['SPOTIFY_TOKEN_KEY']) !== '') {
+            Config::overlay('SPOTIFY_TOKEN_KEY', trim((string) $stored['SPOTIFY_TOKEN_KEY']));
+        }
     }
 
     /**
@@ -47,11 +51,12 @@ final class SetupConfig
                 $fields[] = $this->publicField($field, $stored);
             }
             $groups[] = [
-                'id'     => $id,
-                'label'  => $group['label'],
-                'blurb'  => $group['blurb'],
-                'status' => self::groupStatus($group, $stored),
-                'fields' => $fields,
+                'id'      => $id,
+                'label'   => $group['label'],
+                'blurb'   => $group['blurb'],
+                'status'  => self::groupStatus($group, $stored),
+                'fields'  => $fields,
+                'actions' => $group['actions'] ?? [],
             ];
         }
         return ['groups' => $groups];
@@ -187,23 +192,25 @@ final class SetupConfig
                 ],
             ],
             'tunnel' => [
-                'label' => 'Tunnel',
-                'blurb' => 'Public hostnames. Leave MCP bind on all until existing bots use the tunnel. MCP_ALLOW_PLAIN_HTTP in the server environment defaults to on. Settings → Agents can override it.',
+                'label' => 'Public URLs',
+                'blurb' => 'Dashboard and MCP addresses. Bind stays on all until existing bots use the tunnel. It takes effect after Restart MCP service. Plain HTTP is the switch on Settings → Agents.',
                 'fields' => [
                     ['key' => 'PUBLIC_BASE_URL', 'label' => 'Dashboard URL', 'type' => 'url', 'placeholder' => 'https://dash.example.com'],
                     ['key' => 'MCP_PUBLIC_URL', 'label' => 'MCP URL', 'type' => 'url', 'placeholder' => 'https://mcp.example.com/mcp'],
-                    ['key' => 'MCP_BIND', 'label' => 'MCP bind', 'type' => 'text', 'default' => 'all', 'placeholder' => 'all'],
+                    ['key' => 'MCP_BIND', 'label' => 'MCP bind', 'type' => 'enum', 'options' => ['all' => 'All interfaces', 'loopback' => 'Loopback only'], 'default' => 'all'],
+                ],
+                'actions' => [
+                    ['id' => 'restart-mcp', 'label' => 'Restart MCP service'],
                 ],
             ],
             'spotify' => [
                 'label' => 'Spotify',
-                'blurb' => 'Premium account. Redirect must be HTTPS, or http://127.0.0.1 for a one-time connect.',
+                'blurb' => 'Premium account. The redirect must match the URI in the Spotify app. Playback tokens use a key stored outside the web root.',
                 'fields' => [
                     ['key' => 'SPOTIFY_CLIENT_ID', 'label' => 'Client id', 'secret' => true],
                     ['key' => 'SPOTIFY_CLIENT_SECRET', 'label' => 'Client secret', 'secret' => true],
-                    ['key' => 'SPOTIFY_REDIRECT_URI', 'label' => 'Redirect URI', 'type' => 'text', 'placeholder' => 'https://dash.example.com/settings/spotify/callback'],
-                    ['key' => 'SPOTIFY_TOKEN_KEY', 'label' => 'Token key (optional)', 'secret' => true],
-                    ['key' => 'SPOTIFY_SYNC_MINUTES', 'label' => 'Sync interval (minutes)', 'type' => 'text', 'placeholder' => '10'],
+                    ['key' => 'SPOTIFY_REDIRECT_URI', 'label' => 'Redirect URI', 'type' => 'url', 'placeholder' => 'https://dash.example.com/settings/spotify/callback'],
+                    ['key' => 'SPOTIFY_SYNC_MINUTES', 'label' => 'Sync interval (minutes)', 'type' => 'minutes', 'placeholder' => '10'],
                 ],
             ],
             'ollama' => [
@@ -248,8 +255,12 @@ final class SetupConfig
         }
         if (!empty($field['secret'])) {
             $out['source'] = $this->source($key, $stored);
+            $out['hint'] = SecretMask::hint($stored[$key] ?? '');
             $out['value'] = '';
             return $out;
+        }
+        if ($key === 'SPOTIFY_REDIRECT_URI') {
+            $out['suggest'] = self::redirectSuggestion();
         }
         $value = $this->plain($field, $stored);
         if (($field['type'] ?? '') === 'bool') {
@@ -410,10 +421,16 @@ final class SetupConfig
             if (!in_array($scheme, ['http', 'https'], true) || $host === '' || isset($parts['user'])) {
                 throw new \InvalidArgumentException('URL must be http or https with a host.');
             }
-            if (strlen($text) > 200) {
+            if (strlen($text) > 300) {
                 throw new \InvalidArgumentException('URL is too long.');
             }
             return $text;
+        }
+        if ($type === 'minutes') {
+            if (preg_match('/^\d{1,4}$/', $text) !== 1 || (int) $text < 1 || (int) $text > 1440) {
+                throw new \InvalidArgumentException($field['label'] . ' must be 1 to 1440.');
+            }
+            return (string) (int) $text;
         }
         if (preg_match('/^[A-Za-z0-9_.:-]{1,64}$/', $text) !== 1) {
             throw new \InvalidArgumentException($field['label'] . ' has unsupported characters.');
@@ -426,6 +443,34 @@ final class SetupConfig
         if (strlen($text) > 500 || str_contains($text, "\n") || str_contains($text, "\r") || str_contains($text, "\0")) {
             throw new \InvalidArgumentException('That value cannot be saved.');
         }
+    }
+
+    public static function redirectSuggestion(): string
+    {
+        $base = Config::maybe('PUBLIC_BASE_URL');
+        if (!is_string($base) || trim($base) === '') {
+            return '';
+        }
+        $base = rtrim(trim($base), '/');
+        $parts = parse_url($base);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (!in_array($scheme, ['http', 'https'], true) || ($parts['host'] ?? '') === '') {
+            return '';
+        }
+        return $base . '/settings/spotify/callback';
+    }
+
+    /**
+     * Saved value wins. An empty saved value falls through to the environment.
+     */
+    public static function prefer(?string $stored, ?string $env): ?string
+    {
+        $stored = trim((string) $stored);
+        if ($stored !== '') {
+            return $stored;
+        }
+        $env = trim((string) $env);
+        return $env === '' ? null : $env;
     }
 
     private static function boolString(mixed $raw): string

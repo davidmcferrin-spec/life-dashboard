@@ -15,12 +15,12 @@ final class PlainHttpTest extends TestCase
         $on = PlainHttp::effective(null, true);
         self::assertTrue($on['allowed']);
         self::assertSame('config', $on['source']);
-        self::assertSame('On. Set by the config file (MCP_ALLOW_PLAIN_HTTP).', PlainHttp::sourceText(true, 'config', true));
+        self::assertSame('On.', PlainHttp::sourceText(true, 'config', true));
 
         $off = PlainHttp::effective(null, false);
         self::assertFalse($off['allowed']);
         self::assertSame('config', $off['source']);
-        self::assertSame('Off. Set by the config file (MCP_ALLOW_PLAIN_HTTP).', PlainHttp::sourceText(false, 'config', false));
+        self::assertSame('Off.', PlainHttp::sourceText(false, 'config', false));
     }
 
     public function testStoredRowOverridesTheConfigDefault(): void
@@ -28,18 +28,12 @@ final class PlainHttpTest extends TestCase
         $forcedOff = PlainHttp::effective(0, true);
         self::assertFalse($forcedOff['allowed']);
         self::assertSame('database', $forcedOff['source']);
-        self::assertSame(
-            'Off. Set on this page. The config file (MCP_ALLOW_PLAIN_HTTP) is on.',
-            PlainHttp::sourceText(false, 'database', true)
-        );
+        self::assertSame('Off.', PlainHttp::sourceText(false, 'database', true));
 
         $forcedOn = PlainHttp::effective(1, false);
         self::assertTrue($forcedOn['allowed']);
         self::assertSame('database', $forcedOn['source']);
-        self::assertSame(
-            'On. Set on this page. The config file (MCP_ALLOW_PLAIN_HTTP) is off.',
-            PlainHttp::sourceText(true, 'database', false)
-        );
+        self::assertSame('On.', PlainHttp::sourceText(true, 'database', false));
     }
 
     public function testBearerCannotChangeTheSwitch(): void

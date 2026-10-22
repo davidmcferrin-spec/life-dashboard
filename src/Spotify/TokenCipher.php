@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Dashboard\Spotify;
 
-use Dashboard\Config;
-
 /**
  * AES-256-GCM tokens at rest. The blob is base64(iv || tag || ciphertext),
  * the same layout CredentialCrypto uses, with a Spotify-specific key.
@@ -65,25 +63,6 @@ final class TokenCipher
 
     public static function key(): string
     {
-        $secret = self::usable(Config::maybe('SPOTIFY_TOKEN_KEY'));
-        if ($secret === null) {
-            $secret = self::usable(Config::maybe('APP_SECRET'));
-        }
-        if ($secret === null) {
-            throw new \RuntimeException('Set SPOTIFY_TOKEN_KEY or APP_SECRET before connecting Spotify.');
-        }
-        return hash('sha256', $secret, true);
-    }
-
-    private static function usable(?string $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-        $value = trim($value);
-        if ($value === '' || str_starts_with($value, 'CHANGE_ME')) {
-            return null;
-        }
-        return $value;
+        return hash('sha256', TokenKey::secret(), true);
     }
 }

@@ -43,6 +43,9 @@
                 if (el.checked && !hidden) clear.push(el.dataset.key);
                 return;
             }
+            if (el.dataset.cleared === '1') {
+                clear.push(el.dataset.key);
+            }
             if (el.closest('.setup-field')?.classList.contains('hidden') && el.type !== 'checkbox') {
                 return;
             }
@@ -92,18 +95,40 @@
                     <select id="setup-${esc(field.key)}" class="input text-sm w-full" data-key="${esc(field.key)}">${options}</select>
                 </div>`;
             }
-            const source = field.source === 'saved' ? 'Saved. Leave blank to keep it.' : (field.source === 'env' ? 'Using the environment value until you save a new one.' : '');
-            const clear = field.secret && field.source === 'saved'
-                ? `<label class="flex items-center gap-2 text-xs text-faint mt-1"><input type="checkbox" data-key="${esc(field.key)}" data-clear="1"> Remove saved value</label>`
+            if (field.secret) {
+                const hint = field.hint === 'set' ? 'Set.' : (field.hint ? 'Set. Ending in ' + field.hint + '.' : (field.source === 'env' ? 'Using the saved fallback until you replace it.' : 'Not set.'));
+                const clear = field.source === 'saved'
+                    ? `<button type="button" class="btn text-xs" data-clear-btn="${esc(field.key)}">Clear</button>`
+                    : '';
+                return `<div class="setup-field"${when}>
+                    <label class="ld-field" for="setup-${esc(field.key)}">${esc(field.label)}</label>
+                    <p class="text-faint text-xs mono mt-1" data-hint-for="${esc(field.key)}">${esc(hint)}</p>
+                    <input id="setup-${esc(field.key)}" class="input text-sm w-full hidden" data-key="${esc(field.key)}" data-secret="1"
+                        type="password" autocomplete="off">
+                    <div class="flex flex-wrap gap-2 mt-2">
+                        <button type="button" class="btn text-xs" data-replace="${esc(field.key)}">Replace</button>
+                        ${clear}
+                    </div>
+                </div>`;
+            }
+            const suggest = field.suggest
+                ? `<p class="text-faint text-xs mono mt-1">Suggested <span class="mono">${esc(field.suggest)}</span>
+                    <button type="button" class="btn text-xs" data-copy="${esc(field.suggest)}">Copy</button></p>`
                 : '';
+            const preset = field.value || field.suggest || '';
             return `<div class="setup-field"${when}>
                 <label class="ld-field" for="setup-${esc(field.key)}">${esc(field.label)}</label>
                 <input id="setup-${esc(field.key)}" class="input text-sm w-full" data-key="${esc(field.key)}"
-                    type="${field.secret ? 'password' : 'text'}" autocomplete="off" placeholder="${esc(field.placeholder || '')}">
-                ${source ? `<p class="text-faint text-xs mono mt-1">${esc(source)}</p>` : ''}
-                ${clear}
+                    type="text" autocomplete="off" placeholder="${esc(field.placeholder || '')}" value="${esc(preset)}">
+                ${suggest}
             </div>`;
         }).join('');
+        const actions = (current.actions || []).map((action) =>
+            `<button type="button" class="btn text-sm" data-setup-action="${esc(action.id)}">${esc(action.label)}</button>`
+        ).join('');
+        if (actions) {
+            fieldsEl.insertAdjacentHTML('beforeend', `<div class="flex flex-wrap gap-2 pt-1"><p class="text-faint text-xs w-full">MCP bind takes effect after the MCP service restarts.</p>${actions}</div>`);
+        }
         applyWhen();
     }
 
@@ -118,6 +143,55 @@
         if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) close();
     });
     fieldsEl?.addEventListener('change', applyWhen);
+    fieldsEl?.addEventListener('click', async (event) => {
+        const replace = event.target.closest('[data-replace]');
+        if (replace) {
+            const input = fieldsEl.querySelector(`input[data-key="${CSS.escape(replace.dataset.replace)}"]`);
+            input?.classList.remove('hidden');
+            input?.focus();
+            return;
+        }
+        const clear = event.target.closest('[data-clear-btn]');
+        if (clear) {
+            const input = fieldsEl.querySelector(`input[data-key="${CSS.escape(clear.dataset.clearBtn)}"]`);
+            if (input) {
+                input.value = '';
+                input.dataset.cleared = '1';
+            }
+            const hint = fieldsEl.querySelector(`[data-hint-for="${CSS.escape(clear.dataset.clearBtn)}"]`);
+            if (hint) hint.textContent = 'Clears on save.';
+            return;
+        }
+        const copy = event.target.closest('[data-copy]');
+        if (copy) {
+            try {
+                await navigator.clipboard.writeText(copy.dataset.copy || '');
+                copy.textContent = 'Copied';
+            } catch (err) {
+                errorEl.textContent = 'Could not copy.';
+                errorEl.classList.remove('hidden');
+            }
+            return;
+        }
+        const action = event.target.closest('[data-setup-action]');
+        if (!action) return;
+        action.disabled = true;
+        errorEl.classList.add('hidden');
+        try {
+            const res = await fetch('/api/setup/service', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.getCsrfToken ? window.getCsrfToken() : '' },
+                body: JSON.stringify({ action: action.dataset.setupAction }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Could not restart.');
+            action.textContent = 'Restart queued';
+        } catch (err) {
+            errorEl.textContent = err.message || 'Could not restart.';
+            errorEl.classList.remove('hidden');
+            action.disabled = false;
+        }
+    });
 
     form?.addEventListener('submit', async (e) => {
         e.preventDefault();

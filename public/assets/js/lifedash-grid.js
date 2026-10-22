@@ -906,7 +906,7 @@
         if (!t) return;
         closeModal('ld-add-modal');
         if (t.floating) {
-            await api.post('/spotify/player', { enabled: true });
+            document.dispatchEvent(new CustomEvent('ld-spotify-player', { detail: { on: true } }));
             status('Spotify player on');
             return;
         }
