@@ -32,6 +32,16 @@ $extraStyles   = ['/assets/css/lifedash.css'];
         <button type="button" id="brain-zoom-out" aria-label="Zoom out">−</button>
         <button type="button" id="brain-zoom-fit">Fit</button>
         <button type="button" id="brain-zoom-reset">Reset</button>
+        <label class="brain-zoom-label" for="brain-spacing">Spacing
+            <input id="brain-spacing" type="range" min="0.7" max="1.8" step="0.05" value="1" aria-valuemin="0.7" aria-valuemax="1.8">
+        </label>
+        <label class="brain-zoom-label" for="brain-labels">Labels
+            <select id="brain-labels" aria-label="Label visibility">
+                <option value="smart">Smart</option>
+                <option value="all">All</option>
+                <option value="none">None</option>
+            </select>
+        </label>
     </div>
     <div id="brain-ticker" class="brain-ticker"></div>
     <aside class="brain-panel">
@@ -48,6 +58,7 @@ $extraStyles   = ['/assets/css/lifedash.css'];
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-camera.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-forces.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-graph.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

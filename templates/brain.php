@@ -94,6 +94,16 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
             <button type="button" id="brain-zoom-out" aria-label="Zoom out">−</button>
             <button type="button" id="brain-zoom-fit">Fit</button>
             <button type="button" id="brain-zoom-reset">Reset</button>
+            <label class="brain-zoom-label" for="brain-spacing">Spacing
+                <input id="brain-spacing" type="range" min="0.7" max="1.8" step="0.05" value="1" aria-valuemin="0.7" aria-valuemax="1.8">
+            </label>
+            <label class="brain-zoom-label" for="brain-labels">Labels
+                <select id="brain-labels" aria-label="Label visibility">
+                    <option value="smart">Smart</option>
+                    <option value="all">All</option>
+                    <option value="none">None</option>
+                </select>
+            </label>
             <button type="button" id="brain-map-close">Close</button>
         </div>
         <div id="brain-ticker" class="brain-ticker"></div>
@@ -114,6 +124,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 <script src="/assets/js/brain-markdown.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-camera.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-forces.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-graph.js?v=<?= e($assetVer) ?>"></script>
 <script>
 document.getElementById('brain-show-map').addEventListener('click', function () {

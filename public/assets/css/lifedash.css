@@ -660,12 +660,34 @@ button.nav-link { background: transparent; border: 0; cursor: pointer; font: inh
 #brain-canvas { cursor: grab; display: block; height: 100%; touch-action: none; width: 100%; }
 #brain-canvas.is-panning { cursor: grabbing; }
 .brain-zoom {
+    align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: 0.35rem;
     left: 0.75rem;
+    max-width: calc(100% - 1.5rem);
     position: absolute;
     top: 0.75rem;
     z-index: 2;
+}
+.brain-zoom-label {
+    align-items: center;
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 0.72rem;
+    gap: 0.35rem;
+}
+.brain-zoom-label input[type="range"] { width: 6.5rem; }
+.brain-zoom-label select {
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 88%, transparent);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.45rem;
+    color: var(--text-primary);
+    font: inherit;
+    padding: 0.2rem 0.35rem;
+}
+@media (min-width: 960px) {
+    .brain-zoom { max-width: min(calc(100% - 19rem), 48rem); }
 }
 .brain-zoom button {
     background: color-mix(in srgb, var(--surface-bg, var(--surface)) 88%, transparent);
@@ -773,7 +795,7 @@ button.nav-link { background: transparent; border: 0; cursor: pointer; font: inh
         width: auto;
     }
     .brain-ticker { bottom: calc(34vh + 0.75rem); right: 0.5rem; }
-    .brain-zoom { left: 0.5rem; top: 0.5rem; }
+    .brain-zoom { left: 0.5rem; max-width: calc(100% - 1rem); top: 0.5rem; }
 }
 
 .ai-presence {
