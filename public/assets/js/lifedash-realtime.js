@@ -8,16 +8,17 @@
  *   4. recv  {"type":"ready"} then {"type":"event","table":…,"op":…,"id":…,"metric_id"?:…}
  *            and {"type":"resync"} when the server's database listener reconnected
  *
- * While disconnected every native widget refreshes every 60 s, and on reconnect
- * everything refreshes once to catch up on missed events.
+ * While disconnected the dashboard refreshes every 60 s and the pantry page
+ * every 30 s, only while the tab is visible. On reconnect, open views refresh
+ * once to catch up on missed events. The page itself is not reloaded.
  */
 'use strict';
 
 (function () {
     const { api } = window.LD;
-    if (!window.LD.grid) return;
+    if (!api) return;
 
-    const POLL_MS = 60_000;
+    const POLL_MS = document.getElementById('pantry-app') ? 30_000 : 60_000;
     const MAX_BACKOFF_MS = 60_000;
 
     let ws = null;
@@ -27,10 +28,15 @@
     let pollTimer = null;
     let hiddenSince = null;
 
+    function refreshOpen() {
+        if (window.LD.grid) window.LD.grid.refreshAll();
+        window.dispatchEvent(new CustomEvent('lifedash:poll'));
+    }
+
     function startPolling() {
         if (pollTimer) return;
         pollTimer = setInterval(() => {
-            if (!document.hidden) window.LD.grid.refreshAll();
+            if (!document.hidden) refreshOpen();
         }, POLL_MS);
     }
 
@@ -86,12 +92,12 @@
                 attempt = 0;
                 stopPolling();
                 window.dispatchEvent(new CustomEvent('lifedash:status', { detail: { live: true } }));
-                if (wasDown) window.LD.grid.refreshAll(); // catch up on anything missed
+                if (wasDown) refreshOpen();
             } else if (evt.type === 'event') {
-                window.LD.grid.handleEvent(evt);
+                if (window.LD.grid) window.LD.grid.handleEvent(evt);
                 window.dispatchEvent(new CustomEvent('lifedash:event', { detail: evt }));
             } else if (evt.type === 'resync') {
-                window.LD.grid.refreshAll(); // server's DB listener reconnected; events may be lost
+                refreshOpen();
                 window.dispatchEvent(new CustomEvent('lifedash:resync'));
             }
         });
@@ -116,12 +122,12 @@
         }
         const away = hiddenSince ? Date.now() - hiddenSince : 0;
         hiddenSince = null;
-        if (!ready) {
+        if (!ready || !ws || ws.readyState !== WebSocket.OPEN) {
+            ready = false;
             attempt = 0;
             connect();
         }
-        // Laptop sleep / phone background: sockets may have silently died.
-        if (away > POLL_MS) window.LD.grid.refreshAll();
+        if (away > POLL_MS) refreshOpen();
     });
 
     window.addEventListener('online', () => {

@@ -19,6 +19,10 @@
     document.querySelectorAll('#pantry-nav a[data-view]').forEach((link) => {
         link.classList.toggle('is-on', link.dataset.view === view);
     });
+    if (view === 'meals') {
+        const pantryApp = document.getElementById('pantry-app');
+        if (pantryApp) pantryApp.classList.add('is-meals');
+    }
 
     let scanStop = null;
     let lastCode = '';
@@ -63,10 +67,82 @@
     }
 
     function go(query) {
-        window.location.href = '/pantry' + (query ? '?' + query : '');
+        const url = '/pantry' + (query ? '?' + query : '');
+        if (view === 'inventory') {
+            history.replaceState(null, '', url);
+            inventory().catch(fail);
+            return;
+        }
+        window.location.href = url;
+    }
+
+    const LIVE_MS = 400;
+    let liveTimer = null;
+    let booted = false;
+    let liveQueued = false;
+
+    function affectsOpenView(table) {
+        const sections = {
+            pantry_lots: ['inventory', 'purge', 'products', 'recipes', 'meals'],
+            pantry_products: ['inventory', 'purge', 'products', 'recipes', 'meals'],
+            pantry_recipes: ['recipes', 'meals'],
+            pantry_recipe_ingredients: ['recipes', 'meals'],
+            meal_components: ['meals'],
+            meal_pairings: ['meals'],
+            shopping_lists: ['meals'],
+            shopping_items: ['meals'],
+        };
+        return (sections[table] || []).indexOf(view) !== -1;
+    }
+
+    function refreshOpen() {
+        if (view === 'inventory') return inventory();
+        if (view === 'purge') return purge();
+        if (view === 'products') return products();
+        if (view === 'recipes') return recipes();
+        if (view === 'meals') return meals(true);
+        return Promise.resolve();
+    }
+
+    function scheduleLive() {
+        if (!booted) {
+            liveQueued = true;
+            return;
+        }
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(() => {
+            liveTimer = null;
+            refreshOpen().catch(fail);
+        }, LIVE_MS);
+    }
+
+    let lotCache = [];
+    let inventoryBound = false;
+    let inventoryGen = 0;
+
+    function paintLots() {
+        const search = document.getElementById('pantry-search');
+        const lotsEl = document.getElementById('pantry-lots');
+        if (!search || !lotsEl) return;
+        const q = (search.value || '').toLowerCase();
+        const locBtn = body.querySelector('[data-loc].is-on');
+        const loc = locBtn ? locBtn.dataset.loc : '';
+        const groups = { fridge: [], freezer: [], pantry: [] };
+        lotCache.forEach((lot) => {
+            if (loc && lot.location !== loc) return;
+            const hay = (lot.name + ' ' + (lot.brand || '') + ' ' + (lot.category || '')).toLowerCase();
+            if (q && !hay.includes(q)) return;
+            if (groups[lot.location]) groups[lot.location].push(lot);
+        });
+        lotsEl.innerHTML = ['fridge', 'freezer', 'pantry'].map((key) => {
+            if (!groups[key].length) return '';
+            const rows = groups[key].map((lot) => lotRow(lot, lotActions(lot))).join('');
+            return `<section class="ld-pantry-group"><h2 class="ld-pantry-label">${esc(key)}</h2><ul>${rows}</ul></section>`;
+        }).join('') || '<p class="empty-state mono text-xs mt-4">Nothing matches.</p>';
     }
 
     async function inventory() {
+        const gen = ++inventoryGen;
         const params = new URLSearchParams(location.search);
         const status = params.get('status') || 'on_hand';
         const category = params.get('category') || '';
@@ -75,59 +151,66 @@
             api.get('/pantry/lots?' + query),
             api.get('/pantry/categories'),
         ]);
-        const catOptions = (cats.categories || []).map((row) =>
-            `<option value="${esc(row.category)}"${row.category === category ? ' selected' : ''}>${esc(row.category)}</option>`
-        ).join('');
-        const statuses = [
-            ['on_hand', 'on hand'],
-            ['any', 'any'],
-            ['used', 'used'],
-            ['expired', 'expired'],
-            ['tossed', 'tossed'],
-        ];
-        const statusOptions = statuses.map(([value, label]) =>
-            `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`
-        ).join('');
-        const filters = `
-            <div class="ld-pantry-filters">
-                <input id="pantry-search" class="input flex-1" placeholder="Search" aria-label="Search pantry">
-                <select id="pantry-status" class="input" aria-label="Status" title="Any is everything except tossed.">${statusOptions}</select>
-                <select id="pantry-category" class="input" aria-label="Category">
-                    <option value="">All categories</option>${catOptions}
-                </select>
-                <button type="button" data-loc="" class="is-on">All</button>
-                <button type="button" data-loc="fridge">Fridge</button>
-                <button type="button" data-loc="freezer">Freezer</button>
-                <button type="button" data-loc="pantry">Pantry</button>
-            </div>`;
-        body.innerHTML = filters + '<div id="pantry-lots"></div><div id="pantry-sheet"></div>';
-        const paint = () => {
-            const q = (document.getElementById('pantry-search').value || '').toLowerCase();
-            const loc = body.querySelector('[data-loc].is-on').dataset.loc;
-            const groups = { fridge: [], freezer: [], pantry: [] };
-            (data.lots || []).forEach((lot) => {
-                if (loc && lot.location !== loc) return;
-                const hay = (lot.name + ' ' + (lot.brand || '') + ' ' + (lot.category || '')).toLowerCase();
-                if (q && !hay.includes(q)) return;
-                groups[lot.location].push(lot);
-            });
-            document.getElementById('pantry-lots').innerHTML = ['fridge', 'freezer', 'pantry'].map((key) => {
-                if (!groups[key].length) return '';
-                const rows = groups[key].map((lot) => lotRow(lot, lotActions(lot))).join('');
-                return `<section class="ld-pantry-group"><h2 class="ld-pantry-label">${esc(key)}</h2><ul>${rows}</ul></section>`;
-            }).join('') || '<p class="empty-state mono text-xs mt-4">Nothing matches.</p>';
-        };
-        paint();
-        document.getElementById('pantry-search').addEventListener('input', paint);
+        if (gen !== inventoryGen) return;
+        lotCache = data.lots || [];
+        if (!document.getElementById('pantry-search')) {
+            const catOptions = (cats.categories || []).map((row) =>
+                `<option value="${esc(row.category)}"${row.category === category ? ' selected' : ''}>${esc(row.category)}</option>`
+            ).join('');
+            const statuses = [
+                ['on_hand', 'on hand'],
+                ['any', 'any'],
+                ['used', 'used'],
+                ['expired', 'expired'],
+                ['tossed', 'tossed'],
+            ];
+            const statusOptions = statuses.map(([value, label]) =>
+                `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`
+            ).join('');
+            body.innerHTML = `
+                <div class="ld-pantry-filters">
+                    <input id="pantry-search" class="input flex-1" placeholder="Search" aria-label="Search pantry">
+                    <select id="pantry-status" class="input" aria-label="Status" title="Any is everything except tossed.">${statusOptions}</select>
+                    <select id="pantry-category" class="input" aria-label="Category">
+                        <option value="">All categories</option>${catOptions}
+                    </select>
+                    <button type="button" data-loc="" class="is-on">All</button>
+                    <button type="button" data-loc="fridge">Fridge</button>
+                    <button type="button" data-loc="freezer">Freezer</button>
+                    <button type="button" data-loc="pantry">Pantry</button>
+                </div>
+                <div id="pantry-lots"></div><div id="pantry-sheet"></div>`;
+        } else {
+            const statusSel = document.getElementById('pantry-status');
+            if (statusSel && statusSel.value !== status) statusSel.value = status;
+            const catSel = document.getElementById('pantry-category');
+            if (catSel) {
+                const names = (cats.categories || []).map((row) => row.category);
+                const have = [...catSel.options].slice(1).map((opt) => opt.value);
+                if (have.join('|') !== names.join('|')) {
+                    const keep = catSel.value;
+                    catSel.innerHTML = '<option value="">All categories</option>' + names.map((name) =>
+                        `<option value="${esc(name)}">${esc(name)}</option>`
+                    ).join('');
+                    catSel.value = names.indexOf(keep) === -1 ? '' : keep;
+                }
+            }
+        }
+        paintLots();
+        if (inventoryBound) return;
+        inventoryBound = true;
+        document.getElementById('pantry-search').addEventListener('input', paintLots);
         document.getElementById('pantry-status').addEventListener('change', (event) => {
             const next = new URLSearchParams();
             if (event.target.value !== 'on_hand') next.set('status', event.target.value);
-            if (category) next.set('category', category);
+            const cat = document.getElementById('pantry-category').value;
+            if (cat) next.set('category', cat);
             go(next.toString());
         });
         document.getElementById('pantry-category').addEventListener('change', (event) => {
             const next = new URLSearchParams();
-            if (status !== 'on_hand') next.set('status', status);
+            const current = new URLSearchParams(location.search).get('status') || 'on_hand';
+            if (current !== 'on_hand') next.set('status', current);
             if (event.target.value) next.set('category', event.target.value);
             go(next.toString());
         });
@@ -135,27 +218,24 @@
             btn.addEventListener('click', () => {
                 body.querySelectorAll('[data-loc]').forEach((el) => el.classList.remove('is-on'));
                 btn.classList.add('is-on');
-                paint();
+                paintLots();
             });
         });
         body.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-act]');
             if (!btn) return;
-            const lot = (data.lots || []).find((row) => row.id === Number(btn.dataset.id));
+            const lot = lotCache.find((row) => row.id === Number(btn.dataset.id));
             if (!lot) return;
             const act = btn.dataset.act;
-            const sheet = document.getElementById('pantry-sheet');
             if (act === 'consume') {
                 openConsume(lot);
             } else if (act === 'open') {
-                api.post('/pantry/lots/' + lot.id + '/open', {}).then(() => window.location.reload()).catch(fail);
+                api.post('/pantry/lots/' + lot.id + '/open', {}).then(() => inventory()).catch(fail);
             } else if (act === 'toss') {
-                api.post('/pantry/lots/' + lot.id + '/toss', {}).then(() => window.location.reload()).catch(fail);
+                api.post('/pantry/lots/' + lot.id + '/toss', {}).then(() => inventory()).catch(fail);
             } else if (act === 'move') {
-                sheet.innerHTML = '';
                 openMove(lot);
             } else if (act === 'edit') {
-                sheet.innerHTML = '';
                 openEdit(lot);
             }
         });
@@ -339,7 +419,10 @@
             const body = pieces.length === 1 && pieces[0].quantity === total
                 ? { location: pieces[0].location, quantity: total }
                 : { pieces: pieces };
-            api.post('/pantry/lots/' + lot.id + '/split', body).then(() => window.location.reload()).catch(fail);
+            api.post('/pantry/lots/' + lot.id + '/split', body).then(() => {
+                closeMove();
+                return inventory();
+            }).catch(fail);
         });
     }
 
@@ -404,7 +487,10 @@
                 location: place,
                 use_by: useBy || null,
                 store: data.store || null,
-            }).then(() => window.location.reload()).catch(fail);
+            }).then(() => {
+                closeEdit();
+                return inventory();
+            }).catch(fail);
         });
     }
 
@@ -450,7 +536,10 @@
                 fail({ message: 'Enter a quantity above zero.' });
                 return;
             }
-            api.post('/pantry/consume', { lot_id: lot.id, quantity: quantity }).then(() => window.location.reload()).catch(fail);
+            api.post('/pantry/consume', { lot_id: lot.id, quantity: quantity }).then(() => {
+                closeConsume();
+                return inventory();
+            }).catch(fail);
         });
         form.querySelector('[name="quantity"]').focus();
     }
@@ -468,62 +557,100 @@
         }
     }
 
-    async function purge() {
-        const days = Number(new URLSearchParams(location.search).get('days') || 3);
-        const data = await api.get('/pantry/expiring?days=' + days);
-        const rows = (data.lots || []).map((lot) => `
+    let purgeBound = false;
+    let purgeGen = 0;
+
+    function purgeRows(lots, checked) {
+        return (lots || []).map((lot) => `
             <label class="ld-pantry-lot flex gap-2 items-start">
-                <input type="checkbox" value="${lot.id}">
+                <input type="checkbox" value="${lot.id}"${checked.has(String(lot.id)) ? ' checked' : ''}>
                 <span class="ld-pantry-${esc(lot.freshness)}">${esc(lot.name)} · ${esc(lot.location)} · ${esc(lot.use_by || '')}</span>
             </label>`).join('');
-        body.innerHTML = `
-            <form id="purge-form">
-                <label class="text-xs text-muted">Due within days
-                    <input class="input" name="days" inputmode="numeric" value="${days}">
-                </label>
-                <div class="mt-3">${rows || '<p class="empty-state mono text-xs">Nothing due.</p>'}</div>
-                <button type="submit" class="btn-primary text-sm mt-3">Mark tossed</button>
-            </form>`;
+    }
+
+    async function purge() {
+        const gen = ++purgeGen;
+        const form = document.getElementById('purge-form');
+        const days = form
+            ? String(form.days.value || '3')
+            : String(new URLSearchParams(location.search).get('days') || '3');
+        const checked = new Set(form
+            ? [...form.querySelectorAll('input[type="checkbox"]:checked')].map((box) => box.value)
+            : []);
+        const data = await api.get('/pantry/expiring?days=' + encodeURIComponent(days));
+        if (gen !== purgeGen) return;
+        const rows = purgeRows(data.lots, checked) || '<p class="empty-state mono text-xs">Nothing due.</p>';
+        if (!form) {
+            body.innerHTML = `
+                <form id="purge-form">
+                    <label class="text-xs text-muted">Due within days
+                        <input class="input" name="days" inputmode="numeric" value="${esc(days)}">
+                    </label>
+                    <div class="mt-3" id="purge-lots">${rows}</div>
+                    <button type="submit" class="btn-primary text-sm mt-3">Mark tossed</button>
+                </form>`;
+        } else {
+            const list = document.getElementById('purge-lots');
+            if (list) list.innerHTML = rows;
+        }
+        if (purgeBound) return;
+        purgeBound = true;
         document.getElementById('purge-form').addEventListener('submit', (event) => {
             event.preventDefault();
-            const form = event.target;
-            const nextDays = form.days.value;
+            const current = event.target;
+            const nextDays = current.days.value;
             if (document.activeElement && document.activeElement.name === 'days') {
-                location.href = '/pantry?view=purge&days=' + encodeURIComponent(nextDays);
+                history.replaceState(null, '', '/pantry?view=purge&days=' + encodeURIComponent(nextDays));
+                purge().catch(fail);
                 return;
             }
-            const ids = [...form.querySelectorAll('input[type="checkbox"]:checked')].map((box) => Number(box.value));
+            const ids = [...current.querySelectorAll('input[type="checkbox"]:checked')].map((box) => Number(box.value));
             if (!ids.length) {
                 fail({ message: 'Select at least one lot.' });
                 return;
             }
-            api.post('/pantry/purge', { lot_ids: ids }).then(() => window.location.reload()).catch(fail);
+            api.post('/pantry/purge', { lot_ids: ids }).then(() => purge()).catch(fail);
         });
     }
 
+    let productCache = [];
+    let productBound = false;
+    let productGen = 0;
+
+    function paintProducts() {
+        const input = document.getElementById('product-search');
+        const list = document.getElementById('product-list');
+        if (!input || !list) return;
+        const q = input.value.toLowerCase();
+        list.innerHTML = productCache.filter((row) => {
+            return !q || (row.name + ' ' + (row.brand || '') + ' ' + (row.upc || '')).toLowerCase().includes(q);
+        }).slice(0, 40).map((row) => `
+            <li class="ld-pantry-lot">
+                <button type="button" class="text-left w-full" data-product="${row.id}">
+                    ${esc(row.name)} <span class="ld-meta">${esc(row.category)}${row.units_per_package ? ' · ' + esc(String(row.units_per_package)) + ' ' + esc(row.piece_unit || '') : ''}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
+                </button>
+            </li>`).join('');
+    }
+
     async function products() {
+        const gen = ++productGen;
         const data = await api.get('/pantry/products');
-        body.innerHTML = `
-            <input id="product-search" class="input w-full" placeholder="Search produce or a product" aria-label="Search products">
-            <ul id="product-list" class="mt-3"></ul>
-            <div id="product-sheet"></div>`;
-        const paint = () => {
-            const q = document.getElementById('product-search').value.toLowerCase();
-            document.getElementById('product-list').innerHTML = (data.products || []).filter((row) => {
-                return !q || (row.name + ' ' + (row.brand || '') + ' ' + (row.upc || '')).toLowerCase().includes(q);
-            }).slice(0, 40).map((row) => `
-                <li class="ld-pantry-lot">
-                    <button type="button" class="text-left w-full" data-product="${row.id}">
-                        ${esc(row.name)} <span class="ld-meta">${esc(row.category)}${row.units_per_package ? ' · ' + esc(String(row.units_per_package)) + ' ' + esc(row.piece_unit || '') : ''}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
-                    </button>
-                </li>`).join('');
-        };
-        paint();
-        document.getElementById('product-search').addEventListener('input', paint);
+        if (gen !== productGen) return;
+        productCache = data.products || [];
+        if (!document.getElementById('product-search')) {
+            body.innerHTML = `
+                <input id="product-search" class="input w-full" placeholder="Search produce or a product" aria-label="Search products">
+                <ul id="product-list" class="mt-3"></ul>
+                <div id="product-sheet"></div>`;
+        }
+        paintProducts();
+        if (productBound) return;
+        productBound = true;
+        document.getElementById('product-search').addEventListener('input', paintProducts);
         body.addEventListener('click', (event) => {
             const btn = event.target.closest('[data-product]');
             if (!btn) return;
-            const product = (data.products || []).find((row) => row.id === Number(btn.dataset.product));
+            const product = productCache.find((row) => row.id === Number(btn.dataset.product));
             if (!product) return;
             document.getElementById('product-sheet').innerHTML = productSheet(product);
             bindProduct(product);
@@ -563,7 +690,7 @@
                 data[key] = data[key] === '' ? null : Number(data[key]);
             });
             data.piece_unit = data.piece_unit === '' ? null : data.piece_unit;
-            api.post('/pantry/products', data).then(() => window.location.reload()).catch(fail);
+            api.post('/pantry/products', data).then(() => products()).catch(fail);
         });
         document.getElementById('product-add').addEventListener('click', () => {
             openAddSheet({
@@ -648,13 +775,15 @@
                     }],
                 });
                 sheetOpen = false;
+                form.remove();
+                clearError();
                 if (view === 'scan') {
-                    form.remove();
-                    clearError();
                     lastCode = prefill.upc || lastCode;
                     lastAt = Date.now();
+                } else if (view === 'products') {
+                    await products();
                 } else {
-                    window.location.reload();
+                    await inventory();
                 }
             } catch (err) {
                 fail(err);
@@ -923,7 +1052,7 @@
         }
     }
 
-    function openRecipe(recipe, products) {
+    function openRecipe(recipe) {
         closeRecipe();
         const lines = (recipe.ingredients || []).map(ingredientLine).join('\n');
         const wrap = document.createElement('div');
@@ -964,7 +1093,7 @@
         modal.querySelector('#recipe-edit-form').addEventListener('submit', (event) => {
             event.preventDefault();
             const form = new FormData(event.target);
-            const parsed = linesToIngredients(form.get('lines'), products);
+            const parsed = linesToIngredients(form.get('lines'), recipeCatalog);
             if (parsed.error) {
                 fail({ message: parsed.error });
                 return;
@@ -973,61 +1102,92 @@
                 name: form.get('name'),
                 notes: form.get('notes') || null,
                 ingredients: parsed.ingredients,
-            }).then(() => window.location.reload()).catch(fail);
+            }).then(() => {
+                closeRecipe();
+                return recipes();
+            }).catch(fail);
         });
         modal.querySelector('[name="name"]').focus();
     }
 
+    let recipeCache = [];
+    let recipeCatalog = [];
+    let recipeBound = false;
+    let recipeGen = 0;
+    let recipeScrolled = false;
+
+    function recipeItems(rows) {
+        return (rows || []).map((row) => `
+            <li class="ld-pantry-lot" id="recipe-${row.id}">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="text-sm">${esc(row.name)}</span>
+                    <button type="button" data-recipe="${row.id}">Edit</button>
+                </div>
+            </li>`).join('');
+    }
+
     async function recipes() {
-        const data = await api.get('/pantry/recipes');
-        const ideas = await api.get('/pantry/what-can-i-make');
-        const products = await api.get('/pantry/products');
-        const catalog = products.products || [];
+        const gen = ++recipeGen;
+        const [data, ideas, catalogRes] = await Promise.all([
+            api.get('/pantry/recipes'),
+            api.get('/pantry/what-can-i-make'),
+            api.get('/pantry/products'),
+        ]);
+        if (gen !== recipeGen) return;
+        recipeCache = data.recipes || [];
+        recipeCatalog = catalogRes.products || [];
         const ranked = (ideas.recipes || []).map((row) =>
             `<li class="ld-pantry-lot">${esc(row.name)} <span class="ld-meta">${Math.round(row.coverage * 100)}%${row.soonest_use_by ? ' · ' + esc(row.soonest_use_by) : ''}${row.missing.length ? ' · missing ' + esc(row.missing.join(', ')) : ''}</span></li>`
         ).join('');
-        body.innerHTML = `
-            <h2 class="ld-pantry-label">What you can make</h2>
-            <ul>${ranked || '<li class="empty-state mono text-xs">No recipes yet.</li>'}</ul>
-            <form id="recipe-form" class="ld-pantry-sheet">
-                <label class="block text-xs text-muted">Name <input class="input w-full" name="name" required></label>
-                <label class="block text-xs text-muted mt-2">Notes <textarea class="input w-full" name="notes" rows="2"></textarea></label>
-                <label class="block text-xs text-muted mt-2">Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
-                    <textarea class="input w-full" name="lines" rows="4"></textarea>
-                </label>
-                <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
-            </form>
-            <ul class="mt-3" id="recipe-list">${(data.recipes || []).map((row) => `
-                <li class="ld-pantry-lot" id="recipe-${row.id}">
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="text-sm">${esc(row.name)}</span>
-                        <button type="button" data-recipe="${row.id}">Edit</button>
-                    </div>
-                </li>`).join('')}</ul>`;
-        const focusId = new URLSearchParams(location.search).get('recipe');
-        if (focusId) {
-            const focus = document.getElementById('recipe-' + focusId);
+        if (!document.getElementById('recipe-form')) {
+            body.innerHTML = `
+                <h2 class="ld-pantry-label">What you can make</h2>
+                <ul id="recipe-ideas"></ul>
+                <form id="recipe-form" class="ld-pantry-sheet">
+                    <label class="block text-xs text-muted">Name <input class="input w-full" name="name" required></label>
+                    <label class="block text-xs text-muted mt-2">Notes <textarea class="input w-full" name="notes" rows="2"></textarea></label>
+                    <label class="block text-xs text-muted mt-2">Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
+                        <textarea class="input w-full" name="lines" rows="4"></textarea>
+                    </label>
+                    <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
+                </form>
+                <ul class="mt-3" id="recipe-list"></ul>`;
+        }
+        const ideasEl = document.getElementById('recipe-ideas');
+        const listEl = document.getElementById('recipe-list');
+        if (ideasEl) ideasEl.innerHTML = ranked || '<li class="empty-state mono text-xs">No recipes yet.</li>';
+        if (listEl) listEl.innerHTML = recipeItems(recipeCache);
+        if (!recipeScrolled) {
+            recipeScrolled = true;
+            const focusId = new URLSearchParams(location.search).get('recipe');
+            const focus = focusId ? document.getElementById('recipe-' + focusId) : null;
             if (focus) focus.scrollIntoView({ block: 'center' });
         }
+        if (recipeBound) return;
+        recipeBound = true;
         document.getElementById('recipe-list').addEventListener('click', (event) => {
             const btn = event.target.closest('[data-recipe]');
             if (!btn) return;
-            const recipe = (data.recipes || []).find((row) => row.id === Number(btn.dataset.recipe));
-            if (recipe) openRecipe(recipe, catalog);
+            const recipe = recipeCache.find((row) => row.id === Number(btn.dataset.recipe));
+            if (recipe) openRecipe(recipe);
         });
         document.getElementById('recipe-form').addEventListener('submit', (event) => {
             event.preventDefault();
-            const form = new FormData(event.target);
-            const parsed = linesToIngredients(form.get('lines'), catalog);
+            const form = event.target;
+            const parsed = linesToIngredients(new FormData(form).get('lines'), recipeCatalog);
             if (parsed.error) {
                 fail({ message: parsed.error });
                 return;
             }
+            const bodyFields = new FormData(form);
             api.post('/pantry/recipes', {
-                name: form.get('name'),
-                notes: form.get('notes') || null,
+                name: bodyFields.get('name'),
+                notes: bodyFields.get('notes') || null,
                 ingredients: parsed.ingredients,
-            }).then(() => window.location.reload()).catch(fail);
+            }).then(() => {
+                form.reset();
+                return recipes();
+            }).catch(fail);
         });
     }
 
@@ -1035,40 +1195,142 @@
         ['protein', 'Protein'],
         ['base', 'Base'],
         ['sauce', 'Sauce'],
-        ['side', 'Side'],
+        ['side', 'Side/Garnish'],
     ];
     const MEAL_SUPPORT = [
-        ['aromatic', 'Aromatic'],
-        ['vegetable', 'Vegetable'],
-        ['spice', 'Spice'],
+        ['aromatic', 'Aromatics'],
+        ['vegetable', 'Vegetables'],
+        ['spice', 'Spices'],
     ];
     let mealPicks = [];
+    let mealById = {};
+    let mealGen = 0;
+    let mealRepairDepth = 0;
 
-    function mealChips(rows, pickable) {
-        return (rows || []).map((row) => {
-            const classes = ['ld-meal-chip'];
-            const on = pickable && mealPicks.indexOf(row.id) !== -1;
-            if (on) classes.push('is-on');
-            if (!row.on_hand) classes.push('is-off');
-            if (!pickable) {
-                return `<span class="${classes.join(' ')}">${esc(row.name)}</span>`;
+    async function mealRepair(err) {
+        const message = (err && err.fields && err.fields.picks) || (err && err.message) || '';
+        const unknown = message.indexOf('Unknown component') !== -1;
+        const conflict = message.indexOf('do not all pair') !== -1 || message.indexOf('Pick up to 2') !== -1;
+        if ((!unknown && !conflict) || mealRepairDepth > 8) return false;
+        mealRepairDepth += 1;
+        try {
+            if (unknown) {
+                const listed = await api.get('/pantry/meals/components');
+                const known = new Set((listed.components || []).map((row) => row.id));
+                const next = mealPicks.filter((id) => known.has(id));
+                if (next.length === mealPicks.length) return false;
+                mealPicks = next;
+            } else if (!mealPicks.length) {
+                return false;
+            } else {
+                mealPicks = mealPicks.slice(0, -1);
             }
-            return `<button type="button" class="${classes.join(' ')}" data-pick="${row.id}" data-category="${esc(row.category)}" aria-pressed="${on ? 'true' : 'false'}">${esc(row.name)}</button>`;
-        }).join('');
+            await meals(true);
+            return true;
+        } finally {
+            mealRepairDepth -= 1;
+        }
     }
 
-    function mealGroup(title, rows, pickable) {
-        const chips = mealChips(rows, pickable);
-        return `<h2 class="ld-pantry-label">${esc(title)}</h2><div class="ld-meal-chips">${chips || '<span class="text-muted text-xs">None for this combo.</span>'}</div>`;
+    function mealName(a, b) {
+        return String(a.name).localeCompare(String(b.name));
     }
 
-    async function meals() {
-        clearError();
+    function mealLine(row, picked, apart) {
+        const classes = ['ld-meal-row'];
+        if (picked) classes.push('is-on');
+        if (apart) classes.push('is-apart');
+        if (!row.on_hand) classes.push('is-off');
+        const unpick = picked
+            ? `<button type="button" class="ld-meal-x" data-unpick="${row.id}" aria-label="Remove ${esc(row.name)}">×</button>`
+            : '';
+        return `<div class="ld-meal-line"><button type="button" class="${classes.join(' ')}" data-pick="${row.id}" data-apart="${apart ? '1' : '0'}" data-category="${esc(row.category)}" aria-pressed="${picked ? 'true' : 'false'}">${esc(row.name)}</button>${unpick}</div>`;
+    }
+
+    function mealSuggestion(row) {
+        const classes = ['ld-meal-row'];
+        if (!row.on_hand) classes.push('is-off');
+        return `<div class="${classes.join(' ')}">${esc(row.name)}</div>`;
+    }
+
+    function mealColumn(label, picks, compatible, apart) {
+        const lines = picks.map((row) => mealLine(row, true, false)).join('')
+            + compatible.map((row) => mealLine(row, false, false)).join('');
+        const divided = apart.length
+            ? `<div class="ld-meal-split" role="separator"></div><p class="ld-meal-split-label">doesn't pair</p>${apart.map((row) => mealLine(row, false, true)).join('')}`
+            : '';
+        const empty = !lines && !apart.length ? '<p class="text-muted text-xs">None</p>' : '';
+        return `<section class="ld-meal-col"><h2 class="ld-pantry-label">${esc(label)}</h2>${lines}${divided}${empty}</section>`;
+    }
+
+    function mealSupport(label, rows) {
+        const lines = (rows || []).map(mealSuggestion).join('');
+        return `<section class="ld-meal-col"><h2 class="ld-pantry-label">${esc(label)}</h2>${lines || '<p class="text-muted text-xs">None</p>'}</section>`;
+    }
+
+    // A grayed item stays. Current picks it does not pair with are dropped, then the column cap is applied.
+    function mealKeep(ids, addedId) {
+        const counts = {};
+        const kept = [];
+        ids.slice().reverse().forEach((id) => {
+            const row = mealById[id];
+            const category = row ? row.category : '';
+            counts[category] = counts[category] || 0;
+            if (counts[category] >= 2) return;
+            counts[category] += 1;
+            kept.push(id);
+        });
+        if (kept.indexOf(addedId) === -1) kept.push(addedId);
+        return kept.reverse();
+    }
+
+    async function meals(repair) {
+        const gen = ++mealGen;
         const qs = new URLSearchParams();
         if (mealPicks.length) qs.set('picks', mealPicks.join(','));
-        const board = await api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : ''));
-        mealPicks = (board.picks || []).map((row) => row.id);
-        const selected = new Set(mealPicks);
+        let board;
+        let listed;
+        try {
+            board = await api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : ''));
+            listed = await api.get('/pantry/meals/components');
+        } catch (err) {
+            if (gen !== mealGen) return;
+            if (repair && await mealRepair(err)) return;
+            throw err;
+        }
+        if (gen !== mealGen) return;
+        if (!repair) clearError();
+        const returned = new Set((board.picks || []).map((row) => row.id));
+        mealPicks = mealPicks.filter((id) => returned.has(id));
+        (board.picks || []).forEach((row) => {
+            if (mealPicks.indexOf(row.id) === -1) mealPicks.push(row.id);
+        });
+        const picked = new Set(mealPicks);
+        mealById = {};
+        (listed.components || []).forEach((row) => {
+            if (!board.on_hand_only || row.on_hand || picked.has(row.id)) mealById[row.id] = row;
+        });
+        (board.picks || []).forEach((row) => {
+            mealById[row.id] = Object.assign({}, mealById[row.id] || {}, row);
+        });
+        const columns = MEAL_FILTERS.map(([key, label]) => {
+            const compatible = ((board.categories || {})[key] || []).slice();
+            const compatibleIds = new Set(compatible.map((row) => row.id));
+            compatible.forEach((row) => {
+                mealById[row.id] = Object.assign({}, mealById[row.id] || {}, row);
+            });
+            const chosen = mealPicks.map((id) => mealById[id]).filter((row) => row && row.category === key);
+            const chosenIds = new Set(chosen.map((row) => row.id));
+            const rest = compatible.filter((row) => !chosenIds.has(row.id)).sort((a, b) => {
+                const score = (b.pair_score || 0) - (a.pair_score || 0);
+                return score !== 0 ? score : mealName(a, b);
+            });
+            const apart = Object.keys(mealById).map((id) => mealById[id]).filter((row) => {
+                return row.category === key && !compatibleIds.has(row.id);
+            }).sort(mealName);
+            return mealColumn(label, chosen, rest, apart);
+        }).join('');
+        const rail = MEAL_SUPPORT.map(([key, label]) => mealSupport(label, (board.supporting || {})[key])).join('');
         const made = (board.made_before || []).map((row) => {
             const uses = (row.also_uses || []).map((item) => {
                 if (!item || !item.name) return '';
@@ -1078,16 +1340,25 @@
             return `<div class="ld-meal-made"><a class="text-sm" href="${esc(row.url)}">${esc(row.name)}</a>${extra}</div>`;
         }).join('');
         const only = !!board.on_hand_only;
+        const scrollY = window.scrollY;
+        const nameInput = document.querySelector('#meal-recipe [name="name"]');
+        const typedName = nameInput ? nameInput.value : null;
+        const nameFocused = !!(nameInput && document.activeElement === nameInput);
+        const selection = nameFocused ? [nameInput.selectionStart, nameInput.selectionEnd] : null;
+        const noteEl = document.getElementById('meal-note');
+        const typedNote = noteEl ? noteEl.textContent : '';
         body.innerHTML = `
             <div class="ld-meal-chips" id="meal-modes">
                 <button type="button" class="ld-meal-chip ld-meal-mode${only ? '' : ' is-on'}" data-hand="0" aria-pressed="${only ? 'false' : 'true'}">Show everything</button>
                 <button type="button" class="ld-meal-chip ld-meal-mode${only ? ' is-on' : ''}" data-hand="1" aria-pressed="${only ? 'true' : 'false'}">Only what I have</button>
                 <button type="button" class="ld-meal-chip" id="meal-clear">Clear</button>
             </div>
-            <div id="meal-picks">
-            ${MEAL_FILTERS.map(([key, label]) => mealGroup(label, (board.categories || {})[key], true)).join('')}
-            <h2 class="ld-pantry-label">Suggestions</h2>
-            ${MEAL_SUPPORT.map(([key, label]) => mealGroup(label, (board.supporting || {})[key], false)).join('')}
+            <div class="ld-meal-board" id="meal-board">
+                ${columns}
+                <aside class="ld-meal-rail" aria-label="Flavor">
+                    <h2 class="ld-pantry-label ld-meal-flavor">Flavor</h2>
+                    ${rail}
+                </aside>
             </div>
             <div class="mt-3" id="meal-made">${made ? '<p class="text-sm">Made before</p>' + made : ''}</div>
             <p class="text-sm text-muted" id="meal-note"></p>
@@ -1096,6 +1367,17 @@
                 <button type="submit" class="btn-primary text-sm">Save as recipe</button>
                 <button type="button" class="btn text-sm" id="meal-groceries">Add missing to Groceries</button>
             </form>`;
+        const nextName = document.querySelector('#meal-recipe [name="name"]');
+        if (nextName && typedName !== null) {
+            nextName.value = typedName;
+            if (nameFocused) {
+                nextName.focus();
+                if (selection && nextName.setSelectionRange) nextName.setSelectionRange(selection[0], selection[1]);
+            }
+        }
+        const nextNote = document.getElementById('meal-note');
+        if (nextNote && typedNote) nextNote.textContent = typedNote;
+        window.scrollTo(0, scrollY);
         body.querySelector('#meal-modes').addEventListener('click', (event) => {
             const mode = event.target.closest('[data-hand]');
             if (mode) {
@@ -1107,22 +1389,41 @@
                 meals().catch(fail);
             }
         });
-        document.getElementById('meal-picks').addEventListener('click', (event) => {
-            const chip = event.target.closest('[data-pick]');
-            if (!chip) return;
-            const id = Number(chip.dataset.pick);
-            const prev = mealPicks.slice();
-            if (selected.has(id)) {
+        document.getElementById('meal-board').addEventListener('click', (event) => {
+            const unpick = event.target.closest('[data-unpick]');
+            if (unpick) {
+                const id = Number(unpick.dataset.unpick);
+                const prev = mealPicks.slice();
                 mealPicks = mealPicks.filter((pick) => pick !== id);
-            } else {
-                const category = chip.dataset.category;
-                const inCategory = (board.categories[category] || []).filter((row) => selected.has(row.id)).length;
-                if (MEAL_FILTERS.some(([key]) => key === category) && inCategory >= 2) {
-                    fail({ message: 'Pick up to 2 in ' + category + '.' });
-                    return;
-                }
-                mealPicks = prev.concat([id]);
+                meals().catch((err) => {
+                    mealPicks = prev;
+                    fail(err);
+                });
+                return;
             }
+            const row = event.target.closest('[data-pick]');
+            if (!row || row.getAttribute('aria-pressed') === 'true') return;
+            const id = Number(row.dataset.pick);
+            const prev = mealPicks.slice();
+            if (row.dataset.apart === '1') {
+                api.get('/pantry/meals/components/' + id + '/pairings').then((data) => {
+                    const friends = new Set((data.pairings || []).map((pair) => pair.other && pair.other.id).filter(Boolean));
+                    const kept = mealPicks.filter((pick) => friends.has(pick));
+                    mealPicks = mealKeep(kept.concat([id]), id);
+                    return meals();
+                }).catch((err) => {
+                    mealPicks = prev;
+                    fail(err);
+                });
+                return;
+            }
+            const category = row.dataset.category;
+            const inCategory = mealPicks.filter((pick) => mealById[pick] && mealById[pick].category === category).length;
+            if (inCategory >= 2) {
+                fail({ message: 'Pick up to 2 in ' + category + '.' });
+                return;
+            }
+            mealPicks = prev.concat([id]);
             meals().catch((err) => {
                 mealPicks = prev;
                 fail(err);
@@ -1147,5 +1448,22 @@
     }
 
     const screens = { inventory, scan, purge, products, recipes, meals };
-    (screens[view] || inventory)().catch(fail);
+    (screens[view] || inventory)().catch(fail).then(() => {
+        booted = true;
+        if (liveQueued) {
+            liveQueued = false;
+            scheduleLive();
+        }
+    });
+
+    window.addEventListener('lifedash:event', (event) => {
+        const table = event.detail && event.detail.table;
+        if (affectsOpenView(table)) scheduleLive();
+    });
+    window.addEventListener('lifedash:poll', () => {
+        if (view !== 'scan') scheduleLive();
+    });
+    window.addEventListener('lifedash:resync', () => {
+        if (view !== 'scan') scheduleLive();
+    });
 })();
