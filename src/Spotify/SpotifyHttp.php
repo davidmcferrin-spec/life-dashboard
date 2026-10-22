@@ -77,6 +77,14 @@ final class SpotifyHttp
      */
     private function send(string $method, string $url, ?string $body, array $headers): array
     {
+        // Spotify answers 411 when a PUT or POST has no Content-Length.
+        $verb = strtoupper($method);
+        if (in_array($verb, ['POST', 'PUT', 'PATCH', 'DELETE'], true) && $body === null) {
+            $body = '';
+        }
+        if ($body !== null && !isset($headers['Content-Length'])) {
+            $headers['Content-Length'] = (string) strlen($body);
+        }
         $attempt = 0;
         while (true) {
             $attempt++;
@@ -113,6 +121,12 @@ final class SpotifyHttp
     public static function message(int $status, string $path, string $body): string
     {
         $lower = strtolower($path);
+        if (stripos($body, 'Restriction violated') !== false) {
+            if (str_contains($lower, '/volume')) {
+                return 'This device does not support volume.';
+            }
+            return 'This device does not support that playback command.';
+        }
         if ($status === 403 && (str_contains($lower, 'recommendation') || str_contains($lower, 'audio-features') || str_contains($lower, 'audio-analysis'))) {
             return 'Spotify does not offer recommendations or audio features to this app.';
         }

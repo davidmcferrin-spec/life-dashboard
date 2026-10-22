@@ -67,6 +67,7 @@ final class SpotifyApi
                 'enabled' => $this->svc()->playerEnabled($u),
                 'connected' => !empty($status['connected']),
                 'display_name' => $status['display_name'],
+                'missing_playback_scopes' => $status['missing_playback_scopes'] ?? [],
             ];
         }));
         $r->get('/api/v1/spotify/playback/token', fn () => $this->run(function (int $u): array {
@@ -93,7 +94,13 @@ final class SpotifyApi
         $r->post('/api/v1/spotify/playlists/{id}/discard', fn (array $p) => $this->run(fn (int $u) => [
             'discarded' => $this->svc()->library()->discard($u, $this->id($p)),
         ], 200, true));
-        $r->post('/api/v1/spotify/push', fn () => $this->run(fn (int $u) => $this->svc()->sync()->push($u, $this->playlistId()), 200, true));
+        $r->post('/api/v1/spotify/push', fn () => $this->run(function (int $u): array {
+            $playlistId = $this->playlistId();
+            if ($playlistId !== null) {
+                $this->svc()->library()->assertEditable($u, $playlistId);
+            }
+            return $this->svc()->sync()->push($u, $playlistId);
+        }, 200, true));
         $r->post('/api/v1/spotify/sync', fn () => $this->run(fn (int $u) => $this->svc()->sync()->pull($u, $this->playlistId()), 200, true));
         $r->post('/api/v1/spotify/taste', fn () => $this->run(fn (int $u) => $this->svc()->library()->saveTaste($u, $this->runner->body()['profile'] ?? null), 200, true));
         $r->post('/api/v1/spotify/prompts', fn () => $this->run(fn (int $u) => [

@@ -301,7 +301,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "add_meal_pairing", "remove_meal_pairing", "list_meal_pairings", "suggest_meal",
         "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
         "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
-        "get_now_playing", "list_spotify_devices", "list_playlist_changes", "get_taste_profile",
+        "get_now_playing", "list_spotify_devices", "list_devices", "list_playlist_changes", "get_taste_profile",
         "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
@@ -854,7 +854,7 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     spotify = [
         "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
         "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
-        "get_now_playing", "list_spotify_devices", "list_playlist_changes", "get_taste_profile",
+        "get_now_playing", "list_spotify_devices", "list_devices", "list_playlist_changes", "get_taste_profile",
         "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
@@ -862,7 +862,7 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "play", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
         "add_to_queue", "transfer_playback",
     ]
-    assert len(spotify) == 38
+    assert len(spotify) == 39
     assert len(names) == len(set(names))
     for name in spotify:
         assert names.count(name) == 1
@@ -884,8 +884,18 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {"playlist_id": 8})
     method, path, body = resolve("sync_spotify", {})
     assert (method, path, body) == ("POST", "/api/v1/spotify/sync", {})
+    method, path, body = resolve("list_devices", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/devices", None)
+    method, path, body = resolve("list_spotify_devices", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/devices", None)
+    assert "Omit play" in described["transfer_playback"]
+    method, path, body = resolve("transfer_playback", {"device_id": "device1"})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/transfer", {"device_id": "device1"})
+    method, path, body = resolve("transfer_playback", {"device_id": "device1", "play": False})
+    assert body == {"device_id": "device1", "play": False}
     method, path, body = resolve("transfer_playback", {"device_id": "device1", "play": True})
     assert path == "/api/v1/spotify/playback/transfer"
+    assert body["play"] is True
 
 
 def test_public_url_is_reread_on_each_request():

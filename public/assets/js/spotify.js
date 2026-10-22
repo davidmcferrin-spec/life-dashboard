@@ -46,20 +46,31 @@
         }
     }
 
+    function readOnlyLabel(row) {
+        if (!row || row.is_owned || !row.spotify_id) return '';
+        if (row.owner_name) return 'Read-only (owned by ' + row.owner_name + ')';
+        return 'Followed';
+    }
+
     function renderLists() {
-        const create = `<form id="spotify-create" class="sp-create">
-            <input name="name" class="input w-full" maxlength="100" placeholder="New playlist" required>
-            <button type="submit" class="btn">Create</button>
-        </form>`;
         if (!playlists.length) {
-            listEl.innerHTML = create + '<p class="empty-state mono text-xs">No playlists yet. Sync, or create one.</p>';
+            listEl.innerHTML = '<p class="empty-state mono text-xs">No playlists yet. Sync, or create one.</p>';
             return;
         }
-        listEl.innerHTML = create + playlists.map((row) => `
+        listEl.innerHTML = playlists.map((row) => {
+            const label = readOnlyLabel(row);
+            const extra = row.local_dirty ? ' · staged' : '';
+            const draft = row.spotify_id ? '' : ' · draft';
+            const error = row.sync_error
+                ? `<span class="sp-row-error" title="${esc(row.sync_error)}">${esc(row.sync_error)}</span>`
+                : '';
+            return `
             <button type="button" class="sp-row${row.id === current ? ' is-on' : ''}" data-open="${row.id}">
-                <strong>${esc(row.name)}</strong>
-                <span>${row.track_count} tracks${row.local_dirty ? ' · staged' : ''}${row.spotify_id ? '' : ' · draft'}</span>
-            </button>`).join('');
+                <span class="sp-row-name" title="${esc(row.name)}">${esc(row.name)}</span>
+                <span class="sp-row-count">${row.track_count} tracks${extra}${draft}</span>
+                ${error || (label ? `<span class="sp-row-error">${esc(label)}</span>` : '')}
+            </button>`;
+        }).join('');
     }
 
     async function openPlaylist(id, scroll) {
@@ -68,7 +79,16 @@
         detailEl.innerHTML = '<p class="empty-state mono text-xs">Loading…</p>';
         detail = await api.get('/spotify/playlists/' + id);
         renderDetail();
+        syncPromptBox();
         if (scroll) detailEl.scrollIntoView({ block: 'nearest' });
+    }
+
+    function ownedPlaylist(playlist) {
+        return !!(playlist && playlist.is_owned);
+    }
+
+    function aiPlaylist(playlist) {
+        return !!(playlist && playlist.origin === 'ai_created' && playlist.is_owned);
     }
 
     function renderDetail() {
@@ -90,6 +110,8 @@
                     <button type="button" data-remove="${esc(track.uri)}">Remove</button>
                 </span>
             </li>`).join('');
+        const owned = ownedPlaylist(playlist);
+        const label = readOnlyLabel(playlist);
         const hits = searchHits.map((hit) => `
             <li class="sp-track">
                 <span>${esc(hit.name)} <span class="ld-meta">${esc((hit.artists || []).join(', '))}</span></span>
@@ -100,24 +122,28 @@
                 <h2>${esc(playlist.name)}</h2>
                 <div class="flex flex-wrap gap-2">
                     <button type="button" class="btn" data-sync-one="${playlist.id}">Sync</button>
-                    <button type="button" class="btn-primary" data-push="${playlist.id}">Push</button>
+                    ${owned ? `<button type="button" class="btn-primary" data-push="${playlist.id}">Push</button>` : ''}
                     <button type="button" class="btn" data-discard="${playlist.id}">Discard</button>
                 </div>
             </div>
             <p class="ld-meta">${playlist.public ? 'Public' : 'Private'}${playlist.spotify_id ? '' : ' · not on Spotify yet'}</p>
-            <form id="spotify-rename" class="sp-rename">
+            ${label ? `<p class="sp-readonly">${esc(label)}</p>` : ''}
+            ${playlist.sync_error ? `<p class="sp-readonly">${esc(playlist.sync_error)}</p>` : ''}
+            ${owned ? `<form id="spotify-rename" class="sp-rename">
                 <input name="name" class="input" maxlength="100" value="${esc(playlist.name)}">
                 <input name="description" class="input" maxlength="300" value="${esc(playlist.description || '')}" placeholder="Description">
                 <label class="text-sm"><input type="checkbox" name="public" ${playlist.public ? 'checked' : ''}> Public</label>
                 <button type="submit" class="btn">Stage rename</button>
-            </form>
+            </form>` : ''}
             ${diff ? `<ul class="sp-diff">${diff}</ul>` : '<p class="ld-meta">No staged changes.</p>'}
-            <form id="spotify-search" class="sp-search">
+            ${owned ? `<form id="spotify-search" class="sp-search">
                 <input name="q" class="input w-full" placeholder="Search Spotify" maxlength="200">
                 <button type="submit" class="btn">Search</button>
-            </form>
-            ${hits ? `<ul class="sp-tracks">${hits}</ul>` : ''}
-            <ul class="sp-tracks">${tracks || '<li class="ld-meta">No tracks.</li>'}</ul>`;
+            </form>` : ''}
+            ${owned && hits ? `<ul class="sp-tracks">${hits}</ul>` : ''}
+            <ul class="sp-tracks">${owned ? (tracks || '<li class="ld-meta">No tracks.</li>') : (preview.map((track) => `
+                <li class="sp-track"><span>${esc(track.name)} <span class="ld-meta">${esc((track.artists || []).join(', '))}</span></span></li>
+            `).join('') || '<li class="ld-meta">No tracks.</li>')}</ul>`;
     }
 
     function changeSummary(change) {
@@ -132,12 +158,29 @@
         return change.op;
     }
 
+    function syncPromptBox() {
+        const section = document.getElementById('spotify-prompts');
+        if (!section) return;
+        const playlist = detail && detail.playlist;
+        const show = aiPlaylist(playlist);
+        section.hidden = !show;
+        if (show && promptForm && !promptForm.dataset.id) {
+            promptForm.elements.target_playlist_id.value = String(playlist.id);
+        }
+        renderPrompts();
+    }
+
     function renderPrompts() {
-        if (!prompts.length) {
+        if (!promptList) return;
+        const playlist = detail && detail.playlist;
+        const rows = aiPlaylist(playlist)
+            ? prompts.filter((row) => Number(row.target_playlist_id) === Number(playlist.id) || !row.target_playlist_id)
+            : [];
+        if (!rows.length) {
             promptList.innerHTML = '<p class="empty-state mono text-xs">No prompts yet.</p>';
             return;
         }
-        promptList.innerHTML = prompts.map((row) => `
+        promptList.innerHTML = rows.map((row) => `
             <article class="sp-prompt">
                 <strong>${esc(row.name)}</strong>
                 <p>${esc(row.prompt)}</p>
@@ -155,8 +198,26 @@
         try {
             if (form.id === 'spotify-create') {
                 const data = new FormData(form);
-                const created = await api.post('/spotify/playlists', { name: String(data.get('name') || '') });
+                const ai = String(data.get('kind') || '') === 'ai';
+                const prompt = String(data.get('prompt') || '').trim();
+                if (ai && !prompt) {
+                    say('An AI playlist needs a prompt.');
+                    return;
+                }
+                const created = await api.post('/spotify/playlists', {
+                    name: String(data.get('name') || ''),
+                    description: String(data.get('description') || ''),
+                    public: data.get('public') === 'on',
+                    ai: ai,
+                    prompt: ai ? prompt : '',
+                    refresh_schedule: ai ? String(data.get('refresh_schedule') || '') : '',
+                });
                 form.reset();
+                const regular = form.querySelector('input[name="kind"][value="regular"]');
+                if (regular) regular.checked = true;
+                const aiFields = document.getElementById('spotify-create-ai');
+                if (aiFields) aiFields.hidden = true;
+                closeNew();
                 current = created.playlist.id;
                 await load();
                 say('Playlist staged.');
@@ -207,7 +268,11 @@
         const target = event.target.closest('button');
         if (!target) return;
         try {
-            if (target.dataset.open) {
+            if (target.dataset.newPlaylist !== undefined) {
+                openNew();
+            } else if (target.dataset.closeModal !== undefined) {
+                closeNew();
+            } else if (target.dataset.open) {
                 searchHits = [];
                 await openPlaylist(Number(target.dataset.open), true);
             } else if (target.dataset.sync !== undefined || target.dataset.syncOne) {
@@ -276,6 +341,36 @@
         } catch (err) {
             say(err.message || 'Spotify request failed.');
         }
+    });
+
+    function openNew() {
+        const modal = document.getElementById('spotify-new-modal');
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+        const name = modal.querySelector('input[name="name"]');
+        if (name) name.focus();
+    }
+
+    function closeNew() {
+        const modal = document.getElementById('spotify-new-modal');
+        if (modal) modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    root.addEventListener('change', (event) => {
+        const input = event.target;
+        if (!(input instanceof HTMLInputElement) || input.name !== 'kind') return;
+        const aiFields = document.getElementById('spotify-create-ai');
+        if (aiFields) aiFields.hidden = input.value !== 'ai' || !input.checked;
+    });
+    root.addEventListener('click', (event) => {
+        if (event.target instanceof Element && event.target.closest('[data-close-modal]')) closeNew();
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeNew();
     });
 
     window.addEventListener('lifedash:event', (event) => {
