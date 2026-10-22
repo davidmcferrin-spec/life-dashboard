@@ -123,6 +123,9 @@ def test_mcp_loopback_listen_is_a_warning():
     both = _healthy_mcp(hosts=["0.0.0.0", "127.0.0.1"])
     assert both["status"] == "warn"
     assert "not 0.0.0.0" in both["detail"]
+    closed = _healthy_mcp(hosts=["127.0.0.1"], plain_http=False)
+    assert "not 0.0.0.0" in closed["detail"]
+    assert "plain HTTP" not in closed["detail"]
 
 
 def test_mcp_ipv6_loopback_is_not_all_interfaces():
@@ -153,6 +156,56 @@ def test_mcp_missing_revision_warns():
     row = _healthy_mcp(revision="")
     assert row["status"] == "warn"
     assert row["detail"].endswith("0.1.0 revision unknown")
+
+
+def test_revision_file_is_used_and_git_is_not(tmp_path, monkeypatch):
+    (tmp_path / "REVISION").write_text("abc1234abcd\n", encoding="utf-8")
+
+    def boom(*_args, **_kwargs):
+        raise AssertionError("git must not run")
+
+    monkeypatch.setattr(healthcheck.subprocess, "run", boom)
+    assert healthcheck.git_revision(tmp_path) == "abc1234abcd"
+
+
+def test_missing_or_invalid_revision_file_is_empty(tmp_path, monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise AssertionError("git must not run")
+
+    monkeypatch.setattr(healthcheck.subprocess, "run", boom)
+    assert healthcheck.git_revision(tmp_path) == ""
+    (tmp_path / "REVISION").write_text("not-a-rev\n", encoding="utf-8")
+    assert healthcheck.git_revision(tmp_path) == ""
+
+
+def test_public_bind_stays_ok_when_plain_http_is_allowed():
+    row = _healthy_mcp(plain_http=True)
+    assert row["status"] == "ok"
+    assert "listen 0.0.0.0:8765;" in row["detail"]
+    assert "plain HTTP" not in row["detail"]
+
+
+def test_public_bind_warns_when_plain_http_is_disabled():
+    row = _healthy_mcp(plain_http=False)
+    assert row["status"] == "warn"
+    assert "listen 0.0.0.0:8765 (plain HTTP disabled)" in row["detail"]
+
+
+def test_plain_http_check_uses_the_saved_flag(monkeypatch):
+    from lifedash import mcp_server
+
+    monkeypatch.setattr(mcp_server, "read_plain_http_flag", lambda _cfg: 0)
+    assert healthcheck.plain_http_allowed(cfg(MCP_ALLOW_PLAIN_HTTP="true")) is False
+    monkeypatch.setattr(mcp_server, "read_plain_http_flag", lambda _cfg: None)
+    assert healthcheck.plain_http_allowed(cfg(MCP_ALLOW_PLAIN_HTTP="false")) is False
+    assert healthcheck.plain_http_allowed(cfg(MCP_ALLOW_PLAIN_HTTP="true")) is True
+
+    def broken(_cfg):
+        raise OSError("down")
+
+    monkeypatch.setattr(mcp_server, "read_plain_http_flag", broken)
+    assert healthcheck.plain_http_allowed(cfg(MCP_ALLOW_PLAIN_HTTP="true")) is True
+    assert healthcheck.plain_http_allowed(cfg(MCP_ALLOW_PLAIN_HTTP="false")) is False
 
 
 def test_mcp_without_systemd_does_not_fail_closed():

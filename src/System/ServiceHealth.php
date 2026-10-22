@@ -41,9 +41,9 @@ PY;
     /**
      * @return list<string>
      */
-    public static function command(string $root): array
+    public static function command(string $root, ?string $python = null): array
     {
-        $python = self::pythonBinary($root);
+        $python ??= self::pythonBinary($root);
         $prefix = is_executable('/usr/bin/timeout') ? ['/usr/bin/timeout', '8'] : [];
 
         return [...$prefix, $python, '-c', self::SNIPPET, $root];
@@ -109,6 +109,10 @@ PY;
      */
     private static function execute(array $command): string
     {
+        $python = self::interpreterFrom($command);
+        if (!self::usableVenvPython($python)) {
+            throw new \RuntimeException('Python environment is not available to the web server');
+        }
         $descriptors = [
             0 => ['pipe', 'r'],
             1 => ['pipe', 'w'],
@@ -140,12 +144,31 @@ PY;
     private static function pythonBinary(string $root): string
     {
         foreach (['/srv/lifedash/venv/bin/python', dirname($root) . '/venv/bin/python'] as $bin) {
-            if (is_executable($bin)) {
+            if (self::usableVenvPython($bin)) {
                 return $bin;
             }
         }
 
-        return 'python3';
+        return '/srv/lifedash/venv/bin/python';
+    }
+
+    private static function interpreterFrom(array $command): string
+    {
+        $dashC = array_search('-c', $command, true);
+        if ($dashC === false || $dashC < 1) {
+            return '';
+        }
+
+        return (string) $command[$dashC - 1];
+    }
+
+    public static function usableVenvPython(string $bin): bool
+    {
+        if (!str_starts_with($bin, '/') || !str_contains($bin, '/venv/bin/python')) {
+            return false;
+        }
+
+        return is_executable($bin);
     }
 
     /**

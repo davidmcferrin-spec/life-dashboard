@@ -96,7 +96,8 @@ leave_existing() {
 }
 
 run_one() {
-    local file=$1 base id action token parsed
+    local file=$1 base id action token parsed user_id playlist_id python args_text
+    local -a args
     base=$(basename "$file")
     [[ $base =~ ^[0-9a-f]{32}\.json$ ]] || {
         log "ignoring $base"
@@ -118,10 +119,22 @@ known = {
     "tunnel-restart",
     "tunnel-status",
     "tunnel-clear",
+    "spotify-pull",
+    "spotify-push",
 }
+user_id = str(data.get("user_id") or "")
+playlist_id = str(data.get("playlist_id") or "")
 if action not in known:
     raise SystemExit(2)
-sys.stdout.write(action + "\n" + token)
+if action.startswith("spotify-"):
+    if not user_id.isdigit() or int(user_id) < 1:
+        raise SystemExit(2)
+    if playlist_id and (not playlist_id.isdigit() or int(playlist_id) < 1):
+        raise SystemExit(2)
+else:
+    user_id = ""
+    playlist_id = ""
+sys.stdout.write("\n".join([action, token, user_id, playlist_id, "END"]))
 PY
     ); then
         log "rejected $id"
@@ -129,7 +142,12 @@ PY
         return 0
     fi
     action=${parsed%%$'\n'*}
-    token=${parsed#*$'\n'}
+    rest=${parsed#*$'\n'}
+    token=${rest%%$'\n'*}
+    rest=${rest#*$'\n'}
+    user_id=${rest%%$'\n'*}
+    rest=${rest#*$'\n'}
+    playlist_id=${rest%%$'\n'*}
     rm -f -- "$file"
     case "$action" in
         restart-mcp)
@@ -177,6 +195,28 @@ PY
             ;;
         tunnel-status)
             record_tunnel
+            ;;
+        spotify-pull | spotify-push)
+            python=/srv/lifedash/venv/bin/python
+            if [[ ! -x $python ]]; then
+                log "Python environment for Spotify sync is not available to the web server"
+                return 0
+            fi
+            if ! args_text=$(lifedash_spotify_args "$action" "$user_id" "$playlist_id" "$python"); then
+                log "rejected spotify request"
+                return 0
+            fi
+            mapfile -t args <<< "$args_text"
+            if ! (
+                cd /srv/lifedash/app || exit 1
+                runuser -u lifedash -- env \
+                    LIFEDASH_ENV_FILE=/run/lifedash/app.env \
+                    PYTHONPATH=/srv/lifedash/app/services \
+                    PYTHONUNBUFFERED=1 \
+                    "${args[@]}"
+            ); then
+                log "spotify sync failed"
+            fi
             ;;
         *)
             log "unknown action $action"

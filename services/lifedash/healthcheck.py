@@ -63,16 +63,19 @@ def check_database(cfg: Config) -> list[dict]:
 
 
 def git_revision(root: Path = REPO_ROOT) -> str:
+    """Short commit recorded by deploy. The service user does not run git."""
+    return _read_revision(root / "REVISION")
+
+
+def _read_revision(path: Path) -> str:
     try:
-        proc = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=2,
-        )
-    except (OSError, subprocess.SubprocessError):
+        text = path.read_text(encoding="utf-8")
+    except OSError:
         return ""
-    return proc.stdout.strip() if proc.returncode == 0 else ""
+    line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    if len(line) < 7 or len(line) > 40 or any(ch not in "0123456789abcdef" for ch in line):
+        return ""
+    return line
 
 
 def registry_tool_count() -> int | None:
@@ -154,13 +157,14 @@ def assess_mcp(
     tools: int | None,
     version: str,
     revision: str,
+    plain_http: bool = True,
     port: int = 8765,
 ) -> dict:
     state = (systemd or "").strip().lower() or "unknown"
     parts: list[tuple[str, str]] = [
         _systemd_part(state),
         _healthz_part(healthz_status, healthz_body, state),
-        _listen_part(hosts, port, state, expect="0.0.0.0"),
+        _listen_part(hosts, port, state, expect="0.0.0.0", plain_http=plain_http),
         _tools_part(tools, healthz_body),
         _version_part(version, revision),
     ]
@@ -177,7 +181,7 @@ def assess_push(*, systemd: str, hosts: list[str], port: int = 8766) -> dict:
     return {"name": "lifedash-push", "status": _worst(status for status, _detail in parts), "detail": "; ".join(detail for _status, detail in parts)}
 
 
-def check_mcp(port: int = 8765) -> dict:
+def check_mcp(port: int = 8765, *, plain_http: bool = True) -> dict:
     code, body = fetch_healthz(f"http://127.0.0.1:{port}/healthz")
     return assess_mcp(
         systemd=systemd_is_active("lifedash-mcp.service"),
@@ -187,6 +191,7 @@ def check_mcp(port: int = 8765) -> dict:
         tools=registry_tool_count(),
         version=__version__,
         revision=git_revision(),
+        plain_http=plain_http,
         port=port,
     )
 
@@ -207,7 +212,20 @@ def check_services(cfg: Config | None = None) -> list[dict]:
             cfg = None
     mcp_port = cfg.int("MCP_PORT", 8765) if cfg is not None else 8765
     push_port = cfg.int("PUSH_PORT", 8766) if cfg is not None else 8766
-    return [check_mcp(mcp_port), check_push(push_port)]
+    plain_http = plain_http_allowed(cfg) if cfg is not None else True
+    return [check_mcp(mcp_port, plain_http=plain_http), check_push(push_port)]
+
+
+def plain_http_allowed(cfg: Config) -> bool:
+    """Same rule as the MCP server: a saved flag wins, otherwise MCP_ALLOW_PLAIN_HTTP."""
+    default = cfg.bool("MCP_ALLOW_PLAIN_HTTP", True)
+    try:
+        from .mcp_server import effective_plain_http, read_plain_http_flag
+
+        stored = read_plain_http_flag(cfg)
+    except Exception:  # noqa: BLE001 — an unread flag keeps the config value
+        return default
+    return effective_plain_http(stored, default)
 
 
 def run(cfg: Config | None = None) -> dict:
@@ -274,7 +292,7 @@ def _healthz_part(code: int | None, body: Any, systemd: str) -> tuple[str, str]:
 _ALL_INTERFACES = {"0.0.0.0", "*", "::"}
 
 
-def _listen_part(hosts: list[str], port: int, systemd: str, *, expect: str) -> tuple[str, str]:
+def _listen_part(hosts: list[str], port: int, systemd: str, *, expect: str, plain_http: bool = True) -> tuple[str, str]:
     if not hosts:
         status = FAIL if systemd == "active" else WARN
         return status, f"listen none :{port}"
@@ -282,6 +300,9 @@ def _listen_part(hosts: list[str], port: int, systemd: str, *, expect: str) -> t
     if expect == "0.0.0.0":
         if any(host not in _ALL_INTERFACES for host in hosts):
             return WARN, f"listen {shown} (not 0.0.0.0)"
+        # 0.0.0.0 is the tunnel bind. It is a problem only when plain HTTP is off.
+        if not plain_http:
+            return WARN, f"listen {shown} (plain HTTP disabled)"
         return OK, f"listen {shown}"
     if any(host != expect for host in hosts):
         return WARN, f"listen {shown} (not {expect})"

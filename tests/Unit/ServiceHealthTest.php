@@ -70,11 +70,44 @@ final class ServiceHealthTest extends TestCase
         self::assertSame('python3: command not found', $rows[0]['detail']);
     }
 
-    public function testCommandTargetsTheAppCheckout(): void
+    public function testCommandUsesAVenvInterpreter(): void
+    {
+        $dir = sys_get_temp_dir() . '/ld-health-' . bin2hex(random_bytes(4));
+        $bin = $dir . '/venv/bin/python';
+        mkdir(dirname($bin), 0700, true);
+        file_put_contents($bin, "#!/bin/sh\nexit 0\n");
+        chmod($bin, 0755);
+
+        try {
+            self::assertTrue(ServiceHealth::usableVenvPython($bin));
+            self::assertFalse(ServiceHealth::usableVenvPython('/usr/bin/python3'));
+            $command = ServiceHealth::command('/workspace', $bin);
+            self::assertContains($bin, $command);
+            self::assertNotContains('python3', $command);
+            self::assertContains('/workspace', $command);
+            self::assertMatchesRegularExpression('/check_services/', implode("\n", $command));
+        } finally {
+            @unlink($bin);
+        }
+    }
+
+    public function testCommandDoesNotFallBackToSystemPython(): void
     {
         $command = ServiceHealth::command('/workspace');
-        self::assertContains('/workspace', $command);
-        self::assertContains('python3', $command);
-        self::assertTrue((bool) preg_match('/check_services/', implode("\n", $command)));
+        self::assertNotContains('python3', $command);
+        $named = false;
+        foreach ($command as $arg) {
+            if (is_string($arg) && str_contains($arg, '/venv/bin/python')) {
+                $named = true;
+            }
+        }
+        self::assertTrue($named);
+
+        if (is_executable('/srv/lifedash/venv/bin/python') || is_executable('/venv/bin/python')) {
+            return;
+        }
+        $rows = (new ServiceHealth())->checks();
+        self::assertSame('Python environment is not available to the web server', $rows[0]['detail']);
+        self::assertSame('warn', $rows[0]['status']);
     }
 }

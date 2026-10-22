@@ -75,6 +75,9 @@ fi
 
 log "python services"
 "$VENV/bin/pip" install --quiet --upgrade -e "$APP_DIR/services"
+# shellcheck source=deploy/bin/lifedash-perms
+source "$APP_DIR/deploy/bin/lifedash-perms"
+lifedash_expose_venv "$VENV" lifedash
 
 log "pre-migration backup"
 install -d -m 0700 /var/backups/lifedash
@@ -89,6 +92,14 @@ else
     runuser -u lifedash -- php scripts/migrate.php </dev/null || die "migration failed (first run? run interactively once)"
 fi
 
+if [[ -f $APP_DIR/deploy/php/lifedash-pool.conf ]]; then
+    php_ver=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+    pool="/etc/php/$php_ver/fpm/pool.d/lifedash.conf"
+    pool_dir=$(dirname "$pool")
+    if [[ -d "$pool_dir" ]]; then
+        install -m 0644 "$APP_DIR/deploy/php/lifedash-pool.conf" "$pool"
+    fi
+fi
 log "reload php-fpm"
 for fpm in $(systemctl list-units --type=service --no-legend 'php*-fpm.service' | awk '{print $1}'); do
     systemctl reload "$fpm"   # also flushes OPcache (validate_timestamps=0)
@@ -98,16 +109,11 @@ install -m 0644 "$APP_DIR/deploy/systemd/lifedash-mcp.service" /etc/systemd/syst
 install -m 0644 "$APP_DIR/deploy/systemd/lifedash-deploy.service" \
     "$APP_DIR/deploy/systemd/lifedash-deploy@.service" \
     "$APP_DIR/deploy/systemd/lifedash-deploy.path" /etc/systemd/system/
-if [[ -f $APP_DIR/deploy/php/lifedash-pool.conf ]]; then
-    php_ver=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
-    pool="/etc/php/$php_ver/fpm/pool.d/lifedash.conf"
-    pool_dir=$(dirname "$pool")
-    if [[ -d "$pool_dir" ]]; then
-        install -m 0644 "$APP_DIR/deploy/php/lifedash-pool.conf" "$pool"
-    fi
-fi
 # Spool, service path, Spotify timer, and cloudflared (only when this app owns it).
 lifedash_install_runtime_units "$APP_DIR" lifedash
+
+log "record revision"
+lifedash_write_revision "$APP_DIR" || die "could not record the deployed revision"
 
 log "restart realtime push and MCP"
 systemctl enable lifedash-push.service >/dev/null
@@ -118,6 +124,7 @@ systemctl restart lifedash-mcp.service
 log "verify"
 sleep 1
 curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null || die "/healthz failed — check journalctl -u 'php*-fpm' and storage/logs/php-error.log"
+runuser -u lifedash -- "$VENV/bin/python" -c 'import psycopg' || die "venv python cannot import psycopg as the php-fpm user"
 runuser -u lifedash -- "$VENV/bin/lifedash-healthcheck" >/dev/null || log "WARNING: lifedash-healthcheck reported warn/fail (run it for details)"
 systemctl is-active --quiet lifedash-push.service || log "WARNING: lifedash-push is not running — journalctl -u lifedash-push (dashboard falls back to polling)"
 systemctl is-active --quiet lifedash-mcp.service || log "WARNING: lifedash-mcp is not running — journalctl -u lifedash-mcp (/mcp stays 502 until it is)"

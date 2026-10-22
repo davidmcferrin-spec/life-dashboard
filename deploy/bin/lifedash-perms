@@ -15,6 +15,22 @@ BASE=${LIFEDASH_BASE_DIR:-/srv/lifedash}
 APP=$BASE/app
 USER_=lifedash
 
+# chmod follows symlinks. venv/bin/python points at the system interpreter, so
+# only real files and directories are changed.
+lifedash_expose_venv() {
+    local venv=$1
+    local group=${2:-lifedash}
+    [[ -d $venv ]] || return 0
+    if [[ $EUID -eq 0 ]]; then
+        chown -R root:"$group" "$venv"
+    fi
+    find "$venv" -type d -exec chmod 0750 {} +
+    find "$venv" -type f -exec chmod 0640 {} +
+    if [[ -d $venv/bin ]]; then
+        find "$venv/bin" -type f -exec chmod 0750 {} +
+    fi
+}
+
 # chmod lines that touch the checkout. Capital X keeps a file's executable bit
 # as git recorded it: a 100644 file stays non-executable, a 100755 file stays
 # executable. Do not chmod +x tracked files here.
@@ -89,6 +105,8 @@ if [[ $before_dirt != "$after_dirt" ]]; then
     echo "$after_dirt" >&2
     exit 1
 fi
+
+lifedash_expose_venv "$BASE/venv" "$USER_"
 
 # The deploy that pulls this file still finishes inside the previous
 # lifedash-deploy process. Units installed here are what that deploy applies.

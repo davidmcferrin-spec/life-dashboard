@@ -213,19 +213,19 @@
             } else if (target.dataset.sync !== undefined || target.dataset.syncOne) {
                 const body = target.dataset.syncOne ? { playlist_id: Number(target.dataset.syncOne) } : {};
                 say('Syncing…');
-                await api.post('/spotify/sync', body);
+                const synced = await api.post('/spotify/sync', body);
                 await load();
-                say('Sync finished.');
+                say(synced && synced.queued ? 'Sync queued.' : 'Sync finished.');
             } else if (target.dataset.pushAll !== undefined) {
                 say('Pushing…');
-                await api.post('/spotify/push', {});
+                const pushedAll = await api.post('/spotify/push', {});
                 await load();
-                say('Push finished.');
+                say(pushedAll && pushedAll.queued ? 'Push queued.' : 'Push finished.');
             } else if (target.dataset.push) {
                 say('Pushing…');
-                await api.post('/spotify/push', { playlist_id: Number(target.dataset.push) });
+                const pushed = await api.post('/spotify/push', { playlist_id: Number(target.dataset.push) });
                 await load();
-                say('Push finished.');
+                say(pushed && pushed.queued ? 'Push queued.' : 'Push finished.');
             } else if (target.dataset.discard) {
                 await api.post('/spotify/playlists/' + target.dataset.discard + '/discard', {});
                 await openPlaylist(Number(target.dataset.discard), false);

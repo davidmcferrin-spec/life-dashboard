@@ -150,6 +150,40 @@ lifedash_install_runtime_units() {
     systemctl try-restart lifedash-deploy.path
 }
 
+# Record the commit the services should report. They read this file and do not run git.
+lifedash_write_revision() {
+    local app=$1 rev
+    rev=$(git -C "$app" -c "safe.directory=$app" rev-parse --short=12 HEAD) || return 1
+    [[ $rev =~ ^[0-9a-f]{7,40}$ ]] || return 1
+    printf '%s\n' "$rev" > "$app/REVISION"
+    if [[ $EUID -eq 0 ]]; then
+        chown root:lifedash "$app/REVISION"
+    fi
+    chmod 0640 "$app/REVISION"
+}
+
+# Arguments for the venv interpreter. A bare or system python is rejected.
+lifedash_spotify_args() {
+    local action=$1 user_id=$2 playlist_id=${3:-} python=$4 kind
+    case $action in
+        spotify-pull) kind=pull ;;
+        spotify-push) kind=push ;;
+        *) return 1 ;;
+    esac
+    [[ $user_id =~ ^[1-9][0-9]*$ ]] || return 1
+    if [[ -n $playlist_id && ! $playlist_id =~ ^[1-9][0-9]*$ ]]; then
+        return 1
+    fi
+    case $python in
+        */venv/bin/python) ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$python" -m lifedash.spotify_sync "$kind" --user "$user_id"
+    if [[ -n $playlist_id ]]; then
+        printf '%s\n' --playlist "$playlist_id"
+    fi
+}
+
 # php-fpm must be able to create a request, and the path unit must be watching.
 lifedash_service_control_ready() {
     local group=${1:-lifedash}
