@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Dashboard\Clipboard;
 
-use Dashboard\Config;
 use Dashboard\DB\Database;
 use DateInterval;
 use DateTimeImmutable;
@@ -180,7 +179,7 @@ final class ClipboardShareService
 
     private function shareUrl(string $token): string
     {
-        $base = rtrim((string) Config::get('APP_URL', ''), '/');
+        $base = \Dashboard\Support\PublicUrl::base();
 
         return ($base !== '' ? $base : '') . '/share/clipboard/' . $token;
     }

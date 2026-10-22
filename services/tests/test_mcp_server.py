@@ -7,11 +7,15 @@ from http.server import ThreadingHTTPServer
 from lifedash.mcp_server import (
     TOOLS,
     RequestLimiter,
+    authorization_server_document,
     handle_message,
     listen_host,
     make_handler,
+    metadata_url,
     negotiate_protocol,
+    protected_resource_document,
     resolve,
+    www_authenticate,
 )
 
 
@@ -476,6 +480,10 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     assert listen_host("0.0.0.0") == "0.0.0.0"
     assert listen_host("127.0.0.1") == "0.0.0.0"
     assert listen_host("10.1.1.5") == "0.0.0.0"
+    assert listen_host("127.0.0.1", None) == "0.0.0.0"
+    assert listen_host("127.0.0.1", "all") == "0.0.0.0"
+    assert listen_host("10.1.1.5", "loopback") == "127.0.0.1"
+    assert listen_host(None, "localhost") == "127.0.0.1"
     assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
     assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
 
@@ -517,23 +525,29 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
                 headers={"Content-Type": "application/json", **headers},
                 method="POST",
             )
-            with urllib.request.urlopen(req) as res:
-                return res.status, json.loads(res.read().decode())
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return res.status, dict(res.headers), json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                return exc.code, dict(exc.headers), json.loads(exc.read().decode())
 
-        status, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
-        assert status == 200
+        status, headers, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
+        assert status == 401
         assert body["error"]["code"] == -32001
+        assert headers["WWW-Authenticate"] == "Bearer"
 
-        status, body = post(
+        status, headers, body = post(
             {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}},
             {},
         )
+        assert status == 200
         assert body["result"]["protocolVersion"] == "2025-11-25"
 
-        status, body = post(
+        status, headers, body = post(
             {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
             {"Authorization": "Bearer anything", "Mcp-Session-Id": "stale"},
         )
+        assert status == 200
         assert [tool["name"] for tool in body["result"]["tools"]] == full
 
         try:
@@ -552,6 +566,58 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
             assert body["listen"] == "0.0.0.0:8765"
             assert body["version"]
             assert "revision" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_oauth_discovery_and_upstream_401():
+    public = "https://mcp.example.com/mcp"
+    issuer = "https://dash.example.com"
+    assert metadata_url(public) == "https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+    assert www_authenticate("") == "Bearer"
+    assert 'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' in www_authenticate(public)
+    doc = protected_resource_document(public, issuer)
+    assert doc["resource"] == public
+    assert doc["authorization_servers"] == [issuer]
+    assert "pantry:read" in doc["scopes_supported"]
+    server_doc = authorization_server_document(issuer)
+    assert server_doc["token_endpoint"] == "https://dash.example.com/oauth/token"
+    assert server_doc["code_challenge_methods_supported"] == ["S256"]
+
+    def fetch(method, path, body, authorization, tool):
+        assert authorization == "Bearer ldoa_expired"
+        return 401, {"error": "Invalid or expired token."}
+
+    handler = make_handler(
+        fetch,
+        RequestLimiter(),
+        mcp_public_url=public,
+        issuer=issuer,
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp",
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}}).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer ldoa_expired"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req)
+            raise AssertionError("upstream 401 must stay HTTP 401")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+            assert exc.headers.get("WWW-Authenticate") == www_authenticate(public)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp") as res:
+            body = json.loads(res.read().decode())
+            assert body["authorization_servers"] == [issuer]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-authorization-server") as res:
+            body = json.loads(res.read().decode())
+            assert body["registration_endpoint"] == issuer + "/oauth/register"
     finally:
         server.shutdown()
         server.server_close()

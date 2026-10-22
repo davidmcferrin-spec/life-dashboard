@@ -1,59 +1,37 @@
-# Cloudflare Tunnel and Access for MCP
+# Cloudflare Tunnel and MCP OAuth
 
-The dashboard UI stays on the LAN (and UniFi Teleport). The public hostname is only for a cloud assistant that cannot join the home network.
+Two hostnames. `dash.<domain>` is the PHP app (pages, `/ws`, OAuth consent, token, and registration). `mcp.<domain>` is `lifedash-mcp` on `127.0.0.1:8765`, plus the OAuth discovery documents. Anything else on the MCP hostname is 404 at the edge.
 
-`lifedash-tunnel-setup` publishes two paths and nothing else:
-
-| Path | Where it goes |
-| --- | --- |
-| `/healthz` | Apache on port 80. Up or down only. |
-| `/mcp` | `lifedash-mcp` on port 8765 (`0.0.0.0`; the tunnel still dials `127.0.0.1:8765`) |
-
-Every other path returns 404 at Cloudflare's edge. The UI hostname is not in the tunnel ingress. `cloudflared` connects outbound, so the router does not gain a new open port. `lifedash-mcp` listens on `0.0.0.0`.
+`cloudflared` connects outbound. The router does not gain a new open port. The LAN UI on the server's own HTTPS name keeps working, including by IP.
 
 ```bash
-sudo lifedash-tunnel-setup mcp.<your-domain>
+cloudflared tunnel login
+cloudflared tunnel create lifedash
+cloudflared tunnel route dns lifedash dash.<your-domain>
+cloudflared tunnel route dns lifedash mcp.<your-domain>
+sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>
+sudo lifedash-env set PUBLIC_BASE_URL https://dash.<your-domain>
+sudo lifedash-env set MCP_PUBLIC_URL https://mcp.<your-domain>/mcp
+sudo systemctl restart lifedash-mcp
 ```
 
-Treat `https://mcp.<your-domain>/mcp` as internet-reachable.
+The script installs `cloudflared.service` from `deploy/systemd/cloudflared.service` and writes `/etc/cloudflared/config.yml`. The credentials file path is a line in that config (`credentials-file`). The file itself stays in `/etc/cloudflared/` and is not committed.
 
-## Cloudflare Access service token
-
-Access is configured in the Cloudflare dashboard. It is not a line in the ingress file. Put it in front of `/mcp` so a request is rejected before it reaches the app.
-
-1. Zero Trust → Access → Applications → Add an application → self-hosted.
-2. Application domain: the tunnel hostname. Path: `/mcp`.
-3. Create a **Service token**. Copy the Client ID and Client Secret once.
-4. Add a policy: Action Allow, Include Service Token, and select that token. Do not add an Allow-everyone policy on this application.
-5. Leave `/healthz` without Access so an uptime check can call it. It returns status only.
-
-The assistant sends two Access headers on every MCP request:
+Claude custom connector URL:
 
 ```text
-CF-Access-Client-Id: <service token client id>
-CF-Access-Client-Secret: <service token secret>
+https://mcp.<your-domain>/mcp
 ```
 
-Those headers are checked by Cloudflare. They are a different secret from the app token.
+Claude discovers OAuth from that origin, registers a public client, and sends the browser to `https://dash.<your-domain>/oauth/authorize`. Sign in with the dashboard account and pick the scopes. Access tokens are short-lived. Refresh tokens rotate. Settings → Agents lists the client and can revoke it.
 
-## App token (second check)
+Do not put a Cloudflare Access service-token policy on `/mcp` for this connector. Claude's browser and token calls do not send those headers. A static bearer token on Settings → Agents still works for an existing bot and does not need OAuth.
 
-On the dashboard, Settings → Agents → Access **Money only (90 days)**. That token has `money:read` and `money:write` and no other scope. It expires 90 days from creation unless you pick a date. The plaintext is shown once. Revoke it on that page if a laptop is lost.
+`MCP_BIND` defaults to `all` (`0.0.0.0`). `MCP_HOST` is ignored. Leave the bind on `all` until every bot that uses `http://<lan-ip>:8765/mcp` has moved to the tunnel, then:
 
-The MCP process forwards the call to PHP with:
-
-```text
-Authorization: Bearer <app token>
-X-Lifedash-Tool: <tool name>
+```bash
+sudo lifedash-env set MCP_BIND loopback
+sudo systemctl restart lifedash-mcp
 ```
 
-A money-only token cannot read pages, habits, files, or investing. Writes are actor `ai`. Reads and writes of `/api/v1/money/` are written to `audit_events` with the tool name and the filter (from, to, year, month, category, account, limit). Filter values that look like a full account number are dropped. Request bodies are not stored. The creator-subscription name is never a stored value; the importer replaces it with `Creator subscription` before the row is written.
-
-The MCP process also limits each bearer token to about 60 tool calls per minute. The 61st call is a JSON-RPC error and is not forwarded to PHP. The limit key is a hash of the token. The raw token is not logged.
-
-## What not to give the assistant
-
-- Do not put `DATABASE_URL` or a shell on the server in the assistant's config.
-- Do not log MCP request bodies in Cloudflare. Access should see the path, not the JSON. In Zero Trust → Settings → App sessions / logs, keep body capture off for this application.
-- Do not copy money rows to a hosted notebook, a second cloud database, or back to the Google Sheet on a schedule.
-- Tailscale is for machines you own. Do not publish the MCP port with Tailscale Funnel.
+The tunnel still dials `127.0.0.1:8765`. Writes from an OAuth client honor the same Allow MCP updates switch as a static token.

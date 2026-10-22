@@ -2,7 +2,7 @@
 #
 # Access model
 #   You (LAN, or remote via UniFi Teleport) → https://@@UI_HOST@@ (:443, Let's Encrypt cert)
-#   AI clouds (Claude.ai, Grok)          → cloudflared → http://127.0.0.1:80 (/healthz) / :8765 (/mcp)
+#   AI clouds (Claude.ai, Grok)          → cloudflared → dash host (this vhost) and mcp host (:8765)
 #   The server itself (deploy checks)    → http://127.0.0.1:80
 # UFW admits 22/80/443 only from the LAN and any --allow-cidr ranges (e.g. the Teleport subnet).
 #

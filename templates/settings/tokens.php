@@ -6,9 +6,9 @@
  * @var array<int, array<string, mixed>> $tokens
  */
 
-use Dashboard\Config;
+use Dashboard\Support\PublicUrl;
 
-$appUrl    = rtrim((string) Config::get('APP_URL', ''), '/');
+$appUrl    = PublicUrl::base();
 $newToken  = $_SESSION['new_token'] ?? null;
 unset($_SESSION['new_token']);
 $flash     = $_SESSION['settings_flash'] ?? null;

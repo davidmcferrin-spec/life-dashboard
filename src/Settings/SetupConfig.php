@@ -186,6 +186,15 @@ final class SetupConfig
                     ['key' => 'REDDIT_USER_AGENT', 'label' => 'User-Agent', 'type' => 'text', 'placeholder' => 'web:life-dashboard:1.0 (by /u/yourname)'],
                 ],
             ],
+            'tunnel' => [
+                'label' => 'Tunnel',
+                'blurb' => 'Public hostnames. Leave MCP bind on all until existing bots use the tunnel.',
+                'fields' => [
+                    ['key' => 'PUBLIC_BASE_URL', 'label' => 'Dashboard URL', 'type' => 'url', 'placeholder' => 'https://dash.example.com'],
+                    ['key' => 'MCP_PUBLIC_URL', 'label' => 'MCP URL', 'type' => 'url', 'placeholder' => 'https://mcp.example.com/mcp'],
+                    ['key' => 'MCP_BIND', 'label' => 'MCP bind', 'type' => 'text', 'default' => 'all', 'placeholder' => 'all'],
+                ],
+            ],
             'ollama' => [
                 'label' => 'Local model',
                 'blurb' => 'Ollama embeddings',

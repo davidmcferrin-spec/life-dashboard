@@ -1,7 +1,8 @@
-"""``lifedash-mcp`` — MCP endpoint on 0.0.0.0:8765.
+"""``lifedash-mcp`` — MCP endpoint on port 8765.
 
-Cloudflare Tunnel sends ``/mcp`` here. Each tool call is an HTTP request to the
-PHP ``/api/v1`` API with the caller's bearer token and ``X-Lifedash-Tool``.
+Listens on 0.0.0.0 unless MCP_BIND=loopback. Cloudflare Tunnel sends ``/mcp`` here.
+Each tool call is an HTTP request to the PHP ``/api/v1`` API with the caller's
+bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
 The tool registry is the ``TOOLS`` list in this module: one list for every
 caller, not a per-session cache and not a filter on protocol version or token scope.
@@ -17,7 +18,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from . import __version__
@@ -2233,13 +2234,92 @@ class RequestLimiter:
             return True
 
 
-def listen_host(requested: str | None) -> str:
-    """All IPv4 interfaces. A loopback-only socket is invisible to other hosts,
-    and MCP_HOST is ignored so a leftover 127.0.0.1 cannot put it back.
+# Same areas as PHP Scope::AREAS. The discovery document is served here so a
+# connector can read it without a second hop. system:* stays explicit.
+OAUTH_AREAS = (
+    "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
+    "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
+    "shopping", "calls", "pantry",
+)
+
+
+class RpcReply(dict[str, Any]):
+    """JSON-RPC object plus the HTTP status the MCP endpoint should send."""
+
+    http_status: int = 200
+
+
+def oauth_scopes() -> list[str]:
+    scopes: list[str] = []
+    for area in OAUTH_AREAS:
+        scopes.append(f"{area}:read")
+        scopes.append(f"{area}:write")
+    scopes.extend(["system:read", "system:deploy"])
+    return scopes
+
+
+def metadata_url(mcp_public_url: str) -> str | None:
+    raw = (mcp_public_url or "").strip()
+    if not raw:
+        return None
+    parts = urlparse(raw)
+    if parts.scheme not in ("https", "http") or not parts.hostname:
+        return None
+    origin = f"{parts.scheme}://{parts.hostname}"
+    if parts.port:
+        origin += f":{parts.port}"
+    path = (parts.path or "").strip("/")
+    if not path:
+        return origin + "/.well-known/oauth-protected-resource"
+    return origin + "/.well-known/oauth-protected-resource/" + path
+
+
+def www_authenticate(mcp_public_url: str) -> str:
+    url = metadata_url(mcp_public_url)
+    if not url:
+        return "Bearer"
+    return f'Bearer resource_metadata="{url}"'
+
+
+def protected_resource_document(resource: str, issuer: str) -> dict[str, Any]:
+    return {
+        "resource": resource.rstrip("/"),
+        "authorization_servers": [issuer.rstrip("/")] if issuer else [],
+        "scopes_supported": oauth_scopes(),
+        "bearer_methods_supported": ["header"],
+    }
+
+
+def authorization_server_document(issuer: str) -> dict[str, Any]:
+    base = issuer.rstrip("/")
+    return {
+        "issuer": base,
+        "authorization_endpoint": base + "/oauth/authorize",
+        "token_endpoint": base + "/oauth/token",
+        "registration_endpoint": base + "/oauth/register",
+        "revocation_endpoint": base + "/oauth/revoke",
+        "response_types_supported": ["code"],
+        "grant_types_supported": ["authorization_code", "refresh_token"],
+        "code_challenge_methods_supported": ["S256"],
+        "token_endpoint_auth_methods_supported": ["none"],
+        "scopes_supported": oauth_scopes(),
+    }
+
+
+def listen_host(requested: str | None, bind: str | None = None) -> str:
+    """All IPv4 interfaces unless MCP_BIND=loopback.
+
+    MCP_HOST is ignored so a leftover 127.0.0.1 cannot change the bind.
+    Loopback is opt-in after existing clients have moved to the tunnel.
     """
+    mode = (bind or "").strip().lower()
+    if mode in ("loopback", "localhost"):
+        return "127.0.0.1"
+    if mode not in ("", "all", "0.0.0.0", "*"):
+        LOG.warning("MCP_BIND=%s is not all or loopback; listening on 0.0.0.0", mode)
     host = (requested or "").strip()
     if host not in ("", "0.0.0.0", "*"):
-        LOG.warning("MCP_HOST=%s is ignored; lifedash-mcp listens on 0.0.0.0", host)
+        LOG.warning("MCP_HOST=%s is ignored; set MCP_BIND=loopback to listen on 127.0.0.1", host)
     return "0.0.0.0"
 
 
@@ -2264,12 +2344,13 @@ def handle_message(
     if method == "notifications/initialized" or (method or "").startswith("notifications/"):
         return None
 
-    def reply(result: Any = None, error: dict[str, Any] | None = None) -> dict[str, Any]:
-        payload: dict[str, Any] = {"jsonrpc": "2.0", "id": msg_id}
+    def reply(result: Any = None, error: dict[str, Any] | None = None, http_status: int = 200) -> RpcReply:
+        payload = RpcReply(jsonrpc="2.0", id=msg_id)
         if error is not None:
             payload["error"] = error
         else:
             payload["result"] = result
+        payload.http_status = http_status
         return payload
 
     if method == "initialize":
@@ -2282,11 +2363,11 @@ def handle_message(
         return reply({})
     if method == "tools/list":
         if not authorization:
-            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."})
+            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
         return reply({"tools": TOOLS})
     if method == "tools/call":
         if not authorization:
-            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."})
+            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
         gate = limiter if limiter is not None else _PROCESS_LIMITER
         if not gate.allow(authorization):
             return reply(error={"code": -32029, "message": "Rate limit: 60 requests per minute for this token."})
@@ -2298,7 +2379,9 @@ def handle_message(
             return reply(_result(str(exc), is_error=True))
         status, payload = fetch(http_method, path, body, authorization, name)
         text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
-        return reply(_result(text, is_error=status >= 400))
+        # PHP 401 is an auth failure. Claude's connector looks for HTTP 401,
+        # not a JSON-RPC error inside HTTP 200.
+        return reply(_result(text, is_error=status >= 400), http_status=401 if status == 401 else 200)
     return reply(error={"code": -32601, "message": f"Method not found: {method}"})
 
 
@@ -2357,8 +2440,15 @@ def make_handler(
     *,
     listen: str = "0.0.0.0",
     port: int = 8765,
+    mcp_public_url: str = "",
+    issuer: str = "",
 ) -> type[BaseHTTPRequestHandler]:
     gate = limiter or RequestLimiter()
+    resource = (mcp_public_url or "").strip()
+    auth_headers = {
+        "WWW-Authenticate": www_authenticate(resource),
+        "Cache-Control": "no-store",
+    }
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -2379,7 +2469,8 @@ def make_handler(
             auth = self.headers.get("Authorization")
             if isinstance(message, list):
                 replies = [r for item in message if isinstance(item, dict) and (r := handle_message(item, auth, fetch, gate)) is not None]
-                self._send(200, replies)
+                status = 401 if any(getattr(item, "http_status", 200) == 401 for item in replies) else 200
+                self._send(status, replies, auth_headers if status == 401 else None)
                 return
             if not isinstance(message, dict):
                 self._send(400, {"jsonrpc": "2.0", "id": None, "error": {"code": -32600, "message": "Invalid request"}})
@@ -2388,12 +2479,25 @@ def make_handler(
             if reply is None:
                 self._send(202, None)
                 return
-            self._send(200, reply)
+            status = getattr(reply, "http_status", 200)
+            self._send(status, reply, auth_headers if status == 401 else None)
 
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?", 1)[0]
             if path == "/healthz":
                 self._send(200, health_document(listen, port))
+                return
+            if path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"):
+                if not resource or not issuer:
+                    self._send(503, {"error": "MCP_PUBLIC_URL and PUBLIC_BASE_URL (or APP_URL) must be set."})
+                    return
+                self._send(200, protected_resource_document(resource, issuer), {"Cache-Control": "no-store"})
+                return
+            if path == "/.well-known/oauth-authorization-server":
+                if not issuer:
+                    self._send(503, {"error": "PUBLIC_BASE_URL or APP_URL must be set."})
+                    return
+                self._send(200, authorization_server_document(issuer), {"Cache-Control": "no-store"})
                 return
             # Streamable HTTP clients GET the MCP path to open an SSE stream.
             # This server has no stream. 200 JSON here makes that probe look
@@ -2427,10 +2531,15 @@ def make_handler(
 def main() -> None:
     config = Config.load()
     setup_logging(config.get("LOG_LEVEL", "INFO"))
-    host = listen_host(config.maybe("MCP_HOST"))
+    host = listen_host(config.maybe("MCP_HOST"), config.maybe("MCP_BIND"))
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
-    server = ThreadingHTTPServer((host, port), make_handler(urllib_fetch(api_base), listen=host, port=port))
+    mcp_public = config.maybe("MCP_PUBLIC_URL") or ""
+    issuer = config.maybe("PUBLIC_BASE_URL") or config.maybe("APP_URL") or ""
+    server = ThreadingHTTPServer(
+        (host, port),
+        make_handler(urllib_fetch(api_base), listen=host, port=port, mcp_public_url=mcp_public, issuer=issuer),
+    )
     LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)", host, port, api_base, len(TOOLS))
     try:
         server.serve_forever()

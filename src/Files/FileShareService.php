@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Dashboard\Files;
 
 use Dashboard\Clipboard\ShareToken;
-use Dashboard\Config;
 use Dashboard\DB\Database;
 use DateInterval;
 use DateTimeImmutable;
@@ -160,7 +159,7 @@ final class FileShareService
 
     private function shareUrl(string $token): string
     {
-        $base = rtrim((string) Config::get('APP_URL', ''), '/');
+        $base = \Dashboard\Support\PublicUrl::base();
 
         return ($base !== '' ? $base : '') . '/share/file/' . $token;
     }

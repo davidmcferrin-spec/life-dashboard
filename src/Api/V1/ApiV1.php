@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace Dashboard\Api\V1;
 
 use Dashboard\Auth\Auth;
+use Dashboard\Auth\OAuthService;
+use Dashboard\Auth\PgOAuthStore;
+use Dashboard\DB\Database;
+use Dashboard\Support\PublicUrl;
 use Dashboard\Config;
 use Dashboard\Router\Router;
 use Dashboard\Support\NotFoundException;
@@ -31,7 +35,12 @@ final class ApiV1
         private readonly Auth $auth,
         private readonly Services $svc,
     ) {
-        $this->runner = new ApiRunner($auth, $svc->tokens, $svc->audit);
+        $this->runner = new ApiRunner(
+            $auth,
+            $svc->tokens,
+            $svc->audit,
+            new OAuthService(new PgOAuthStore(Database::getInstance()), resource: PublicUrl::mcp()),
+        );
     }
 
     public function register(Router $r): void

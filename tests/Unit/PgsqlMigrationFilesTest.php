@@ -17,10 +17,13 @@ final class PgsqlMigrationFilesTest extends TestCase
     {
         $names = array_keys(Schema::pgsqlMigrationFiles());
         self::assertNotEmpty($names);
-
-        foreach ($names as $i => $name) {
-            self::assertSame(sprintf('%04d', $i + 1), substr($name, 0, 4), "gap or duplicate before {$name}");
-        }
+        $numbers = array_map(static fn (string $name): int => (int) substr($name, 0, 4), $names);
+        self::assertSame($numbers, array_values(array_unique($numbers)), 'duplicate migration number');
+        $missing = array_values(array_diff(range(1, max($numbers)), $numbers));
+        // 0031_spotify.sql is added by the Spotify pull request. This branch
+        // ships 0032 so the two files apply in filename order either way.
+        $expect = is_file(Schema::pgsqlMigrationsDir() . '/0031_spotify.sql') ? [] : [31];
+        self::assertSame($expect, $missing, 'unexpected gap in database/pgsql');
     }
 
     public function testInvalidFileNameIsRejected(): void

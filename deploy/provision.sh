@@ -396,7 +396,7 @@ else
     echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared any main" \
         > /etc/apt/sources.list.d/cloudflared.list
     apt-get update -q && apt-get install -y -q cloudflared
-    info "installed — create the tunnel with: sudo lifedash-tunnel-setup <hostname>"
+    info "installed — create the tunnel with: sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>"
 fi
 
 # -----------------------------------------------------------------------------
@@ -470,6 +470,6 @@ fi
 cat <<EOF
  Offsite backups: copy /etc/lifedash/backup.env.example → backup.env, fill in, then
    sudo lifedash-backup init
- Public MCP endpoint (Phase L2), when ready:
-   sudo lifedash-tunnel-setup mcp.<your-domain>
+ Public dashboard and MCP, when ready:
+   sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>
 EOF

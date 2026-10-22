@@ -70,6 +70,42 @@ require __DIR__ . '/_shell-top.php';
                 <p id="agent-create-error" class="ld-field-error" role="alert"></p>
             </form>
 
+            <section class="surface p-4 mb-4" id="oauth-clients">
+                <h2 class="section-title">OAuth clients</h2>
+                <p class="text-muted text-sm mt-1">
+                    Claude custom connectors register here and ask you to allow scopes.
+                    Existing bearer tokens on this page are unchanged.
+                    Revoke cuts off that client and its refresh tokens.
+                </p>
+                <?php $oauthClients = $oauthClients ?? []; ?>
+                <?php if ($oauthClients === []): ?>
+                <p class="empty-state mono text-xs mt-3">No OAuth clients yet.</p>
+                <?php else: ?>
+                <ul class="mt-3 space-y-3">
+                    <?php foreach ($oauthClients as $client): ?>
+                    <li class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div class="text-primary text-sm"><?= e((string) $client['client_name']) ?></div>
+                            <div class="mono text-xs text-muted mt-1"><?= e(implode(' ', $client['granted_scopes'] ?? [])) ?></div>
+                            <div class="text-xs text-muted mt-1">
+                                Last used
+                                <?php if (!empty($client['last_used_at'])): ?>
+                                    <?= e(gmdate('Y-m-d H:i', (int) $client['last_used_at'])) ?> UTC
+                                <?php else: ?>
+                                    never
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <form method="POST" action="/settings/oauth/<?= (int) $client['id'] ?>/revoke">
+                            <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
+                            <button type="submit" class="btn text-xs">Revoke</button>
+                        </form>
+                    </li>
+                    <?php endforeach; ?>
+                </ul>
+                <?php endif; ?>
+            </section>
+
             <section class="surface p-4 mb-4">
                 <h2 class="section-title">Tokens</h2>
                 <div id="agent-tokens" class="mt-2" data-admin="<?= (int) ($user['is_admin'] ?? 0) === 1 ? '1' : '0' ?>" data-areas="<?= e(json_encode(\Dashboard\Api\V1\Scope::AREAS, JSON_THROW_ON_ERROR)) ?>"><p class="empty-state mono text-xs">Loading…</p></div>

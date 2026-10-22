@@ -155,7 +155,9 @@ function initAppSession(): void
         return;
     }
 
-    $secure = Config::bool('SESSION_SECURE', true);
+    // A tunnel request is HTTPS even when the LAN UI is still on plain HTTP.
+    // The Secure flag follows this request so an IP login on HTTP still works.
+    $secure = Config::bool('SESSION_SECURE', true) || \Dashboard\Support\RequestScheme::current();
 
     session_set_cookie_params([
         'lifetime' => Config::int('SESSION_LIFETIME', 86400),
@@ -212,6 +214,19 @@ function requestCsrfToken(): string
 }
 
 /**
+ * One-time local path saved before the login form, then forgotten.
+ */
+function consumeLoginNext(): ?string
+{
+    initAppSession();
+    $next = \Dashboard\Support\LocalPath::next(
+        isset($_SESSION['login_next']) && is_string($_SESSION['login_next']) ? $_SESSION['login_next'] : null
+    );
+    unset($_SESSION['login_next']);
+    return $next;
+}
+
+/**
  * Validate CSRF token from POST data.
  * Call on any state-mutating POST handler.
  */
@@ -226,15 +241,17 @@ function validateCsrf(): void
     $token    = requestCsrfToken();
     $expected = $_SESSION['csrf_token'] ?? '';
 
-    if ($expected === '' || !hash_equals($expected, $token)) {
+    $origin = \Dashboard\Support\RequestOrigin::rejectMessage();
+    if ($origin !== null || $expected === '' || !hash_equals($expected, $token)) {
         $path   = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
         $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+        $message = $origin ?? 'Invalid CSRF token. Refresh the page and try again.';
 
         if (str_starts_with($path, '/api/') || str_contains($accept, 'application/json')) {
-            jsonResponse(['error' => 'Invalid CSRF token. Refresh the page and try again.'], 403);
+            jsonResponse(['error' => $message], 403);
         }
 
         http_response_code(403);
-        exit('Invalid CSRF token.');
+        exit($message);
     }
 }

@@ -65,7 +65,7 @@ $router->get('/healthz', function () use ($db): void {
 
 $router->get('/login', function () use ($auth): void {
     if ($auth->user() !== null) {
-        redirect('/');
+        redirect(consumeLoginNext() ?? '/');
     }
     require VIEWS_DIR . '/login.php';
 });
@@ -83,8 +83,10 @@ $router->post('/login', function () use ($auth): void {
         redirect('/login');
     }
 
-    redirect('/');
+    redirect(consumeLoginNext() ?? '/');
 });
+
+(new \Dashboard\Auth\OAuthController($db, $auth))->register($router);
 
 $router->get('/logout', function () use ($auth): void {
     $auth->logout();
@@ -1279,8 +1281,9 @@ $router->get('/brain/graph', function () use ($auth): void {
     require VIEWS_DIR . '/brain-graph.php';
 });
 
-$router->get('/settings/agents', function () use ($auth): void {
+$router->get('/settings/agents', function () use ($auth, $db): void {
     $user = $auth->requireAuth();
+    $oauthClients = (new \Dashboard\Auth\OAuthService(new \Dashboard\Auth\PgOAuthStore($db)))->listClients((int) $user['id']);
     require VIEWS_DIR . '/settings/agents.php';
 });
 
