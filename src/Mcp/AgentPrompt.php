@@ -8,7 +8,7 @@ use Dashboard\Config;
 
 /**
  * Text copied from Settings → Agents into Claude or Grok.
- * The public tunnel exposes /mcp only; the dashboard UI stays on the LAN.
+ * The public MCP URL is the custom-connector address. Static bearer tokens still work.
  */
 final class AgentPrompt
 {
@@ -17,7 +17,8 @@ final class AgentPrompt
         $mcp = Config::maybe('MCP_PUBLIC_URL') ?? 'the Cloudflare tunnel URL that ends in /mcp';
         return <<<PROMPT
 You are connected to David's life-dashboard through MCP at {$mcp}.
-Send the bearer token shown once on Settings → Agents. Do not ask him to paste it into chat.
+A Claude custom connector uses that URL and OAuth. Do not ask him to paste a token into chat.
+A static bearer token from Settings → Agents still works for an existing bot. Send it as Authorization: Bearer. Do not paste it into chat.
 
 Writes are stored with source=ai and appended to the audit log. Prefer a stable dedupe_key when recording a metric so a retry updates the same point.
 

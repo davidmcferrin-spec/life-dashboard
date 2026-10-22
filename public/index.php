@@ -65,7 +65,7 @@ $router->get('/healthz', function () use ($db): void {
 
 $router->get('/login', function () use ($auth): void {
     if ($auth->user() !== null) {
-        redirect('/');
+        redirect(consumeLoginNext() ?? '/');
     }
     require VIEWS_DIR . '/login.php';
 });
@@ -83,8 +83,10 @@ $router->post('/login', function () use ($auth): void {
         redirect('/login');
     }
 
-    redirect('/');
+    redirect(consumeLoginNext() ?? '/');
 });
+
+(new \Dashboard\Auth\OAuthController($db, $auth))->register($router);
 
 $router->get('/logout', function () use ($auth): void {
     $auth->logout();
@@ -1284,8 +1286,21 @@ $router->get('/brain/graph', function () use ($auth): void {
     require VIEWS_DIR . '/brain-graph.php';
 });
 
-$router->get('/settings/agents', function () use ($auth): void {
+$router->post('/settings/agents/plain-http', function () use ($auth, $db): void {
+    if (\Dashboard\Mcp\PlainHttp::changeBlocked($_SERVER, \Dashboard\Api\AgentAccess::currentUser() !== null)) {
+        jsonResponse(['error' => \Dashboard\Mcp\PlainHttp::CHANGE_DENIED], 403);
+    }
     $user = $auth->requireAuth();
+    validateCsrf();
+    $allowed = (string) ($_POST['allow_plain_http'] ?? '') === '1';
+    (new \Dashboard\Mcp\PlainHttpSettings($db))->save($allowed, (int) $user['id']);
+    redirect('/settings/agents');
+});
+
+$router->get('/settings/agents', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    $oauthClients = (new \Dashboard\Auth\OAuthService(new \Dashboard\Auth\PgOAuthStore($db)))->listClients((int) $user['id']);
+    $plainHttp = (new \Dashboard\Mcp\PlainHttpSettings($db))->state();
     require VIEWS_DIR . '/settings/agents.php';
 });
 

@@ -8,6 +8,10 @@ use Dashboard\Audit\AuditLog;
 use Dashboard\Audit\TokenStamp;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\Auth\Auth;
+use Dashboard\Auth\BearerTokens;
+use Dashboard\Auth\OAuthRules;
+use Dashboard\Auth\OAuthService;
+use Dashboard\Support\PublicUrl;
 use Dashboard\Money\AccountNumberGuard;
 use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
@@ -35,6 +39,7 @@ final class ApiRunner
         private readonly Auth $auth,
         private readonly ApiTokenService $tokens,
         private readonly AuditLog $audit,
+        private readonly ?OAuthService $oauth = null,
     ) {}
 
     public function actor(): ApiActor
@@ -86,6 +91,8 @@ final class ApiRunner
             }
             jsonResponse($payload, $statusOut);
         } catch (UnauthorizedException $e) {
+            header('WWW-Authenticate: ' . OAuthRules::wwwAuthenticate(PublicUrl::mcp()));
+            header('Cache-Control: no-store');
             jsonResponse(['error' => $e->getMessage()], 401);
         } catch (ForbiddenException $e) {
             $this->auditDeployFailure($e->getMessage());
@@ -132,7 +139,12 @@ final class ApiRunner
         $tool = self::toolHeader();
 
         if ($bearer !== null) {
-            $row = $this->tokens->authenticate($bearer);
+            $oauth = $this->oauth;
+            $row = BearerTokens::resolve(
+                $bearer,
+                fn (string $token): ?array => $this->tokens->authenticate($token),
+                fn (string $token): ?array => $oauth?->authenticate($token),
+            );
             if ($row === null) {
                 throw new UnauthorizedException('Invalid or expired token.');
             }

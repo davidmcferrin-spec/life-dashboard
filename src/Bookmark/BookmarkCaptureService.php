@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Dashboard\Bookmark;
 
-use Dashboard\Config;
 use Dashboard\DB\Database;
 use Dashboard\Settings\PreferenceService;
 
@@ -67,7 +66,7 @@ final class BookmarkCaptureService
     public function bookmarkletHref(int $userId): string
     {
         $token = $this->ensureToken($userId);
-        $base  = rtrim((string) Config::get('APP_URL', ''), '/');
+        $base  = \Dashboard\Support\PublicUrl::base();
         if ($base === '') {
             $base = $this->requestOrigin();
         }

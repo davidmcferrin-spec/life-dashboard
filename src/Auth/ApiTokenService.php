@@ -184,10 +184,18 @@ final class ApiTokenService
         if ($row['expires_at'] !== null && strtotime((string) $row['expires_at']) < time()) {
             return null;
         }
-        $this->db->execute(
-            "UPDATE api_tokens SET last_used_at = (now() AT TIME ZONE 'UTC') WHERE id = ?",
-            [(int) $row['id']]
-        );
+        $transport = \Dashboard\Mcp\PlainHttp::inbound($_SERVER);
+        if ($transport === null) {
+            $this->db->execute(
+                "UPDATE api_tokens SET last_used_at = (now() AT TIME ZONE 'UTC') WHERE id = ?",
+                [(int) $row['id']]
+            );
+        } else {
+            $this->db->execute(
+                "UPDATE api_tokens SET last_used_at = (now() AT TIME ZONE 'UTC'), last_transport = ? WHERE id = ?",
+                [$transport, (int) $row['id']]
+            );
+        }
         return [
             'user_id' => (int) $row['user_id'],
             'scopes'  => self::parseScopes((string) $row['scopes']),
@@ -209,6 +217,9 @@ final class ApiTokenService
             'scopes'       => self::parseScopes((string) $row['scopes']),
             'expires_at'   => $row['expires_at'] !== null ? (string) $row['expires_at'] : null,
             'last_used_at' => $row['last_used_at'] !== null ? (string) $row['last_used_at'] : null,
+            'last_transport' => ($row['last_transport'] ?? null) === 'http' || ($row['last_transport'] ?? null) === 'https'
+                ? (string) $row['last_transport']
+                : null,
             'revoked'      => $row['revoked_at'] !== null,
             'created_at'   => (string) $row['created_at'],
         ];

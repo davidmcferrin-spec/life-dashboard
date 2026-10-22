@@ -1,70 +1,92 @@
 #!/usr/bin/env bash
-# lifedash-tunnel-setup <public-hostname> — create the Cloudflare named tunnel.
+# lifedash-tunnel-setup <dash-hostname> <mcp-hostname>
 #
-#   sudo lifedash-tunnel-setup mcp.example.com
+#   sudo lifedash-tunnel-setup dash.example.com mcp.example.com
 #
-# Needs a domain on your Cloudflare account. Opens a browser login once
-# (cloudflared prints a URL — open it from any device).
-#
-# Exposure is deliberately narrow — only these paths reach the box:
-#   /healthz  → Apache (returns {"status":"ok"} only)
-#   /mcp…     → Python MCP server on 127.0.0.1:8765 (lifedash-mcp)
-# Everything else gets 404 at Cloudflare's edge. The dashboard UI stays on the LAN (and Teleport).
-# Put a Cloudflare Access service token in front of /mcp. See docs/deploy/cloudflare-access.md.
+# Creates a named tunnel, routes both hostnames, and installs cloudflared.
+# The dashboard hostname reaches the PHP app (including /ws). The MCP hostname
+# reaches lifedash-mcp on 127.0.0.1:8765, plus the OAuth discovery documents.
+# Credentials are written by `cloudflared tunnel login` and are not in git.
 set -euo pipefail
 
 TUNNEL_NAME=lifedash
 CONF_DIR=/etc/cloudflared
 die() { echo "lifedash-tunnel-setup: $*" >&2; exit 1; }
 
+host_ok() {
+    [[ $1 =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$ ]]
+}
+
 [[ $EUID -eq 0 ]] || die "run as root (sudo)"
-[[ $# -eq 1 && $1 =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "usage: lifedash-tunnel-setup <hostname>"
-HOST=$1
-command -v cloudflared >/dev/null || die "cloudflared not installed (run deploy/provision.sh)"
+[[ $# -eq 2 ]] || die "usage: lifedash-tunnel-setup <dash-hostname> <mcp-hostname>"
+DASH_HOST=$1
+MCP_HOST=$2
+host_ok "$DASH_HOST" || die "dash hostname is not a DNS name: $DASH_HOST"
+host_ok "$MCP_HOST" || die "mcp hostname is not a DNS name: $MCP_HOST"
+[[ $DASH_HOST != "$MCP_HOST" ]] || die "dash and mcp hostnames must be different"
+command -v cloudflared >/dev/null || die "cloudflared is not installed (run deploy/provision.sh, or apt-get install cloudflared)"
+[[ -x /usr/bin/cloudflared ]] || die "cloudflared must be /usr/bin/cloudflared so the systemd unit can start it (found $(command -v cloudflared))"
+
+SOURCE=$(readlink -f "$0") || die "cannot resolve $0"
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")" && pwd)
+TEMPLATE=$SCRIPT_DIR/../cloudflared/config.yml.template
+UNIT=$SCRIPT_DIR/../systemd/cloudflared.service
+[[ -f $TEMPLATE ]] || die "missing config template: $TEMPLATE"
+[[ -f $UNIT ]] || die "missing systemd unit: $UNIT"
 
 export TUNNEL_ORIGIN_CERT=/root/.cloudflared/cert.pem
 if [[ ! -f $TUNNEL_ORIGIN_CERT ]]; then
-    echo "Authorise cloudflared for your Cloudflare zone:"
-    cloudflared tunnel login
+    echo "Authorise cloudflared for your Cloudflare zone. Open the URL it prints."
+    cloudflared tunnel login || die "cloudflared tunnel login failed"
 fi
+[[ -f $TUNNEL_ORIGIN_CERT ]] || die "login did not write $TUNNEL_ORIGIN_CERT"
 
 if ! cloudflared tunnel info "$TUNNEL_NAME" >/dev/null 2>&1; then
-    cloudflared tunnel create "$TUNNEL_NAME"
+    cloudflared tunnel create "$TUNNEL_NAME" || die "cloudflared tunnel create $TUNNEL_NAME failed"
 fi
-TUNNEL_ID=$(cloudflared tunnel list --output json | python3 -c \
-    "import json,sys; print(next(t['id'] for t in json.load(sys.stdin) if t['name']=='$TUNNEL_NAME'))")
 
+LIST_JSON=$(cloudflared tunnel list --output json) || die "cloudflared tunnel list failed"
+TUNNEL_ID=$(printf '%s' "$LIST_JSON" | python3 -c 'import json,sys; name=sys.argv[1]; rows=json.load(sys.stdin); print(next(t["id"] for t in rows if t.get("name")==name))' "$TUNNEL_NAME") \
+    || die "tunnel $TUNNEL_NAME is not in cloudflared tunnel list"
+[[ $TUNNEL_ID =~ ^[0-9a-fA-F-]{30,40}$ ]] || die "unexpected tunnel id: $TUNNEL_ID"
+
+CRED_SRC=/root/.cloudflared/$TUNNEL_ID.json
+[[ -f $CRED_SRC ]] || die "missing tunnel credentials at $CRED_SRC (cloudflared tunnel create should have written it)"
 install -d -m 0755 "$CONF_DIR"
-install -m 0600 "/root/.cloudflared/$TUNNEL_ID.json" "$CONF_DIR/$TUNNEL_ID.json"
+install -m 0600 "$CRED_SRC" "$CONF_DIR/$TUNNEL_ID.json"
+CRED_FILE=$CONF_DIR/$TUNNEL_ID.json
 
-cat > "$CONF_DIR/config.yml" <<EOF
-# Managed by lifedash-tunnel-setup — re-run it rather than editing by hand.
-tunnel: $TUNNEL_ID
-credentials-file: $CONF_DIR/$TUNNEL_ID.json
-no-autoupdate: true
+sed \
+    -e "s|@TUNNEL_ID@|${TUNNEL_ID}|g" \
+    -e "s|@CREDENTIALS_FILE@|${CRED_FILE}|g" \
+    -e "s|@DASH_HOST@|${DASH_HOST}|g" \
+    -e "s|@MCP_HOST@|${MCP_HOST}|g" \
+    "$TEMPLATE" > "$CONF_DIR/config.yml"
+chmod 0644 "$CONF_DIR/config.yml"
 
-ingress:
-  - hostname: $HOST
-    path: ^/healthz\$
-    service: http://127.0.0.1:80
-  - hostname: $HOST
-    path: ^/mcp(/.*)?\$
-    service: http://127.0.0.1:8765
-  - service: http_status:404
-EOF
-
-cloudflared tunnel ingress validate --config "$CONF_DIR/config.yml"
-cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$HOST"
-
-if ! systemctl list-unit-files cloudflared.service >/dev/null 2>&1 || [[ ! -f /etc/systemd/system/cloudflared.service ]]; then
-    cloudflared --config "$CONF_DIR/config.yml" service install
+if grep -Eq '@(TUNNEL_ID|CREDENTIALS_FILE|DASH_HOST|MCP_HOST)@' "$CONF_DIR/config.yml"; then
+    die "config template still has placeholders"
 fi
-systemctl enable --now cloudflared
-systemctl restart cloudflared
+
+cloudflared tunnel ingress validate --config "$CONF_DIR/config.yml" || die "ingress config is invalid"
+cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$DASH_HOST" || die "DNS route failed for $DASH_HOST"
+cloudflared tunnel route dns --overwrite-dns "$TUNNEL_NAME" "$MCP_HOST" || die "DNS route failed for $MCP_HOST"
+
+install -m 0644 "$UNIT" /etc/systemd/system/cloudflared.service
+systemctl daemon-reload
+systemctl enable cloudflared
+systemctl restart cloudflared || die "cloudflared did not start (journalctl -u cloudflared -n 50)"
 
 sleep 3
-if curl -fsS --max-time 15 "https://$HOST/healthz" >/dev/null; then
-    echo "✓ https://$HOST/healthz is reachable through the tunnel"
-else
-    echo "! https://$HOST/healthz not reachable yet (DNS can take a minute): journalctl -u cloudflared -n 50"
+if ! curl -fsS --max-time 20 "https://$DASH_HOST/healthz" >/dev/null; then
+    die "https://$DASH_HOST/healthz did not respond. DNS can take a minute. journalctl -u cloudflared -n 50"
 fi
+if ! curl -fsS --max-time 20 "https://$MCP_HOST/healthz" >/dev/null; then
+    die "https://$MCP_HOST/healthz did not respond. DNS can take a minute. journalctl -u cloudflared -n 50"
+fi
+echo "Tunnel is up."
+echo "Dashboard: https://$DASH_HOST"
+echo "MCP: https://$MCP_HOST/mcp"
+echo "Set PUBLIC_BASE_URL=https://$DASH_HOST and MCP_PUBLIC_URL=https://$MCP_HOST/mcp"
+echo "Leave MCP_ALLOW_PLAIN_HTTP at its default (true) until every client uses the tunnel. Settings → Agents can turn plain HTTP off without changing the bind."
+echo "Leave MCP_BIND=all until you also want the LAN port closed, then set MCP_BIND=loopback and restart lifedash-mcp."

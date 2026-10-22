@@ -1,0 +1,28 @@
+# Managed by lifedash-tunnel-setup. Re-run that script rather than editing by hand.
+# Credentials stay in the file named below. Nothing in this template is a secret.
+tunnel: @TUNNEL_ID@
+credentials-file: @CREDENTIALS_FILE@
+no-autoupdate: true
+
+ingress:
+  # Dashboard, including /ws. cloudflared speaks WebSocket to Apache.
+  - hostname: @DASH_HOST@
+    service: http://127.0.0.1:80
+  # MCP JSON-RPC.
+  - hostname: @MCP_HOST@
+    path: ^/mcp(/.*)?$
+    service: http://127.0.0.1:8765
+  # OAuth discovery for a custom connector. The authorize and token URLs
+  # inside the document point at the dashboard hostname.
+  - hostname: @MCP_HOST@
+    path: ^/.well-known/oauth-protected-resource(/.*)?$
+    service: http://127.0.0.1:8765
+  - hostname: @MCP_HOST@
+    path: ^/.well-known/oauth-authorization-server$
+    service: http://127.0.0.1:8765
+  - hostname: @MCP_HOST@
+    path: ^/healthz$
+    service: http://127.0.0.1:80
+  - hostname: @MCP_HOST@
+    service: http_status:404
+  - service: http_status:404

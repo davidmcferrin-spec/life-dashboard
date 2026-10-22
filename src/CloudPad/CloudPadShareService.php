@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Dashboard\CloudPad;
 
 use Dashboard\Clipboard\ShareToken;
-use Dashboard\Config;
 use Dashboard\DB\Database;
 use DateInterval;
 use DateTimeImmutable;
@@ -172,7 +171,7 @@ final class CloudPadShareService
 
     private function shareUrl(string $token): string
     {
-        $base = rtrim((string) Config::get('APP_URL', ''), '/');
+        $base = \Dashboard\Support\PublicUrl::base();
 
         return ($base !== '' ? $base : '') . '/share/cloudpad/' . $token;
     }

@@ -22,8 +22,9 @@
             if (!t.revoked && admin) actions.push(`<button type="button" class="btn text-xs" data-edit="${t.id}">Edit</button>`);
             if (!t.revoked) actions.push(`<button type="button" class="btn text-xs" data-revoke="${t.id}">Revoke</button>`);
             if (t.revoked && admin) actions.push(`<button type="button" class="btn text-xs" data-delete="${t.id}">Delete</button>`);
+            const hop = t.last_transport === 'https' ? 'HTTPS' : (t.last_transport === 'http' ? 'HTTP' : 'not seen yet');
             return `<div class="ld-life-row">
-                <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}${t.expires_at ? ' · expires ' + esc(t.expires_at.slice(0, 10)) : ''}</span></span>
+                <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}${t.expires_at ? ' · expires ' + esc(t.expires_at.slice(0, 10)) : ''} · ${hop}</span></span>
                 <span class="ld-metric-actions">${actions.join('')}</span>
             </div>`;
         }).join('') || '<p class="empty-state mono text-xs">No tokens yet.</p>';

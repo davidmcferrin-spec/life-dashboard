@@ -3,15 +3,27 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 
 from lifedash.mcp_server import (
     TOOLS,
+    PlainHttpGate,
     RequestLimiter,
+    _TRANSPORT,
+    authorization_server_document,
+    current_transport,
+    effective_plain_http,
     handle_message,
     listen_host,
     make_handler,
+    metadata_url,
     negotiate_protocol,
+    plain_http_denied_message,
+    protected_resource_document,
+    request_transport,
     resolve,
+    urllib_fetch,
+    www_authenticate,
 )
 
 
@@ -485,6 +497,10 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     assert listen_host("0.0.0.0") == "0.0.0.0"
     assert listen_host("127.0.0.1") == "0.0.0.0"
     assert listen_host("10.1.1.5") == "0.0.0.0"
+    assert listen_host("127.0.0.1", None) == "0.0.0.0"
+    assert listen_host("127.0.0.1", "all") == "0.0.0.0"
+    assert listen_host("10.1.1.5", "loopback") == "127.0.0.1"
+    assert listen_host(None, "localhost") == "127.0.0.1"
     assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
     assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
 
@@ -526,23 +542,29 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
                 headers={"Content-Type": "application/json", **headers},
                 method="POST",
             )
-            with urllib.request.urlopen(req) as res:
-                return res.status, json.loads(res.read().decode())
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return res.status, dict(res.headers), json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                return exc.code, dict(exc.headers), json.loads(exc.read().decode())
 
-        status, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
-        assert status == 200
+        status, headers, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
+        assert status == 401
         assert body["error"]["code"] == -32001
+        assert headers["WWW-Authenticate"] == "Bearer"
 
-        status, body = post(
+        status, headers, body = post(
             {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}},
             {},
         )
+        assert status == 200
         assert body["result"]["protocolVersion"] == "2025-11-25"
 
-        status, body = post(
+        status, headers, body = post(
             {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
             {"Authorization": "Bearer anything", "Mcp-Session-Id": "stale"},
         )
+        assert status == 200
         assert [tool["name"] for tool in body["result"]["tools"]] == full
 
         try:
@@ -561,6 +583,264 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
             assert body["listen"] == "0.0.0.0:8765"
             assert body["version"]
             assert "revision" in body
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_oauth_discovery_and_upstream_401():
+    public = "https://mcp.example.com/mcp"
+    issuer = "https://dash.example.com"
+    assert metadata_url(public) == "https://mcp.example.com/.well-known/oauth-protected-resource/mcp"
+    assert www_authenticate("") == "Bearer"
+    assert 'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"' in www_authenticate(public)
+    doc = protected_resource_document(public, issuer)
+    assert doc["resource"] == public
+    assert doc["authorization_servers"] == [issuer]
+    assert "pantry:read" in doc["scopes_supported"]
+    assert "spotify:read" in doc["scopes_supported"]
+    assert "spotify:write" in doc["scopes_supported"]
+    assert "spotify:playback" in doc["scopes_supported"]
+    server_doc = authorization_server_document(issuer)
+    assert server_doc["token_endpoint"] == "https://dash.example.com/oauth/token"
+    assert server_doc["code_challenge_methods_supported"] == ["S256"]
+
+    def fetch(method, path, body, authorization, tool):
+        assert authorization == "Bearer ldoa_expired"
+        return 401, {"error": "Invalid or expired token."}
+
+    handler = make_handler(
+        fetch,
+        RequestLimiter(),
+        mcp_public_url=public,
+        issuer=issuer,
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp",
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}}).encode(),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer ldoa_expired"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req)
+            raise AssertionError("upstream 401 must stay HTTP 401")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 401
+            assert exc.headers.get("WWW-Authenticate") == www_authenticate(public)
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp") as res:
+            body = json.loads(res.read().decode())
+            assert body["authorization_servers"] == [issuer]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-authorization-server") as res:
+            body = json.loads(res.read().decode())
+            assert body["registration_endpoint"] == issuer + "/oauth/register"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_plain_http_stays_on_until_the_override_says_off():
+    assert effective_plain_http(None, True) is True
+    assert effective_plain_http(None, False) is False
+    assert effective_plain_http(0, True) is False
+    assert effective_plain_http(1, False) is True
+    assert PlainHttpGate(True, lambda: None).allowed() is True
+    assert PlainHttpGate(False, lambda: None).allowed() is False
+    assert PlainHttpGate(True, lambda: 0).allowed() is False
+    assert PlainHttpGate(False, lambda: 1).allowed() is True
+
+    def down():
+        raise RuntimeError("db down")
+
+    assert PlainHttpGate(True, down).allowed() is True
+    assert PlainHttpGate(False, down).allowed() is False
+
+    assert request_transport("10.1.1.8", "https", '{"scheme":"https"}') == "http"
+    assert request_transport("127.0.0.1", "https") == "https"
+    assert request_transport("::1", "HTTPS") == "https"
+    assert request_transport("127.0.0.1", "http, https") == "http"
+    assert request_transport("127.0.0.1", None, '{"scheme":"https"}') == "https"
+    assert request_transport("127.0.0.1", None) == "http"
+    public = "https://mcp.example.com/mcp"
+    assert public in plain_http_denied_message(public)
+    assert "MCP_PUBLIC_URL is not set" in plain_http_denied_message("")
+
+    seen = {}
+
+    def fetch(method, path, body, authorization, tool):
+        seen["transport"] = current_transport()
+        seen["calls"] = seen.get("calls", 0) + 1
+        return 200, {"ok": True}
+
+    def serve(allow):
+        handler = make_handler(
+            fetch,
+            RequestLimiter(),
+            mcp_public_url=public,
+            issuer="https://dash.example.com",
+            allow_plain_http=allow,
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, port
+
+    def post(port, payload, headers):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", **headers},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req) as res:
+                return res.status, json.loads(res.read().decode())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode())
+
+    init = {"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}
+    call = {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}}
+
+    server, port = serve(lambda: True)
+    try:
+        status, body = post(port, init, {})
+        assert status == 200
+        assert body["result"]["protocolVersion"] == "2025-03-26"
+        status, body = post(port, call, {"Authorization": "Bearer ld_test"})
+        assert status == 200
+        assert seen["transport"] == "http"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    seen.clear()
+    server, port = serve(lambda: False)
+    try:
+        status, body = post(port, init, {})
+        assert status == 403
+        assert body["id"] == 7
+        assert body["error"]["code"] == -32003
+        assert public in body["error"]["message"]
+        assert "calls" not in seen
+
+        status, body = post(port, call, {"Authorization": "Bearer ld_test", "X-Forwarded-Proto": "https"})
+        assert status == 200
+        assert seen["transport"] == "https"
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            assert res.status == 200
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp")
+            raise AssertionError("plain HTTP discovery must fail when the switch is off")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403
+            body = json.loads(exc.read().decode())
+            assert public in body["error"]["message"]
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp",
+            headers={"X-Forwarded-Proto": "https"},
+        )
+        with urllib.request.urlopen(req) as res:
+            assert res.status == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    bare = make_handler(fetch, allow_plain_http=lambda: False)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), bare)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, body = post(port, init, {})
+        assert status == 403
+        assert "MCP_PUBLIC_URL is not set" in body["error"]["message"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_forwarded_call_carries_the_transport_header():
+    captured = {}
+
+    class Resp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, timeout=30):
+        captured["header"] = req.get_header("X-lifedash-transport")
+        return Resp()
+
+    token = _TRANSPORT.set("https")
+    try:
+        with patch("lifedash.mcp_server.urlopen", fake_urlopen):
+            status, body = urllib_fetch("http://127.0.0.1")("GET", "/api/v1/metrics", None, "Bearer x", "list_metrics")
+    finally:
+        _TRANSPORT.reset(token)
+    assert status == 200
+    assert body == {}
+    assert captured["header"] == "https"
+
+
+def test_spotify_writes_and_playback_follow_plain_http():
+    seen = []
+
+    def fetch(method, path, body, authorization, tool):
+        seen.append((method, path, tool))
+        return 200, {"ok": True}
+
+    public = "https://mcp.example.com/mcp"
+    handler = make_handler(fetch, mcp_public_url=public, allow_plain_http=lambda: False)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        def post(name, headers):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/mcp",
+                data=json.dumps({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": name, "arguments": {}},
+                }).encode(),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer ldoa_spotify", **headers},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return res.status, json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode())
+
+        for name in ("play", "sync_spotify"):
+            status, body = post(name, {})
+            assert status == 403
+            assert public in body["error"]["message"]
+        assert seen == []
+
+        status, body = post("play", {"X-Forwarded-Proto": "https"})
+        assert status == 200
+        status, body = post("sync_spotify", {"X-Forwarded-Proto": "https"})
+        assert status == 200
+        assert seen == [
+            ("POST", "/api/v1/spotify/playback/play", "play"),
+            ("POST", "/api/v1/spotify/sync", "sync_spotify"),
+        ]
     finally:
         server.shutdown()
         server.server_close()

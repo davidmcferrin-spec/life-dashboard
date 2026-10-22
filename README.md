@@ -78,7 +78,7 @@ These frames use a fictional demo account. Nothing in them is from a live server
 | Services | Python 3 (`services/` — MCP server, sync workers, realtime push from Phase L1+) |
 | Scheduling | systemd timers (`deploy/systemd/`) — replaces the Dreamhost crontab |
 | Secrets | `systemd-creds` (TPM2-bound) → decrypted to tmpfs at boot |
-| Access | LAN HTTPS (`dash.<domain>`, Let's Encrypt via Cloudflare DNS) + UniFi Teleport remotely · Cloudflare Tunnel (`/healthz`, `/mcp` only) |
+| Access | LAN HTTPS (`dash.<domain>`, Let's Encrypt via Cloudflare DNS) + UniFi Teleport remotely · Cloudflare Tunnel (`dash.<domain>` for the app, `mcp.<domain>` for MCP) |
 | Backups | `pg_dump` nightly + restic offsite (S3 or Dropbox via rclone) |
 
 ## Project Structure
@@ -301,13 +301,43 @@ sudo systemctl start lifedash-backup && journalctl -u lifedash-backup -n 30
 
 Until then, nightly `pg_dump`s go to `/var/backups/lifedash` only (7 days). **Save the restic password in your password manager** — without it the backups are unrecoverable.
 
-### 8. Cloudflare Tunnel (public MCP endpoint)
+### 8. Cloudflare Tunnel (dashboard and MCP)
+
+The same Cloudflare zone that issues the LAN certificate can front two public hostnames. `dash.<domain>` is the PHP app, including the realtime socket at `/ws`. `mcp.<domain>` is the MCP server. OAuth consent stays on the dashboard hostname so the existing login session is the approval step.
+
+On the server:
 
 ```bash
-sudo lifedash-tunnel-setup mcp.<your-domain>
+cloudflared tunnel login
+cloudflared tunnel create lifedash
+cloudflared tunnel route dns lifedash dash.<your-domain>
+cloudflared tunnel route dns lifedash mcp.<your-domain>
+sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>
 ```
 
-This publishes **only** `/healthz` and `/mcp…`; everything else returns 404 at Cloudflare's edge, and the dashboard UI is never public. Put a Cloudflare Access service token in front of `/mcp` (`CF-Access-Client-Id` and `CF-Access-Client-Secret`). The app bearer token is a second check. Steps: [docs/deploy/cloudflare-access.md](docs/deploy/cloudflare-access.md). Claude.ai and Grok call custom MCP servers from their own clouds, which is why a public endpoint is needed at all; Claude Code and Cursor on your own devices can use the LAN (or Teleport) directly.
+`lifedash-tunnel-setup` repeats login (if needed), create, both DNS routes, writes `/etc/cloudflared/config.yml` from `deploy/cloudflared/config.yml.template`, and installs `deploy/systemd/cloudflared.service`. The credentials file path is only in that config. It is not in git.
+
+Then set, and reload:
+
+```bash
+sudo lifedash-env set PUBLIC_BASE_URL https://dash.<your-domain>
+sudo lifedash-env set MCP_PUBLIC_URL https://mcp.<your-domain>/mcp
+sudo systemctl restart lifedash-mcp
+```
+
+`MCP_ALLOW_PLAIN_HTTP` defaults to true, so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. Settings → Agents has **Allow plain HTTP MCP access (LAN IP)**. A saved value there overrides the config file. The page shows which source is in effect, and the last HTTP or HTTPS call for each token and OAuth client.
+
+Turning that switch off does not change the listen address and does not need a restart. The next plain HTTP JSON-RPC call gets HTTP 403 and the message names `MCP_PUBLIC_URL`. A request cloudflared proxies (loopback, `X-Forwarded-Proto: https`) still works. `MCP_BIND` stays `all`. Set `MCP_BIND=loopback` and restart `lifedash-mcp` only when you also want the LAN port closed. After that, a LAN client is refused at connect time and does not see the 403. The tunnel still dials `127.0.0.1:8765`.
+
+In Claude, add a custom connector with this URL:
+
+```text
+https://mcp.<your-domain>/mcp
+```
+
+Claude opens `https://dash.<your-domain>` for consent. Sign in if that browser is not already signed in, then allow the scopes. Static bearer tokens on Settings → Agents are unchanged.
+
+LAN access by IP is unchanged. A forwarded `https` scheme is trusted only when the connection comes from cloudflared on localhost. Details: [docs/deploy/cloudflare-access.md](docs/deploy/cloudflare-access.md).
 
 ## Day-to-day operations
 
@@ -531,7 +561,7 @@ Metric kinds: `habit` (0/1, one per local day), `scale` (integers min–max, def
 - No database password: PHP and Python connect over the Unix socket with peer auth as the `lifedash` OS user
 - PostgreSQL listens on localhost only; UFW admits 22/80/443 from the LAN and explicitly allowed subnets (Teleport) only
 - Port 80 redirects everything except loopback (cloudflared, on-box checks) to HTTPS; HSTS on :443
-- The public Cloudflare hostname exposes `/healthz` and `/mcp` only — never the UI
+- The public tunnel serves the dashboard on `dash.<domain>` and MCP on `mcp.<domain>`. Forwarded HTTPS is trusted only from localhost. Plain HTTP MCP stays on until Settings → Agents turns it off. `MCP_BIND=loopback` is a separate restart and does not happen by itself
 - Code is `root:lifedash` read-only to the app; only `storage/` is writable; Apache (www-data) can read `public/` only
 - Offsite backups are restic-encrypted client-side and include the decrypted secrets (needed for restore)
 - `.env`, `storage/` and code outside `public/` are blocked by Apache even if a rewrite misfires
