@@ -39,6 +39,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/pantry.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

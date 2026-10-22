@@ -37,11 +37,19 @@ The inventory page defaults to on hand. Status `any` is every lot except `tossed
 
 ## Meal builder
 
-The Meals tab on `/pantry` plans from components. It does not replace recipes. Filter categories are protein, base, sauce, and side. Aromatic, vegetable, and spice are suggestions for the current picks. A pick list is optional, and each filter category takes at most two. Pairings are stored once, with the lower component id first. The page asks one query for the components that pair with every current pick.
+The Meals tab on `/pantry` plans from components. It does not replace recipes. Filter categories are protein, base, sauce, and side. Aromatic, vegetable, and spice are suggestions for the current picks. A pick list is optional, and each filter category takes at most two. Pairings are stored once, with the lower component id first. The page reads that suggestion and the component list. Items that do not pair with every pick stay at the bottom of the column.
 
-A component is on hand when its linked product has an active lot with quantity left, or a level other than empty. Not-on-hand chips are italic. Only what I have is remembered per user. Save as recipe writes a normal pantry recipe. Add missing to Groceries sends the picks that are not on hand to the Groceries list. There is no meal log. Made before links to a recipe whose protein, base, sauce, and side ingredients are exactly the picks, matched by product or by name. Aromatic, vegetable, spice, and unmapped ingredients are listed under the link as also uses, and they do not decide the match. A recipe with none of the four filter categories is not a match.
+A component is on hand when its linked product has an active lot with quantity left, or a level other than empty. Not-on-hand items are italic. Only what I have is remembered per user. Save as recipe writes a normal pantry recipe. Add missing to Groceries sends the picks that are not on hand to the Groceries list. There is no meal log. Made before links to a recipe whose protein, base, sauce, and side ingredients are exactly the picks, matched by product or by name. Aromatic, vegetable, spice, and unmapped ingredients are listed under the link as also uses, and they do not decide the match. A recipe with none of the four filter categories is not a match.
 
 `0029_meal_builder.sql` creates `meal_components` and `meal_pairings`. It does not insert food. Claire adds components through MCP. Token writes need Allow MCP updates and `pantry:write`. A signed-in session can still save a recipe and add groceries while that toggle is off. Reads use `pantry:read`.
+
+## Live updates
+
+A committed pantry write publishes on `lifedash_events`. `pantry_products`, `pantry_lots`, `shopping_lists`, and `shopping_items` already had `lifedash_notify()` triggers. `0030_pantry_realtime.sql` adds the same trigger to `pantry_recipes`, `pantry_recipe_ingredients`, `meal_components`, and `meal_pairings`. PostgreSQL delivers the notify when the transaction commits, so a rolled-back write publishes nothing. MCP tools call these same PHP services, so a token write publishes the same way a session write does. The payload is the existing `{table, op, id, user_id}` event. No new API field.
+
+`lifedash-push` fans that event out to the signed-in user's sockets. `/pantry` subscribes and refetches only the open section: lots and products refresh inventory, expiring, products, recipes, and meals; a recipe refresh covers recipes and meals; a component, pairing, or Groceries change refreshes meals. The refetch is debounced. Search text, meal picks, scroll position, open dialogs, and in-progress form fields stay. The scan camera is left alone. If the socket drops, the pantry tab polls every 30 seconds while it is visible and reconnects. The page is not reloaded.
+
+The dashboard pantry card refetches on those same tables, and a Groceries change also refreshes the shopping card. `lifedash-deploy` restarts the realtime push process and applies `0030_pantry_realtime.sql`.
 
 ## UPC lookup
 
@@ -59,4 +67,4 @@ Scopes `pantry:read` and `pantry:write` appear with the other token areas. Write
 
 Tools: `list_pantry`, `list_pantry_units`, `get_product_by_upc`, `upsert_product`, `update_pantry_product`, `list_products`, `add_pantry_items`, `consume_pantry_item`, `split_or_move_lot`, `open_lot`, `toss_lot`, `adjust_lot`, `expiring_items`, `low_stock`, `pantry_stats`, `import_order`, `list_recipes`, `upsert_recipe`, `update_recipe`, `update_pantry_category`, `what_can_i_make`, `list_meal_components`, `add_meal_component`, `update_meal_component`, `remove_meal_component`, `add_meal_pairing`, `remove_meal_pairing`, `list_meal_pairings`, `suggest_meal`.
 
-No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql`, `database/pgsql/0027_pantry_pack.sql`, `database/pgsql/0028_pantry_shelf_defaults.sql`, and `database/pgsql/0029_meal_builder.sql`. The catalog fills in on first use. Meal components are not seeded.
+No one-time server step. `lifedash-deploy` applies `database/pgsql/0026_pantry.sql` through `database/pgsql/0030_pantry_realtime.sql`. The catalog fills in on first use. Meal components are not seeded.

@@ -1300,10 +1300,14 @@
                 break;
             case 'shopping_lists':
             case 'shopping_items':
-                refreshTypes(['shopping']);
+                refreshTypes(['shopping', 'pantry']);
                 break;
             case 'pantry_products':
             case 'pantry_lots':
+            case 'pantry_recipes':
+            case 'pantry_recipe_ingredients':
+            case 'meal_components':
+            case 'meal_pairings':
                 refreshTypes(['pantry']);
                 break;
             case 'calls':
