@@ -200,6 +200,35 @@ final class PageService
         return $this->update($userId, $id, ['title' => $rev['title'], 'body' => $rev['body']], $actor, $tool);
     }
 
+    /**
+     * Redline one saved revision against the current page. Title and body are
+     * one source string so a title-only edit shows up.
+     *
+     * @return array{revision: array{version: int, title: string, body: string, created_at: string}, diff: array{html: string, additions: int, deletions: int, grain: string, summary: string}}
+     */
+    public function revisionDiff(int $userId, int $id, int $version): array
+    {
+        $page = $this->get($userId, $id);
+        $rev = $this->db->fetchOne(
+            'SELECT version, title, body, created_at FROM page_revisions WHERE page_id = ? AND user_id = ? AND version = ?',
+            [$id, $userId, $version]
+        );
+        if ($rev === null) {
+            throw new NotFoundException('Revision not found.');
+        }
+        $before = (string) $rev['title'] . "\n\n" . (string) $rev['body'];
+        $after = (string) $page['title'] . "\n\n" . (string) $page['body'];
+        return [
+            'revision' => [
+                'version'    => (int) $rev['version'],
+                'title'      => (string) $rev['title'],
+                'body'       => (string) $rev['body'],
+                'created_at' => (string) $rev['created_at'],
+            ],
+            'diff' => Redline::compare($before, $after),
+        ];
+    }
+
     public function archive(int $userId, int $id, string $actor = 'user'): void
     {
         $this->get($userId, $id);

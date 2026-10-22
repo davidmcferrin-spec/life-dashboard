@@ -18,11 +18,21 @@
     const crumbsEl = document.getElementById('brain-crumbs');
     const moveEl = document.getElementById('brain-move');
     const stage = document.querySelector('.brain-stage');
+    const redlineBox = document.getElementById('brain-redline');
+    const redlineView = document.getElementById('brain-redline-view');
+    const redlineSummary = document.getElementById('brain-redline-summary');
+    const revCurrent = document.getElementById('brain-rev-current');
+    const revRestore = document.getElementById('brain-rev-restore');
+    const saveBtn = document.getElementById('brain-save');
+    const REDLINE_KEY = 'ld_vault_redline';
 
     let pages = [];
     let folders = [];
     let current = null;
     let dirty = false;
+    let viewing = null;
+    let stash = null;
+    let dirtyBeforeView = false;
     let activeFolder = null;
     let didExpand = false;
     const expanded = new Set();
@@ -30,6 +40,11 @@
     preview.hidden = true;
     stage.classList.remove('is-preview');
     split.style.gridTemplateColumns = '1fr';
+    try {
+        redlineBox.checked = localStorage.getItem(REDLINE_KEY) === '1';
+    } catch (err) {
+        redlineBox.checked = false;
+    }
 
     function setStatus(text) {
         statusEl.textContent = text || '';
@@ -107,9 +122,81 @@
         fillMoveMenu();
     }
 
+    function rememberRedline(on) {
+        try {
+            localStorage.setItem(REDLINE_KEY, on ? '1' : '0');
+        } catch (err) {
+            /* private mode can reject storage; the checkbox still works this visit */
+        }
+    }
+
+    function clearRevisionChrome() {
+        viewing = null;
+        stash = null;
+        dirtyBeforeView = false;
+        titleEl.readOnly = false;
+        bodyEl.readOnly = false;
+        kindEl.disabled = false;
+        saveBtn.disabled = false;
+        revCurrent.hidden = true;
+        revRestore.hidden = true;
+        redlineView.hidden = true;
+        redlineView.innerHTML = '';
+        redlineSummary.textContent = '';
+        stage.classList.remove('is-redline');
+    }
+
+    function paintRevButtons() {
+        revsEl.querySelectorAll('[data-rev]').forEach((btn) => {
+            const on = viewing !== null && String(viewing.version) === btn.dataset.rev;
+            btn.classList.toggle('is-active', on);
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+    }
+
+    function applyRevisionView() {
+        if (!viewing) return;
+        titleEl.readOnly = true;
+        bodyEl.readOnly = true;
+        kindEl.disabled = true;
+        saveBtn.disabled = true;
+        revCurrent.hidden = false;
+        revRestore.hidden = false;
+        if (redlineBox.checked) {
+            stage.classList.add('is-redline');
+            redlineView.hidden = false;
+            redlineView.innerHTML = viewing.diff.html;
+            redlineSummary.textContent = viewing.diff.summary;
+        } else {
+            stage.classList.remove('is-redline');
+            redlineView.hidden = true;
+            redlineView.innerHTML = '';
+            redlineSummary.textContent = '';
+            titleEl.value = viewing.title;
+            bodyEl.value = viewing.body;
+            renderMarkdown(viewing.body);
+        }
+        paintRevButtons();
+    }
+
+    function leaveRevision() {
+        const savedTitle = stash ? stash.title : titleEl.value;
+        const savedBody = stash ? stash.body : bodyEl.value;
+        const savedKind = stash ? stash.kind : kindEl.value;
+        const wasDirty = dirtyBeforeView;
+        clearRevisionChrome();
+        titleEl.value = savedTitle;
+        bodyEl.value = savedBody;
+        kindEl.value = savedKind;
+        dirty = wasDirty;
+        renderMarkdown(bodyEl.value);
+        paintRevButtons();
+    }
+
     function show(page) {
         current = page;
         dirty = false;
+        clearRevisionChrome();
         titleEl.value = page ? page.title : '';
         bodyEl.value = page ? (page.body || '') : '';
         kindEl.value = page ? page.kind : 'note';
@@ -120,7 +207,7 @@
             `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>`
         ).join('') || '<p class="ld-meta">No backlinks.</p>';
         revsEl.innerHTML = (page && page.revisions || []).map((rev) =>
-            `<li><button type="button" data-rev="${rev.version}">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
+            `<li><button type="button" data-rev="${rev.version}" aria-pressed="false">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
         ).join('');
         renderCrumbs(page);
         renderTree();
@@ -263,10 +350,40 @@
             if (previewing) renderMarkdown(bodyEl.value);
         });
     });
+    async function viewRevision(version) {
+        if (!current) return;
+        if (!stash) {
+            stash = { title: titleEl.value, body: bodyEl.value, kind: kindEl.value };
+            dirtyBeforeView = dirty;
+        }
+        const res = await api.get('/pages/' + current.id + '/revisions/' + version);
+        viewing = {
+            version: res.revision.version,
+            title: res.revision.title,
+            body: res.revision.body,
+            diff: res.diff,
+        };
+        dirty = false;
+        applyRevisionView();
+        setStatus('Viewing version ' + version + '.');
+    }
+
     revsEl.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-rev]');
         if (!btn || !current) return;
-        api.post('/pages/' + current.id + '/restore', { version: Number(btn.dataset.rev) })
+        viewRevision(Number(btn.dataset.rev)).catch((err) => setStatus(err.message));
+    });
+    redlineBox.addEventListener('change', () => {
+        rememberRedline(redlineBox.checked);
+        if (viewing) applyRevisionView();
+    });
+    revCurrent.addEventListener('click', () => {
+        leaveRevision();
+        setStatus('');
+    });
+    revRestore.addEventListener('click', () => {
+        if (!viewing || !current) return;
+        api.post('/pages/' + current.id + '/restore', { version: viewing.version })
             .then((res) => show(res.page))
             .then(() => setStatus('Restored.'))
             .catch((err) => setStatus(err.message));
@@ -277,7 +394,7 @@
         searchTimer = setTimeout(() => loadList(e.target.value.trim()).catch((err) => setStatus(err.message)), 200);
     });
     window.addEventListener('beforeunload', (e) => {
-        if (dirty) e.preventDefault();
+        if (dirty || dirtyBeforeView) e.preventDefault();
     });
 
     const open = Number(shell.dataset.openPage || 0);

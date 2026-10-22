@@ -66,6 +66,9 @@ def test_resolve_record_and_page_update():
     assert (method, path, body) == ("POST", "/api/v1/pages/folders/2/delete", {"move_contents": True})
     method, path, body = resolve("move_page", {"page_id": 9, "folder_id": 2})
     assert (method, path, body) == ("POST", "/api/v1/pages/9/move", {"folder_id": 2})
+    method, path, body = resolve("page_version_diff", {"page_id": 9, "version": 2})
+    assert (method, path, body) == ("GET", "/api/v1/pages/9/revisions/2", None)
+    assert "page_version_diff" in [tool["name"] for tool in TOOLS]
 
 
 def test_habit_tools_resolve_onto_the_habits_api():

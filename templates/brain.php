@@ -64,6 +64,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
             <textarea id="brain-body" class="brain-editor" placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
             <div id="brain-preview" class="brain-preview km" hidden></div>
         </div>
+        <pre id="brain-redline-view" class="brain-redline" hidden aria-label="Red-line of this version against the current page"></pre>
         <p id="brain-status" class="ld-meta mt-2"></p>
     </section>
     <aside class="brain-side">
@@ -72,6 +73,15 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         <p class="brain-kicker mt-4">Backlinks</p>
         <div id="brain-backlinks"></div>
         <p class="brain-kicker mt-4">History</p>
+        <label class="brain-redline-toggle" for="brain-redline">
+            <input type="checkbox" id="brain-redline">
+            Red-line
+        </label>
+        <p id="brain-redline-summary" class="ld-meta" aria-live="polite"></p>
+        <div class="brain-rev-actions">
+            <button type="button" id="brain-rev-current" hidden>Current</button>
+            <button type="button" id="brain-rev-restore" hidden>Restore</button>
+        </div>
         <ul id="brain-revs" class="brain-revs"></ul>
     </aside>
 </div>

@@ -232,6 +232,13 @@ final class ExtendedApi
             $actor = $this->runner->actor();
             return ['page' => $this->svc->pages->update($u, self::id($p), $this->runner->body(), $actor->kind, $actor->tool)];
         }, 200, true));
+        $r->get('/api/v1/pages/{id}/revisions/{version}', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $v = filter_var($p['version'] ?? null, FILTER_VALIDATE_INT);
+            if ($v === false || $v < 1) {
+                throw ValidationException::withFields(['version' => 'version must be a positive integer.']);
+            }
+            return $this->svc->pages->revisionDiff($u, self::id($p), $v);
+        }));
         $r->post('/api/v1/pages/{id}/restore', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $v = filter_var($this->runner->body()['version'] ?? null, FILTER_VALIDATE_INT);
             if ($v === false || $v < 1) {
