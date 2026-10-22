@@ -100,6 +100,9 @@ final class WidgetService
     {
         self::checkChanger($createdBy);
         $def    = WidgetTypeRegistry::get($type);
+        if (!empty($def['floating'])) {
+            throw ValidationException::withFields(['type' => 'The Spotify player floats above the page. Turn it on from the widget list or Settings, Spotify.']);
+        }
         $config = $this->validate($userId, $type, $config);
         $title  = self::cleanTitle($title);
 

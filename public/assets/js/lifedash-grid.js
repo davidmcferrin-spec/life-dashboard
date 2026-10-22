@@ -905,6 +905,11 @@
         const t = (await types()).find((x) => x.type === btn.dataset.type);
         if (!t) return;
         closeModal('ld-add-modal');
+        if (t.floating) {
+            await api.post('/spotify/player', { enabled: true });
+            status('Spotify player on');
+            return;
+        }
         if (needsSetup(t)) {
             openConfig(null, t);
         } else {
@@ -1315,6 +1320,13 @@
             case 'contacts':
             case 'vetted_agencies':
                 refreshTypes(['calls']);
+                break;
+            case 'spotify_account':
+            case 'spotify_playlists':
+            case 'spotify_playlist_tracks':
+            case 'spotify_play_history':
+            case 'spotify_top_items':
+                refreshTypes(['spotify']);
                 break;
             default:
                 break;

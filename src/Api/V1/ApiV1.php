@@ -229,6 +229,7 @@ final class ApiV1
             'ttl'   => RealtimeToken::TTL_SECONDS,
         ]));
 
+        (new SpotifyApi($this->runner))->register($r);
         (new ExtendedApi($this->runner, $this->svc))->register($r);
     }
 

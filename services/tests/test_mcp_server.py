@@ -284,6 +284,15 @@ def test_money_tools_resolve_onto_the_money_api():
         "update_pantry_category", "update_pantry_product", "what_can_i_make",
         "list_meal_components", "add_meal_component", "update_meal_component", "remove_meal_component",
         "add_meal_pairing", "remove_meal_pairing", "list_meal_pairings", "suggest_meal",
+        "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
+        "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
+        "get_now_playing", "list_spotify_devices", "list_playlist_changes", "get_taste_profile",
+        "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
+        "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
+        "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
+        "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
+        "play", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
+        "add_to_queue", "transfer_playback",
     ):
         assert name in names
 
@@ -555,3 +564,42 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints():
+    names = [tool["name"] for tool in TOOLS]
+    spotify = [
+        "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
+        "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
+        "get_now_playing", "list_spotify_devices", "list_playlist_changes", "get_taste_profile",
+        "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
+        "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
+        "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
+        "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
+        "play", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
+        "add_to_queue", "transfer_playback",
+    ]
+    assert len(spotify) == 38
+    assert len(names) == len(set(names))
+    for name in spotify:
+        assert names.count(name) == 1
+    described = {tool["name"]: tool["description"] for tool in TOOLS}
+    for name in ("search_spotify", "list_play_history", "list_saved_tracks", "list_top_items", "get_taste_profile", "update_taste_profile"):
+        assert "recommendations" in described[name]
+        assert "audio-features" in described[name]
+    assert "token" not in described["spotify_status"].lower() or "No tokens" in described["spotify_status"]
+
+    method, path, body = resolve("search_spotify", {"q": "north", "type": "track"})
+    assert method == "GET" and path.startswith("/api/v1/spotify/search?")
+    method, path, body = resolve("discard_playlist_changes", {})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/discard", {})
+    method, path, body = resolve("discard_playlist_changes", {"playlist_id": 3})
+    assert (method, path) == ("POST", "/api/v1/spotify/playlists/3/discard")
+    method, path, body = resolve("set_volume", {"volume_percent": 40, "device_id": "device1"})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/volume", {"volume_percent": 40, "device_id": "device1"})
+    method, path, body = resolve("play", {"playlist_id": 8})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {"playlist_id": 8})
+    method, path, body = resolve("sync_spotify", {})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/sync", {})
+    method, path, body = resolve("transfer_playback", {"device_id": "device1", "play": True})
+    assert path == "/api/v1/spotify/playback/transfer"

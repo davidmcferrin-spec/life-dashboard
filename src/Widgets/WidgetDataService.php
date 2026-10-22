@@ -84,6 +84,7 @@ final class WidgetDataService
             'youtube'   => $this->media->payload($userId, 'youtube', $c),
             'reddit'      => $this->media->payload($userId, 'reddit', $c),
             'reddit_feed' => $this->redditFeed($userId, $c),
+            'spotify'     => \Dashboard\Spotify\SpotifyService::fromDatabase()->card($userId),
             'x'         => $this->media->payload($userId, 'x', $c),
             'custom'    => $this->customData($userId, $c),
             default     => ['metric_ids' => []], // legacy widgets load their own data
