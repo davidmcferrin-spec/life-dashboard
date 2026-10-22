@@ -13,7 +13,7 @@ Create a remotely managed tunnel in Cloudflare Zero Trust and copy its token. Si
 
    **Start**. Status reads Connected or Not connected.
 
-The helper writes the token to `/etc/lifedash/cloudflared.token` (root, mode 0600) and starts `cloudflared.service` from `deploy/systemd/cloudflared.service`. A tunnel that already has `/etc/cloudflared/config.yml` still starts when no token is saved. That file is not committed.
+The helper writes a new token to `/etc/lifedash/cloudflared.token` (root, mode 0600) and starts `cloudflared.service` from `deploy/systemd/cloudflared.service` only when that unit is not already someone else's. If cloudflared is already running, Settings → Tunnel shows Connected and does not replace the unit or ask for a token. A tunnel that already has `/etc/cloudflared/config.yml` still starts when no token is saved. That file is not committed.
 
 Claude custom connector URL:
 

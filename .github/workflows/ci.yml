@@ -91,3 +91,5 @@ jobs:
         run: bash tests/shell/prepare-workdir.sh
       - name: Deploy confirm-sha guard
         run: bash tests/shell/deploy-confirm.sh
+      - name: Service control and cloudflared unit choice
+        run: bash tests/shell/service-control.sh

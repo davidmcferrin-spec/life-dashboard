@@ -4,6 +4,8 @@ set -euo pipefail
 
 SOURCE=$(readlink -f "$0")
 APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")/../.." && pwd)
+# shellcheck source=deploy/lib/deploy-guard.sh
+source "$APP_DIR/deploy/lib/deploy-guard.sh"
 SPOOL=/var/lib/lifedash/service
 INCOMING=$SPOOL/incoming
 STATE=$SPOOL/state
@@ -32,22 +34,39 @@ write_token() {
     mv -f "$tmp" "$TOKEN_FILE"
 }
 
+cloudflared_flags() {
+    CF_ACTIVE=0
+    CF_OURS=0
+    CF_TOKEN=0
+    systemctl is-active --quiet cloudflared && CF_ACTIVE=1
+    lifedash_cloudflared_is_ours && CF_OURS=1
+    [[ -s $TOKEN_FILE ]] && CF_TOKEN=1
+    CF_ACTION=$(lifedash_cloudflared_action "$CF_ACTIVE" "$CF_OURS" "$CF_TOKEN")
+}
+
 install_unit() {
+    cloudflared_flags
+    # An already-running tunnel keeps its unit. This does not add a second one.
+    if [[ $CF_ACTION != install ]]; then
+        log "left the existing cloudflared service in place"
+        return 1
+    fi
     [[ -f $UNIT_SRC ]] || die "missing $UNIT_SRC"
     install -m 0644 "$UNIT_SRC" /etc/systemd/system/cloudflared.service
     systemctl daemon-reload
 }
 
 write_status() {
-    local connected=$1 detail=$2
-    python3 - "$STATE/status.json" "$connected" "$detail" << 'PY'
+    local connected=$1 detail=$2 existing=${3:-0}
+    python3 - "$STATE/status.json" "$connected" "$detail" "$existing" << 'PY'
 import json
 import sys
 from datetime import datetime, timezone
 
-path, connected, detail = sys.argv[1], sys.argv[2], sys.argv[3]
+path, connected, detail, existing = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 doc = {
     "connected": connected == "1",
+    "existing": existing == "1",
     "detail": detail,
     "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
 }
@@ -58,8 +77,22 @@ PY
     chmod 0640 "$STATE/status.json" 2>/dev/null || true
 }
 
-tunnel_up() {
-    systemctl is-active --quiet cloudflared
+record_tunnel() {
+    cloudflared_flags
+    if [[ $CF_ACTIVE == 1 && $CF_OURS != 1 ]]; then
+        write_status 1 "Running" 1
+        return 0
+    fi
+    if [[ $CF_ACTIVE == 1 ]]; then
+        write_status 1 "Connected" 0
+        return 0
+    fi
+    write_status 0 "Not connected" 0
+}
+
+leave_existing() {
+    cloudflared_flags
+    [[ $CF_ACTIVE == 1 && $CF_ACTION == skip ]]
 }
 
 run_one() {
@@ -104,36 +137,46 @@ PY
             log "restarted lifedash-mcp"
             ;;
         tunnel-clear)
+            if leave_existing; then
+                log "left the existing cloudflared service running"
+                record_tunnel
+                return 0
+            fi
             rm -f -- "$TOKEN_FILE"
             systemctl stop cloudflared >/dev/null 2>&1 || true
-            write_status 0 "stopped"
+            write_status 0 "stopped" 0
             ;;
         tunnel-stop)
+            if leave_existing; then
+                log "left the existing cloudflared service running"
+                record_tunnel
+                return 0
+            fi
             systemctl stop cloudflared >/dev/null 2>&1 || true
-            write_status 0 "stopped"
+            write_status 0 "stopped" 0
             ;;
         tunnel-start | tunnel-restart)
+            if leave_existing; then
+                log "left the existing cloudflared service running"
+                record_tunnel
+                return 0
+            fi
             if [[ -z $token ]]; then
                 log "no token for $action"
-                write_status 0 "no token"
+                record_tunnel
                 return 0
             fi
             write_token "$token"
-            install_unit
+            if ! install_unit; then
+                record_tunnel
+                return 0
+            fi
             systemctl enable cloudflared >/dev/null
             systemctl restart cloudflared
-            if tunnel_up; then
-                write_status 1 "connected"
-            else
-                write_status 0 "not connected"
-            fi
+            record_tunnel
             ;;
         tunnel-status)
-            if tunnel_up; then
-                write_status 1 "connected"
-            else
-                write_status 0 "not connected"
-            fi
+            record_tunnel
             ;;
         *)
             log "unknown action $action"

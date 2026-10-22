@@ -106,13 +106,8 @@ if [[ -f $APP_DIR/deploy/php/lifedash-pool.conf ]]; then
         install -m 0644 "$APP_DIR/deploy/php/lifedash-pool.conf" "$pool"
     fi
 fi
-lifedash_install_spool /var/lib/lifedash/deploy lifedash
-lifedash_install_spool /var/lib/lifedash/service lifedash
-install -m 0644 "$APP_DIR/deploy/systemd/lifedash-service.service" \
-    "$APP_DIR/deploy/systemd/lifedash-service.path" /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable lifedash-deploy.path >/dev/null
-systemctl enable lifedash-service.path >/dev/null
+# Spool, service path, Spotify timer, and cloudflared (only when this app owns it).
+lifedash_install_runtime_units "$APP_DIR" lifedash
 
 log "restart realtime push and MCP"
 systemctl enable lifedash-push.service >/dev/null
@@ -126,6 +121,8 @@ curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null || die "/healthz fai
 runuser -u lifedash -- "$VENV/bin/lifedash-healthcheck" >/dev/null || log "WARNING: lifedash-healthcheck reported warn/fail (run it for details)"
 systemctl is-active --quiet lifedash-push.service || log "WARNING: lifedash-push is not running — journalctl -u lifedash-push (dashboard falls back to polling)"
 systemctl is-active --quiet lifedash-mcp.service || log "WARNING: lifedash-mcp is not running — journalctl -u lifedash-mcp (/mcp stays 502 until it is)"
+lifedash_service_control_ready lifedash || die "service control is not ready"
+log "service control ready"
 if command -v ss >/dev/null; then
     while read -r row; do
         [[ -n $row ]] || continue

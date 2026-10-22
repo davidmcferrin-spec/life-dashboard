@@ -17,14 +17,33 @@
         errorEl.classList.remove('hidden');
     }
 
+    function existingTunnel(tunnel) {
+        return !!(tunnel && tunnel.status && tunnel.status.existing && tunnel.status.connected);
+    }
+
+    function statusText(status) {
+        if (status && status.existing && status.connected) {
+            return 'Connected. cloudflared is already running on this server.';
+        }
+        return status && status.connected ? 'Connected' : 'Not connected';
+    }
+
     function paint(tunnel) {
         if (!tunnel) return;
-        if (statusEl) {
-            statusEl.textContent = tunnel.status && tunnel.status.connected ? 'Connected' : 'Not connected';
+        const existing = existingTunnel(tunnel);
+        if (statusEl) statusEl.textContent = statusText(tunnel.status);
+        const lead = document.getElementById('tunnel-lead');
+        if (lead) {
+            lead.textContent = existing
+                ? 'cloudflared is already running on this server. This page shows that service. A token is not required, and this page will not install another tunnel.'
+                : 'Create the tunnel in the Cloudflare Zero Trust dashboard, paste its token here, then add the two public hostnames below.';
         }
+        const actions = document.getElementById('tunnel-actions');
+        if (actions) actions.classList.toggle('hidden', existing);
         const hint = document.getElementById('tunnel-token-hint');
         if (hint) {
-            if (!tunnel.token_set) hint.textContent = 'Not set';
+            if (existing) hint.textContent = 'Not required while cloudflared is already running.';
+            else if (!tunnel.token_set) hint.textContent = 'Not set';
             else if (tunnel.token_hint && tunnel.token_hint !== 'set') hint.textContent = 'Set. Ending in ' + tunnel.token_hint;
             else hint.textContent = 'Set.';
         }
@@ -122,9 +141,17 @@
             const res = await fetch('/api/settings/tunnel', { headers: { Accept: 'application/json' } });
             if (!res.ok) return;
             const data = await res.json();
-            if (data.tunnel && data.tunnel.status && statusEl) {
-                statusEl.textContent = data.tunnel.status.connected ? 'Connected' : 'Not connected';
+            if (!data.tunnel) return;
+            if (statusEl) statusEl.textContent = statusText(data.tunnel.status);
+            if (!existingTunnel(data.tunnel)) return;
+            const lead = document.getElementById('tunnel-lead');
+            if (lead) {
+                lead.textContent = 'cloudflared is already running on this server. This page shows that service. A token is not required, and this page will not install another tunnel.';
             }
+            const actions = document.getElementById('tunnel-actions');
+            if (actions) actions.classList.add('hidden');
+            const hint = document.getElementById('tunnel-token-hint');
+            if (hint) hint.textContent = 'Not required while cloudflared is already running.';
         } catch (err) {
             /* The last status line stays. */
         }

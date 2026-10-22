@@ -14,6 +14,8 @@ final class ServiceControl
 {
     public const SPOOL_DIR = '/var/lib/lifedash/service';
 
+    public const NOT_READY = 'Service control is not ready. Deploy the app to create it.';
+
     /** @var list<string> */
     public const ACTIONS = [
         'restart-mcp',
@@ -42,7 +44,7 @@ final class ServiceControl
             throw new \InvalidArgumentException('Unknown service action.');
         }
         if (!$this->ready()) {
-            throw new ValidationException('Service control is not installed. Re-run setup on the server.');
+            throw new ValidationException(self::NOT_READY);
         }
         $id = bin2hex(random_bytes(16));
         $payload = [
@@ -70,23 +72,24 @@ final class ServiceControl
     }
 
     /**
-     * @return array{connected: bool, detail: string, checked_at: ?string}
+     * @return array{connected: bool, existing: bool, detail: string, checked_at: ?string}
      */
     public function status(): array
     {
         $path = $this->root() . '/state/status.json';
         if (!is_file($path)) {
-            return ['connected' => false, 'detail' => 'Not checked yet', 'checked_at' => null];
+            return ['connected' => false, 'existing' => false, 'detail' => 'Not checked yet', 'checked_at' => null];
         }
         $raw = file_get_contents($path);
         $data = is_string($raw) ? json_decode($raw, true) : null;
         if (!is_array($data)) {
-            return ['connected' => false, 'detail' => 'Not checked yet', 'checked_at' => null];
+            return ['connected' => false, 'existing' => false, 'detail' => 'Not checked yet', 'checked_at' => null];
         }
         $detail = $data['detail'] ?? '';
         $at = $data['checked_at'] ?? null;
         return [
             'connected'  => !empty($data['connected']),
+            'existing'   => !empty($data['existing']),
             'detail'     => is_string($detail) ? $detail : '',
             'checked_at' => is_string($at) && $at !== '' ? $at : null,
         ];

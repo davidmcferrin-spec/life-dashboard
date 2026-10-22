@@ -313,7 +313,7 @@ Create a remotely managed tunnel in Cloudflare Zero Trust and copy its token. Th
    - `dash.<your-domain>` → `http://localhost:80`
    - `mcp.<your-domain>` → `http://localhost:8765`
 
-   **Start**. The page shows Connected or Not connected. **Stop** and **Restart** are on the same page.
+   **Start**. The page shows Connected or Not connected. **Stop** and **Restart** are on the same page. If cloudflared is already running, the page shows that status and leaves the service in place. A token is not required, and the page does not install a second tunnel.
 
 The dashboard route origin is port 80. cloudflared reaches Apache on loopback. The LAN UI stays on HTTPS. A tunnel that already has `/etc/cloudflared/config.yml` still starts when this page has no token saved.
 

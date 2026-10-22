@@ -78,9 +78,84 @@ lifedash_read_mcp_updates_flag() {
     fi
 }
 
+# 3770: the php-fpm group can create request files, setgid keeps them in that group,
+# and the sticky bit stops one user deleting another's file. Root still reads them.
 lifedash_install_spool() {
     local spool=${1:-/var/lib/lifedash/deploy}
     local group=${2:-lifedash}
     install -d -o root -g "$group" -m 3770 "$spool/incoming"
     install -d -o root -g "$group" -m 0750 "$spool/state" "$spool/state/jobs"
+}
+
+# install when this app owns the unit or a dashboard token is waiting and nothing else is running.
+# skip when another cloudflared is already active, so a deploy does not replace it.
+lifedash_cloudflared_action() {
+    local active=$1 ours=$2 token=$3
+    if [[ $active == 1 && $ours != 1 ]]; then
+        echo skip
+        return 0
+    fi
+    if [[ $token == 1 || $ours == 1 ]]; then
+        echo install
+        return 0
+    fi
+    echo skip
+}
+
+lifedash_cloudflared_is_ours() {
+    local frag
+    frag=$(systemctl show -p FragmentPath --value cloudflared 2>/dev/null || true)
+    [[ -n $frag && -f $frag ]] || return 1
+    grep -q 'lifedash-cloudflared' "$frag"
+}
+
+# Spool directories and units added after the first provision. Idempotent.
+# enable --now starts a path unit that enable alone leaves inactive.
+lifedash_install_runtime_units() {
+    local app=${1:-/srv/lifedash/app}
+    local group=${2:-lifedash}
+    local unit src active=0 ours=0 token=0 action
+    [[ -d $app/deploy/systemd ]] || return 0
+
+    lifedash_install_spool /var/lib/lifedash/deploy "$group"
+    lifedash_install_spool /var/lib/lifedash/service "$group"
+
+    for unit in \
+        lifedash-service.service \
+        lifedash-service.path \
+        lifedash-spotify.service \
+        lifedash-spotify.timer
+    do
+        src=$app/deploy/systemd/$unit
+        [[ -f $src ]] || continue
+        install -m 0644 "$src" /etc/systemd/system/"$unit"
+    done
+
+    systemctl is-active --quiet cloudflared && active=1
+    lifedash_cloudflared_is_ours && ours=1
+    [[ -s /etc/lifedash/cloudflared.token ]] && token=1
+    action=$(lifedash_cloudflared_action "$active" "$ours" "$token")
+    if [[ $action == install && -f $app/deploy/systemd/cloudflared.service ]]; then
+        install -m 0644 "$app/deploy/systemd/cloudflared.service" /etc/systemd/system/cloudflared.service
+    fi
+
+    systemctl daemon-reload
+    systemctl enable --now lifedash-deploy.path >/dev/null
+    systemctl enable --now lifedash-service.path >/dev/null
+    systemctl enable --now lifedash-spotify.timer >/dev/null
+    if [[ $action == install ]]; then
+        systemctl enable --now cloudflared >/dev/null
+    fi
+    systemctl try-restart lifedash-service.path
+    systemctl try-restart lifedash-deploy.path
+}
+
+# php-fpm must be able to create a request, and the path unit must be watching.
+lifedash_service_control_ready() {
+    local group=${1:-lifedash}
+    local incoming=/var/lib/lifedash/service/incoming
+    local state=/var/lib/lifedash/service/state
+    [[ -d $incoming && -d $state ]] || return 1
+    runuser -u "$group" -- test -w "$incoming" || return 1
+    systemctl is-active --quiet lifedash-service.path || return 1
 }

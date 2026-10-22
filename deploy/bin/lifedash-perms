@@ -89,3 +89,11 @@ if [[ $before_dirt != "$after_dirt" ]]; then
     echo "$after_dirt" >&2
     exit 1
 fi
+
+# The deploy that pulls this file still finishes inside the previous
+# lifedash-deploy process. Units installed here are what that deploy applies.
+if getent group "$USER_" >/dev/null 2>&1 && [[ -f /etc/systemd/system/lifedash-mcp.service ]]; then
+    # shellcheck source=deploy/lib/deploy-guard.sh
+    source "$APP/deploy/lib/deploy-guard.sh"
+    lifedash_install_runtime_units "$APP" "$USER_"
+fi
