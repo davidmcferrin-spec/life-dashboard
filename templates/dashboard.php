@@ -89,6 +89,7 @@ $timezones = [
         <span id="live-date"></span>
         <a href="/brain" class="nav-link">Vault</a>
         <a href="/spotify" class="nav-link">Playlists</a>
+        <a href="/pantry" class="nav-link">Pantry</a>
         <a href="/digest" class="nav-link">Grok Digest</a>
         <a href="/settings" class="nav-link">Settings</a>
         <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>

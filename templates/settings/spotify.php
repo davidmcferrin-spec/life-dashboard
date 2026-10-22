@@ -37,6 +37,10 @@ require __DIR__ . '/_shell-top.php';
                 <a class="btn-primary inline-block" href="/settings/spotify/connect">Connect</a>
                 <?php else: ?>
                 <p class="text-sm text-primary"><?= e((string) $spotify['display_name']) ?></p>
+                <?php if (!empty($spotify['missing_playback_scopes'])): ?>
+                <p class="text-sm">Reconnect Spotify to enable in-browser playback.</p>
+                <a class="btn inline-block" href="/settings/spotify/connect">Reconnect</a>
+                <?php endif; ?>
                 <p class="mono text-xs text-faint"><?= e(implode(' ', $spotify['scopes'] ?? [])) ?></p>
                 <p class="text-sm text-muted">
                     Last sync: <?= e((string) ($spotify['last_sync_at'] ?? 'never')) ?>

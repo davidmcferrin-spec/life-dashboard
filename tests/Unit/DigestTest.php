@@ -67,6 +67,7 @@ final class DigestTest extends TestCase
             '/<div class="nav-meta flex items-center gap-3 flex-wrap justify-end">'
             . '.*<a href="\/brain" class="nav-link">Vault<\/a>\s*'
             . '<a href="\/spotify" class="nav-link">Playlists<\/a>\s*'
+            . '<a href="\/pantry" class="nav-link">Pantry<\/a>\s*'
             . '<a href="\/digest" class="nav-link">Grok Digest<\/a>/s',
             $html
         );

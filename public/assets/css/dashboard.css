@@ -119,6 +119,7 @@ html[data-theme="light"] {
     --row-hover: rgba(0, 0, 0, 0.04);
     --editor-bg: #fafafa;
     --nav-active-bg: rgba(37, 99, 235, 0.08);
+    --player-bg: #ffffff;
 }
 
 html[data-theme="dark"] {
@@ -154,6 +155,7 @@ html[data-theme="dark"] {
     --row-hover: rgba(255, 255, 255, 0.04);
     --editor-bg: #0c0c0e;
     --nav-active-bg: rgba(59, 130, 246, 0.12);
+    --player-bg: #18181b;
 }
 
 html[data-theme="jarvis"] {
@@ -189,6 +191,7 @@ html[data-theme="jarvis"] {
     --row-hover: rgba(var(--hud-rgb), 0.08);
     --editor-bg: rgba(4, 10, 22, 0.88);
     --nav-active-bg: rgba(var(--hud-rgb), 0.14);
+    --player-bg: #081020;
 }
 
 /* -------------------------------------------------------

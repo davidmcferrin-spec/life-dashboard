@@ -27,6 +27,7 @@ require __DIR__ . '/partials/head.php';
             <p class="text-muted text-sm mt-1">Edits stay on this server until you push them.</p>
         </div>
         <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn" data-new-playlist>New playlist</button>
             <button type="button" class="btn" data-sync>Sync</button>
             <button type="button" class="btn-primary" data-push-all>Push all</button>
             <a class="btn" href="/settings/spotify">Settings</a>
@@ -39,7 +40,45 @@ require __DIR__ . '/partials/head.php';
             <p class="empty-state mono text-xs">Choose a playlist.</p>
         </section>
     </div>
-    <section class="surface p-4 mt-4" id="spotify-prompts">
+    <div id="spotify-new-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="spotify-new-title">
+        <div class="app-modal-backdrop" data-close-modal></div>
+        <div class="app-modal-panel surface">
+            <div class="sp-queue-head">
+                <h2 id="spotify-new-title">New playlist</h2>
+                <button type="button" class="app-modal-close" data-close-modal aria-label="Close">×</button>
+            </div>
+            <form id="spotify-create" class="grid gap-3 mt-3">
+                <label class="block">
+                    <span class="mono text-xs text-faint">Name</span>
+                    <input name="name" class="input w-full mt-1" maxlength="100" required>
+                </label>
+                <label class="block">
+                    <span class="mono text-xs text-faint">Description</span>
+                    <input name="description" class="input w-full mt-1" maxlength="300">
+                </label>
+                <label class="text-sm"><input type="checkbox" name="public"> Public</label>
+                <fieldset class="sp-kind">
+                    <legend class="mono text-xs text-faint">Type</legend>
+                    <label class="text-sm"><input type="radio" name="kind" value="regular" checked> Regular</label>
+                    <label class="text-sm"><input type="radio" name="kind" value="ai"> AI</label>
+                </fieldset>
+                <div id="spotify-create-ai" hidden>
+                    <label class="block">
+                        <span class="mono text-xs text-faint">Prompt</span>
+                        <textarea name="prompt" class="input w-full mt-1" rows="4" maxlength="8000"></textarea>
+                    </label>
+                    <label class="block mt-3">
+                        <span class="mono text-xs text-faint">Schedule</span>
+                        <input name="refresh_schedule" class="input w-full mt-1" maxlength="32" placeholder="weekly">
+                    </label>
+                </div>
+                <div>
+                    <button type="submit" class="btn-primary">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <section class="surface p-4 mt-4" id="spotify-prompts" hidden>
         <h2 class="section-title">Prompts</h2>
         <p class="text-sm text-muted mb-3">An assistant reads these when it builds or updates a playlist. Marking a run only stores the time.</p>
         <form id="spotify-prompt-form" class="grid gap-3 sm:grid-cols-2 mb-4">
@@ -55,10 +94,7 @@ require __DIR__ . '/partials/head.php';
                 <span class="mono text-xs text-faint">Prompt</span>
                 <textarea name="prompt" class="input w-full mt-1" rows="4" maxlength="8000" required></textarea>
             </label>
-            <label class="block">
-                <span class="mono text-xs text-faint">Playlist id</span>
-                <input name="target_playlist_id" class="input w-full mt-1" inputmode="numeric">
-            </label>
+            <input type="hidden" name="target_playlist_id" value="">
             <label class="block">
                 <span class="mono text-xs text-faint">Notes</span>
                 <input name="notes" class="input w-full mt-1" maxlength="2000">
