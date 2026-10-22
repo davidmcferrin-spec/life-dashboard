@@ -149,7 +149,7 @@ final class ApiRunner
                 throw new UnauthorizedException('Invalid or expired token.');
             }
             if (Scope::sessionOnly($path)) {
-                throw new ForbiddenException('Creating, editing, revoking, and deleting tokens requires a signed-in browser session.');
+                throw new ForbiddenException('Creating, editing, revoking, and deleting tokens or OAuth clients requires a signed-in browser session.');
             }
             $this->grantedScopes = $row['scopes'];
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);
@@ -242,7 +242,7 @@ final class ApiRunner
                 }
             }
         }
-        if (preg_match('#/api/v1/tokens/\d+#', $path) === 1) {
+        if (self::auditsCredentialChange($path)) {
             $extra = array_merge($extra, self::tokenChangeDetail($payload));
         }
         if ($verb === 'read' && str_contains($path, '/api/v1/money/')) {
@@ -309,7 +309,12 @@ final class ApiRunner
         if ($name === '' || preg_match('/[\x00-\x1F]/', $name) === 1) {
             return null;
         }
-        return mb_substr($name, 0, 64);
+        return mb_substr($name, 0, 120);
+    }
+
+    public static function auditsCredentialChange(string $path): bool
+    {
+        return preg_match('#/api/v1/(?:tokens|oauth/clients)/\d+#', $path) === 1;
     }
 
     /**

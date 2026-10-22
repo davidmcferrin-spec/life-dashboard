@@ -12,6 +12,7 @@
     const areas = JSON.parse(tokenRoot.dataset.areas || '[]');
     const editModal = document.getElementById('agent-edit-modal');
     const deleteModal = document.getElementById('agent-delete-modal');
+    const oauthModal = document.getElementById('oauth-edit-modal');
     let tokenRows = [];
     let deleteId = 0;
 
@@ -179,6 +180,7 @@
         if (e.key !== 'Escape') return;
         if (!modal.classList.contains('hidden')) closeTokenModal();
         if (editModal && !editModal.classList.contains('hidden')) closeModal(editModal);
+        if (oauthModal && !oauthModal.classList.contains('hidden')) closeModal(oauthModal);
         if (deleteModal && !deleteModal.classList.contains('hidden')) closeModal(deleteModal);
     });
 
@@ -219,6 +221,18 @@
         document.getElementById('agent-delete-confirm').focus();
     }
 
+    function bindExclusive(root) {
+        if (!root) return;
+        root.querySelectorAll('[data-access]').forEach((box) => {
+            box.addEventListener('change', () => {
+                if (!box.checked) return;
+                root.querySelectorAll('[data-access]').forEach((other) => {
+                    if (other !== box) other.checked = false;
+                });
+            });
+        });
+    }
+
     function scopesFromEdit(form) {
         const scopes = [];
         form.querySelectorAll('[data-access]:checked').forEach((box) => {
@@ -236,14 +250,7 @@
     }
 
     if (editModal) {
-        editModal.querySelectorAll('[data-access]').forEach((box) => {
-            box.addEventListener('change', () => {
-                if (!box.checked) return;
-                editModal.querySelectorAll('[data-access]').forEach((other) => {
-                    if (other !== box) other.checked = false;
-                });
-            });
-        });
+        bindExclusive(editModal);
         editModal.addEventListener('click', (e) => {
             if (e.target.closest('[data-close]')) closeModal(editModal);
         });
@@ -313,6 +320,76 @@
             btn.insertAdjacentHTML('afterend', '<span class="ld-field-error">' + esc(err.message || 'Could not revoke the token.') + '</span>');
         }
     });
+
+    function openOauth(button) {
+        if (!oauthModal) return;
+        const form = document.getElementById('oauth-edit');
+        const scopes = JSON.parse(button.dataset.oauthScopes || '[]');
+        form.dataset.id = button.dataset.oauthEdit;
+        form.dataset.scopes = JSON.stringify(scopes);
+        const checks = checksFor(scopes);
+        const preset = checks.all || checks.read || checks.reddit || checks.money || checks.todos || checks.spotify
+            || checks.system_read || checks.system_deploy || checks.spotify_playback;
+        form.dataset.preset = preset ? '1' : '0';
+        form.dataset.touched = '0';
+        form.elements.name.value = button.dataset.oauthName || '';
+        form.querySelectorAll('[data-access]').forEach((box) => {
+            box.checked = checks[box.value] === true;
+        });
+        form.elements.system_read.checked = checks.system_read;
+        form.elements.system_deploy.checked = checks.system_deploy;
+        if (form.elements.spotify_playback) form.elements.spotify_playback.checked = checks.spotify_playback === true;
+        const current = scopes.length ? scopes.join(' ') : 'none';
+        document.getElementById('oauth-edit-current').textContent = button.dataset.oauthLimited === '1'
+            ? 'Current scopes: ' + current
+            : 'Not limited yet. Saving sets the scopes this client may use. Current grant: ' + current;
+        document.getElementById('oauth-edit-error').textContent = '';
+        document.getElementById('oauth-revoke').action = '/settings/oauth/' + button.dataset.oauthEdit + '/revoke';
+        openModal(oauthModal);
+        form.elements.name.focus();
+    }
+
+    const oauthList = document.getElementById('oauth-clients');
+    if (oauthList) {
+        oauthList.addEventListener('click', (e) => {
+            const button = e.target.closest('[data-oauth-edit]');
+            if (button) openOauth(button);
+        });
+    }
+
+    if (oauthModal) {
+        bindExclusive(oauthModal);
+        oauthModal.querySelectorAll('[data-access], input[name="spotify_playback"], input[name="system_read"], input[name="system_deploy"]').forEach((box) => {
+            box.addEventListener('change', () => {
+                document.getElementById('oauth-edit').dataset.touched = '1';
+            });
+        });
+        oauthModal.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close]')) closeModal(oauthModal);
+        });
+        document.getElementById('oauth-edit').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const errEl = document.getElementById('oauth-edit-error');
+            const submit = form.querySelector('button[type="submit"]');
+            errEl.textContent = '';
+            submit.disabled = true;
+            try {
+                let scopes = scopesFromEdit(form);
+                if (scopes.length === 0 && form.dataset.preset === '0' && form.dataset.touched !== '1') {
+                    scopes = JSON.parse(form.dataset.scopes || '[]');
+                }
+                await api.post('/oauth/clients/' + form.dataset.id + '/update', {
+                    name: form.elements.name.value,
+                    scopes: scopes,
+                });
+                window.location.assign('/settings/agents');
+            } catch (err) {
+                errEl.textContent = err.message || 'Could not save the client.';
+                submit.disabled = false;
+            }
+        });
+    }
 
     document.getElementById('agent-copy-prompt').addEventListener('click', async () => {
         await navigator.clipboard.writeText(document.getElementById('agent-prompt').value);
