@@ -115,6 +115,7 @@ require __DIR__ . '/_shell-top.php';
                 <p class="text-muted text-sm mt-1">
                     Claude custom connectors register here and ask you to allow scopes.
                     Existing bearer tokens on this page are unchanged.
+                    An admin can rename a client and change its scopes. The change applies on the next request, including tokens the client already has. A refresh cannot add a scope back.
                     Revoke cuts off that client and its refresh tokens.
                 </p>
                 <?php $oauthClients = $oauthClients ?? []; ?>
@@ -123,10 +124,15 @@ require __DIR__ . '/_shell-top.php';
                 <?php else: ?>
                 <ul class="mt-3 space-y-3">
                     <?php foreach ($oauthClients as $client): ?>
+                    <?php
+                    $cap = $client['allowed_scopes'] ?? null;
+                    $limited = is_array($cap);
+                    $shownScopes = $limited ? $cap : ($client['granted_scopes'] ?? []);
+                    ?>
                     <li class="flex flex-wrap items-start justify-between gap-3">
                         <div>
                             <div class="text-primary text-sm"><?= e((string) $client['client_name']) ?></div>
-                            <div class="mono text-xs text-muted mt-1"><?= e(implode(' ', $client['granted_scopes'] ?? [])) ?></div>
+                            <div class="mono text-xs text-muted mt-1"><?= e(implode(' ', $shownScopes)) ?></div>
                             <div class="text-xs text-muted mt-1">
                                 Last used
                                 <?php if (!empty($client['last_used_at'])): ?>
@@ -141,10 +147,15 @@ require __DIR__ . '/_shell-top.php';
                                 }) ?>
                             </div>
                         </div>
-                        <form method="POST" action="/settings/oauth/<?= (int) $client['id'] ?>/revoke">
-                            <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
-                            <button type="submit" class="btn text-xs">Revoke</button>
-                        </form>
+                        <div class="flex flex-wrap gap-2">
+                            <?php if ((int) ($user['is_admin'] ?? 0) === 1): ?>
+                            <button type="button" class="btn text-xs" data-oauth-edit="<?= (int) $client['id'] ?>" data-oauth-name="<?= e((string) $client['client_name']) ?>" data-oauth-scopes="<?= e(json_encode(array_values($shownScopes), JSON_THROW_ON_ERROR)) ?>" data-oauth-limited="<?= $limited ? '1' : '0' ?>">Edit</button>
+                            <?php endif; ?>
+                            <form method="POST" action="/settings/oauth/<?= (int) $client['id'] ?>/revoke">
+                                <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
+                                <button type="submit" class="btn text-xs">Revoke</button>
+                            </form>
+                        </div>
                     </li>
                     <?php endforeach; ?>
                 </ul>
@@ -213,6 +224,44 @@ require __DIR__ . '/_shell-top.php';
             </div>
 
             <?php if ((int) ($user['is_admin'] ?? 0) === 1): ?>
+            <div id="oauth-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="oauth-edit-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h3 id="oauth-edit-title" class="section-title text-sm">Edit OAuth client</h3>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <p class="text-muted text-sm">The client id does not change. Scope changes apply on the next request, including tokens this client already has.</p>
+                    <form id="oauth-edit" class="space-y-3 mt-3">
+                        <label class="block ld-field">
+                            <span>Name</span>
+                            <input name="name" class="input w-full" required maxlength="120" autocomplete="off">
+                        </label>
+                        <fieldset class="space-y-1">
+                            <legend class="text-sm text-primary mb-1">Access</legend>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="all"> Read and write</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="read"> Read only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="reddit"> Reddit only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="money"> Money only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="todos"> Todos only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="spotify"> Spotify only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="spotify_playback" value="1"> <span class="mono">spotify:playback</span></label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_read" value="1"> <span class="mono">system:read</span></label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_deploy" value="1"> <span class="mono">system:deploy</span></label>
+                        </fieldset>
+                        <p id="oauth-edit-current" class="text-muted text-xs mono"></p>
+                        <p id="oauth-edit-error" class="ld-field-error" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Save</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                    <form id="oauth-revoke" method="POST" action="/settings/oauth/0/revoke" class="mt-3">
+                        <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
+                        <button type="submit" class="btn text-sm">Revoke</button>
+                    </form>
+                </div>
+            </div>
             <div id="agent-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="agent-edit-title">
                 <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
                 <div class="app-modal-panel surface">

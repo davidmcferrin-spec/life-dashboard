@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Dashboard\Auth;
 
+use Dashboard\Api\V1\Scope;
+use Dashboard\Support\ForbiddenException;
+use Dashboard\Support\NotFoundException;
+use Dashboard\Support\ValidationException;
+
 /**
  * Authorization code + PKCE for the MCP connector. Tokens are hashed before
  * they are stored. A refresh token rotates on every use, and presenting the
@@ -69,6 +74,7 @@ final class OAuthService
             'redirect_uris' => $clean,
             'registered_scopes' => $scopes,
             'granted_scopes' => [],
+            'allowed_scopes' => null,
             'last_used_at' => null,
             'revoked_at' => null,
             'created_at' => $now,
@@ -112,8 +118,13 @@ final class OAuthService
         if (!$admin) {
             $requested = array_values(array_filter(
                 $requested,
-                static fn (string $scope): bool => !in_array($scope, \Dashboard\Api\V1\Scope::EXPLICIT, true)
+                static fn (string $scope): bool => !in_array($scope, Scope::EXPLICIT, true)
             ));
+        }
+        $allowed = self::allowedOf($client);
+        $requested = OAuthRules::capRequest($requested, $allowed);
+        if ($allowed !== null && $requested === []) {
+            throw new OAuthException('invalid_scope', 'This client is not allowed to request that scope.', toClient: true);
         }
         try {
             $offered = OAuthRules::grantScopes($client['registered_scopes'], $requested, $requested, $admin);
@@ -167,6 +178,9 @@ final class OAuthService
             throw new OAuthException('invalid_request', 'This client is already linked to another account.');
         }
         $requested = is_array($request['requested'] ?? null) ? $request['requested'] : [];
+        $allowed = self::allowedOf($client);
+        $requested = OAuthRules::capRequest($requested, $allowed);
+        $selected = OAuthRules::capRequest($selected, $allowed);
         $scopes = OAuthRules::grantScopes($client['registered_scopes'], $requested, $selected, $admin);
         $now = $this->now();
         $this->store->bindClient((int) $client['id'], $userId, $scopes, $now);
@@ -248,11 +262,55 @@ final class OAuthService
             $now,
             \Dashboard\Mcp\PlainHttp::inbound($_SERVER)
         );
+        // Intersect on every call so a narrower cap applies before the access token expires.
+        $scopes = OAuthRules::effectiveScopes($row['scopes'], self::allowedOf($row));
         return [
             'user_id' => (int) $row['user_id'],
-            'scopes' => $row['scopes'],
+            'scopes' => $scopes,
             'id' => (int) $row['id'],
             'name' => (string) $row['client_name'],
+        ];
+    }
+
+    /**
+     * @param list<string> $scopes
+     * @return array{token: array<string, mixed>, previous_name: string, previous_scopes: list<string>}
+     */
+    public function updateClient(int $userId, int $id, string $name, array $scopes, bool $admin): array
+    {
+        if (!$admin) {
+            throw new ForbiddenException('Only an admin can edit an OAuth client.');
+        }
+        $name = trim($name);
+        if ($name === '' || mb_strlen($name) > 120) {
+            throw ValidationException::withFields(['name' => 'Name must be 1–120 characters.']);
+        }
+        $scopes = Scope::normalize($scopes);
+        ApiTokenService::assertAssignable($scopes, true);
+        $client = $this->store->findClientById($id);
+        if ($client === null || (int) ($client['user_id'] ?? 0) !== $userId) {
+            throw new NotFoundException('OAuth client not found.');
+        }
+        if ($client['revoked_at'] !== null) {
+            throw new ValidationException('A revoked OAuth client cannot be edited.');
+        }
+        $previousName = (string) $client['client_name'];
+        $previous = self::allowedOf($client);
+        $previousScopes = $previous ?? (is_array($client['granted_scopes'] ?? null) ? $client['granted_scopes'] : []);
+        if (!$this->store->saveClient($id, $userId, $name, $scopes)) {
+            throw new ValidationException('A revoked OAuth client cannot be edited.');
+        }
+        foreach ($this->store->liveTokenScopes($id) as $token) {
+            $this->store->setTokenScopes((int) $token['id'], OAuthRules::effectiveScopes($token['scopes'], $scopes));
+        }
+        return [
+            'token' => [
+                'id' => $id,
+                'name' => $name,
+                'scopes' => $scopes,
+            ],
+            'previous_name' => $previousName,
+            'previous_scopes' => $previousScopes,
         ];
     }
 
@@ -298,7 +356,11 @@ final class OAuthService
         if ($resource !== '' && $expected !== '' && !hash_equals($expected, $resource)) {
             throw new OAuthException('invalid_target', 'resource does not match the authorization request.');
         }
-        return $this->issue((int) $code['user_id'], $client, $code['scopes']);
+        $scopes = OAuthRules::effectiveScopes($code['scopes'], self::allowedOf($client));
+        if ($scopes === []) {
+            throw new OAuthException('invalid_scope', 'This client is not allowed any of the granted scopes.');
+        }
+        return $this->issue((int) $code['user_id'], $client, $scopes);
     }
 
     /**
@@ -324,15 +386,9 @@ final class OAuthService
         if ((string) $row['client_public_id'] !== (string) $client['client_id'] || !$this->tokenLive($row, true)) {
             throw new OAuthException('invalid_grant', 'Refresh token is invalid, expired, or already used.');
         }
-        $scopes = $row['scopes'];
-        $narrow = OAuthRules::parseScope((string) ($form['scope'] ?? ''));
-        if ($narrow !== []) {
-            foreach ($narrow as $scope) {
-                if (!in_array($scope, $scopes, true)) {
-                    throw new OAuthException('invalid_scope', 'Refresh cannot add a scope that was not granted.');
-                }
-            }
-            $scopes = $narrow;
+        $scopes = OAuthRules::refreshScopes($row['scopes'], self::allowedOf($client), OAuthRules::parseScope((string) ($form['scope'] ?? '')));
+        if ($scopes === []) {
+            throw new OAuthException('invalid_scope', 'This client is not allowed any of the granted scopes.');
         }
         $issued = $this->mint((int) $row['user_id'], $client, $scopes);
         $this->store->rotateToken(
@@ -472,5 +528,15 @@ final class OAuthService
     private function now(): int
     {
         return $this->clock !== null ? (int) ($this->clock)() : time();
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return list<string>|null
+     */
+    private static function allowedOf(array $row): ?array
+    {
+        $allowed = $row['allowed_scopes'] ?? null;
+        return is_array($allowed) ? $allowed : null;
     }
 }

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\Auth\OAuthClientEndpoint;
+use Dashboard\Auth\OAuthService;
+use Dashboard\Auth\PgOAuthStore;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Pantry\MealBuilder;
 use Dashboard\Mcp\AgentPrompt;
@@ -108,6 +111,17 @@ final class ExtendedApi
                 throw ValidationException::withFields(['body' => 'Delete takes no fields.']);
             }
             return $this->svc->tokens->delete($u, self::id($p));
+        }, 200, true));
+        $r->post('/api/v1/oauth/clients/{id}/update', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $admin = (int) $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$u]) === 1;
+            $endpoint = new OAuthClientEndpoint(new OAuthService(new PgOAuthStore($this->svc->db)));
+            $endpoint->authorize(
+                $_SERVER,
+                ['id' => $u, 'is_admin' => $admin ? 1 : 0],
+                function_exists('requestCsrfToken') ? requestCsrfToken() : '',
+                (string) ($_SESSION['csrf_token'] ?? '')
+            );
+            return $endpoint->update($u, $admin, self::id($p), $this->runner->body());
         }, 200, true));
 
         $r->get('/api/v1/audit/presence', fn () => $this->run(function (int $u): array {

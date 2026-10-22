@@ -60,6 +60,43 @@ final class MemoryOAuthStore implements OAuthStore
         }
     }
 
+    public function findClientById(int $id): ?array
+    {
+        return $this->clients[$id] ?? null;
+    }
+
+    public function saveClient(int $id, int $userId, string $name, array $allowed): bool
+    {
+        $client = $this->clients[$id] ?? null;
+        if ($client === null || (int) ($client['user_id'] ?? 0) !== $userId || $client['revoked_at'] !== null) {
+            return false;
+        }
+        $this->clients[$id]['client_name'] = $name;
+        $this->clients[$id]['allowed_scopes'] = $allowed;
+        return true;
+    }
+
+    public function liveTokenScopes(int $clientId): array
+    {
+        $out = [];
+        foreach ($this->tokens as $token) {
+            if ((int) $token['client_row_id'] === $clientId && $token['revoked_at'] === null) {
+                $out[] = [
+                    'id' => (int) $token['id'],
+                    'scopes' => $token['scopes'],
+                ];
+            }
+        }
+        return $out;
+    }
+
+    public function setTokenScopes(int $id, array $scopes): void
+    {
+        if (isset($this->tokens[$id])) {
+            $this->tokens[$id]['scopes'] = $scopes;
+        }
+    }
+
     public function revokeClient(int $id, int $userId, int $now): bool
     {
         $client = $this->clients[$id] ?? null;
@@ -206,6 +243,8 @@ final class MemoryOAuthStore implements OAuthStore
         $token['client_public_id'] = $client['client_id'] ?? '';
         $token['client_name'] = $client['client_name'] ?? '';
         $token['client_revoked_at'] = $client['revoked_at'] ?? null;
+        $allowed = $client['allowed_scopes'] ?? null;
+        $token['allowed_scopes'] = is_array($allowed) ? $allowed : null;
         return $token;
     }
 }

@@ -135,6 +135,98 @@ final class OAuthRules
     }
 
     /**
+     * A stored token scope stays only when the client's cap still covers it.
+     *
+     * @param list<string> $allowed
+     */
+    public static function withinAllowed(string $scope, array $allowed): bool
+    {
+        $scope = strtolower(trim($scope));
+        if (in_array($scope, $allowed, true)) {
+            return true;
+        }
+        // Read and write is stored as "*". It does not include system scopes.
+        if (in_array('*', $allowed, true) && !in_array($scope, Scope::EXPLICIT, true)) {
+            return true;
+        }
+        if (str_ends_with($scope, ':read')) {
+            $write = substr($scope, 0, -5) . ':write';
+            if (in_array($write, $allowed, true)) {
+                return true;
+            }
+        }
+        if ($scope === 'spotify:read' && in_array('spotify:playback', $allowed, true)) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Null means the client has not been edited.
+     *
+     * @param list<string> $tokenScopes
+     * @param list<string>|null $allowed
+     * @return list<string>
+     */
+    public static function effectiveScopes(array $tokenScopes, ?array $allowed): array
+    {
+        if ($allowed === null) {
+            return array_values($tokenScopes);
+        }
+        $out = [];
+        foreach ($tokenScopes as $scope) {
+            if (self::withinAllowed($scope, $allowed)) {
+                $out[] = $scope;
+            }
+        }
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Refresh may only shrink what the token is still allowed to keep.
+     *
+     * @param list<string> $tokenScopes
+     * @param list<string>|null $allowed
+     * @param list<string> $requested
+     * @return list<string>
+     */
+    public static function refreshScopes(array $tokenScopes, ?array $allowed, array $requested): array
+    {
+        $current = self::effectiveScopes($tokenScopes, $allowed);
+        if ($requested === []) {
+            return $current;
+        }
+        foreach ($requested as $scope) {
+            if (!in_array($scope, $current, true)) {
+                throw new OAuthException('invalid_scope', 'Refresh cannot add a scope that was not granted.');
+            }
+        }
+        return array_values(array_unique($requested));
+    }
+
+    /**
+     * @param list<string> $requested
+     * @param list<string>|null $allowed
+     * @return list<string>
+     */
+    public static function capRequest(array $requested, ?array $allowed): array
+    {
+        if ($allowed === null) {
+            return array_values($requested);
+        }
+        $out = [];
+        foreach ($requested as $scope) {
+            if (!is_string($scope) || $scope === '') {
+                continue;
+            }
+            if (self::withinAllowed($scope, $allowed)) {
+                $out[] = $scope;
+            }
+        }
+        return $out;
+    }
+
+    /**
      * @return list<string>
      */
     public static function known(bool $admin): array

@@ -58,6 +58,45 @@ final class PgOAuthStore implements OAuthStore
         );
     }
 
+    public function findClientById(int $id): ?array
+    {
+        $row = $this->db->fetchOne('SELECT * FROM oauth_clients WHERE id = ?', [$id]);
+        return $row === null ? null : $this->client($row);
+    }
+
+    public function saveClient(int $id, int $userId, string $name, array $allowed): bool
+    {
+        $written = $this->db->execute(
+            'UPDATE oauth_clients SET client_name = ?, allowed_scopes = ?::jsonb WHERE id = ? AND user_id = ? AND revoked_at IS NULL',
+            [$name, self::json($allowed), $id, $userId]
+        );
+        return $written > 0;
+    }
+
+    public function liveTokenScopes(int $clientId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT id, scopes FROM oauth_tokens WHERE client_id = ? AND revoked_at IS NULL',
+            [$clientId]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'id' => (int) $row['id'],
+                'scopes' => self::list($row['scopes']),
+            ];
+        }
+        return $out;
+    }
+
+    public function setTokenScopes(int $id, array $scopes): void
+    {
+        $this->db->execute(
+            'UPDATE oauth_tokens SET scopes = ?::jsonb WHERE id = ? AND revoked_at IS NULL',
+            [self::json($scopes), $id]
+        );
+    }
+
     public function revokeClient(int $id, int $userId, int $now): bool
     {
         $written = $this->db->execute(
@@ -156,7 +195,8 @@ final class PgOAuthStore implements OAuthStore
     {
         $sql = 'SELECT t.id, t.user_id, t.client_id, t.token_hash, t.refresh_hash, t.previous_refresh_hash,
                     t.scopes, t.access_expires_at, t.refresh_expires_at, t.revoked_at,
-                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at
+                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at,
+                    c.allowed_scopes
              FROM oauth_tokens t
              JOIN oauth_clients c ON c.id = t.client_id
              WHERE t.token_hash = ?';
@@ -168,7 +208,8 @@ final class PgOAuthStore implements OAuthStore
     {
         $sql = 'SELECT t.id, t.user_id, t.client_id, t.token_hash, t.refresh_hash, t.previous_refresh_hash,
                     t.scopes, t.access_expires_at, t.refresh_expires_at, t.revoked_at,
-                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at
+                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at,
+                    c.allowed_scopes
              FROM oauth_tokens t
              JOIN oauth_clients c ON c.id = t.client_id
              WHERE t.refresh_hash = ?';
@@ -180,7 +221,8 @@ final class PgOAuthStore implements OAuthStore
     {
         $sql = 'SELECT t.id, t.user_id, t.client_id, t.token_hash, t.refresh_hash, t.previous_refresh_hash,
                     t.scopes, t.access_expires_at, t.refresh_expires_at, t.revoked_at,
-                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at
+                    c.client_id AS public_client_id, c.client_name, c.revoked_at AS client_revoked_at,
+                    c.allowed_scopes
              FROM oauth_tokens t
              JOIN oauth_clients c ON c.id = t.client_id
              WHERE t.previous_refresh_hash = ?';
@@ -261,6 +303,7 @@ final class PgOAuthStore implements OAuthStore
             'client_public_id' => (string) $row['public_client_id'],
             'client_name' => (string) $row['client_name'],
             'client_revoked_at' => $row['client_revoked_at'] !== null ? self::unix($row['client_revoked_at']) : null,
+            'allowed_scopes' => self::scopeCap($row['allowed_scopes'] ?? null),
         ];
     }
 
@@ -278,6 +321,7 @@ final class PgOAuthStore implements OAuthStore
             'redirect_uris' => self::list($row['redirect_uris']),
             'registered_scopes' => self::list($row['registered_scopes']),
             'granted_scopes' => self::list($row['granted_scopes']),
+            'allowed_scopes' => self::scopeCap($row['allowed_scopes'] ?? null),
             'last_used_at' => $row['last_used_at'] !== null ? self::unix($row['last_used_at']) : null,
             'last_transport' => ($row['last_transport'] ?? null) === 'http' || ($row['last_transport'] ?? null) === 'https'
                 ? (string) $row['last_transport']
@@ -290,6 +334,19 @@ final class PgOAuthStore implements OAuthStore
     private static function json(mixed $value): string
     {
         return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * NULL is an unedited client. An array is the cap saved from Agents.
+     *
+     * @return list<string>|null
+     */
+    private static function scopeCap(mixed $value): ?array
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return self::list($value);
     }
 
     /**

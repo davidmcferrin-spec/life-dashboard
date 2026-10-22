@@ -123,10 +123,11 @@ final class Scope
         return $area . ($write ? ':write' : ':read');
     }
 
-    /** Token minting and revocation stay on the browser session. */
+    /** Token and OAuth client edits stay on the browser session. */
     public static function sessionOnly(string $path): bool
     {
-        return str_contains($path, '/api/v1/tokens');
+        return str_contains($path, '/api/v1/tokens')
+            || str_contains($path, '/api/v1/oauth/clients');
     }
 
     /**

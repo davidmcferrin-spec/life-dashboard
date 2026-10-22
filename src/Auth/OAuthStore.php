@@ -26,6 +26,26 @@ interface OAuthStore
     public function revokeClient(int $id, int $userId, int $now): bool;
 
     /**
+     * @return array<string, mixed>|null
+     */
+    public function findClientById(int $id): ?array;
+
+    /**
+     * @param list<string> $allowed
+     */
+    public function saveClient(int $id, int $userId, string $name, array $allowed): bool;
+
+    /**
+     * @return list<array{id: int, scopes: list<string>}>
+     */
+    public function liveTokenScopes(int $clientId): array;
+
+    /**
+     * @param list<string> $scopes
+     */
+    public function setTokenScopes(int $id, array $scopes): void;
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function listClients(int $userId): array;

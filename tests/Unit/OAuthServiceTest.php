@@ -274,6 +274,176 @@ final class OAuthServiceTest extends TestCase
         }
     }
 
+    public function testEditedClientNarrowsLiveTokensAndCapsConsent(): void
+    {
+        $svc = $this->service();
+        $client = $svc->register([
+            'client_name' => 'Claude',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+            'scope' => 'pantry:read pantry:write spotify:read spotify:write spotify:playback',
+        ], '203.0.113.60');
+        $stored = $this->storeOf($svc)->findClient($client['client_id']);
+        self::assertNotNull($stored);
+        self::assertNull($stored['allowed_scopes']);
+
+        $tokens = $this->issuedScopes(
+            $svc,
+            $client['client_id'],
+            ['pantry:read', 'pantry:write', 'spotify:read', 'spotify:write', 'spotify:playback']
+        );
+        $before = $svc->authenticate($tokens['access_token']);
+        self::assertNotNull($before);
+        self::assertTrue(Scope::allows($before['scopes'], 'pantry:write'));
+        self::assertTrue(Scope::allows($before['scopes'], 'spotify:playback'));
+
+        $wide = $svc->prepare([
+            'response_type' => 'code',
+            'client_id' => $client['client_id'],
+            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'code_challenge' => OAuthRules::s256($this->verifier()),
+            'code_challenge_method' => 'S256',
+            'scope' => 'pantry:read pantry:write spotify:playback',
+            'resource' => 'https://mcp.example.com/mcp',
+        ], '203.0.113.61', false);
+        self::assertSame(['pantry:read', 'pantry:write', 'spotify:playback'], $wide['offered']);
+
+        try {
+            $svc->updateClient(7, (int) $stored['id'], 'Household', ['pantry:read'], false);
+            self::fail('a non-admin cannot edit a client');
+        } catch (ForbiddenException $e) {
+            self::assertSame('Only an admin can edit an OAuth client.', $e->getMessage());
+        }
+
+        $edited = $svc->updateClient(
+            7,
+            (int) $stored['id'],
+            'Household',
+            ['pantry:read', 'spotify:read', 'spotify:write'],
+            true
+        );
+        self::assertSame('Claude', $edited['previous_name']);
+        self::assertSame(
+            ['pantry:read', 'pantry:write', 'spotify:read', 'spotify:write', 'spotify:playback'],
+            $edited['previous_scopes']
+        );
+        self::assertSame('Household', $edited['token']['name']);
+        self::assertSame(['pantry:read', 'spotify:read', 'spotify:write'], $edited['token']['scopes']);
+        $detail = \Dashboard\Api\V1\ApiRunner::tokenChangeDetail($edited);
+        self::assertSame((int) $stored['id'], $detail['token_id']);
+        self::assertSame('Household', $detail['token_name']);
+        self::assertSame(['pantry:read', 'spotify:read', 'spotify:write'], $detail['scopes']);
+        self::assertSame('Claude', $detail['previous_name']);
+        self::assertTrue(\Dashboard\Api\V1\ApiRunner::auditsCredentialChange('/api/v1/oauth/clients/' . $stored['id'] . '/update'));
+
+        $access = $svc->authenticate($tokens['access_token']);
+        self::assertNotNull($access);
+        self::assertSame('Household', $access['name']);
+        self::assertSame(['pantry:read', 'spotify:read', 'spotify:write'], $access['scopes']);
+        self::assertFalse(Scope::allows($access['scopes'], 'pantry:write'));
+        self::assertFalse(Scope::allows($access['scopes'], 'spotify:playback'));
+        self::assertTrue(Scope::allows($access['scopes'], 'spotify:read'));
+        $row = $this->storeOf($svc)->findAccess(hash('sha256', $tokens['access_token']));
+        self::assertNotNull($row);
+        self::assertSame(['pantry:read', 'spotify:read', 'spotify:write'], $row['scopes']);
+
+        $kept = $svc->token([
+            'grant_type' => 'refresh_token',
+            'client_id' => $client['client_id'],
+            'refresh_token' => $tokens['refresh_token'],
+        ], '203.0.113.62');
+        self::assertSame('pantry:read spotify:read spotify:write', $kept['scope']);
+        $narrowed = $svc->authenticate($kept['access_token']);
+        self::assertNotNull($narrowed);
+        self::assertFalse(Scope::allows($narrowed['scopes'], 'pantry:write'));
+        self::assertFalse(Scope::allows($narrowed['scopes'], 'spotify:playback'));
+
+        try {
+            $svc->token([
+                'grant_type' => 'refresh_token',
+                'client_id' => $client['client_id'],
+                'refresh_token' => $kept['refresh_token'],
+                'scope' => 'pantry:read pantry:write',
+            ], '203.0.113.63');
+            self::fail('refresh must not restore a removed scope');
+        } catch (OAuthException $e) {
+            self::assertSame('invalid_scope', $e->error);
+        }
+        try {
+            $svc->token([
+                'grant_type' => 'refresh_token',
+                'client_id' => $client['client_id'],
+                'refresh_token' => $kept['refresh_token'],
+                'scope' => 'spotify:playback',
+            ], '203.0.113.64');
+            self::fail('refresh must not restore playback');
+        } catch (OAuthException $e) {
+            self::assertSame('invalid_scope', $e->error);
+        }
+        $still = $svc->authenticate($kept['access_token']);
+        self::assertNotNull($still);
+        self::assertFalse(Scope::allows($still['scopes'], 'spotify:playback'));
+
+        $capped = $svc->prepare([
+            'response_type' => 'code',
+            'client_id' => $client['client_id'],
+            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'code_challenge' => OAuthRules::s256($this->verifier()),
+            'code_challenge_method' => 'S256',
+            'scope' => 'pantry:read pantry:write spotify:read spotify:playback',
+            'resource' => 'https://mcp.example.com/mcp',
+        ], '203.0.113.65', false);
+        self::assertSame(['pantry:read', 'spotify:read'], $capped['offered']);
+        try {
+            $svc->grant(7, false, $capped['request'], ['pantry:write', 'spotify:playback']);
+            self::fail('consent cannot select a scope outside the cap');
+        } catch (OAuthException $e) {
+            self::assertSame('invalid_scope', $e->error);
+        }
+
+        try {
+            $svc->prepare([
+                'response_type' => 'code',
+                'client_id' => $client['client_id'],
+                'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+                'code_challenge' => OAuthRules::s256($this->verifier()),
+                'code_challenge_method' => 'S256',
+                'scope' => 'spotify:playback',
+                'resource' => 'https://mcp.example.com/mcp',
+            ], '203.0.113.66', false);
+            self::fail('a request for only a removed scope must fail');
+        } catch (OAuthException $e) {
+            self::assertSame('invalid_scope', $e->error);
+        }
+
+        $fresh = $svc->register([
+            'client_name' => 'New connector',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+            'scope' => 'pantry:read pantry:write',
+        ], '203.0.113.67');
+        self::assertNull($this->storeOf($svc)->findClient($fresh['client_id'])['allowed_scopes']);
+        $open = $svc->prepare([
+            'response_type' => 'code',
+            'client_id' => $fresh['client_id'],
+            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'code_challenge' => OAuthRules::s256($this->verifier()),
+            'code_challenge_method' => 'S256',
+            'scope' => 'pantry:read pantry:write',
+            'resource' => 'https://mcp.example.com/mcp',
+        ], '203.0.113.68', false);
+        self::assertSame(['pantry:read', 'pantry:write'], $open['offered']);
+
+        $listed = $svc->listClients(7);
+        self::assertSame('Household', $listed[0]['client_name']);
+        self::assertSame(['pantry:read', 'spotify:read', 'spotify:write'], $listed[0]['allowed_scopes']);
+        self::assertTrue($svc->revokeClient(7, (int) $stored['id']));
+        try {
+            $svc->updateClient(7, (int) $stored['id'], 'Household', ['pantry:read'], true);
+            self::fail('a revoked client cannot be edited');
+        } catch (\Dashboard\Support\NotFoundException | \Dashboard\Support\ValidationException $e) {
+            self::assertNotSame('', $e->getMessage());
+        }
+    }
+
     public function testClientRecordsTransportOnlyFromLoopback(): void
     {
         $svc = $this->service();
@@ -372,5 +542,32 @@ final class OAuthServiceTest extends TestCase
             'redirect_uri' => $redirect,
             'code_verifier' => $this->verifier(),
         ], '203.0.113.' . (($this->now + 1) % 200));
+    }
+
+    /**
+     * @param list<string> $scopes
+     * @return array<string, mixed>
+     */
+    private function issuedScopes(OAuthService $svc, string $clientId, array $scopes): array
+    {
+        $redirect = 'https://claude.ai/api/mcp/auth_callback';
+        $prepared = $svc->prepare([
+            'response_type' => 'code',
+            'client_id' => $clientId,
+            'redirect_uri' => $redirect,
+            'code_challenge' => OAuthRules::s256($this->verifier()),
+            'code_challenge_method' => 'S256',
+            'scope' => implode(' ', $scopes),
+            'resource' => 'https://mcp.example.com/mcp',
+        ], '203.0.113.70', false);
+        $redirectTo = $svc->grant(7, false, $prepared['request'], $scopes);
+        parse_str((string) parse_url($redirectTo, PHP_URL_QUERY), $query);
+        return $svc->token([
+            'grant_type' => 'authorization_code',
+            'client_id' => $clientId,
+            'code' => $query['code'],
+            'redirect_uri' => $redirect,
+            'code_verifier' => $this->verifier(),
+        ], '203.0.113.71');
     }
 }
