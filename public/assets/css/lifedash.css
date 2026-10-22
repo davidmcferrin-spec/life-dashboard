@@ -610,7 +610,42 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
 .brain-kind-project { background: var(--warn); }
 .brain-kind-reference { background: #b894ff; }
 .brain-revs { list-style: none; padding: 0; margin: 0; }
-.brain-revs button { background: none; border: 0; color: var(--accent); }
+.brain-revs button { background: none; border: 0; color: var(--accent); cursor: pointer; }
+.brain-revs button.is-active { text-decoration: underline; }
+.brain-redline-toggle {
+    align-items: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    font-size: 0.75rem;
+    gap: 0.35rem;
+    margin: 0.35rem 0 0.15rem;
+}
+.brain-rev-actions { display: flex; gap: 0.6rem; margin: 0.15rem 0 0.35rem; }
+.brain-rev-actions button { background: none; border: 0; color: var(--accent); cursor: pointer; font-size: 0.75rem; padding: 0; }
+.brain-redline {
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
+    border: 1px solid var(--surface-border);
+    border-radius: 0.6rem;
+    color: var(--text-primary);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin: 0;
+    min-height: 12rem;
+    overflow: auto;
+    padding: 0.75rem;
+    white-space: pre-wrap;
+}
+.brain-redline[hidden] { display: none !important; }
+.brain-redline del { color: #b42318; text-decoration: line-through; }
+.brain-redline ins { color: #067647; text-decoration: underline; }
+html[data-theme="dark"] .brain-redline del,
+html[data-theme="jarvis"] .brain-redline del { color: #ff8a80; }
+html[data-theme="dark"] .brain-redline ins,
+html[data-theme="jarvis"] .brain-redline ins { color: #7dffa1; }
+.brain-stage.is-redline .brain-title,
+.brain-stage.is-redline .brain-split { display: none; }
 
 button.nav-link { background: transparent; border: 0; cursor: pointer; font: inherit; }
 .brain-map-layer {

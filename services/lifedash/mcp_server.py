@@ -377,6 +377,19 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "page_version_diff",
+        "description": "Read one vault revision against the current page. Returns additions, deletions, and escaped HTML using ins and del. Requires pages:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "version": {"type": "integer"},
+            },
+            "required": ["page_id", "version"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "write_page",
         "description": "Create a vault page, or update it when page_id is set. Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026) places it. folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update.",
         "inputSchema": {
@@ -1858,6 +1871,8 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/pages" + suffix, None
     if name == "get_page":
         return "GET", f"/api/v1/pages/{int(args['page_id'])}", None
+    if name == "page_version_diff":
+        return "GET", f"/api/v1/pages/{int(args['page_id'])}/revisions/{int(args['version'])}", None
     if name == "write_page":
         body = {k: args[k] for k in ("title", "body", "kind", "folder_id", "folder") if k in args}
         if args.get("page_id"):
