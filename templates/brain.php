@@ -98,7 +98,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                 <input id="brain-spacing" type="range" min="0.7" max="1.8" step="0.05" value="1" aria-valuemin="0.7" aria-valuemax="1.8">
             </label>
             <label class="brain-zoom-label" for="brain-labels">Labels
-                <select id="brain-labels" aria-label="Label visibility">
+                <select id="brain-labels">
                     <option value="smart">Smart</option>
                     <option value="all">All</option>
                     <option value="none">None</option>
