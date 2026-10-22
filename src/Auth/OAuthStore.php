@@ -21,7 +21,7 @@ interface OAuthStore
      */
     public function bindClient(int $id, int $userId, array $granted, int $now): void;
 
-    public function touchClient(int $id, int $now): void;
+    public function touchClient(int $id, int $now, ?string $transport = null): void;
 
     public function revokeClient(int $id, int $userId, int $now): bool;
 

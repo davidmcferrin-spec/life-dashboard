@@ -188,7 +188,7 @@ final class SetupConfig
             ],
             'tunnel' => [
                 'label' => 'Tunnel',
-                'blurb' => 'Public hostnames. Leave MCP bind on all until existing bots use the tunnel.',
+                'blurb' => 'Public hostnames. Leave MCP bind on all until existing bots use the tunnel. MCP_ALLOW_PLAIN_HTTP in the server environment defaults to on. Settings → Agents can override it.',
                 'fields' => [
                     ['key' => 'PUBLIC_BASE_URL', 'label' => 'Dashboard URL', 'type' => 'url', 'placeholder' => 'https://dash.example.com'],
                     ['key' => 'MCP_PUBLIC_URL', 'label' => 'MCP URL', 'type' => 'url', 'placeholder' => 'https://mcp.example.com/mcp'],

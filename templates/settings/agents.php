@@ -6,6 +6,7 @@
  */
 
 use Dashboard\Config;
+use Dashboard\Mcp\PlainHttp;
 
 $mcpPublic = Config::maybe('MCP_PUBLIC_URL');
 $mcpPublic = is_string($mcpPublic) ? trim($mcpPublic) : '';
@@ -31,6 +32,41 @@ require __DIR__ . '/_shell-top.php';
                     Delete removes a revoked token. The audit log keeps its name.
                 </p>
             </header>
+
+            <?php
+            $plainHttp = $plainHttp ?? ['allowed' => true, 'source' => 'config', 'config' => true];
+            $plainAllowed = !empty($plainHttp['allowed']);
+            $plainSource = PlainHttp::sourceText(
+                $plainAllowed,
+                (string) ($plainHttp['source'] ?? 'config'),
+                !empty($plainHttp['config'])
+            );
+            ?>
+            <section class="surface p-4 mb-4" id="plain-http">
+                <h2 class="section-title">Plain HTTP</h2>
+                <p class="text-muted text-sm mt-1">
+                    Grok and other clients can keep using <span class="mono">http://&lt;lan-ip&gt;:8765/mcp</span> until this is off.
+                    Saving here overrides <span class="mono">MCP_ALLOW_PLAIN_HTTP</span> for every account on this server.
+                    A signed-in browser is required. An agent token cannot change it.
+                </p>
+                <form method="POST" action="/settings/agents/plain-http" class="mt-3 space-y-2">
+                    <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
+                    <label class="flex items-center gap-2 text-sm text-primary">
+                        <input type="checkbox" id="allow-plain-http" name="allow_plain_http" value="1"<?= $plainAllowed ? ' checked' : '' ?>>
+                        <span>Allow plain HTTP MCP access (LAN IP)</span>
+                    </label>
+                    <p id="plain-http-source" class="text-muted text-xs">Effective: <?= e($plainSource) ?></p>
+                    <p class="text-muted text-xs">
+                        Off rejects a direct <span class="mono">http://&lt;ip&gt;:8765</span> call with 403 and names
+                        <?= $mcpPublic !== '' ? '<span class="mono">' . e($mcpPublic) . '</span>' : 'the HTTPS URL (<span class="mono">MCP_PUBLIC_URL</span> is not set)' ?>.
+                        The listen address does not change, and lifedash-mcp does not need a restart.
+                        To close the LAN port as well, set <span class="mono">MCP_BIND=loopback</span> and run
+                        <span class="mono">sudo systemctl restart lifedash-mcp</span>.
+                        After that, a LAN client is refused before it can see the 403. The tunnel still dials <span class="mono">127.0.0.1:8765</span>.
+                    </p>
+                    <button type="submit" class="btn text-sm">Save</button>
+                </form>
+            </section>
 
             <form id="agent-create" class="surface p-4 space-y-3 mb-4">
                 <h2 class="section-title">New token</h2>
@@ -94,6 +130,11 @@ require __DIR__ . '/_shell-top.php';
                                 <?php else: ?>
                                     never
                                 <?php endif; ?>
+                                · <?= e(match ($client['last_transport'] ?? '') {
+                                    'https' => 'HTTPS',
+                                    'http' => 'HTTP',
+                                    default => 'not seen yet',
+                                }) ?>
                             </div>
                         </div>
                         <form method="POST" action="/settings/oauth/<?= (int) $client['id'] ?>/revoke">

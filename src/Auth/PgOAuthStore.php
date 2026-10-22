@@ -43,8 +43,15 @@ final class PgOAuthStore implements OAuthStore
         );
     }
 
-    public function touchClient(int $id, int $now): void
+    public function touchClient(int $id, int $now, ?string $transport = null): void
     {
+        if ($transport === 'http' || $transport === 'https') {
+            $this->db->execute(
+                'UPDATE oauth_clients SET last_used_at = ?, last_transport = ? WHERE id = ?',
+                [self::stamp($now), $transport, $id]
+            );
+            return;
+        }
         $this->db->execute(
             'UPDATE oauth_clients SET last_used_at = ? WHERE id = ?',
             [self::stamp($now), $id]
@@ -272,6 +279,9 @@ final class PgOAuthStore implements OAuthStore
             'registered_scopes' => self::list($row['registered_scopes']),
             'granted_scopes' => self::list($row['granted_scopes']),
             'last_used_at' => $row['last_used_at'] !== null ? self::unix($row['last_used_at']) : null,
+            'last_transport' => ($row['last_transport'] ?? null) === 'http' || ($row['last_transport'] ?? null) === 'https'
+                ? (string) $row['last_transport']
+                : null,
             'revoked_at' => $row['revoked_at'] !== null ? self::unix($row['revoked_at']) : null,
             'created_at' => self::unix($row['created_at']),
         ];

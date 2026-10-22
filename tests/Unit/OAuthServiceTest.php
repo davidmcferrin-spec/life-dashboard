@@ -11,6 +11,7 @@ use Dashboard\Auth\OAuthException;
 use Dashboard\Auth\OAuthRules;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Deploy\DeployService;
+use Dashboard\Mcp\PlainHttp;
 use PHPUnit\Framework\TestCase;
 
 final class OAuthServiceTest extends TestCase
@@ -220,6 +221,35 @@ final class OAuthServiceTest extends TestCase
             self::fail('resource must match MCP_PUBLIC_URL');
         } catch (OAuthException $e) {
             self::assertSame('invalid_target', $e->error);
+        }
+    }
+
+    public function testClientRecordsTransportOnlyFromLoopback(): void
+    {
+        $svc = $this->service();
+        $client = $svc->register([
+            'client_name' => 'Grok',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+        ], '203.0.113.40');
+        $tokens = $this->issued($svc, $client['client_id']);
+        $previous = $_SERVER;
+        try {
+            $_SERVER['REMOTE_ADDR'] = '10.1.1.8';
+            $_SERVER['HTTP_X_LIFEDASH_TRANSPORT'] = 'https';
+            self::assertNotNull($svc->authenticate($tokens['access_token']));
+            self::assertNull($svc->listClients(7)[0]['last_transport'] ?? null);
+
+            $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+            $_SERVER['HTTP_X_LIFEDASH_TRANSPORT'] = 'http';
+            self::assertNotNull($svc->authenticate($tokens['access_token']));
+            self::assertSame('http', $svc->listClients(7)[0]['last_transport']);
+
+            $_SERVER['HTTP_X_LIFEDASH_TRANSPORT'] = 'https';
+            self::assertNotNull($svc->authenticate($tokens['access_token']));
+            self::assertSame('https', $svc->listClients(7)[0]['last_transport']);
+            self::assertSame('https', PlainHttp::inbound($_SERVER));
+        } finally {
+            $_SERVER = $previous;
         }
     }
 

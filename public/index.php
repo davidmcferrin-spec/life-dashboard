@@ -1281,9 +1281,21 @@ $router->get('/brain/graph', function () use ($auth): void {
     require VIEWS_DIR . '/brain-graph.php';
 });
 
+$router->post('/settings/agents/plain-http', function () use ($auth, $db): void {
+    if (\Dashboard\Mcp\PlainHttp::changeBlocked($_SERVER, \Dashboard\Api\AgentAccess::currentUser() !== null)) {
+        jsonResponse(['error' => \Dashboard\Mcp\PlainHttp::CHANGE_DENIED], 403);
+    }
+    $user = $auth->requireAuth();
+    validateCsrf();
+    $allowed = (string) ($_POST['allow_plain_http'] ?? '') === '1';
+    (new \Dashboard\Mcp\PlainHttpSettings($db))->save($allowed, (int) $user['id']);
+    redirect('/settings/agents');
+});
+
 $router->get('/settings/agents', function () use ($auth, $db): void {
     $user = $auth->requireAuth();
     $oauthClients = (new \Dashboard\Auth\OAuthService(new \Dashboard\Auth\PgOAuthStore($db)))->listClients((int) $user['id']);
+    $plainHttp = (new \Dashboard\Mcp\PlainHttpSettings($db))->state();
     require VIEWS_DIR . '/settings/agents.php';
 });
 

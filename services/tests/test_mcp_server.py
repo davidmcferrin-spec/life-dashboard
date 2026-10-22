@@ -3,18 +3,26 @@ import threading
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest.mock import patch
 
 from lifedash.mcp_server import (
     TOOLS,
+    PlainHttpGate,
     RequestLimiter,
+    _TRANSPORT,
     authorization_server_document,
+    current_transport,
+    effective_plain_http,
     handle_message,
     listen_host,
     make_handler,
     metadata_url,
     negotiate_protocol,
+    plain_http_denied_message,
     protected_resource_document,
+    request_transport,
     resolve,
+    urllib_fetch,
     www_authenticate,
 )
 
@@ -621,3 +629,155 @@ def test_oauth_discovery_and_upstream_401():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_plain_http_stays_on_until_the_override_says_off():
+    assert effective_plain_http(None, True) is True
+    assert effective_plain_http(None, False) is False
+    assert effective_plain_http(0, True) is False
+    assert effective_plain_http(1, False) is True
+    assert PlainHttpGate(True, lambda: None).allowed() is True
+    assert PlainHttpGate(False, lambda: None).allowed() is False
+    assert PlainHttpGate(True, lambda: 0).allowed() is False
+    assert PlainHttpGate(False, lambda: 1).allowed() is True
+
+    def down():
+        raise RuntimeError("db down")
+
+    assert PlainHttpGate(True, down).allowed() is True
+    assert PlainHttpGate(False, down).allowed() is False
+
+    assert request_transport("10.1.1.8", "https", '{"scheme":"https"}') == "http"
+    assert request_transport("127.0.0.1", "https") == "https"
+    assert request_transport("::1", "HTTPS") == "https"
+    assert request_transport("127.0.0.1", "http, https") == "http"
+    assert request_transport("127.0.0.1", None, '{"scheme":"https"}') == "https"
+    assert request_transport("127.0.0.1", None) == "http"
+    public = "https://mcp.example.com/mcp"
+    assert public in plain_http_denied_message(public)
+    assert "MCP_PUBLIC_URL is not set" in plain_http_denied_message("")
+
+    seen = {}
+
+    def fetch(method, path, body, authorization, tool):
+        seen["transport"] = current_transport()
+        seen["calls"] = seen.get("calls", 0) + 1
+        return 200, {"ok": True}
+
+    def serve(allow):
+        handler = make_handler(
+            fetch,
+            RequestLimiter(),
+            mcp_public_url=public,
+            issuer="https://dash.example.com",
+            allow_plain_http=allow,
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, port
+
+    def post(port, payload, headers):
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/mcp",
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", **headers},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req) as res:
+                return res.status, json.loads(res.read().decode())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read().decode())
+
+    init = {"jsonrpc": "2.0", "id": 7, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}
+    call = {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}}
+
+    server, port = serve(lambda: True)
+    try:
+        status, body = post(port, init, {})
+        assert status == 200
+        assert body["result"]["protocolVersion"] == "2025-03-26"
+        status, body = post(port, call, {"Authorization": "Bearer ld_test"})
+        assert status == 200
+        assert seen["transport"] == "http"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    seen.clear()
+    server, port = serve(lambda: False)
+    try:
+        status, body = post(port, init, {})
+        assert status == 403
+        assert body["id"] == 7
+        assert body["error"]["code"] == -32003
+        assert public in body["error"]["message"]
+        assert "calls" not in seen
+
+        status, body = post(port, call, {"Authorization": "Bearer ld_test", "X-Forwarded-Proto": "https"})
+        assert status == 200
+        assert seen["transport"] == "https"
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            assert res.status == 200
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp")
+            raise AssertionError("plain HTTP discovery must fail when the switch is off")
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403
+            body = json.loads(exc.read().decode())
+            assert public in body["error"]["message"]
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp",
+            headers={"X-Forwarded-Proto": "https"},
+        )
+        with urllib.request.urlopen(req) as res:
+            assert res.status == 200
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    bare = make_handler(fetch, allow_plain_http=lambda: False)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), bare)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, body = post(port, init, {})
+        assert status == 403
+        assert "MCP_PUBLIC_URL is not set" in body["error"]["message"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_forwarded_call_carries_the_transport_header():
+    captured = {}
+
+    class Resp:
+        status = 200
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def fake_urlopen(req, timeout=30):
+        captured["header"] = req.get_header("X-lifedash-transport")
+        return Resp()
+
+    token = _TRANSPORT.set("https")
+    try:
+        with patch("lifedash.mcp_server.urlopen", fake_urlopen):
+            status, body = urllib_fetch("http://127.0.0.1")("GET", "/api/v1/metrics", None, "Bearer x", "list_metrics")
+    finally:
+        _TRANSPORT.reset(token)
+    assert status == 200
+    assert body == {}
+    assert captured["header"] == "https"

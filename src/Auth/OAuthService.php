@@ -243,7 +243,11 @@ final class OAuthService
         }
         $now = $this->now();
         $this->store->touchToken((int) $row['id'], $now);
-        $this->store->touchClient((int) $row['client_row_id'], $now);
+        $this->store->touchClient(
+            (int) $row['client_row_id'],
+            $now,
+            \Dashboard\Mcp\PlainHttp::inbound($_SERVER)
+        );
         return [
             'user_id' => (int) $row['user_id'],
             'scopes' => $row['scopes'],

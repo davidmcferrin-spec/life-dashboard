@@ -324,7 +324,9 @@ sudo lifedash-env set MCP_PUBLIC_URL https://mcp.<your-domain>/mcp
 sudo systemctl restart lifedash-mcp
 ```
 
-`MCP_BIND` stays `all`, so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. After those bots use the tunnel, set `MCP_BIND=loopback` and restart `lifedash-mcp`. The tunnel dials `127.0.0.1:8765` either way.
+`MCP_ALLOW_PLAIN_HTTP` defaults to true, so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. Settings → Agents has **Allow plain HTTP MCP access (LAN IP)**. A saved value there overrides the config file. The page shows which source is in effect, and the last HTTP or HTTPS call for each token and OAuth client.
+
+Turning that switch off does not change the listen address and does not need a restart. The next plain HTTP JSON-RPC call gets HTTP 403 and the message names `MCP_PUBLIC_URL`. A request cloudflared proxies (loopback, `X-Forwarded-Proto: https`) still works. `MCP_BIND` stays `all`. Set `MCP_BIND=loopback` and restart `lifedash-mcp` only when you also want the LAN port closed. After that, a LAN client is refused at connect time and does not see the 403. The tunnel still dials `127.0.0.1:8765`.
 
 In Claude, add a custom connector with this URL:
 
@@ -545,7 +547,7 @@ Metric kinds: `habit` (0/1, one per local day), `scale` (integers min–max, def
 - No database password: PHP and Python connect over the Unix socket with peer auth as the `lifedash` OS user
 - PostgreSQL listens on localhost only; UFW admits 22/80/443 from the LAN and explicitly allowed subnets (Teleport) only
 - Port 80 redirects everything except loopback (cloudflared, on-box checks) to HTTPS; HSTS on :443
-- The public tunnel serves the dashboard on `dash.<domain>` and MCP on `mcp.<domain>`. Forwarded HTTPS is trusted only from localhost. `MCP_BIND=loopback` is optional and off by default
+- The public tunnel serves the dashboard on `dash.<domain>` and MCP on `mcp.<domain>`. Forwarded HTTPS is trusted only from localhost. Plain HTTP MCP stays on until Settings → Agents turns it off. `MCP_BIND=loopback` is a separate restart and does not happen by itself
 - Code is `root:lifedash` read-only to the app; only `storage/` is writable; Apache (www-data) can read `public/` only
 - Offsite backups are restic-encrypted client-side and include the decrypted secrets (needed for restore)
 - `.env`, `storage/` and code outside `public/` are blocked by Apache even if a rewrite misfires

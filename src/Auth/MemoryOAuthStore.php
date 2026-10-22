@@ -49,10 +49,14 @@ final class MemoryOAuthStore implements OAuthStore
         $this->clients[$id]['last_used_at'] = $now;
     }
 
-    public function touchClient(int $id, int $now): void
+    public function touchClient(int $id, int $now, ?string $transport = null): void
     {
-        if (isset($this->clients[$id])) {
-            $this->clients[$id]['last_used_at'] = $now;
+        if (!isset($this->clients[$id])) {
+            return;
+        }
+        $this->clients[$id]['last_used_at'] = $now;
+        if ($transport === 'http' || $transport === 'https') {
+            $this->clients[$id]['last_transport'] = $transport;
         }
     }
 

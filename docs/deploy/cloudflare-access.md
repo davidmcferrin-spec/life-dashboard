@@ -27,7 +27,11 @@ Claude discovers OAuth from that origin, registers a public client, and sends th
 
 Do not put a Cloudflare Access service-token policy on `/mcp` for this connector. Claude's browser and token calls do not send those headers. A static bearer token on Settings → Agents still works for an existing bot and does not need OAuth.
 
-`MCP_BIND` defaults to `all` (`0.0.0.0`). `MCP_HOST` is ignored. Leave the bind on `all` until every bot that uses `http://<lan-ip>:8765/mcp` has moved to the tunnel, then:
+`MCP_ALLOW_PLAIN_HTTP` defaults to true. Settings → Agents, **Allow plain HTTP MCP access (LAN IP)**, stores an override in `server_flags` (`mcp_plain_http`). A missing row keeps the config value. The page shows the effective state and whether the config file or that row set it. Each token and OAuth client shows the last hop, HTTP or HTTPS, so you can see that a client has moved before you turn plain HTTP off. The switch is a dashboard form. A bearer token cannot change it.
+
+Off means a direct `http://<ip>:8765` JSON-RPC call gets HTTP 403 and the message names `MCP_PUBLIC_URL`. The process keeps listening, so the client sees that URL. `/healthz` stays open for local checks. Tunnel traffic is loopback plus `X-Forwarded-Proto: https` and is still accepted. The change applies within a couple of seconds. It does not restart the service and it does not change the bind.
+
+`MCP_BIND` defaults to `all` (`0.0.0.0`). `MCP_HOST` is ignored. Leave the bind on `all` until you also want the LAN port closed, then:
 
 ```bash
 sudo lifedash-env set MCP_BIND loopback
