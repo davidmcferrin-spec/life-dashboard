@@ -11,8 +11,8 @@
         root.BrainCamera = api;
     }
 })(typeof window !== 'undefined' ? window : null, function () {
-    const MIN_K = 0.4;
-    const MAX_K = 4;
+    const MIN_K = 0.18;
+    const MAX_K = 6;
 
     function clamp(value, min, max) {
         return Math.max(min, Math.min(max, value));
