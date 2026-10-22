@@ -323,6 +323,9 @@ info "timers: $(systemctl list-timers 'lifedash-*' --no-legend | wc -l) active"
 
 # -----------------------------------------------------------------------------
 step "Realtime push and MCP"
+# shellcheck source=deploy/lib/deploy-guard.sh
+source "$APP_DIR/deploy/lib/deploy-guard.sh"
+lifedash_write_revision "$APP_DIR" || warn "could not record the deployed revision"
 install -m 0644 "$APP_DIR/deploy/systemd/lifedash-push.service" /etc/systemd/system/
 install -m 0644 "$APP_DIR/deploy/systemd/lifedash-mcp.service" /etc/systemd/system/
 systemctl daemon-reload

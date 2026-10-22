@@ -24,6 +24,8 @@ final class ServiceControl
         'tunnel-restart',
         'tunnel-status',
         'tunnel-clear',
+        'spotify-pull',
+        'spotify-push',
     ];
 
     public function __construct(private readonly ?string $spoolDir = null) {}
@@ -52,9 +54,18 @@ final class ServiceControl
             'action'       => $action,
             'requested_at' => gmdate('c'),
         ];
-        $token = $fields['token'] ?? '';
-        if ($token !== '') {
-            $payload['token'] = $token;
+        foreach (['token', 'user_id', 'playlist_id'] as $key) {
+            $value = $fields[$key] ?? '';
+            if (!is_string($value) || $value === '') {
+                continue;
+            }
+            if ($key !== 'token' && preg_match('/^[1-9][0-9]*$/', $value) !== 1) {
+                throw new \InvalidArgumentException('Unknown service action.');
+            }
+            $payload[$key] = $value;
+        }
+        if (str_starts_with($action, 'spotify-') && !isset($payload['user_id'])) {
+            throw new \InvalidArgumentException('Unknown service action.');
         }
         $dir = $this->incoming();
         $tmp = $dir . '/.' . $id . '.tmp';

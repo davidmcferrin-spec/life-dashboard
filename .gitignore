@@ -1,3 +1,6 @@
+# Short commit written by deploy. The services read this and do not run git.
+/REVISION
+
 # Secrets. .env.example is the template and stays in git.
 .env
 .env.*

@@ -1423,11 +1423,13 @@ $router->get('/settings/spotify/callback', function () use ($auth, $db): void {
         redirect('/settings/spotify');
     }
     try {
-        \Dashboard\Spotify\SpotifyService::fromDatabase($db)->account()->finishConnect(
+        $spotify = \Dashboard\Spotify\SpotifyService::fromDatabase($db);
+        $spotify->account()->finishConnect(
             (int) $user['id'],
             (string) ($_GET['code'] ?? ''),
             (string) ($_GET['state'] ?? ''),
         );
+        $spotify->sync()->pullDeferred((int) $user['id']);
         $_SESSION['settings_flash'] = 'Spotify connected.';
     } catch (\Throwable $e) {
         $_SESSION['settings_flash'] = $e->getMessage();
@@ -1447,8 +1449,8 @@ $router->post('/settings/spotify/sync', function () use ($auth, $db): void {
     validateCsrf();
     $user = $auth->requireAuth();
     try {
-        \Dashboard\Spotify\SpotifyService::fromDatabase($db)->sync()->pull((int) $user['id']);
-        $_SESSION['settings_flash'] = 'Spotify sync finished.';
+        $result = \Dashboard\Spotify\SpotifyService::fromDatabase($db)->sync()->pull((int) $user['id']);
+        $_SESSION['settings_flash'] = !empty($result['queued']) ? 'Spotify sync queued.' : 'Spotify sync finished.';
     } catch (\Throwable $e) {
         $_SESSION['settings_flash'] = $e->getMessage();
     }
