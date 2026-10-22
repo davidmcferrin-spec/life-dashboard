@@ -18,7 +18,7 @@
     const { api } = window.LD;
     if (!api) return;
 
-    const POLL_MS = document.getElementById('pantry-app') ? 30_000 : 60_000;
+    const POLL_MS = (document.getElementById('pantry-app') || document.getElementById('spotify-app')) ? 30_000 : 60_000;
     const MAX_BACKOFF_MS = 60_000;
 
     let ws = null;

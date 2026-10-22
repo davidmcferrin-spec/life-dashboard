@@ -205,6 +205,11 @@ $router->get('/pantry', function () use ($auth): void {
     require VIEWS_DIR . '/pantry.php';
 });
 
+$router->get('/spotify', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/spotify.php';
+});
+
 $router->get('/clock', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/clock.php';
@@ -1318,6 +1323,74 @@ $router->get('/settings/money', function () use ($auth): void {
 $router->get('/settings/investing', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings/investing.php';
+});
+
+$router->get('/settings/spotify', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    $spotify = \Dashboard\Spotify\SpotifyService::fromDatabase($db)->settings((int) $user['id']);
+    $flash = $_SESSION['settings_flash'] ?? null;
+    unset($_SESSION['settings_flash']);
+    require VIEWS_DIR . '/settings/spotify.php';
+});
+
+$router->get('/settings/spotify/connect', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    try {
+        $begun = \Dashboard\Spotify\SpotifyService::fromDatabase($db)->account()->beginConnect();
+        redirect($begun['url']);
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+        redirect('/settings/spotify');
+    }
+});
+
+$router->get('/settings/spotify/callback', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    $error = (string) ($_GET['error'] ?? '');
+    if ($error !== '') {
+        $_SESSION['settings_flash'] = 'Spotify did not connect (' . preg_replace('/[^a-z_]/', '', $error) . ').';
+        redirect('/settings/spotify');
+    }
+    try {
+        \Dashboard\Spotify\SpotifyService::fromDatabase($db)->account()->finishConnect(
+            (int) $user['id'],
+            (string) ($_GET['code'] ?? ''),
+            (string) ($_GET['state'] ?? ''),
+        );
+        $_SESSION['settings_flash'] = 'Spotify connected.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/spotify');
+});
+
+$router->post('/settings/spotify/disconnect', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    \Dashboard\Spotify\SpotifyService::fromDatabase($db)->account()->disconnect((int) $user['id']);
+    $_SESSION['settings_flash'] = 'Spotify disconnected. Saved playlists and history stay on this server.';
+    redirect('/settings/spotify');
+});
+
+$router->post('/settings/spotify/sync', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    try {
+        \Dashboard\Spotify\SpotifyService::fromDatabase($db)->sync()->pull((int) $user['id']);
+        $_SESSION['settings_flash'] = 'Spotify sync finished.';
+    } catch (\Throwable $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/spotify');
+});
+
+$router->post('/settings/spotify/player', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $on = ($_POST['enabled'] ?? '') === '1';
+    \Dashboard\Spotify\SpotifyService::fromDatabase($db)->setPlayerEnabled((int) $user['id'], $on);
+    $_SESSION['settings_flash'] = $on ? 'Spotify player on.' : 'Spotify player off.';
+    redirect('/settings/spotify');
 });
 
 $router->get('/settings/reddit', function () use ($auth, $lifedash): void {

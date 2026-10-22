@@ -50,6 +50,7 @@ These frames use a fictional demo account. Nothing in them is from a live server
 - **4 US Timezone Clocks** — ET / CT / MT / PT, live; optional broadcast week (EPOCH)
 - **RSS News Feed** — 30+ built-in sources across tech, developer, mobile, hardware, enterprise, Microsoft, broadcast, and news categories; merged timeline; `/news` reader
 - **Reddit** — track subreddits on Settings → Reddit (hot/new/top, keyword filters). Posts are saved on the server and shown at `/reddit` and on the Reddit reader widget. An assistant reads them through MCP. A token can be limited to Reddit only. The rotating Reddit card is separate and still uses the list typed into that widget
+- **Spotify** — connect a Premium account, sync playlists and play history, stage playlist edits, and play in the browser. See [Spotify](#spotify)
 - **Money** — accounts, transactions, budget, debt snowball, sinking funds, Baby Step, food week, bills due, retirement vs 15%, and credit score. A one-time CSV import copies a spreadsheet into Postgres (`docs/money-import.md`). A money-only agent token expires in 90 days
 - **Weather Widget** — OpenWeatherMap free tier, browser geolocation
 - **Bookmarks** — per-user folders with favicons, bookmarklet capture, collapsible links
@@ -459,6 +460,19 @@ Public download: `/share/file/{token}` · `GET /api/share/file/{token}/download`
 Allowed types: JPEG, PNG, GIF, WebP, ZIP, EXE, MSI — max 50 MB (`FILES_MAX_BYTES`).
 
 Expired public share links (clipboard, local file, cloud file) are purged daily by `cron/prune_share_links.php` after `SHARE_LINK_PURGE_HOURS` (default 24) beyond `expires_at`. Links with no expiry are kept until manually revoked.
+
+## Spotify
+
+Create an app at https://developer.spotify.com/dashboard and add the redirect URI exactly.
+
+The dashboard is often opened by IP address. Spotify only accepts an HTTPS redirect, or `http://127.0.0.1` / `http://localhost`. Two ways to connect:
+
+1. Set `SPOTIFY_REDIRECT_URI` to an HTTPS hostname that reaches this server, for example `https://dash.example.com/settings/spotify/callback`.
+2. For a one-time connect, forward a local port over SSH and use `http://127.0.0.1:PORT/settings/spotify/callback`.
+
+The in-browser player also needs the page itself on HTTPS or `http://127.0.0.1`. A plain `http://` IP address can sync playlists, but the Web Playback SDK will not start there.
+
+Put `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_REDIRECT_URI` in the server env with `sudo lifedash-env` (or Settings → Setup). Optional: `SPOTIFY_TOKEN_KEY` (otherwise `APP_SECRET` encrypts the tokens) and `SPOTIFY_SYNC_MINUTES` (default 10). Then Settings → Spotify → Connect.
 
 ## API Keys
 

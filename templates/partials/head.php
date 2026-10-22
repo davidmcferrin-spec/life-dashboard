@@ -31,7 +31,7 @@ $jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
 $jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261022d';
+$assetVer = '20261022e';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>
@@ -87,5 +87,8 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     <script src="/assets/js/theme.js?v=<?= e($assetVer) ?>" defer></script>
     <?php if (!$themeLocalOnly): ?>
     <script src="/assets/js/starfield.js?v=<?= e($assetVer) ?>" defer></script>
+    <?php endif; ?>
+    <?php if (!$themeLocalOnly && !empty($user['id'])): ?>
+    <script src="/assets/js/spotify-player.js?v=<?= e($assetVer) ?>" defer></script>
     <?php endif; ?>
 </head>

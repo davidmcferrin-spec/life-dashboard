@@ -195,6 +195,17 @@ final class SetupConfig
                     ['key' => 'MCP_BIND', 'label' => 'MCP bind', 'type' => 'text', 'default' => 'all', 'placeholder' => 'all'],
                 ],
             ],
+            'spotify' => [
+                'label' => 'Spotify',
+                'blurb' => 'Premium account. Redirect must be HTTPS, or http://127.0.0.1 for a one-time connect.',
+                'fields' => [
+                    ['key' => 'SPOTIFY_CLIENT_ID', 'label' => 'Client id', 'secret' => true],
+                    ['key' => 'SPOTIFY_CLIENT_SECRET', 'label' => 'Client secret', 'secret' => true],
+                    ['key' => 'SPOTIFY_REDIRECT_URI', 'label' => 'Redirect URI', 'type' => 'text', 'placeholder' => 'https://dash.example.com/settings/spotify/callback'],
+                    ['key' => 'SPOTIFY_TOKEN_KEY', 'label' => 'Token key (optional)', 'secret' => true],
+                    ['key' => 'SPOTIFY_SYNC_MINUTES', 'label' => 'Sync interval (minutes)', 'type' => 'text', 'placeholder' => '10'],
+                ],
+            ],
             'ollama' => [
                 'label' => 'Local model',
                 'blurb' => 'Ollama embeddings',

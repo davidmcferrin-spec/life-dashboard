@@ -56,6 +56,12 @@ class SystemHealthService
             'staleMinutes'  => 45,
             'scheduleHint'  => 'Every ~30 min',
         ],
+        'spotify' => [
+            'label'         => 'Spotify sync',
+            'log'           => 'spotify.log',
+            'staleMinutes'  => 30,
+            'scheduleHint'  => 'About every 10 min',
+        ],
         'shares' => [
             'label'         => 'Share link purge',
             'log'           => 'shares.log',

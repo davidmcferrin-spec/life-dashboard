@@ -1,0 +1,38 @@
+# Pull and push Spotify. The timer wakes every minute; the script waits
+# SPOTIFY_SYNC_MINUTES (default 10) between syncs for each account.
+# Log: storage/logs/spotify.log
+
+[Unit]
+Description=life-dashboard Spotify sync
+After=lifedash-secrets.service postgresql.service network-online.target
+Wants=network-online.target
+Requires=lifedash-secrets.service
+
+[Service]
+Type=oneshot
+User=lifedash
+Group=lifedash
+Environment=LIFEDASH_ENV_FILE=/run/lifedash/app.env
+Environment=PYTHONPATH=/srv/lifedash/app/services
+WorkingDirectory=/srv/lifedash/app
+ExecStart=/srv/lifedash/venv/bin/python -m lifedash.spotify_sync tick
+TimeoutStartSec=10min
+Nice=5
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/lifedash/app/storage
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+MemoryMax=256M

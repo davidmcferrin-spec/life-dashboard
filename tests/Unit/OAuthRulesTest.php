@@ -66,7 +66,11 @@ final class OAuthRulesTest extends TestCase
         self::assertSame('https://dash.example.com/oauth/token', $doc['token_endpoint']);
         self::assertSame(['S256'], $doc['code_challenge_methods_supported']);
         self::assertContains('pantry:read', $doc['scopes_supported']);
+        self::assertContains('spotify:read', $doc['scopes_supported']);
+        self::assertContains('spotify:write', $doc['scopes_supported']);
+        self::assertContains('spotify:playback', $doc['scopes_supported']);
         self::assertContains('system:deploy', $doc['scopes_supported']);
+        self::assertContains('spotify:playback', OAuthRules::known(false));
         self::assertNotContains('system:deploy', OAuthRules::known(false));
     }
 }

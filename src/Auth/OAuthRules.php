@@ -144,6 +144,8 @@ final class OAuthRules
             $out[] = $area . ':read';
             $out[] = $area . ':write';
         }
+        // Playback is not implied by spotify:write. Consent has to list it on its own.
+        $out[] = 'spotify:playback';
         if ($admin) {
             foreach (Scope::EXPLICIT as $scope) {
                 $out[] = $scope;

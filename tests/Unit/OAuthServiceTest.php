@@ -12,6 +12,8 @@ use Dashboard\Auth\OAuthRules;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Mcp\PlainHttp;
+use Dashboard\Spotify\SpotifyAccess;
+use Dashboard\Support\ForbiddenException;
 use PHPUnit\Framework\TestCase;
 
 final class OAuthServiceTest extends TestCase
@@ -221,6 +223,54 @@ final class OAuthServiceTest extends TestCase
             self::fail('resource must match MCP_PUBLIC_URL');
         } catch (OAuthException $e) {
             self::assertSame('invalid_target', $e->error);
+        }
+    }
+
+    public function testOauthClientCanBeGrantedSpotifyScopes(): void
+    {
+        self::assertContains('spotify:read', OAuthRules::known(false));
+        self::assertContains('spotify:write', OAuthRules::known(false));
+        self::assertContains('spotify:playback', OAuthRules::known(false));
+
+        $svc = $this->service();
+        $client = $svc->register([
+            'client_name' => 'Claude',
+            'redirect_uris' => ['https://claude.ai/api/mcp/auth_callback'],
+            'scope' => 'spotify:read spotify:write spotify:playback',
+        ], '203.0.113.50');
+        $prepared = $svc->prepare([
+            'response_type' => 'code',
+            'client_id' => $client['client_id'],
+            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'code_challenge' => OAuthRules::s256($this->verifier()),
+            'code_challenge_method' => 'S256',
+            'scope' => 'spotify:read spotify:write spotify:playback',
+            'resource' => 'https://mcp.example.com/mcp',
+        ], '203.0.113.51', false);
+        self::assertSame(
+            ['spotify:read', 'spotify:write', 'spotify:playback'],
+            $prepared['offered']
+        );
+        $redirect = $svc->grant(7, false, $prepared['request'], ['spotify:read', 'spotify:write', 'spotify:playback']);
+        parse_str((string) parse_url($redirect, PHP_URL_QUERY), $query);
+        $tokens = $svc->token([
+            'grant_type' => 'authorization_code',
+            'client_id' => $client['client_id'],
+            'code' => $query['code'],
+            'redirect_uri' => 'https://claude.ai/api/mcp/auth_callback',
+            'code_verifier' => $this->verifier(),
+        ], '203.0.113.52');
+        self::assertSame('spotify:read spotify:write spotify:playback', $tokens['scope']);
+        $access = $svc->authenticate($tokens['access_token']);
+        self::assertNotNull($access);
+        self::assertGreaterThan(0, $access['id']);
+        self::assertSame(['spotify:read', 'spotify:write', 'spotify:playback'], $access['scopes']);
+        SpotifyAccess::assertChange($access['id'], true);
+        try {
+            SpotifyAccess::assertChange($access['id'], false);
+            self::fail('Spotify writes and playback must honor Allow MCP updates.');
+        } catch (ForbiddenException $e) {
+            self::assertSame(DeployService::MCP_DISABLED, $e->getMessage());
         }
     }
 

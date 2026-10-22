@@ -1,0 +1,11 @@
+[Unit]
+Description=life-dashboard Spotify sync timer
+
+[Timer]
+OnCalendar=minutely
+Unit=lifedash-spotify.service
+Persistent=true
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

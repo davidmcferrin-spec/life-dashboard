@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 from . import __version__
 from .config import Config
 from .log import setup as setup_logging
+from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
 
 LOG = logging.getLogger("lifedash.mcp")
 PROTOCOL = "2025-03-26"
@@ -1694,6 +1695,8 @@ TOOLS: list[dict[str, Any]] = [
     },
 ]
 
+TOOLS.extend(SPOTIFY_TOOLS)
+
 
 def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
     query = {key: args[key] for key in keys if args.get(key) not in (None, "")}
@@ -2208,6 +2211,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args.get("exclude"):
             query["exclude"] = ",".join(str(name) for name in args["exclude"])
         return "GET", "/api/v1/search?" + urlencode(query), None
+    mapped = resolve_spotify(name, args)
+    if mapped is not None:
+        return mapped
     raise ValueError(f"Unknown tool {name}")
 
 
@@ -2245,7 +2251,7 @@ class RequestLimiter:
 OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
-    "shopping", "calls", "pantry",
+    "shopping", "calls", "pantry", "spotify",
 )
 
 
@@ -2260,6 +2266,7 @@ def oauth_scopes() -> list[str]:
     for area in OAUTH_AREAS:
         scopes.append(f"{area}:read")
         scopes.append(f"{area}:write")
+    scopes.append("spotify:playback")
     scopes.extend(["system:read", "system:deploy"])
     return scopes
 

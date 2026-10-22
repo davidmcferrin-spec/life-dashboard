@@ -83,7 +83,12 @@ require __DIR__ . '/_shell-top.php';
                             <option value="reddit">Reddit only</option>
                             <option value="money">Money only (90 days)</option>
                             <option value="todos">Todos only</option>
+                            <option value="spotify">Spotify only</option>
                         </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-primary">
+                        <input type="checkbox" name="spotify_playback" value="1">
+                        <span><span class="mono">spotify:playback</span> — control playback</span>
                     </label>
                 </div>
                 <?php if ((int) ($user['is_admin'] ?? 0) === 1): ?>
@@ -229,6 +234,8 @@ require __DIR__ . '/_shell-top.php';
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="reddit"> Reddit only</label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="money"> Money only</label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="todos"> Todos only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" data-access value="spotify"> Spotify only</label>
+                            <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="spotify_playback" value="1"> <span class="mono">spotify:playback</span></label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_read" value="1"> <span class="mono">system:read</span></label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_deploy" value="1"> <span class="mono">system:deploy</span></label>
                         </fieldset>
