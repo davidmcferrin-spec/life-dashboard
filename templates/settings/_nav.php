@@ -47,6 +47,7 @@ $userNav = [
         <hr class="my-2 border-chrome">
         <p class="settings-nav-group-label px-2 pt-1 pb-1">Administration</p>
         <a href="/settings/setup" class="<?= $active === 'setup' ? 'is-active' : '' ?>">Setup</a>
+        <a href="/settings/ollama" class="<?= $active === 'ollama' ? 'is-active' : '' ?>">Local AI</a>
         <a href="/settings/tunnel" class="<?= $active === 'tunnel' ? 'is-active' : '' ?>">Tunnel</a>
         <a href="/settings/system" class="<?= $active === 'system' ? 'is-active' : '' ?>">System health</a>
         <a href="/settings/cloud-storage" class="<?= $active === 'cloud-storage' ? 'is-active' : '' ?>">Cloud file defaults</a>

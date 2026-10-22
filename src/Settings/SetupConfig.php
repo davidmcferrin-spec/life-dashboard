@@ -213,14 +213,6 @@ final class SetupConfig
                     ['key' => 'SPOTIFY_SYNC_MINUTES', 'label' => 'Sync interval (minutes)', 'type' => 'minutes', 'placeholder' => '10'],
                 ],
             ],
-            'ollama' => [
-                'label' => 'Local model',
-                'blurb' => 'Ollama embeddings',
-                'fields' => [
-                    ['key' => 'OLLAMA_URL', 'label' => 'URL', 'type' => 'url', 'placeholder' => 'http://127.0.0.1:11434'],
-                    ['key' => 'OLLAMA_EMBED_MODEL', 'label' => 'Embedding model', 'type' => 'text', 'default' => 'nomic-embed-text', 'placeholder' => 'nomic-embed-text'],
-                ],
-            ],
         ];
     }
 

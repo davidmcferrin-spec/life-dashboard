@@ -26,6 +26,8 @@ final class ServiceControl
         'tunnel-clear',
         'spotify-pull',
         'spotify-push',
+        'ollama-pull',
+        'ollama-remove',
     ];
 
     public function __construct(private readonly ?string $spoolDir = null) {}
@@ -66,6 +68,13 @@ final class ServiceControl
         }
         if (str_starts_with($action, 'spotify-') && !isset($payload['user_id'])) {
             throw new \InvalidArgumentException('Unknown service action.');
+        }
+        if (str_starts_with($action, 'ollama-')) {
+            $model = $fields['model'] ?? '';
+            if (!is_string($model) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/', $model) !== 1) {
+                throw new \InvalidArgumentException('Unknown service action.');
+            }
+            $payload['model'] = $model;
         }
         $dir = $this->incoming();
         $tmp = $dir . '/.' . $id . '.tmp';

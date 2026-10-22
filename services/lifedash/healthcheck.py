@@ -204,6 +204,60 @@ def check_push(port: int = 8766) -> dict:
     )
 
 
+def check_ollama() -> dict:
+    """Quiet when Ollama was never installed. Warns when the service is up and unhealthy."""
+    import json
+    import shutil
+    from pathlib import Path
+    from urllib.request import urlopen
+
+    from .ollama_plan import EMBED_MODEL, assess
+
+    installed = shutil.which("ollama") is not None
+    api_ok = False
+    models: list[str] = []
+    try:
+        with urlopen("http://127.0.0.1:11434/api/tags", timeout=2) as res:
+            body = json.loads(res.read().decode("utf-8") or "{}")
+        api_ok = True
+        for item in body.get("models") or []:
+            if isinstance(item, dict) and isinstance(item.get("name"), str):
+                models.append(item["name"])
+    except (OSError, TimeoutError, json.JSONDecodeError, ValueError):
+        api_ok = False
+    status = _ollama_state("status.json")
+    plan = _ollama_state("plan.json")
+    chat = str(status.get("chat_model") or plan.get("chat_model") or "")
+    embed = str(status.get("embed_model") or plan.get("embed_model") or EMBED_MODEL)
+    hosts = listen_hosts(11434)
+    recorded = status.get("listen")
+    if not hosts and isinstance(recorded, list):
+        hosts = [host for host in recorded if isinstance(host, str)]
+    return assess(
+        installed=installed,
+        systemd=systemd_is_active("ollama.service"),
+        api_ok=api_ok,
+        hosts=hosts,
+        models=models,
+        chat=chat if api_ok else "",
+        embed=embed if api_ok else "",
+        pull_state=str(status.get("state") or ""),
+        pull_detail=str(status.get("detail") or ""),
+    )
+
+
+def _ollama_state(name: str) -> dict:
+    import json
+    from pathlib import Path
+
+    path = Path("/var/lib/lifedash/ollama") / name
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def check_services(cfg: Config | None = None) -> list[dict]:
     if cfg is None:
         try:
@@ -213,7 +267,7 @@ def check_services(cfg: Config | None = None) -> list[dict]:
     mcp_port = cfg.int("MCP_PORT", 8765) if cfg is not None else 8765
     push_port = cfg.int("PUSH_PORT", 8766) if cfg is not None else 8766
     plain_http = plain_http_allowed(cfg) if cfg is not None else True
-    return [check_mcp(mcp_port, plain_http=plain_http), check_push(push_port)]
+    return [check_mcp(mcp_port, plain_http=plain_http), check_push(push_port), check_ollama()]
 
 
 def plain_http_allowed(cfg: Config) -> bool:

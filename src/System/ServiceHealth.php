@@ -76,12 +76,12 @@ PY;
 
         $rows = [];
 
-        foreach (['lifedash-mcp', 'lifedash-push'] as $name) {
+        foreach (['lifedash-mcp' => 'lifedash-mcp', 'lifedash-push' => 'lifedash-push', 'ollama' => 'Ollama'] as $name => $label) {
             $item = $byName[$name] ?? null;
 
             if (!is_array($item)) {
                 $rows[] = [
-                    'label'  => $name,
+                    'label'  => $label,
                     'status' => 'warn',
                     'detail' => 'not reported by lifedash-healthcheck',
                 ];
@@ -95,7 +95,7 @@ PY;
             }
 
             $rows[] = [
-                'label'  => $name,
+                'label'  => $label,
                 'status' => $status,
                 'detail' => (string) ($item['detail'] ?? ''),
             ];
@@ -192,6 +192,6 @@ PY;
             'detail' => $detail,
         ];
 
-        return [$row('lifedash-mcp'), $row('lifedash-push')];
+        return [$row('lifedash-mcp'), $row('lifedash-push'), $row('Ollama')];
     }
 }

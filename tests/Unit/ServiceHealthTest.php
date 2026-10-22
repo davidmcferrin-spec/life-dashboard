@@ -25,6 +25,11 @@ final class ServiceHealthTest extends TestCase
                     'status' => 'ok',
                     'detail' => 'systemd active; listen 127.0.0.1:8766',
                 ],
+                [
+                    'name'   => 'ollama',
+                    'status' => 'ok',
+                    'detail' => 'Ollama API answered.',
+                ],
             ], JSON_THROW_ON_ERROR);
         }, '/workspace');
 
@@ -38,6 +43,11 @@ final class ServiceHealthTest extends TestCase
                 'label'  => 'lifedash-push',
                 'status' => 'ok',
                 'detail' => 'systemd active; listen 127.0.0.1:8766',
+            ],
+            [
+                'label'  => 'Ollama',
+                'status' => 'ok',
+                'detail' => 'Ollama API answered.',
             ],
         ], $health->checks());
     }
@@ -65,8 +75,8 @@ final class ServiceHealthTest extends TestCase
         });
 
         $rows = $health->checks();
-        self::assertSame(['lifedash-mcp', 'lifedash-push'], array_column($rows, 'label'));
-        self::assertSame(['warn', 'warn'], array_column($rows, 'status'));
+        self::assertSame(['lifedash-mcp', 'lifedash-push', 'Ollama'], array_column($rows, 'label'));
+        self::assertSame(['warn', 'warn', 'warn'], array_column($rows, 'status'));
         self::assertSame('python3: command not found', $rows[0]['detail']);
     }
 

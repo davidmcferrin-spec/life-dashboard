@@ -322,6 +322,10 @@ systemctl enable --now lifedash-spotify.timer >/dev/null
 info "timers: $(systemctl list-timers 'lifedash-*' --no-legend | wc -l) active"
 
 # -----------------------------------------------------------------------------
+step "Local model (Ollama)"
+"$APP_DIR/deploy/bin/lifedash-ollama-ensure"
+
+# -----------------------------------------------------------------------------
 step "Realtime push and MCP"
 # shellcheck source=deploy/lib/deploy-guard.sh
 source "$APP_DIR/deploy/lib/deploy-guard.sh"

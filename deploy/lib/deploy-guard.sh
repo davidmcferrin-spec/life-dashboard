@@ -2,6 +2,8 @@
 # Checks used by lifedash-deploy and the spool runner.
 # A confirm sha is compared to origin/main after fetch. It is never a ref argument.
 # shellcheck shell=bash
+# shellcheck source=deploy/lib/ollama.sh
+source "$(dirname "${BASH_SOURCE[0]}")/ollama.sh"
 
 # Fixed refspec so a stale refs/remotes/origin/main cannot survive the fetch.
 # timeout bounds a hung remote. 124 is timeout's exit; 137 is the follow-up SIGKILL.
@@ -124,7 +126,9 @@ lifedash_install_runtime_units() {
         lifedash-service.service \
         lifedash-service.path \
         lifedash-spotify.service \
-        lifedash-spotify.timer
+        lifedash-spotify.timer \
+        lifedash-ollama-models.service \
+        lifedash-ollama-models.timer
     do
         src=$app/deploy/systemd/$unit
         [[ -f $src ]] || continue
@@ -143,6 +147,8 @@ lifedash_install_runtime_units() {
     systemctl enable --now lifedash-deploy.path >/dev/null
     systemctl enable --now lifedash-service.path >/dev/null
     systemctl enable --now lifedash-spotify.timer >/dev/null
+    systemctl enable lifedash-ollama-models.timer >/dev/null
+    systemctl start --no-block lifedash-ollama-models.timer >/dev/null || true
     if [[ $action == install ]]; then
         systemctl enable --now cloudflared >/dev/null
     fi
