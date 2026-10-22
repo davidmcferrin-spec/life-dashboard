@@ -1,0 +1,10 @@
+[
+  {"product": "cursor_ide", "label": "Cursor changelog", "url": "https://cursor.com/changelog"},
+  {"product": "cursor_ide", "label": "Cursor docs release notes", "url": "https://cursor.com/docs/release-notes"},
+  {"product": "cursor_ide", "label": "Cursor IDE release notes", "url": "https://cursor.com/docs/release-notes/ide"},
+  {"product": "grok_bot", "label": "Grok Bot changelog", "url": "https://x.ai/changelog/bot"},
+  {"product": "grok", "label": "Grok release notes", "url": "https://grok.com/release-notes"},
+  {"product": "grok", "label": "xAI news", "url": "https://x.ai/news"},
+  {"product": "grok", "label": "xAI docs release notes", "url": "https://docs.x.ai/developers/release-notes"},
+  {"product": "grok_build", "label": "Grok Build changelog", "url": "https://x.ai/changelog/build"}
+]

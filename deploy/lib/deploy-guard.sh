@@ -124,7 +124,9 @@ lifedash_install_runtime_units() {
         lifedash-service.service \
         lifedash-service.path \
         lifedash-spotify.service \
-        lifedash-spotify.timer
+        lifedash-spotify.timer \
+        lifedash-digest.service \
+        lifedash-digest.timer
     do
         src=$app/deploy/systemd/$unit
         [[ -f $src ]] || continue
@@ -143,6 +145,7 @@ lifedash_install_runtime_units() {
     systemctl enable --now lifedash-deploy.path >/dev/null
     systemctl enable --now lifedash-service.path >/dev/null
     systemctl enable --now lifedash-spotify.timer >/dev/null
+    systemctl enable --now lifedash-digest.timer >/dev/null
     if [[ $action == install ]]; then
         systemctl enable --now cloudflared >/dev/null
     fi
@@ -182,6 +185,17 @@ lifedash_spotify_args() {
     if [[ -n $playlist_id ]]; then
         printf '%s\n' --playlist "$playlist_id"
     fi
+}
+
+# Arguments for a queued digest fetch. A bare or system python is rejected.
+lifedash_digest_args() {
+    local user_id=$1 python=$2
+    [[ $user_id =~ ^[1-9][0-9]*$ ]] || return 1
+    case $python in
+        */venv/bin/python) ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$python" -m lifedash.digest_sync check "$user_id"
 }
 
 # php-fpm must be able to create a request, and the path unit must be watching.

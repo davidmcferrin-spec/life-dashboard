@@ -68,6 +68,7 @@ final class WidgetDataService
             'life'      => $this->lifeData($userId),
             'shopping'  => $this->shoppingData($userId, $c),
             'pantry'    => $this->pantry->summary($userId, (int) ($c['soon_days'] ?? 3)),
+            'digest'    => \Dashboard\Digest\DigestService::fromDatabase()->card($userId),
             'calls'     => $this->callsData($userId, $c),
             'spending'  => $this->spendingData($userId, $c),
             'networth'       => $this->networthData($userId),

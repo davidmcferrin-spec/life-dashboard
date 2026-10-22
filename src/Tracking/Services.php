@@ -6,6 +6,7 @@ namespace Dashboard\Tracking;
 
 use Dashboard\Audit\AuditLog;
 use Dashboard\Calls\CallService;
+use Dashboard\Digest\DigestService;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\DB\Database;
 use Dashboard\Invest\InvestService;
@@ -48,6 +49,7 @@ final class Services
     public readonly CallService $calls;
     public readonly PantryService $pantry;
     public readonly MealBuilder $meals;
+    public readonly DigestService $digest;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -72,6 +74,7 @@ final class Services
         $this->calls = new CallService($db, $clock);
         $this->pantry = new PantryService($db, $clock, $this->shopping);
         $this->meals = new MealBuilder($db, $this->shopping, $this->pantry);
+        $this->digest = new DigestService($db);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,

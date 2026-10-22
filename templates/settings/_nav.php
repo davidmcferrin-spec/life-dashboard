@@ -13,6 +13,7 @@ $userNav = [
     'trackers'   => ['Habits & trackers', '/settings/trackers'],
     'life'       => ['Life', '/settings/life'],
     'pantry'     => ['Pantry', '/pantry'],
+    'digest'     => ['Grok Digest', '/digest'],
     'money'      => ['Money', '/settings/money'],
     'investing'  => ['Investing', '/settings/investing'],
     'agents'     => ['Agents', '/settings/agents'],
