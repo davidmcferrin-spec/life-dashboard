@@ -883,3 +883,32 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     assert (method, path, body) == ("POST", "/api/v1/spotify/sync", {})
     method, path, body = resolve("transfer_playback", {"device_id": "device1", "play": True})
     assert path == "/api/v1/spotify/playback/transfer"
+
+
+def test_public_url_is_reread_on_each_request():
+    current = {"public": "https://mcp-one.example/mcp", "issuer": "https://dash-one.example"}
+
+    def fetch(method, path, body, authorization, tool):
+        return 200, {}
+
+    handler = make_handler(
+        fetch,
+        mcp_public_url=lambda: current["public"],
+        issuer=lambda: current["issuer"],
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        def resource():
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp") as res:
+                return json.loads(res.read().decode())["resource"]
+
+        assert resource() == "https://mcp-one.example/mcp"
+        current["public"] = "https://mcp-two.example/mcp"
+        current["issuer"] = "https://dash-two.example"
+        assert resource() == "https://mcp-two.example/mcp"
+    finally:
+        server.shutdown()
+        server.server_close()

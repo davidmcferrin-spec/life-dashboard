@@ -85,6 +85,7 @@ $timezones = [
     <span class="brand">Dashboard</span>
     <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
         <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
+        <button type="button" class="nav-link" data-player-toggle aria-pressed="false">Player</button>
         <span id="live-date"></span>
         <a href="/brain" class="nav-link">Vault</a>
         <a href="/spotify" class="nav-link">Playlists</a>

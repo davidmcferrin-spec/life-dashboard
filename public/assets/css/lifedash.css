@@ -1616,7 +1616,7 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
 
 .sp-player {
     position: fixed;
-    z-index: 40;
+    z-index: 80;
     width: min(22rem, calc(100vw - 1.5rem));
     padding: 0.75rem;
     color: var(--text-primary);
@@ -1632,7 +1632,28 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     cursor: pointer;
 }
 .sp-pill { display: inline-block; padding: 0.45rem 0.8rem; }
-.sp-bar { display: flex; justify-content: space-between; align-items: center; cursor: grab; margin-bottom: 0.5rem; }
+.sp-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: grab;
+    margin-bottom: 0.5rem;
+    min-height: 1.75rem;
+    touch-action: none;
+    user-select: none;
+}
+.sp-bar.is-dragging { cursor: grabbing; }
+.sp-grip {
+    width: 0.7rem;
+    height: 0.85rem;
+    flex: none;
+    background:
+        linear-gradient(currentColor, currentColor) 0 0 / 100% 2px no-repeat,
+        linear-gradient(currentColor, currentColor) 0 50% / 100% 2px no-repeat,
+        linear-gradient(currentColor, currentColor) 0 100% / 100% 2px no-repeat;
+    opacity: 0.7;
+}
 .sp-body { display: flex; gap: 0.75rem; }
 .sp-art { width: 4rem; height: 4rem; object-fit: cover; background: var(--surface-border); flex: none; }
 .sp-title { margin: 0; font-weight: 600; }

@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+# Drain /var/lib/lifedash/service/incoming. PHP only creates the request file.
+set -euo pipefail
+
+SOURCE=$(readlink -f "$0")
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")/../.." && pwd)
+SPOOL=/var/lib/lifedash/service
+INCOMING=$SPOOL/incoming
+STATE=$SPOOL/state
+TOKEN_FILE=/etc/lifedash/cloudflared.token
+UNIT_SRC=$APP_DIR/deploy/systemd/cloudflared.service
+LOCK=$STATE/service.lock
+
+log() { echo "[lifedash-service] $*"; }
+die() { echo "[lifedash-service] ERROR: $*" >&2; exit 1; }
+
+[[ $EUID -eq 0 ]] || die "run as root"
+install -d -m 0750 "$STATE"
+exec 9>"$LOCK"
+if ! flock -n 9; then
+    log "another service action holds the lock"
+    exit 0
+fi
+
+write_token() {
+    local token=$1 tmp
+    install -d -o root -g root -m 0750 /etc/lifedash
+    tmp=$(mktemp /etc/lifedash/cloudflared.token.XXXXXX)
+    printf '%s\n' "$token" > "$tmp"
+    chown root:root "$tmp"
+    chmod 0600 "$tmp"
+    mv -f "$tmp" "$TOKEN_FILE"
+}
+
+install_unit() {
+    [[ -f $UNIT_SRC ]] || die "missing $UNIT_SRC"
+    install -m 0644 "$UNIT_SRC" /etc/systemd/system/cloudflared.service
+    systemctl daemon-reload
+}
+
+write_status() {
+    local connected=$1 detail=$2
+    python3 - "$STATE/status.json" "$connected" "$detail" << 'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+path, connected, detail = sys.argv[1], sys.argv[2], sys.argv[3]
+doc = {
+    "connected": connected == "1",
+    "detail": detail,
+    "checked_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+}
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(json.dumps(doc) + "\n")
+PY
+    chgrp lifedash "$STATE/status.json" 2>/dev/null || true
+    chmod 0640 "$STATE/status.json" 2>/dev/null || true
+}
+
+tunnel_up() {
+    systemctl is-active --quiet cloudflared
+}
+
+run_one() {
+    local file=$1 base id action token parsed
+    base=$(basename "$file")
+    [[ $base =~ ^[0-9a-f]{32}\.json$ ]] || {
+        log "ignoring $base"
+        rm -f -- "$file"
+        return 0
+    }
+    id=${base%.json}
+    if ! parsed=$(python3 - "$file" << 'PY'
+import json
+import sys
+
+data = json.load(open(sys.argv[1], encoding="utf-8"))
+action = str(data.get("action") or "")
+token = str(data.get("token") or "")
+known = {
+    "restart-mcp",
+    "tunnel-start",
+    "tunnel-stop",
+    "tunnel-restart",
+    "tunnel-status",
+    "tunnel-clear",
+}
+if action not in known:
+    raise SystemExit(2)
+sys.stdout.write(action + "\n" + token)
+PY
+    ); then
+        log "rejected $id"
+        rm -f -- "$file"
+        return 0
+    fi
+    action=${parsed%%$'\n'*}
+    token=${parsed#*$'\n'}
+    rm -f -- "$file"
+    case "$action" in
+        restart-mcp)
+            systemctl restart lifedash-mcp
+            log "restarted lifedash-mcp"
+            ;;
+        tunnel-clear)
+            rm -f -- "$TOKEN_FILE"
+            systemctl stop cloudflared >/dev/null 2>&1 || true
+            write_status 0 "stopped"
+            ;;
+        tunnel-stop)
+            systemctl stop cloudflared >/dev/null 2>&1 || true
+            write_status 0 "stopped"
+            ;;
+        tunnel-start | tunnel-restart)
+            if [[ -z $token ]]; then
+                log "no token for $action"
+                write_status 0 "no token"
+                return 0
+            fi
+            write_token "$token"
+            install_unit
+            systemctl enable cloudflared >/dev/null
+            systemctl restart cloudflared
+            if tunnel_up; then
+                write_status 1 "connected"
+            else
+                write_status 0 "not connected"
+            fi
+            ;;
+        tunnel-status)
+            if tunnel_up; then
+                write_status 1 "connected"
+            else
+                write_status 0 "not connected"
+            fi
+            ;;
+        *)
+            log "unknown action $action"
+            ;;
+    esac
+}
+
+shopt -s nullglob
+files=("$INCOMING"/*.json)
+for file in "${files[@]}"; do
+    run_one "$file"
+done

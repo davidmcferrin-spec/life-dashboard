@@ -1,5 +1,5 @@
-# Installed by lifedash-tunnel-setup. cloudflared reads /etc/cloudflared/config.yml.
-# The credentials file path is in that config. It is not in this unit.
+# Token file is written by lifedash-service-from-spool. It is root-only.
+# If that file is missing, lifedash-cloudflared falls back to /etc/cloudflared/config.yml.
 
 [Unit]
 Description=Cloudflare Tunnel for life-dashboard
@@ -9,7 +9,7 @@ Wants=network-online.target
 [Service]
 TimeoutStartSec=15
 Type=notify
-ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/cloudflared/config.yml tunnel run
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-cloudflared
 Restart=on-failure
 RestartSec=5s
 

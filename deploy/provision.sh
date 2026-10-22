@@ -348,9 +348,15 @@ install -m 0644 "$APP_DIR/deploy/systemd/lifedash-deploy.service" \
     "$APP_DIR/deploy/systemd/lifedash-deploy@.service" \
     "$APP_DIR/deploy/systemd/lifedash-deploy.path" /etc/systemd/system/
 ln -sfn "$APP_DIR/deploy/bin/lifedash-deploy-from-spool" /usr/local/sbin/lifedash-deploy-from-spool
+lifedash_install_spool /var/lib/lifedash/service "$APP_USER"
+install -m 0644 "$APP_DIR/deploy/systemd/lifedash-service.service" \
+    "$APP_DIR/deploy/systemd/lifedash-service.path" /etc/systemd/system/
+ln -sfn "$APP_DIR/deploy/bin/lifedash-service-from-spool" /usr/local/sbin/lifedash-service-from-spool
 systemctl daemon-reload
 systemctl enable --now lifedash-deploy.path >/dev/null
+systemctl enable --now lifedash-service.path >/dev/null
 info "lifedash-deploy.path: $(systemctl is-active lifedash-deploy.path)"
+info "lifedash-service.path: $(systemctl is-active lifedash-service.path)"
 
 # -----------------------------------------------------------------------------
 step "CheckMK local check (if agent installed)"

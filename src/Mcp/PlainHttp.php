@@ -26,14 +26,10 @@ final class PlainHttp
         return ['allowed' => $stored === 1, 'source' => 'database'];
     }
 
-    public static function sourceText(bool $allowed, string $source, bool $configAllows): string
+    public static function sourceText(bool $allowed, string $source = '', bool $configAllows = false): string
     {
-        $state = $allowed ? 'On' : 'Off';
-        if ($source === 'database') {
-            $config = $configAllows ? 'on' : 'off';
-            return $state . '. Set on this page. The config file (MCP_ALLOW_PLAIN_HTTP) is ' . $config . '.';
-        }
-        return $state . '. Set by the config file (MCP_ALLOW_PLAIN_HTTP).';
+        // $source and $configAllows stay so callers can pass the effective row. The page shows On or Off.
+        return $allowed ? 'On.' : 'Off.';
     }
 
     /**

@@ -46,7 +46,7 @@ require __DIR__ . '/_shell-top.php';
                 <h2 class="section-title">Plain HTTP</h2>
                 <p class="text-muted text-sm mt-1">
                     Grok and other clients can keep using <span class="mono">http://&lt;lan-ip&gt;:8765/mcp</span> until this is off.
-                    Saving here overrides <span class="mono">MCP_ALLOW_PLAIN_HTTP</span> for every account on this server.
+                    This switch is the setting for every account on this server.
                     A signed-in browser is required. An agent token cannot change it.
                 </p>
                 <form method="POST" action="/settings/agents/plain-http" class="mt-3 space-y-2">
@@ -58,10 +58,9 @@ require __DIR__ . '/_shell-top.php';
                     <p id="plain-http-source" class="text-muted text-xs">Effective: <?= e($plainSource) ?></p>
                     <p class="text-muted text-xs">
                         Off rejects a direct <span class="mono">http://&lt;ip&gt;:8765</span> call with 403 and names
-                        <?= $mcpPublic !== '' ? '<span class="mono">' . e($mcpPublic) . '</span>' : 'the HTTPS URL (<span class="mono">MCP_PUBLIC_URL</span> is not set)' ?>.
-                        The listen address does not change, and lifedash-mcp does not need a restart.
-                        To close the LAN port as well, set <span class="mono">MCP_BIND=loopback</span> and run
-                        <span class="mono">sudo systemctl restart lifedash-mcp</span>.
+                        <?= $mcpPublic !== '' ? '<span class="mono">' . e($mcpPublic) . '</span>' : 'the HTTPS URL (set the MCP URL on Settings → Setup)' ?>.
+                        The listen address does not change, and the MCP service does not need a restart.
+                        To close the LAN port as well, set MCP bind to loopback on Settings → Setup and use Restart MCP service.
                         After that, a LAN client is refused before it can see the 403. The tunnel still dials <span class="mono">127.0.0.1:8765</span>.
                     </p>
                     <button type="submit" class="btn text-sm">Save</button>

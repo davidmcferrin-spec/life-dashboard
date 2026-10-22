@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Start cloudflared from the dashboard token file when it exists.
+# Otherwise keep a tunnel that was created with a local config.yml.
+set -euo pipefail
+
+TOKEN_FILE=/etc/lifedash/cloudflared.token
+CONFIG=/etc/cloudflared/config.yml
+
+if [[ -s $TOKEN_FILE ]]; then
+    # The token stays in the environment. It is not a process argument.
+    TUNNEL_TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
+    export TUNNEL_TOKEN
+    exec /usr/bin/cloudflared --no-autoupdate tunnel run
+fi
+
+if [[ -f $CONFIG ]]; then
+    exec /usr/bin/cloudflared --no-autoupdate --config "$CONFIG" tunnel run
+fi
+
+echo "lifedash-cloudflared: no tunnel token and no $CONFIG" >&2
+exit 1

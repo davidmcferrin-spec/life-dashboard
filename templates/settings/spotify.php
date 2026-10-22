@@ -27,8 +27,7 @@ require __DIR__ . '/_shell-top.php';
                 <h2 class="section-title">Account</h2>
                 <?php if (empty($spotify['configured'])): ?>
                 <p class="text-sm text-muted">
-                    Set SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET, and SPOTIFY_REDIRECT_URI on the server
-                    (Settings → Setup, or <span class="mono">lifedash-env</span>) before connecting.
+                    Set the client id, client secret, and redirect URI on Settings → Setup before connecting.
                 </p>
                 <?php elseif (empty($spotify['connected'])): ?>
                 <p class="text-sm text-muted">Not connected<?= ($spotify['status'] ?? '') === 'needs_reauth' ? '. Spotify needs to be connected again.' : '.' ?></p>
@@ -64,15 +63,11 @@ require __DIR__ . '/_shell-top.php';
             <section class="surface p-4 space-y-3">
                 <h2 class="section-title">Player</h2>
                 <p class="text-sm text-muted">
-                    The player floats on every page and can shrink to a pill. In-browser audio needs this site on HTTPS
+                    The Player button on the dashboard shows or hides the floating player on this browser.
+                    The same button here follows that choice. In-browser audio needs this site on HTTPS
                     or http://127.0.0.1. Otherwise it controls the active Spotify device.
                 </p>
-                <form method="post" action="/settings/spotify/player" class="flex items-center gap-3">
-                    <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
-                    <input type="hidden" name="enabled" value="<?= !empty($spotify['player_enabled']) ? '0' : '1' ?>">
-                    <button type="submit" class="btn"><?= !empty($spotify['player_enabled']) ? 'Turn player off' : 'Turn player on' ?></button>
-                    <span class="mono text-xs text-faint"><?= !empty($spotify['player_enabled']) ? 'On' : 'Off' ?></span>
-                </form>
+                <button type="button" class="btn" data-player-toggle aria-pressed="false">Player</button>
             </section>
 
 <?php require __DIR__ . '/_shell-bottom.php'; ?>

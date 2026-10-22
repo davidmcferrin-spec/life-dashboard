@@ -17,12 +17,13 @@
         try {
             const raw = JSON.parse(localStorage.getItem(STORE) || '{}');
             return {
-                x: Number(raw.x) || 16,
-                y: Number(raw.y) || 16,
+                x: Number.isFinite(Number(raw.x)) ? Number(raw.x) : 16,
+                y: Number.isFinite(Number(raw.y)) ? Number(raw.y) : 16,
                 min: raw.min === true,
+                on: raw.on === true ? true : (raw.on === false ? false : null),
             };
         } catch (err) {
-            return { x: 16, y: 16, min: false };
+            return { x: 16, y: 16, min: false, on: null };
         }
     }
 
@@ -51,10 +52,6 @@
         return data;
     }
 
-    function phone() {
-        return window.matchMedia('(max-width: 700px)').matches;
-    }
-
     function shell() {
         let el = document.getElementById('sp-player');
         if (el) return el;
@@ -67,28 +64,32 @@
         return el;
     }
 
-    function place(el) {
+    function clamp(el) {
         el.classList.toggle('is-min', state.min);
-        if (phone()) {
-            el.style.left = '';
-            el.style.top = '';
-            el.style.right = '';
-            return;
-        }
+        const margin = 8;
+        const width = el.offsetWidth || 280;
+        const height = el.offsetHeight || 48;
+        const maxX = Math.max(margin, window.innerWidth - width - margin);
+        const maxY = Math.max(margin, window.innerHeight - height - margin);
+        state.x = Math.round(Math.min(maxX, Math.max(margin, state.x)));
+        state.y = Math.round(Math.min(maxY, Math.max(margin, state.y)));
+        // Inline edges override the narrow-screen dock so a saved position still moves.
+        el.style.right = 'auto';
+        el.style.bottom = 'auto';
         el.style.left = state.x + 'px';
         el.style.top = state.y + 'px';
     }
 
     function render(config, now, devices, playlists) {
         const el = shell();
-        place(el);
+        clamp(el);
         if (!config.connected) {
             el.innerHTML = '<a class="sp-pill" href="/settings/spotify">Connect Spotify</a>';
             return;
         }
         if (state.min) {
             const label = now && now.name ? now.name : 'Spotify';
-            el.innerHTML = '<button type="button" class="sp-pill" data-expand>' + escapeHtml(label) + '</button>';
+            el.innerHTML = '<div class="sp-bar" data-drag><span class="sp-grip" aria-hidden="true"></span><button type="button" class="sp-pill" data-expand>' + escapeHtml(label) + '</button><button type="button" data-reset>Reset</button></div>';
             return;
         }
         const art = now && now.image_url ? '<img class="sp-art" alt="" src="' + escapeHtml(now.image_url) + '">' : '<div class="sp-art"></div>';
@@ -102,8 +103,11 @@
         }).join('');
         el.innerHTML = `
             <div class="sp-bar" data-drag>
-                <strong>Life Dashboard</strong>
+                <span class="sp-grip" aria-hidden="true"></span>
+                <strong>Player</strong>
+                <button type="button" data-reset>Reset</button>
                 <button type="button" data-min aria-label="Hide player">Hide</button>
+                <button type="button" data-player-off>Off</button>
             </div>
             <div class="sp-body">
                 ${art}
@@ -183,6 +187,17 @@
                 render(config, null, [], []);
                 return;
             }
+            if (button.dataset.reset !== undefined) {
+                state.x = 16;
+                state.y = 16;
+                saveState();
+                clamp(el);
+                return;
+            }
+            if (button.dataset.playerOff !== undefined) {
+                setOn(false);
+                return;
+            }
             try {
                 if (button.dataset.cmd === 'play') {
                     await command('play', {});
@@ -223,26 +238,38 @@
             }
         });
         el.addEventListener('pointerdown', function (event) {
-            if (!event.target.closest('[data-drag]') || phone()) return;
+            const handle = event.target.closest('[data-drag]');
+            if (!handle || event.target.closest('button')) return;
+            event.preventDefault();
             dragging = true;
+            handle.classList.add('is-dragging');
+            if (handle.setPointerCapture) {
+                try { handle.setPointerCapture(event.pointerId); } catch (err) { /* already released */ }
+            }
             const startX = event.clientX;
             const startY = event.clientY;
             const originX = state.x;
             const originY = state.y;
             function move(ev) {
                 if (!dragging) return;
-                state.x = Math.max(8, originX + ev.clientX - startX);
-                state.y = Math.max(8, originY + ev.clientY - startY);
-                place(el);
+                state.x = originX + ev.clientX - startX;
+                state.y = originY + ev.clientY - startY;
+                clamp(el);
+                saveState();
             }
             function up() {
+                if (!dragging) return;
                 dragging = false;
+                handle.classList.remove('is-dragging');
+                clamp(el);
                 saveState();
-                window.removeEventListener('pointermove', move);
-                window.removeEventListener('pointerup', up);
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', up);
+                handle.removeEventListener('pointercancel', up);
             }
-            window.addEventListener('pointermove', move);
-            window.addEventListener('pointerup', up);
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', up);
+            handle.addEventListener('pointercancel', up);
         });
     }
 
@@ -288,24 +315,80 @@
         note.textContent = sdkNote;
     }
 
-    async function boot() {
-        let config;
-        try {
-            config = await api('GET', '/spotify/player-config');
-        } catch (err) {
-            return;
+    let config = null;
+    let started = false;
+
+    function paintToggles() {
+        const on = state.on === true;
+        document.querySelectorAll('[data-player-toggle]').forEach(function (btn) {
+            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+            btn.textContent = on ? 'Player on' : 'Player off';
+        });
+    }
+
+    function hidePlayer() {
+        const el = document.getElementById('sp-player');
+        if (el) el.hidden = true;
+        if (pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = null;
         }
-        if (!config.enabled) return;
+    }
+
+    function showPlayer() {
+        if (!config) return;
+        const el = shell();
+        el.hidden = false;
         render(config, null, [], []);
-        bind(config);
-        if (config.connected) {
-            startSdk();
-            refresh(config);
+        if (!started) {
+            bind(config);
+            started = true;
+        }
+        if (!config.connected) return;
+        startSdk();
+        refresh(config);
+        if (!pollTimer) {
             pollTimer = window.setInterval(function () {
                 if (!document.hidden && !dragging) refresh(config);
             }, 5000);
         }
     }
+
+    function setOn(on) {
+        state.on = !!on;
+        saveState();
+        paintToggles();
+        if (state.on) showPlayer();
+        else hidePlayer();
+    }
+
+    async function boot() {
+        try {
+            config = await api('GET', '/spotify/player-config');
+        } catch (err) {
+            paintToggles();
+            return;
+        }
+        if (state.on === null) state.on = !!config.enabled;
+        paintToggles();
+        if (state.on) showPlayer();
+    }
+
+    document.addEventListener('click', function (event) {
+        const btn = event.target.closest('[data-player-toggle]');
+        if (!btn) return;
+        event.preventDefault();
+        setOn(state.on !== true);
+    });
+    document.addEventListener('ld-spotify-player', function (event) {
+        setOn(!!(event.detail && event.detail.on));
+    });
+    window.addEventListener('resize', function () {
+        const el = document.getElementById('sp-player');
+        if (!el || el.hidden) return;
+        clamp(el);
+        saveState();
+    });
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', boot);

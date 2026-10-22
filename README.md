@@ -305,29 +305,19 @@ Until then, nightly `pg_dump`s go to `/var/backups/lifedash` only (7 days). **Sa
 
 The same Cloudflare zone that issues the LAN certificate can front two public hostnames. `dash.<domain>` is the PHP app, including the realtime socket at `/ws`. `mcp.<domain>` is the MCP server. OAuth consent stays on the dashboard hostname so the existing login session is the approval step.
 
-On the server:
+Create a remotely managed tunnel in Cloudflare Zero Trust and copy its token. Then, signed in as an admin:
 
-```bash
-cloudflared tunnel login
-cloudflared tunnel create lifedash
-cloudflared tunnel route dns lifedash dash.<your-domain>
-cloudflared tunnel route dns lifedash mcp.<your-domain>
-sudo lifedash-tunnel-setup dash.<your-domain> mcp.<your-domain>
-```
+1. **Settings → Setup → Public URLs.** Dashboard URL `https://dash.<your-domain>`. MCP URL `https://mcp.<your-domain>/mcp`. Leave MCP bind on **All interfaces** until every existing bot uses the tunnel. **Save**, then **Restart MCP service**. The bind applies after that restart.
+2. **Settings → Agents.** **Allow plain HTTP MCP access (LAN IP)** stays on so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. That checkbox is the switch. **Save**. A bearer token cannot change it.
+3. **Settings → Tunnel.** Paste the tunnel token. Dashboard hostname `dash.<your-domain>`. MCP hostname `mcp.<your-domain>`. **Save**. Copy the two routes into the tunnel's public hostname routes in Zero Trust:
+   - `dash.<your-domain>` → `http://localhost:80`
+   - `mcp.<your-domain>` → `http://localhost:8765`
 
-`lifedash-tunnel-setup` repeats login (if needed), create, both DNS routes, writes `/etc/cloudflared/config.yml` from `deploy/cloudflared/config.yml.template`, and installs `deploy/systemd/cloudflared.service`. The credentials file path is only in that config. It is not in git.
+   **Start**. The page shows Connected or Not connected. **Stop** and **Restart** are on the same page.
 
-Then set, and reload:
+The dashboard route origin is port 80. cloudflared reaches Apache on loopback. The LAN UI stays on HTTPS. A tunnel that already has `/etc/cloudflared/config.yml` still starts when this page has no token saved.
 
-```bash
-sudo lifedash-env set PUBLIC_BASE_URL https://dash.<your-domain>
-sudo lifedash-env set MCP_PUBLIC_URL https://mcp.<your-domain>/mcp
-sudo systemctl restart lifedash-mcp
-```
-
-`MCP_ALLOW_PLAIN_HTTP` defaults to true, so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. Settings → Agents has **Allow plain HTTP MCP access (LAN IP)**. A saved value there overrides the config file. The page shows which source is in effect, and the last HTTP or HTTPS call for each token and OAuth client.
-
-Turning that switch off does not change the listen address and does not need a restart. The next plain HTTP JSON-RPC call gets HTTP 403 and the message names `MCP_PUBLIC_URL`. A request cloudflared proxies (loopback, `X-Forwarded-Proto: https`) still works. `MCP_BIND` stays `all`. Set `MCP_BIND=loopback` and restart `lifedash-mcp` only when you also want the LAN port closed. After that, a LAN client is refused at connect time and does not see the 403. The tunnel still dials `127.0.0.1:8765`.
+Turning plain HTTP off does not change the listen address and does not need a restart. The next plain HTTP JSON-RPC call gets HTTP 403 and the message names the MCP URL. A request cloudflared proxies (loopback, `X-Forwarded-Proto: https`) still works. MCP bind stays on all interfaces. Choose **Loopback only** on Settings → Setup and press **Restart MCP service** only when you also want the LAN port closed. After that, a LAN client is refused at connect time and does not see the 403. The tunnel still dials `127.0.0.1:8765`.
 
 In Claude, add a custom connector with this URL:
 
@@ -345,8 +335,10 @@ LAN access by IP is unchanged. A forwarded `https` scheme is trusted only when t
 |---|---|
 | Re-run full setup | `sudo ./setup.sh` (from a checkout; idempotent) |
 | Deploy latest `main` | `sudo lifedash-deploy` (pull → deps → pre-migration dump → migrate → reload → verify). Agents can queue the same update: [docs/deploy/self-update.md](docs/deploy/self-update.md) |
-| Edit secrets | `sudo lifedash-env edit` (decrypt → `$EDITOR` → validate → re-encrypt → reload) |
-| List secret key names | `sudo lifedash-env keys` |
+| Integration settings | Settings → Setup (Spotify, weather, public URLs, MCP bind). Secrets show the last 4 characters, with Replace and Clear |
+| Restart MCP | Settings → Setup → Restart MCP service |
+| Tunnel | Settings → Tunnel (token, hostnames, Start / Stop / Restart) |
+| Boot secrets | `APP_SECRET` and the database password stay in the environment `setup.sh` installs (`sudo lifedash-env edit` is only for those) |
 | Run a job now | `sudo systemctl start lifedash-job@feeds` (feeds, flights, packages, pings, stocks, shares, prune) |
 | Job logs | `storage/logs/<job>.log` · `journalctl -u 'lifedash-job@*'` |
 | Backup now / list | `sudo systemctl start lifedash-backup` · `sudo lifedash-backup snapshots` |
@@ -472,7 +464,9 @@ The dashboard is often opened by IP address. Spotify only accepts an HTTPS redir
 
 The in-browser player also needs the page itself on HTTPS or `http://127.0.0.1`. A plain `http://` IP address can sync playlists, but the Web Playback SDK will not start there.
 
-Put `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`, and `SPOTIFY_REDIRECT_URI` in the server env with `sudo lifedash-env` (or Settings → Setup). Optional: `SPOTIFY_TOKEN_KEY` (otherwise `APP_SECRET` encrypts the tokens) and `SPOTIFY_SYNC_MINUTES` (default 10). Then Settings → Spotify → Connect.
+**Settings → Setup → Spotify.** Client id, client secret (Replace), redirect URI, and sync interval in minutes. The redirect field suggests `https://<dashboard host>/settings/spotify/callback` from the Dashboard URL and has a copy button. Save. The playback key is generated on first use and stored outside the web root. Then **Settings → Spotify → Connect**.
+
+The **Player** button in the dashboard header shows or hides the floating player on this browser immediately. Drag the grip in the player header. **Reset** returns it to the corner. It stays on other pages until you turn it off. The same button on Settings → Spotify follows that choice.
 
 ## API Keys
 
