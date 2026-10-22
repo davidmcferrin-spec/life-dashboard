@@ -27,6 +27,10 @@ class SpotifyHttpError(Exception):
 
 def error_message(status: int, path: str, body: str) -> str:
     lower = path.lower()
+    if "restriction violated" in body.lower():
+        if "/volume" in lower:
+            return "This device does not support volume."
+        return "This device does not support that playback command."
     if status == 403 and ("recommendation" in lower or "audio-features" in lower or "audio-analysis" in lower):
         return "Spotify does not offer recommendations or audio features to this app."
     if status == 403:
@@ -46,6 +50,16 @@ def error_message(status: int, path: str, body: str) -> str:
     if not err:
         return f"Spotify request failed ({status})."
     return f"Spotify request failed ({status}): {err}"
+
+
+def with_length(method: str, body: str | None, headers: dict[str, str]) -> tuple[str | None, dict[str, str]]:
+    """PUT and POST with no Content-Length are rejected with 411."""
+    headers = dict(headers)
+    if body is None and method.upper() in {"POST", "PUT", "PATCH", "DELETE"}:
+        body = ""
+    if body is not None and "Content-Length" not in headers:
+        headers["Content-Length"] = str(len(body.encode("utf-8")))
+    return body, headers
 
 
 def scrub(text: str) -> str:
@@ -87,9 +101,8 @@ class SpotifyHttp:
 
         basic = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
         body = "&".join(f"{key}={urllib.parse.quote(value)}" for key, value in form.items())
-        return self._send(
+        encoded, headers = with_length(
             "POST",
-            TOKEN_URL,
             body,
             {
                 "Authorization": f"Basic {basic}",
@@ -97,6 +110,7 @@ class SpotifyHttp:
                 "Accept": "application/json",
             },
         )
+        return self._send("POST", TOKEN_URL, encoded, headers)
 
     def api(self, method: str, path: str, access_token: str, body: dict | None = None, query: dict | None = None) -> dict:
         url = path if path.startswith("https://") else API + "/" + path.lstrip("/")
@@ -107,6 +121,7 @@ class SpotifyHttp:
         headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
         if encoded is not None:
             headers["Content-Type"] = "application/json"
+        encoded, headers = with_length(method, encoded, headers)
         return self._send(method, url, encoded, headers)
 
     def _send(self, method: str, url: str, body: str | None, headers: dict[str, str]) -> dict:

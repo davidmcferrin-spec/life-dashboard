@@ -10,6 +10,10 @@ REORDER_CONFLICT = (
     "Discard it or reorder again."
 )
 NOT_CREATED = "Playlist has not been created on Spotify yet."
+READ_ONLY = "This playlist is read-only. Only playlists you own can be edited or pushed."
+ITEM_FORBIDDEN = "Spotify does not return tracks for a playlist you do not own."
+ITEM_UNREADABLE = "Spotify reported tracks, but none of them could be read."
+ITEM_FAILED = "Spotify did not return this playlist's tracks."
 
 
 def partition_playlists(local: dict[str, str], remote: list[dict]) -> dict[str, list[str]]:
@@ -122,7 +126,7 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
                 body: dict = {"uris": chunk}
                 if position is not None and offset == 0:
                     body["position"] = int(position)
-                actions.append(_request(change_id, "POST", f"/playlists/{spotify_id}/tracks", body))
+                actions.append(_request(change_id, "POST", f"/playlists/{spotify_id}/items", body))
             if position is None:
                 present.extend(wanted)
             else:
@@ -141,8 +145,8 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
                     _request(
                         change_id,
                         "DELETE",
-                        f"/playlists/{spotify_id}/tracks",
-                        {"tracks": [{"uri": uri} for uri in chunk]},
+                        f"/playlists/{spotify_id}/items",
+                        {"items": [{"uri": uri} for uri in chunk]},
                     )
                 )
             gone = set(unique)
@@ -157,7 +161,7 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
                 _request(
                     change_id,
                     "PUT",
-                    f"/playlists/{spotify_id}/tracks",
+                    f"/playlists/{spotify_id}/items",
                     {
                         "range_start": int(payload.get("range_start") or 0),
                         "insert_before": int(payload.get("insert_before") or 0),
@@ -175,13 +179,13 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
         if kind == "replace":
             uris = _uris(payload)
             first, rest = uris[:BATCH], uris[BATCH:]
-            actions.append(_request(change_id, "PUT", f"/playlists/{spotify_id}/tracks", {"uris": first}))
+            actions.append(_request(change_id, "PUT", f"/playlists/{spotify_id}/items", {"uris": first}))
             for offset in range(0, len(rest), BATCH):
                 actions.append(
                     _request(
                         change_id,
                         "POST",
-                        f"/playlists/{spotify_id}/tracks",
+                        f"/playlists/{spotify_id}/items",
                         {"uris": rest[offset : offset + BATCH]},
                     )
                 )
@@ -222,6 +226,48 @@ def _uris(payload: dict) -> list[str]:
 
 def _request(change_id: object, method: str, path: str, body: dict | None) -> dict:
     return {"change_id": change_id, "kind": "request", "method": method, "path": path, "body": body}
+
+
+def playlist_total(remote: dict) -> int | None:
+    """Spotify renamed tracks.total to items.total. Either shape is accepted."""
+    for key in ("items", "tracks"):
+        block = remote.get(key)
+        if isinstance(block, dict) and isinstance(block.get("total"), int):
+            return int(block["total"])
+    return None
+
+
+def playlist_item_object(item: dict) -> dict | None:
+    for key in ("item", "track"):
+        obj = item.get(key)
+        if isinstance(obj, dict):
+            return obj
+    return None
+
+
+def can_push_playlist(row: dict) -> bool:
+    """A local draft can be pushed. A remote playlist can be pushed only when we own it."""
+    if not row.get("spotify_id"):
+        return True
+    return row.get("is_owned") in (1, True, "1")
+
+
+def is_playlist_delete(method: str, path: str) -> bool:
+    if str(method).upper() != "DELETE":
+        return False
+    parts = [part for part in path.split("?", 1)[0].rstrip("/").split("/") if part]
+    return len(parts) == 2 and parts[0] == "playlists"
+
+
+def item_sync_result(total: int | None, parsed: int | None, status: int | None) -> dict:
+    """parsed is None when the items request failed. A failure must not wipe stored tracks."""
+    if parsed is None:
+        message = ITEM_FORBIDDEN if status == 403 else ITEM_FAILED
+        return {"replace": False, "track_count": total, "sync_error": message}
+    if isinstance(total, int) and total > 0 and parsed == 0:
+        return {"replace": False, "track_count": total, "sync_error": ITEM_UNREADABLE}
+    count = total if isinstance(total, int) else parsed
+    return {"replace": True, "track_count": count, "sync_error": None}
 
 
 def _apply_reorder(uris: list[str], start: int, length: int, before: int) -> list[str]:

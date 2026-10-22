@@ -29,6 +29,13 @@ final class SpotifyAccount
         'user-read-private',
     ];
 
+    /** Scopes the Web Playback SDK refuses to start without. */
+    public const PLAYBACK_SCOPES = [
+        'streaming',
+        'user-read-email',
+        'user-read-private',
+    ];
+
     public function __construct(
         private readonly Database $db,
         private readonly SpotifyHttp $http = new SpotifyHttp(),
@@ -62,6 +69,7 @@ final class SpotifyAccount
                 'last_sync_at' => null,
                 'last_sync_status' => null,
                 'last_sync_error' => null,
+                'missing_playback_scopes' => self::PLAYBACK_SCOPES,
             ];
         }
         $scopes = preg_split('/\s+/', trim((string) $row['scopes'])) ?: [];
@@ -76,7 +84,29 @@ final class SpotifyAccount
             'last_sync_at' => $row['last_sync_at'] !== null ? (string) $row['last_sync_at'] : null,
             'last_sync_status' => $row['last_sync_status'] !== null ? (string) $row['last_sync_status'] : null,
             'last_sync_error' => $row['last_sync_error'] !== null ? (string) $row['last_sync_error'] : null,
+            'missing_playback_scopes' => self::missingPlaybackScopes($scopes),
         ];
+    }
+
+    /**
+     * @param list<string> $granted
+     * @return list<string>
+     */
+    public static function missingPlaybackScopes(array $granted): array
+    {
+        $have = [];
+        foreach ($granted as $scope) {
+            if ($scope !== '') {
+                $have[$scope] = true;
+            }
+        }
+        $missing = [];
+        foreach (self::PLAYBACK_SCOPES as $scope) {
+            if (!isset($have[$scope])) {
+                $missing[] = $scope;
+            }
+        }
+        return $missing;
     }
 
     /** @return array{url: string, state: string} */

@@ -30,7 +30,7 @@ final class SpotifyLibrary
         $rows = $this->db->fetchAll(
             'SELECT p.id, p.spotify_id, p.name, p.description, p.is_public, p.collaborative, p.owner_id, p.owner_name,
                     p.snapshot_id, p.track_count, p.image_url, p.last_synced_at, p.local_dirty, p.managed_by_ai,
-                    p.source_prompt_id,
+                    p.source_prompt_id, p.origin, p.is_owned, p.sync_error,
                     (SELECT COUNT(*) FROM spotify_playlist_changes c
                       WHERE c.playlist_id = p.id AND c.status IN (\'pending\', \'failed\')) AS open_changes
              FROM spotify_playlists p
@@ -110,17 +110,36 @@ final class SpotifyLibrary
         $description = self::description($body['description'] ?? '');
         $public = self::flag($body['public'] ?? false);
         $promptId = self::optionalId($body['source_prompt_id'] ?? null);
+        $promptText = trim((string) ($body['prompt'] ?? ''));
+        if ($promptText !== '') {
+            $promptText = self::promptText($promptText);
+        }
+        $schedule = array_key_exists('refresh_schedule', $body) ? self::schedule($body['refresh_schedule']) : null;
         if ($promptId !== null) {
             $this->prompt($userId, $promptId);
         }
-        $ai = in_array($by, ['ai', 'mcp'], true) ? 1 : 0;
-        $id = (int) $this->db->transaction(function (Database $db) use ($userId, $name, $description, $public, $promptId, $ai, $by): int {
+        $ai = ($promptId !== null || $promptText !== '' || self::flag($body['ai'] ?? false) === 1) ? 1 : 0;
+        $origin = $ai === 1 ? 'ai_created' : 'created';
+        $id = (int) $this->db->transaction(function (Database $db) use ($userId, $name, $description, $public, $promptId, $promptText, $schedule, $ai, $origin, $by): int {
+            if ($promptText !== '' && $promptId === null) {
+                $promptId = (int) $db->fetchScalar(
+                    'INSERT INTO spotify_prompts (user_id, name, prompt, refresh_schedule, active)
+                     VALUES (?, ?, ?, ?, 1) RETURNING id',
+                    [$userId, mb_substr($name, 0, 120), $promptText, $schedule]
+                );
+            }
             $playlistId = (int) $db->fetchScalar(
                 'INSERT INTO spotify_playlists
-                    (user_id, name, description, is_public, local_dirty, managed_by_ai, source_prompt_id)
-                 VALUES (?, ?, ?, ?, 1, ?, ?) RETURNING id',
-                [$userId, $name, $description, $public, $ai, $promptId]
+                    (user_id, name, description, is_public, local_dirty, managed_by_ai, source_prompt_id, origin, is_owned)
+                 VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1) RETURNING id',
+                [$userId, $name, $description, $public, $ai, $promptId, $origin]
             );
+            if ($promptId !== null) {
+                $db->execute(
+                    'UPDATE spotify_prompts SET target_playlist_id = ? WHERE user_id = ? AND id = ? AND target_playlist_id IS NULL',
+                    [$playlistId, $userId, $promptId]
+                );
+            }
             $this->stage($db, $userId, $playlistId, 'create', [
                 'name' => $name,
                 'description' => $description,
@@ -137,7 +156,7 @@ final class SpotifyLibrary
      */
     public function updatePlaylist(int $userId, int $id, array $body, string $by): array
     {
-        $this->playlistRow($userId, $id);
+        $this->requireEditable($userId, $id);
         $payloadName = array_key_exists('name', $body) ? self::name($body['name']) : null;
         $payloadDesc = array_key_exists('description', $body) ? self::description($body['description']) : null;
         $payloadPublic = array_key_exists('public', $body) ? self::flag($body['public']) === 1 : null;
@@ -172,7 +191,7 @@ final class SpotifyLibrary
      */
     public function addTracks(int $userId, int $id, mixed $uris, mixed $position, string $by, array $meta = []): array
     {
-        $this->playlistRow($userId, $id);
+        $this->requireEditable($userId, $id);
         $list = self::uris($uris);
         $payload = ['uris' => $list];
         if ($position !== null && $position !== '') {
@@ -190,7 +209,7 @@ final class SpotifyLibrary
      */
     public function removeTracks(int $userId, int $id, mixed $uris, string $by): array
     {
-        $this->playlistRow($userId, $id);
+        $this->requireEditable($userId, $id);
         $this->stageAndDirty($userId, $id, 'remove', ['uris' => self::uris($uris)], $by);
         return $this->playlist($userId, $id);
     }
@@ -201,6 +220,7 @@ final class SpotifyLibrary
      */
     public function reorderTracks(int $userId, int $id, array $body, string $by): array
     {
+        $this->requireEditable($userId, $id);
         $detail = $this->playlist($userId, $id);
         $base = array_map(static fn (array $track): string => (string) $track['uri'], $detail['preview']);
         $start = self::nonNegative($body['range_start'] ?? null, 'range_start');
@@ -226,7 +246,7 @@ final class SpotifyLibrary
      */
     public function replaceTracks(int $userId, int $id, mixed $uris, string $by): array
     {
-        $this->playlistRow($userId, $id);
+        $this->requireEditable($userId, $id);
         $list = self::uris($uris, true);
         $this->stageAndDirty($userId, $id, 'replace', ['uris' => $list], $by);
         return $this->playlist($userId, $id);
@@ -431,7 +451,7 @@ final class SpotifyLibrary
             ? self::optionalId($body['target_playlist_id'])
             : ($existing['target_playlist_id'] ?? null);
         if ($target !== null) {
-            $this->playlistRow($userId, (int) $target);
+            self::assertPromptTarget($this->playlistRow($userId, (int) $target));
         }
         $schedule = array_key_exists('refresh_schedule', $body)
             ? self::schedule($body['refresh_schedule'])
@@ -585,8 +605,66 @@ final class SpotifyLibrary
             'local_dirty' => (int) ($row['local_dirty'] ?? 0) === 1,
             'managed_by_ai' => (int) ($row['managed_by_ai'] ?? 0) === 1,
             'source_prompt_id' => $row['source_prompt_id'] !== null ? (int) $row['source_prompt_id'] : null,
+            'origin' => (string) ($row['origin'] ?? 'synced'),
+            'is_owned' => self::canEdit($row),
+            'sync_error' => isset($row['sync_error']) && $row['sync_error'] !== null && $row['sync_error'] !== ''
+                ? (string) $row['sync_error']
+                : null,
             'open_changes' => (int) ($row['open_changes'] ?? 0),
         ];
+    }
+
+    public function assertEditable(int $userId, int $id): void
+    {
+        $this->requireEditable($userId, $id);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    public static function canEdit(array $row): bool
+    {
+        $remote = $row['spotify_id'] ?? null;
+        if ($remote === null || $remote === '') {
+            return true;
+        }
+        return (int) ($row['is_owned'] ?? 0) === 1;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    public static function readOnlyMessage(array $row): string
+    {
+        $owner = trim((string) ($row['owner_name'] ?? ''));
+        if ($owner !== '') {
+            return 'This playlist is read-only (owned by ' . $owner . '). Only playlists you own can be edited or pushed.';
+        }
+        return 'This playlist is read-only. Only playlists you own can be edited or pushed.';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    public static function assertPromptTarget(array $row): void
+    {
+        if ((string) ($row['origin'] ?? '') !== 'ai_created' || !self::canEdit($row)) {
+            throw ValidationException::withFields([
+                'target_playlist_id' => 'Prompts attach only to AI playlists created here.',
+            ]);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requireEditable(int $userId, int $id): array
+    {
+        $row = $this->playlistRow($userId, $id);
+        if (!self::canEdit($row)) {
+            throw ValidationException::withFields(['playlist' => self::readOnlyMessage($row)]);
+        }
+        return $row;
     }
 
     /**
@@ -597,6 +675,7 @@ final class SpotifyLibrary
         $row = $this->db->fetchOne(
             'SELECT p.id, p.spotify_id, p.name, p.description, p.is_public, p.collaborative, p.owner_id, p.owner_name,
                     p.snapshot_id, p.track_count, p.image_url, p.last_synced_at, p.local_dirty, p.managed_by_ai, p.source_prompt_id,
+                    p.origin, p.is_owned, p.sync_error,
                     (SELECT COUNT(*) FROM spotify_playlist_changes c
                       WHERE c.playlist_id = p.id AND c.status IN (\'pending\', \'failed\')) AS open_changes
              FROM spotify_playlists p WHERE p.user_id = ? AND p.id = ?',

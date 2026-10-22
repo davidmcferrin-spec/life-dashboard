@@ -68,7 +68,8 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
         },
     ),
     _tool("get_now_playing", "What is playing now, from Spotify. Requires spotify:read."),
-    _tool("list_spotify_devices", "Spotify Connect devices. Requires spotify:read."),
+    _tool("list_spotify_devices", "Spotify Connect devices: id, name, type, and which one is active. Requires spotify:read."),
+    _tool("list_devices", "Spotify Connect devices: id, name, type, and which one is active. Requires spotify:read."),
     _tool(
         "list_playlist_changes",
         "Staged edits that have not been pushed, or that failed. Requires spotify:read.",
@@ -85,18 +86,21 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "create_spotify_playlist",
-        "Stage a new playlist locally. Push it to create it on Spotify. " + WRITE,
+        "Stage a new playlist locally. Push it to create it on Spotify. Set ai true, or send prompt text, to make an AI playlist. A regular create is not an AI playlist. " + WRITE,
         {
             "name": {"type": "string"},
             "description": {"type": "string"},
             "public": {"type": "boolean"},
+            "ai": {"type": "boolean"},
+            "prompt": {"type": "string"},
+            "refresh_schedule": {"type": "string"},
             "source_prompt_id": {"type": "integer"},
         },
         ["name"],
     ),
     _tool(
         "update_spotify_playlist",
-        "Stage a name, description, or public flag. " + WRITE,
+        "Stage a name, description, or public flag. Refuses a playlist you do not own. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "name": {"type": "string"},
@@ -107,7 +111,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "add_playlist_tracks",
-        "Stage spotify:track URIs onto a playlist. " + WRITE,
+        "Stage spotify:track URIs onto a playlist you own. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "uris": {"type": "array", "items": {"type": "string"}},
@@ -117,7 +121,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "remove_playlist_tracks",
-        "Stage removal of spotify:track URIs. " + WRITE,
+        "Stage removal of spotify:track URIs from a playlist you own. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "uris": {"type": "array", "items": {"type": "string"}},
@@ -126,7 +130,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "reorder_playlist_tracks",
-        "Stage a reorder against the current preview. It fails on push if Spotify's track list changed. " + WRITE,
+        "Stage a reorder against the current preview of a playlist you own. It fails on push if Spotify's track list changed. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "range_start": {"type": "integer"},
@@ -137,7 +141,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "replace_playlist_tracks",
-        "Stage a full replacement of the playlist's tracks. " + WRITE,
+        "Stage a full replacement of tracks on a playlist you own. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "uris": {"type": "array", "items": {"type": "string"}},
@@ -151,7 +155,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "push_playlist_changes",
-        "Push staged edits for one playlist, or every playlist when playlist_id is omitted. " + WRITE,
+        "Push staged edits for one playlist you own, or every owned playlist when playlist_id is omitted. Followed playlists are skipped. " + WRITE,
         {"playlist_id": {"type": "integer"}},
     ),
     _tool(
@@ -161,7 +165,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "add_spotify_prompt",
-        "Add a prompt the assistant can read when building a playlist. " + WRITE,
+        "Add a prompt for an AI playlist created here. target_playlist_id is refused for any other playlist. " + WRITE,
         {
             "name": {"type": "string"},
             "prompt": {"type": "string"},
@@ -174,7 +178,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "update_spotify_prompt",
-        "Update a prompt. " + WRITE,
+        "Update a prompt. target_playlist_id must be an AI playlist created here. " + WRITE,
         {
             "prompt_id": {"type": "integer"},
             "name": {"type": "string"},
@@ -250,7 +254,7 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "transfer_playback",
-        "Move playback to a Spotify Connect device. " + PLAYBACK,
+        "Move playback to a Spotify Connect device. Omit play to keep the current playback state. " + PLAYBACK,
         {"device_id": {"type": "string"}, "play": {"type": "boolean"}},
         ["device_id"],
     ),
@@ -297,7 +301,7 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "get_now_playing":
         _empty(name, args)
         return "GET", "/api/v1/spotify/player", None
-    if name == "list_spotify_devices":
+    if name in {"list_spotify_devices", "list_devices"}:
         _empty(name, args)
         return "GET", "/api/v1/spotify/devices", None
     if name == "list_playlist_changes":
@@ -311,8 +315,8 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "get_spotify_prompt":
         return "GET", f"/api/v1/spotify/prompts/{_id(args, 'prompt_id')}", None
     if name == "create_spotify_playlist":
-        _unknown(name, args, {"name", "description", "public", "source_prompt_id"})
-        return "POST", "/api/v1/spotify/playlists", _pick(args, ("name", "description", "public", "source_prompt_id"))
+        _unknown(name, args, {"name", "description", "public", "ai", "prompt", "refresh_schedule", "source_prompt_id"})
+        return "POST", "/api/v1/spotify/playlists", _pick(args, ("name", "description", "public", "ai", "prompt", "refresh_schedule", "source_prompt_id"))
     if name == "update_spotify_playlist":
         _unknown(name, args, {"playlist_id", "name", "description", "public"})
         playlist_id = _id(args, "playlist_id")

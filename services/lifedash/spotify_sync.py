@@ -17,7 +17,17 @@ from .db import connect
 from .log import setup
 from .spotify_crypto import key_bytes, open_blob, seal
 from .spotify_http import SpotifyHttp, SpotifyHttpError, scrub
-from .spotify_plan import partition_playlists, plan_push, needs_refresh
+from .spotify_plan import (
+    READ_ONLY,
+    can_push_playlist,
+    is_playlist_delete,
+    item_sync_result,
+    needs_refresh,
+    partition_playlists,
+    plan_push,
+    playlist_item_object,
+    playlist_total,
+)
 
 GONE = "Spotify no longer has this playlist."
 
@@ -141,11 +151,13 @@ class Worker:
 
     def _pull(self, user_id: int, playlist_id: int | None) -> dict:
         log_id = self._start_log(user_id, "pull")
+        self._item_errors = 0
         try:
             if playlist_id is None:
                 counts = self._pull_all(user_id)
             else:
                 counts = self._pull_one(user_id, playlist_id)
+            counts["item_errors"] = self._item_errors
             self._finish_log(log_id, "ok", counts, None)
             self._touch_account(user_id, "ok", None)
             return counts
@@ -176,6 +188,7 @@ class Worker:
             "saved": saved,
             "history": history,
             "top": top,
+            "item_errors": self._item_errors,
         }
 
     def _pull_one(self, user_id: int, playlist_id: int) -> dict:
@@ -206,64 +219,90 @@ class Worker:
         owner = remote.get("owner") if isinstance(remote.get("owner"), dict) else {}
         images = remote.get("images") or []
         image = images[0].get("url") if images and isinstance(images[0], dict) else None
-        total = (remote.get("tracks") or {}).get("total")
+        total = playlist_total(remote)
+        account = self.conn.execute(
+            "SELECT spotify_user_id FROM spotify_account WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+        owner_id = owner.get("id")
+        mine = bool(account and owner_id and owner_id == account["spotify_user_id"])
         existing = self.conn.execute(
-            "SELECT id FROM spotify_playlists WHERE user_id = %s AND spotify_id = %s",
+            "SELECT id, origin, track_count FROM spotify_playlists WHERE user_id = %s AND spotify_id = %s",
             (user_id, sid),
         ).fetchone()
+        owned = 1 if mine else 0
+        if existing and existing["origin"] in ("created", "ai_created") and not owner_id:
+            owned = 1
         values = (
             remote.get("name") or "Playlist",
             remote.get("description") or "",
             1 if remote.get("public") else 0,
             1 if remote.get("collaborative") else 0,
-            owner.get("id"),
+            owner_id,
             owner.get("display_name"),
             remote.get("snapshot_id"),
-            int(total or 0),
             image,
+            owned,
         )
         if existing:
             playlist_id = int(existing["id"])
+            previous = int(existing["track_count"] or 0)
             self.conn.execute(
                 """UPDATE spotify_playlists
                    SET name = %s, description = %s, is_public = %s, collaborative = %s,
-                       owner_id = %s, owner_name = %s, snapshot_id = %s, track_count = %s,
-                       image_url = %s, last_synced_at = (now() AT TIME ZONE 'UTC'),
+                       owner_id = %s, owner_name = %s, snapshot_id = %s,
+                       image_url = %s, is_owned = %s, last_synced_at = (now() AT TIME ZONE 'UTC'),
                        updated_at = (now() AT TIME ZONE 'UTC')
                    WHERE id = %s""",
                 (*values, playlist_id),
             )
         else:
+            previous = 0
             playlist_id = int(
                 self.conn.execute(
                     """INSERT INTO spotify_playlists
                        (user_id, spotify_id, name, description, is_public, collaborative, owner_id, owner_name,
-                        snapshot_id, track_count, image_url, last_synced_at)
-                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, (now() AT TIME ZONE 'UTC'))
+                        snapshot_id, image_url, is_owned, origin, track_count, last_synced_at)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'synced', 0, (now() AT TIME ZONE 'UTC'))
                        RETURNING id""",
                     (user_id, sid, *values),
                 ).fetchone()["id"]
             )
-        items = self._items(user_id, f"/playlists/{sid}/tracks?limit=100")
-        self.conn.execute("DELETE FROM spotify_playlist_tracks WHERE playlist_id = %s", (playlist_id,))
-        position = 0
-        for item in items:
-            track = item.get("track") if isinstance(item, dict) else None
-            fields = track_fields(track)
-            if fields is None:
-                continue
-            track_id = self._upsert_track(user_id, fields)
-            added_by = (item.get("added_by") or {}).get("id") if isinstance(item.get("added_by"), dict) else None
-            added_at = _stamp(item.get("added_at")) if item.get("added_at") else None
-            self.conn.execute(
-                """INSERT INTO spotify_playlist_tracks (user_id, playlist_id, track_id, position, added_at, added_by)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (user_id, playlist_id, track_id, position, added_at, added_by),
-            )
-            position += 1
+        rows: list[tuple[dict, dict]] = []
+        parsed: int | None = None
+        status: int | None = None
+        try:
+            raw_items = self._items(user_id, f"/playlists/{sid}/items?limit=50")
+            parsed = 0
+            for item in raw_items:
+                track = playlist_item_object(item) if isinstance(item, dict) else None
+                fields = track_fields(track)
+                if fields is None:
+                    continue
+                rows.append((item, fields))
+                parsed += 1
+        except SpotifyHttpError as exc:
+            status = exc.status
+            self._note(f"playlist {sid} items failed: {exc}")
+        result = item_sync_result(total, parsed, status)
+        count = previous if result["track_count"] is None else int(result["track_count"])
+        if result["sync_error"]:
+            self._item_errors = getattr(self, "_item_errors", 0) + 1
+            self._note(f"playlist {sid}: {result['sync_error']}")
+        if result["replace"]:
+            self.conn.execute("DELETE FROM spotify_playlist_tracks WHERE playlist_id = %s", (playlist_id,))
+            for position, (item, fields) in enumerate(rows):
+                track_id = self._upsert_track(user_id, fields)
+                added_by = (item.get("added_by") or {}).get("id") if isinstance(item.get("added_by"), dict) else None
+                added_at = _stamp(item.get("added_at")) if item.get("added_at") else None
+                self.conn.execute(
+                    """INSERT INTO spotify_playlist_tracks (user_id, playlist_id, track_id, position, added_at, added_by)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (user_id, playlist_id, track_id, position, added_at, added_by),
+                )
         self.conn.execute(
-            "UPDATE spotify_playlists SET track_count = %s WHERE id = %s",
-            (position, playlist_id),
+            "UPDATE spotify_playlists SET track_count = %s, sync_error = %s WHERE id = %s",
+            (count, result["sync_error"], playlist_id),
         )
         return playlist_id
 
@@ -394,7 +433,7 @@ class Worker:
 
     def _push(self, user_id: int, playlist_id: int | None) -> dict:
         log_id = self._start_log(user_id, "push")
-        sql = """SELECT DISTINCT p.id, p.spotify_id, p.snapshot_id
+        sql = """SELECT DISTINCT p.id, p.spotify_id, p.snapshot_id, p.is_owned
                  FROM spotify_playlists p
                  JOIN spotify_playlist_changes c ON c.playlist_id = p.id
                  WHERE p.user_id = %s AND c.status IN ('pending', 'failed')"""
@@ -408,6 +447,10 @@ class Worker:
         failed = 0
         try:
             for row in rows:
+                if not can_push_playlist(row):
+                    if playlist_id is not None:
+                        raise SpotifyHttpError(READ_ONLY, 403)
+                    continue
                 outcome = self._push_playlist(user_id, int(row["id"]))
                 pushed += outcome["pushed"]
                 failed += outcome["failed"]
@@ -491,15 +534,18 @@ class Worker:
         if isinstance(snapshot, str) and snapshot:
             self.conn.execute("UPDATE spotify_playlists SET snapshot_id = %s WHERE id = %s", (snapshot, playlist_id))
         if requests[0]["method"] == "POST" and requests[0]["path"] == "/me/playlists" and last.get("id"):
+            owner = last.get("owner") if isinstance(last.get("owner"), dict) else {}
             self.conn.execute(
                 """UPDATE spotify_playlists
-                   SET spotify_id = %s, snapshot_id = %s, last_synced_at = (now() AT TIME ZONE 'UTC')
+                   SET spotify_id = %s, snapshot_id = %s, owner_id = COALESCE(%s, owner_id),
+                       owner_name = COALESCE(%s, owner_name), is_owned = 1,
+                       last_synced_at = (now() AT TIME ZONE 'UTC')
                    WHERE id = %s""",
-                (last["id"], last.get("snapshot_id"), playlist_id),
+                (last["id"], last.get("snapshot_id"), owner.get("id"), owner.get("display_name"), playlist_id),
             )
             self._set_change(first, "pushed", None)
             return "created"
-        if requests[0]["method"] == "DELETE" and "/tracks" not in requests[0]["path"]:
+        if is_playlist_delete(requests[0]["method"], requests[0]["path"]):
             self.conn.execute("DELETE FROM spotify_playlists WHERE id = %s", (playlist_id,))
             return "stop"
         self._set_change(first, "pushed", None)

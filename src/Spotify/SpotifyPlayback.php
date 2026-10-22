@@ -170,10 +170,7 @@ final class SpotifyPlayback
                 'queue' => $this->http->api('POST', '/me/player/queue', $token, null, $query + [
                     'uri' => self::oneUri($body['uri'] ?? null),
                 ]),
-                'transfer' => $this->http->api('PUT', '/me/player', $token, [
-                    'device_ids' => [self::requireDevice($body['device_id'] ?? null)],
-                    'play' => self::truthy($body['play'] ?? false),
-                ]),
+                'transfer' => $this->http->api('PUT', '/me/player', $token, self::transferPayload($body)),
                 default => throw ValidationException::withFields(['action' => 'Unknown playback action.']),
             };
         });
@@ -216,6 +213,8 @@ final class SpotifyPlayback
                 'duration_ms' => 0,
                 'uri' => null,
                 'device' => is_array($data['device'] ?? null) ? (string) ($data['device']['name'] ?? '') : null,
+                'shuffle' => !empty($data['shuffle_state']),
+                'repeat' => self::repeatMode($data['repeat_state'] ?? null),
             ];
         }
         $tracks = self::tracks([$item]);
@@ -226,6 +225,8 @@ final class SpotifyPlayback
         $track['is_playing'] = !empty($data['is_playing']);
         $track['progress_ms'] = (int) ($data['progress_ms'] ?? 0);
         $track['device'] = is_array($data['device'] ?? null) ? (string) ($data['device']['name'] ?? '') : null;
+        $track['shuffle'] = !empty($data['shuffle_state']);
+        $track['repeat'] = self::repeatMode($data['repeat_state'] ?? null);
         return $track;
     }
 
@@ -375,6 +376,21 @@ final class SpotifyPlayback
         return $id;
     }
 
+    /**
+     * Omitting play keeps the current playback state. An explicit play forces it.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    public static function transferPayload(array $body): array
+    {
+        $payload = ['device_ids' => [self::requireDevice($body['device_id'] ?? null)]];
+        if (array_key_exists('play', $body)) {
+            $payload['play'] = self::truthy($body['play']);
+        }
+        return $payload;
+    }
+
     private static function requireDevice(mixed $value): string
     {
         return self::deviceId($value) ?? throw ValidationException::withFields(['device_id' => 'Choose a device.']);
@@ -400,6 +416,12 @@ final class SpotifyPlayback
     private static function truthy(mixed $value): bool
     {
         return $value === true || $value === 1 || $value === '1' || $value === 'true';
+    }
+
+    private static function repeatMode(mixed $value): string
+    {
+        $state = (string) $value;
+        return in_array($state, ['off', 'track', 'context'], true) ? $state : 'off';
     }
 
     private static function repeat(mixed $value): string

@@ -5,15 +5,23 @@ from datetime import datetime, timezone
 import pytest
 
 from lifedash.spotify_crypto import key_bytes, open_blob, seal
-from lifedash.spotify_http import SpotifyHttp, SpotifyHttpError, error_message, scrub
+from lifedash.spotify_http import SpotifyHttp, SpotifyHttpError, error_message, scrub, with_length
 from lifedash.spotify_plan import (
+    ITEM_FORBIDDEN,
+    ITEM_UNREADABLE,
     NOT_CREATED,
+    READ_ONLY,
     REORDER_CONFLICT,
     backoff_seconds,
+    can_push_playlist,
+    is_playlist_delete,
+    item_sync_result,
     needs_refresh,
     new_plays,
     partition_playlists,
     plan_push,
+    playlist_item_object,
+    playlist_total,
 )
 
 GOLDEN = "AQEBAQEBAQEBAQEBCyhX8rybhPwLN74AdYWqtnK9ClT0kQmK7cpgu1lGd8AzDe4xlA=="
@@ -139,6 +147,46 @@ def test_delete_stops_the_plan():
     assert len(actions) == 1
     assert actions[0]["method"] == "DELETE"
     assert actions[0]["path"] == "/playlists/pl"
+    assert is_playlist_delete("DELETE", actions[0]["path"])
+    assert is_playlist_delete("DELETE", "/playlists/pl/items") is False
+
+
+def test_add_and_remove_use_playlist_items():
+    added = plan_push("pl", [], [{"id": 3, "op": "add", "payload": {"uris": ["spotify:track:a"]}}])
+    assert added[0]["path"] == "/playlists/pl/items"
+    removed = plan_push("pl", ["spotify:track:a"], [{"id": 4, "op": "remove", "payload": {"uris": ["spotify:track:a"]}}])
+    assert removed[0]["path"] == "/playlists/pl/items"
+    assert removed[0]["body"]["items"] == [{"uri": "spotify:track:a"}]
+    assert "tracks" not in removed[0]["body"]
+
+
+def test_playlist_total_reads_items_or_tracks():
+    assert playlist_total({"items": {"total": 12}}) == 12
+    assert playlist_total({"tracks": {"total": 4}}) == 4
+    assert playlist_total({"name": "Night"}) is None
+    assert playlist_item_object({"item": {"id": "abc"}})["id"] == "abc"
+    assert playlist_item_object({"track": {"id": "def"}})["id"] == "def"
+
+
+def test_item_sync_keeps_tracks_when_spotify_refuses_them():
+    forbidden = item_sync_result(12, None, 403)
+    assert forbidden["replace"] is False
+    assert forbidden["track_count"] == 12
+    assert forbidden["sync_error"] == ITEM_FORBIDDEN
+    empty = item_sync_result(0, 0, None)
+    assert empty["replace"] is True
+    assert empty["sync_error"] is None
+    unread = item_sync_result(8, 0, None)
+    assert unread["replace"] is False
+    assert unread["sync_error"] == ITEM_UNREADABLE
+
+
+def test_push_all_skips_playlists_someone_else_owns():
+    assert can_push_playlist({"spotify_id": None, "is_owned": 0}) is True
+    assert can_push_playlist({"spotify_id": "abc", "is_owned": 1}) is True
+    assert can_push_playlist({"spotify_id": "abc", "is_owned": True}) is True
+    assert can_push_playlist({"spotify_id": "abc", "is_owned": 0}) is False
+    assert "read-only" in READ_ONLY
 
 
 def test_cipher_golden_vector_matches_php():
@@ -184,6 +232,33 @@ def test_http_retries_429_and_stops_on_401():
     assert caught.value.reauth is True
     assert caught.value.status == 409
     assert "access-token-example" not in str(caught.value)
+
+
+def test_bodiless_put_and_post_send_content_length():
+    seen = []
+
+    def transport(method, url, body, headers):
+        seen.append((method, body, headers.get("Content-Length"), url))
+        return 204, "", {}
+
+    client = SpotifyHttp(transport, lambda seconds: None)
+    client.api("PUT", "/me/player/pause", "token")
+    client.api("POST", "/me/player/next", "token")
+    client.api("PUT", "/me/player/volume", "token", None, {"volume_percent": 40})
+    assert seen[0] == ("PUT", "", "0", "https://api.spotify.com/v1/me/player/pause")
+    assert seen[1][0:3] == ("POST", "", "0")
+    assert seen[2][0:3] == ("PUT", "", "0")
+    assert "volume_percent=40" in seen[2][3]
+    encoded, headers = with_length("GET", None, {})
+    assert encoded is None
+    assert "Content-Length" not in headers
+
+
+def test_restriction_violated_names_the_device_limit():
+    body = '{"error":{"status":403,"message":"Player command failed: Restriction violated"}}'
+    assert error_message(403, "/me/player/volume", body) == "This device does not support volume."
+    assert "volume" not in error_message(403, "/me/player/shuffle", body)
+    assert "playback command" in error_message(403, "/me/player/shuffle", body)
 
 
 def test_scrub_redacts_tokens():

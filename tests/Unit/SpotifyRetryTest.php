@@ -119,6 +119,54 @@ final class SpotifyRetryTest extends TestCase
         );
     }
 
+    public function testEmptyPutAndPostSendContentLength(): void
+    {
+        $seen = [];
+        $http = new SpotifyHttp(
+            static function (string $method, string $url, ?string $body, array $headers) use (&$seen): array {
+                $seen[] = [$method, $body, $headers['Content-Length'] ?? null];
+                return ['status' => 204, 'body' => '', 'headers' => []];
+            }
+        );
+        $http->api('PUT', '/me/player/pause', 'token');
+        $http->api('POST', '/me/player/next', 'token');
+        $http->api('PUT', '/me/player/volume', 'token', null, ['volume_percent' => 40]);
+        self::assertSame([
+            ['PUT', '', '0'],
+            ['POST', '', '0'],
+            ['PUT', '', '0'],
+        ], $seen);
+    }
+
+    public function testVolumeRequestKeepsTheQueryAndLength(): void
+    {
+        $url = '';
+        $http = new SpotifyHttp(
+            static function (string $method, string $seenUrl, ?string $body, array $headers) use (&$url): array {
+                $url = $seenUrl;
+                self::assertSame('0', $headers['Content-Length'] ?? null);
+                self::assertSame('', $body);
+                return ['status' => 204, 'body' => '', 'headers' => []];
+            }
+        );
+        $http->api('PUT', '/me/player/volume', 'token', null, ['volume_percent' => 40]);
+        self::assertStringContainsString('/me/player/volume', $url);
+        self::assertStringContainsString('volume_percent=40', $url);
+    }
+
+    public function testRestrictionViolatedNamesTheDeviceLimit(): void
+    {
+        $body = '{"error":{"status":403,"message":"Player command failed: Restriction violated"}}';
+        self::assertSame(
+            'This device does not support volume.',
+            SpotifyHttp::message(403, 'https://api.spotify.com/v1/me/player/volume', $body)
+        );
+        self::assertSame(
+            'This device does not support that playback command.',
+            SpotifyHttp::message(403, 'https://api.spotify.com/v1/me/player/shuffle', $body)
+        );
+    }
+
     public function testScrubRemovesSecrets(): void
     {
         $raw = 'Bearer abc.def access_token=secret refresh_token=other client_secret=no code_verifier=pkce';
