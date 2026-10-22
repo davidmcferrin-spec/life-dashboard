@@ -120,14 +120,30 @@ final class TunnelSettings
     {
         $stored = $this->read();
         $token = $stored['token'] ?? '';
-        if (in_array($action, ['tunnel-start', 'tunnel-restart'], true) && $token === '') {
+        $existing = !empty($this->services()->status()['existing']);
+        if (in_array($action, ['tunnel-start', 'tunnel-restart'], true) && $token === '' && !$existing) {
             throw new \InvalidArgumentException('Paste a tunnel token and save it before starting the tunnel.');
         }
         $fields = [];
-        if (in_array($action, ['tunnel-start', 'tunnel-restart'], true)) {
+        // A running cloudflared keeps its unit. The token stays in the form and is not sent.
+        if (in_array($action, ['tunnel-start', 'tunnel-restart'], true) && $token !== '' && !$existing) {
             $fields['token'] = $token;
         }
         return $this->services()->request($action, $fields);
+    }
+
+    /**
+     * @param array{connected?: bool, existing?: bool, detail?: string, checked_at?: ?string} $status
+     */
+    public static function statusLine(array $status): string
+    {
+        if (!empty($status['existing']) && !empty($status['connected'])) {
+            return 'Connected. cloudflared is already running on this server.';
+        }
+        if (!empty($status['connected'])) {
+            return 'Connected';
+        }
+        return 'Not connected';
     }
 
     public function queueStatus(): void

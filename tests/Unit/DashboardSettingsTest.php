@@ -231,8 +231,41 @@ final class DashboardSettingsTest extends TestCase
         self::assertFalse($control->stale(30));
 
         $missing = new ServiceControl($spool . '-missing');
-        $this->expectException(ValidationException::class);
-        $missing->request('restart-mcp');
+        try {
+            $missing->request('restart-mcp');
+            self::fail('A missing spool must be rejected.');
+        } catch (ValidationException $e) {
+            self::assertSame(ServiceControl::NOT_READY, $e->getMessage());
+        }
+    }
+
+    public function testExistingCloudflaredStartsWithoutAToken(): void
+    {
+        $spool = sys_get_temp_dir() . '/ld-existing-' . bin2hex(random_bytes(4));
+        mkdir($spool . '/incoming', 0777, true);
+        mkdir($spool . '/state', 0777, true);
+        file_put_contents($spool . '/state/status.json', json_encode([
+            'connected' => true,
+            'existing' => true,
+            'detail' => 'Running',
+            'checked_at' => gmdate('c'),
+        ]));
+        $tunnel = new TunnelSettings(new MemorySettingsDatabase(), new ServiceControl($spool));
+        $queued = $tunnel->act('tunnel-start');
+        $payload = json_decode((string) file_get_contents($spool . '/incoming/' . $queued['id'] . '.json'), true);
+        self::assertSame('tunnel-start', $payload['action']);
+        self::assertArrayNotHasKey('token', $payload);
+        self::assertSame(
+            'Connected. cloudflared is already running on this server.',
+            TunnelSettings::statusLine($tunnel->view()['status']),
+        );
+    }
+
+    public function testStartWithoutATokenOrARunningTunnelIsRejected(): void
+    {
+        $tunnel = new TunnelSettings(new MemorySettingsDatabase(), new ServiceControl(sys_get_temp_dir() . '/ld-no-tunnel'));
+        $this->expectException(\InvalidArgumentException::class);
+        $tunnel->act('tunnel-start');
     }
 
     private function overlay(string $key, string $value): void

@@ -9,6 +9,7 @@
 $pageTitle = 'Tunnel';
 $active = 'tunnel';
 $extraStyles = ['/assets/css/lifedash.css'];
+$tunnelExisting = !empty($tunnel['status']['existing']) && !empty($tunnel['status']['connected']);
 
 require __DIR__ . '/_shell-top.php';
 ?>
@@ -16,13 +17,17 @@ require __DIR__ . '/_shell-top.php';
             <section class="surface p-5 space-y-4" id="tunnel-app">
                 <header>
                     <h1 class="text-primary text-xl font-medium mb-1">Tunnel</h1>
-                    <p class="text-muted text-sm">
+                    <p id="tunnel-lead" class="text-muted text-sm">
+                        <?php if ($tunnelExisting): ?>
+                        cloudflared is already running on this server. This page shows that service. A token is not required, and this page will not install another tunnel.
+                        <?php else: ?>
                         Create the tunnel in the Cloudflare Zero Trust dashboard, paste its token here, then add the two public hostnames below.
                         The server does not run <span class="mono">cloudflared login</span>.
+                        <?php endif; ?>
                     </p>
                 </header>
 
-                <p id="tunnel-status" class="mono text-sm" role="status"><?= !empty($tunnel['status']['connected']) ? 'Connected' : 'Not connected' ?></p>
+                <p id="tunnel-status" class="mono text-sm" role="status"><?= e(\Dashboard\Settings\TunnelSettings::statusLine(is_array($tunnel['status'] ?? null) ? $tunnel['status'] : [])) ?></p>
 
                 <form id="tunnel-form" class="space-y-3" novalidate>
                     <div>
@@ -40,7 +45,11 @@ require __DIR__ . '/_shell-top.php';
                     <div>
                         <label class="ld-field" for="tunnel-token">Tunnel token</label>
                         <p id="tunnel-token-hint" class="text-faint text-xs mono mt-1">
+                            <?php if ($tunnelExisting): ?>
+                            Not required while cloudflared is already running.
+                            <?php else: ?>
                             <?= $tunnel['token_set'] ? ('Set' . ($tunnel['token_hint'] !== '' && $tunnel['token_hint'] !== 'set' ? '. Ending in ' . e((string) $tunnel['token_hint']) : '.')) : 'Not set' ?>
+                            <?php endif; ?>
                         </p>
                         <input id="tunnel-token" class="input text-sm w-full hidden" name="token" type="password" autocomplete="off" placeholder="Paste a new token">
                         <div class="flex flex-wrap gap-2 mt-2">
@@ -53,9 +62,11 @@ require __DIR__ . '/_shell-top.php';
                     <p id="tunnel-error" class="text-danger mono text-xs hidden" role="alert"></p>
                     <div class="flex flex-wrap gap-2">
                         <button type="submit" class="btn-primary text-sm">Save</button>
-                        <button type="button" class="btn text-sm" data-tunnel-action="tunnel-start">Start</button>
-                        <button type="button" class="btn text-sm" data-tunnel-action="tunnel-stop">Stop</button>
-                        <button type="button" class="btn text-sm" data-tunnel-action="tunnel-restart">Restart</button>
+                        <span id="tunnel-actions" class="flex flex-wrap gap-2<?= $tunnelExisting ? ' hidden' : '' ?>">
+                            <button type="button" class="btn text-sm" data-tunnel-action="tunnel-start">Start</button>
+                            <button type="button" class="btn text-sm" data-tunnel-action="tunnel-stop">Stop</button>
+                            <button type="button" class="btn text-sm" data-tunnel-action="tunnel-restart">Restart</button>
+                        </span>
                     </div>
                 </form>
 
