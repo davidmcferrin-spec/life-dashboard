@@ -364,6 +364,7 @@ def test_meal_builder_tools_map_onto_the_pantry_api():
     suggest = next(tool for tool in TOOLS if tool["name"] == "suggest_meal")
     assert "also_uses" in suggest["description"]
     assert "component_id" in suggest["description"]
+    assert "matching_recipes" in suggest["description"]
     method, path, body = resolve("suggest_meal", {"picks": [2, 4], "on_hand_only": False})
     assert method == "GET" and body is None
     assert path.startswith("/api/v1/pantry/meals?")

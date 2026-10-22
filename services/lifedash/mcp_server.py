@@ -1629,6 +1629,11 @@ TOOLS: list[dict[str, Any]] = [
             "are exactly the picks. Aromatic, vegetable, spice, and unmapped ingredients are not compared. "
             "Each match includes also_uses, a list of those ignored ingredients: name, category or null, "
             "component_id or null, and on_hand. A recipe with no filter-category ingredient is not a match. "
+            "matching_recipes lists recipes whose protein, base, sauce, and side ingredients include every pick. "
+            "Exact matches come first, then the fewest extra filter-category ingredients, then the most ingredients "
+            "on hand, then the name. An empty pick list returns every recipe, sorted by ingredients on hand. "
+            "Each matching_recipes item has exact, picks (the filter-category component ids), and ingredients "
+            "with name, category or null, component_id or null, and on_hand. made_before is unchanged. "
             "An empty pick list returns every component. on_hand_only hides components that are not on hand. "
             "There is no meal log. Requires pantry:read."
         ),
