@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from lifedash.digest_http import FetchResult, UrlRejected, fetch_with_backoff
-from lifedash.digest_parse import content_hash, discover_feed, interpret, parse_feed, parse_html, plan_changes, read_page
+from lifedash.digest_parse import content_hash, discover_feed, interpret, parse_feed, parse_html, plan_changes, read_page, snapshot_text, version_of
 from lifedash.digest_sync import load_seeds, run_source
 
 FIXTURES = Path(__file__).parent / "fixtures" / "digest"
@@ -148,6 +148,25 @@ def test_private_url_is_rejected_without_a_request():
     result = fetch_with_backoff(transport, "https://127.0.0.1/secret", None, None)
     assert isinstance(result, FetchResult)
     assert result.error == "That host is not fetched."
+
+
+def test_versions_sort_numerically_and_prefer_parentheses():
+    assert version_of("1.7")["version_sort"] < version_of("1.10")["version_sort"] < version_of("2.0")["version_sort"]
+    assert version_of("1.7")["version_sort"] == version_of("1.7.0")["version_sort"]
+    assert version_of("Grok Build 1.0.62")["version_text"] == "1.0.62"
+    assert version_of("Smarter notifications (0.71.2)")["version_text"] == "0.71.2"
+    assert version_of("0.17.0")["version_sort"] < version_of("0.71.2")["version_sort"]
+    assert version_of("Grok Voice 3.0 is available")["version_text"] == "3.0"
+    assert version_of("Grok 4.7")["version_text"] == "4.7"
+    assert version_of("v2026.10.08")["version_text"] == "2026.10.08"
+    assert version_of("October") is None
+    text = snapshot_text([
+        {"title": "Harbor Notes 1.2", "published_on": "2026-10-02", "summary": "A quiet bridge."},
+    ])
+    assert text is not None
+    assert "Harbor Notes 1.2" in text
+    assert "2026-10-02" in text
+    assert snapshot_text([]) is None
 
 
 def test_seed_list_uses_the_resolved_docs_url():

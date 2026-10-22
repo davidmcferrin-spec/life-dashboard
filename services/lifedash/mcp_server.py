@@ -1750,6 +1750,21 @@ TOOLS.extend([
         "description": "Queue a digest fetch. It does not run inside this request. Needs Allow MCP updates.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "digest_compare",
+        "description": "Entries between two dates or two versions. Pass from_date and to_date (YYYY-MM-DD), or from_version and to_version. product is cursor_ide, grok_bot, grok, or grok_build. A version compare needs a product. Dates can omit product to include every product.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "product": {"type": "string"},
+                "from_date": {"type": "string"},
+                "to_date": {"type": "string"},
+                "from_version": {"type": "string"},
+                "to_version": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
 ])
 
 
@@ -2302,6 +2317,8 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args:
             raise ValueError("digest_check_now takes no arguments.")
         return "POST", "/api/v1/digest/check", {}
+    if name == "digest_compare":
+        return "GET", "/api/v1/digest/compare" + _query(args, ("product", "from_date", "to_date", "from_version", "to_version")), None
     raise ValueError(f"Unknown tool {name}")
 
 

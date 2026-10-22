@@ -1753,4 +1753,5 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     background: var(--hud-accent, var(--accent));
     border-color: transparent;
 }
+.ld-digest-diff { max-height: 24rem; overflow: auto; white-space: pre-wrap; }
 

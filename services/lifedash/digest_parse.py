@@ -43,8 +43,66 @@ _DATE_ID = re.compile(
 )
 
 
+_VERSION_EXACT = re.compile(r"^[vV]?(\d{1,4}(?:\.\d{1,4}){1,3})$")
+_VERSION_PAREN = re.compile(r"\(([vV]?\d{1,4}(?:\.\d{1,4}){1,3})\)")
+_VERSION_ANY = re.compile(r"\b[vV]?(\d{1,4}(?:\.\d{1,4}){1,3})\b")
+
+
 def content_hash(text: str) -> str:
     return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
+
+
+def version_of(title: str) -> dict[str, str] | None:
+    """Parentheses win, otherwise the last dotted number. Sort pads so 1.10 follows 1.7."""
+    text = normalize_text(title)
+    if not text:
+        return None
+    exact = _VERSION_EXACT.fullmatch(text)
+    if exact:
+        return _pack_version(exact.group(1))
+    paren = _VERSION_PAREN.search(text)
+    if paren:
+        return _pack_version(paren.group(1).lstrip("vV"))
+    found = list(_VERSION_ANY.finditer(text))
+    if not found:
+        return None
+    return _pack_version(found[-1].group(1))
+
+
+def snapshot_text(entries: list[dict[str, Any]]) -> str | None:
+    """Normalized entry text stored for a later redline. Empty when nothing was parsed."""
+    if not entries:
+        return None
+    chunks: list[str] = []
+    for entry in entries:
+        chunks.append(normalize_text(str(entry.get("title") or "")))
+        if entry.get("published_on"):
+            chunks.append(str(entry["published_on"]))
+        summary = normalize_text(str(entry.get("summary") or ""))
+        if summary:
+            chunks.append(summary)
+        chunks.append("")
+    text = "\n".join(chunks).strip()
+    return text[:200_000] or None
+
+
+def _pack_version(raw: str) -> dict[str, str] | None:
+    raw = raw.lstrip("vV")
+    parts: list[int] = []
+    for piece in raw.split("."):
+        if not piece.isdigit():
+            return None
+        number = int(piece)
+        if number > 99999:
+            return None
+        parts.append(number)
+    if len(parts) < 2 or len(parts) > 4:
+        return None
+    padded = parts + [0] * (4 - len(parts))
+    return {
+        "version_text": raw,
+        "version_sort": ".".join(f"{part:05d}" for part in padded),
+    }
 
 
 def normalize_text(value: str) -> str:
@@ -447,6 +505,7 @@ def _entry(key: str, title: str, published: str | None, url: str, summary: str) 
     summary = normalize_text(summary)[:SUMMARY_MAX]
     published = published if _valid_date(published) else None
     digest = content_hash(title + "\n" + (published or "") + "\n" + summary)
+    found = version_of(title)
     return {
         "entry_key": (key or _slug(title))[:200],
         "title": title,
@@ -454,6 +513,8 @@ def _entry(key: str, title: str, published: str | None, url: str, summary: str) 
         "url": url[:1000],
         "summary": summary,
         "content_hash": digest,
+        "version_text": None if found is None else found["version_text"],
+        "version_sort": None if found is None else found["version_sort"],
     }
 
 

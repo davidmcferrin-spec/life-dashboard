@@ -20,9 +20,18 @@
         product: document.getElementById('digest-product'),
         label: document.getElementById('digest-label'),
         url: document.getElementById('digest-url'),
+        compareProduct: document.getElementById('digest-compare-product'),
+        fromVersion: document.getElementById('digest-from-version'),
+        toVersion: document.getElementById('digest-to-version'),
+        snapSource: document.getElementById('digest-snap-source'),
+        compareCount: document.getElementById('digest-compare-count'),
+        compareOut: document.getElementById('digest-compare-out'),
+        retain: document.getElementById('digest-retain'),
     };
     let product = '';
     let products = [];
+    let sourceRows = [];
+    let compareMode = 'date';
     let timer = null;
 
     function showError(error) {
@@ -79,7 +88,7 @@
             ].filter(Boolean).join(' ');
             const date = item.published_on || '';
             return `<article class="surface p-3">
-                <p class="text-sm text-muted">${esc(item.product_label)} · ${esc(item.source_label)}${date ? ' · ' + esc(date) : ''}</p>
+                <p class="text-sm text-muted">${esc(item.product_label)} · ${esc(item.source_label)}${date ? ' · ' + esc(date) : ''}${item.version ? ' · ' + esc(item.version) : ''}</p>
                 <h2 class="text-primary text-base mt-1"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h2>
                 ${badges ? `<p class="mt-1">${badges}</p>` : ''}
                 ${item.summary ? `<p class="text-sm mt-2">${esc(item.summary)}</p>` : ''}
@@ -89,7 +98,13 @@
 
     function renderSources(data) {
         products = data.products || products;
+        sourceRows = data.sources || [];
         renderChips();
+        fillCompareSources();
+        if (els.retain && !els.retain.dataset.ready && data.retention_days) {
+            els.retain.value = String(data.retention_days);
+            els.retain.dataset.ready = '1';
+        }
         const groups = {};
         (data.sources || []).forEach((source) => {
             const key = source.product_label || source.product;
@@ -204,6 +219,142 @@
             showError(error);
         }
     });
+    function article(item) {
+        const date = item.published_on || '';
+        const version = item.version ? ' · ' + esc(item.version) : '';
+        return `<article class="surface p-3">
+            <p class="text-sm text-muted">${esc(item.product_label)} · ${esc(item.source_label)}${date ? ' · ' + esc(date) : ''}${version}</p>
+            <h3 class="text-primary text-base mt-1"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
+            ${item.summary ? `<p class="text-sm mt-2">${esc(item.summary)}</p>` : ''}
+        </article>`;
+    }
+
+    function fillCompareSources() {
+        const options = ['<option value="">All products</option>'].concat(products.map((chip) => {
+            return `<option value="${esc(chip.id)}">${esc(chip.label)}</option>`;
+        }));
+        const current = els.compareProduct.value;
+        els.compareProduct.innerHTML = options.join('');
+        if (current) els.compareProduct.value = current;
+        const selected = els.snapSource.value;
+        els.snapSource.innerHTML = sourceRows.map((source) => {
+            return `<option value="${source.id}">${esc(source.product_label)} · ${esc(source.label)}</option>`;
+        }).join('');
+        if (selected) els.snapSource.value = selected;
+    }
+
+    function applyCompareMode(mode) {
+        compareMode = mode;
+        document.querySelectorAll('#digest-compare-modes [data-mode]').forEach((button) => {
+            button.classList.toggle('is-on', button.getAttribute('data-mode') === mode);
+        });
+        document.querySelectorAll('#digest-compare [data-for]').forEach((el) => {
+            const modes = (el.getAttribute('data-for') || '').split(/\s+/);
+            el.classList.toggle('hidden', modes.indexOf(mode) === -1);
+        });
+    }
+
+    async function loadVersions() {
+        const productId = els.compareProduct.value;
+        if (!productId) {
+            els.fromVersion.innerHTML = '';
+            els.toVersion.innerHTML = '';
+            return;
+        }
+        const data = await api.get('/digest/versions?product=' + encodeURIComponent(productId));
+        const options = (data.versions || []).map((row) => `<option value="${esc(row.version)}">${esc(row.version)}</option>`).join('');
+        els.fromVersion.innerHTML = options;
+        els.toVersion.innerHTML = options;
+        if (els.toVersion.options.length > 1) {
+            els.toVersion.selectedIndex = els.toVersion.options.length - 1;
+        }
+    }
+
+    function renderCompare(data) {
+        if (data.mode === 'version') {
+            const noun = data.count === 1 ? ' entry' : ' entries';
+            const line = data.truncated
+                ? 'Showing ' + data.items.length + ' of ' + data.count
+                : String(data.count) + noun;
+            els.compareCount.textContent = line + ' from ' + data.from_version + ' to ' + data.to_version;
+            els.compareOut.innerHTML = data.items.length
+                ? data.items.map(article).join('')
+                : '<p class="empty-state mono text-xs">No entries in that range.</p>';
+            return;
+        }
+        const groups = data.groups || [];
+        const noun = data.count === 1 ? ' entry' : ' entries';
+        els.compareCount.textContent = data.count + noun + ' from ' + data.from + ' to ' + data.to
+            + (data.truncated ? '. Showing the first ' + groups.reduce((n, group) => n + group.items.length, 0) + '.' : '');
+        if (!groups.length) {
+            els.compareOut.innerHTML = '<p class="empty-state mono text-xs">No entries in that range.</p>';
+            return;
+        }
+        els.compareOut.innerHTML = groups.map((group) => {
+            const rows = (group.items || []).map(article).join('');
+            return `<section><h3 class="text-sm text-muted">${esc(group.product_label)} · ${group.count}</h3>${rows}</section>`;
+        }).join('');
+    }
+
+    document.getElementById('digest-compare-modes').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-mode]');
+        if (!button) return;
+        applyCompareMode(button.getAttribute('data-mode') || 'date');
+        if (compareMode === 'version') {
+            loadVersions().catch(showError);
+        }
+    });
+    els.compareProduct.addEventListener('change', () => {
+        if (compareMode === 'version') loadVersions().catch(showError);
+    });
+    document.getElementById('digest-compare-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        clearError();
+        els.compareCount.textContent = '';
+        els.compareOut.innerHTML = '';
+        try {
+            if (compareMode === 'version' && !els.compareProduct.value) {
+                showError({ message: 'Choose a product for a version compare.' });
+                return;
+            }
+            if (compareMode === 'snapshot') {
+                const params = new URLSearchParams({
+                    source_id: els.snapSource.value,
+                    from: document.getElementById('digest-snap-from').value,
+                    to: document.getElementById('digest-snap-to').value,
+                });
+                const data = await api.get('/digest/snapshot?' + params.toString());
+                els.compareCount.textContent = data.diff.summary + ' (' + data.from_captured_on + ' to ' + data.to_captured_on + ')';
+                els.compareOut.innerHTML = '<pre class="brain-redline ld-digest-diff" aria-label="Red-line between the two snapshots"></pre>';
+                els.compareOut.querySelector('pre').innerHTML = data.diff.html;
+                return;
+            }
+            const params = new URLSearchParams();
+            if (els.compareProduct.value) params.set('product', els.compareProduct.value);
+            if (compareMode === 'version') {
+                params.set('from_version', els.fromVersion.value);
+                params.set('to_version', els.toVersion.value);
+            } else {
+                params.set('from_date', document.getElementById('digest-from-date').value);
+                params.set('to_date', document.getElementById('digest-to-date').value);
+            }
+            renderCompare(await api.get('/digest/compare?' + params.toString()));
+        } catch (error) {
+            showError(error);
+        }
+    });
+    document.getElementById('digest-retain-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        clearError();
+        try {
+            const saved = await api.post('/digest/retention', { days: Number(els.retain.value) });
+            els.retain.value = String(saved.retention_days);
+            els.status.textContent = 'Snapshots are kept for ' + saved.retention_days + ' days.';
+        } catch (error) {
+            showError(error);
+        }
+    });
+
     window.addEventListener('lifedash:poll', () => load());
     window.addEventListener('lifedash:event', (event) => {
         const table = event.detail && event.detail.table;

@@ -25,6 +25,26 @@ final class DigestApi
             'q'       => $_GET['q'] ?? null,
             'limit'   => $_GET['limit'] ?? 50,
         ])));
+        $r->get('/api/v1/digest/compare', fn () => $this->run(fn (int $u) => $this->svc->digest->compare($u, [
+            'product' => $_GET['product'] ?? null,
+            'from_date' => $_GET['from_date'] ?? null,
+            'to_date' => $_GET['to_date'] ?? null,
+            'from_version' => $_GET['from_version'] ?? null,
+            'to_version' => $_GET['to_version'] ?? null,
+        ])));
+        $r->get('/api/v1/digest/versions', fn () => $this->run(fn (int $u) => [
+            'versions' => $this->svc->digest->versions($u, (string) ($_GET['product'] ?? '')),
+        ]));
+        $r->get('/api/v1/digest/snapshot', fn () => $this->run(fn (int $u) => $this->svc->digest->snapshotDiff(
+            $u,
+            $this->queryId('source_id'),
+            (string) ($_GET['from'] ?? ''),
+            (string) ($_GET['to'] ?? ''),
+        )));
+        $r->post('/api/v1/digest/retention', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            return $this->svc->digest->setRetention($u, (int) ($body['days'] ?? 0));
+        }, 200, true));
         $r->get('/api/v1/digest/sources', fn () => $this->run(fn (int $u) => $this->svc->digest->sources($u)));
         $r->post('/api/v1/digest/sources', fn () => $this->run(function (int $u): array {
             $body = $this->runner->body();
@@ -70,6 +90,15 @@ final class DigestApi
         $id = $params['id'] ?? '';
         if (!ctype_digit($id) || (int) $id < 1) {
             throw ValidationException::withFields(['id' => 'Source id is required.']);
+        }
+        return (int) $id;
+    }
+
+    private function queryId(string $name): int
+    {
+        $id = $_GET[$name] ?? '';
+        if (!is_string($id) || !ctype_digit($id) || (int) $id < 1) {
+            throw ValidationException::withFields([$name => 'Source id is required.']);
         }
         return (int) $id;
     }

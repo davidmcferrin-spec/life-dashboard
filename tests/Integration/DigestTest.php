@@ -6,6 +6,7 @@ namespace Dashboard\Tests\Integration;
 
 use Dashboard\Deploy\DeployService;
 use Dashboard\Digest\DigestService;
+use Dashboard\Digest\DigestVersion;
 use Dashboard\Settings\ServiceControl;
 use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\ValidationException;
@@ -89,5 +90,111 @@ final class DigestTest extends PgsqlTestCase
         } catch (ValidationException $e) {
             self::assertArrayHasKey('url', $e->fields());
         }
+    }
+
+    public function testDateRangeVersionRangeAndSnapshotRedline(): void
+    {
+        $this->migrate();
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)',
+            ['digest2', 'digest2@example.com', 'h', 1]
+        );
+        $userId = (int) $this->db->lastInsertId();
+        $digest = new DigestService($this->db);
+        $digest->ensureSeeded($userId);
+        self::assertSame(180, $digest->sources($userId)['retention_days']);
+
+        $cursorId = $this->sourceId($userId, 'cursor_ide');
+        $botId = $this->sourceId($userId, 'grok_bot');
+        $this->entry($userId, $cursorId, 'c17', 'Cursor 1.7', '2026-09-01', '1.7');
+        $this->entry($userId, $cursorId, 'c110', 'Cursor 1.10', '2026-10-02', '1.10');
+        $this->entry($userId, $cursorId, 'c20', 'Cursor 2.0', '2026-10-20', '2.0');
+        $this->entry($userId, $cursorId, 'old', 'Old Harbor', '2026-01-01', null);
+        $this->db->execute(
+            'UPDATE digest_entries SET edited_at = ? WHERE user_id = ? AND entry_key = ?',
+            ['2026-10-15 12:00:00', $userId, 'old']
+        );
+        $this->entry($userId, $cursorId, 'aug', 'August note', '2026-08-01', null);
+        $this->entry($userId, $botId, 'bot', 'Bot (0.71.2)', '2026-10-14', '0.71.2');
+
+        $dates = $digest->compare($userId, ['from_date' => '2026-10-31', 'to_date' => '2026-10-01']);
+        self::assertSame('date', $dates['mode']);
+        self::assertSame('2026-10-01', $dates['from']);
+        self::assertSame(4, $dates['count']);
+        self::assertSame('Cursor IDE', $dates['groups'][0]['product_label']);
+        self::assertSame(3, $dates['groups'][0]['count']);
+        self::assertSame('Grok Bot', $dates['groups'][1]['product_label']);
+        self::assertSame(1, $dates['groups'][1]['count']);
+
+        $versions = $digest->compare($userId, [
+            'product' => 'cursor_ide',
+            'from_version' => '2.0',
+            'to_version' => '1.7',
+        ]);
+        self::assertSame(['1.7', '1.10', '2.0'], array_column($versions['items'], 'version'));
+        self::assertSame(3, $versions['count']);
+
+        $narrow = $digest->compare($userId, [
+            'product' => 'cursor_ide',
+            'from_version' => '1.7',
+            'to_version' => '1.10',
+        ]);
+        self::assertSame(['1.7', '1.10'], array_column($narrow['items'], 'version'));
+
+        $this->db->execute(
+            'INSERT INTO digest_snapshots (user_id, source_id, captured_on, content_hash, body)
+             VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)',
+            [
+                $userId, $cursorId, '2026-10-01', str_repeat('a', 64), 'keep <script>',
+                $userId, $cursorId, '2026-10-20', str_repeat('b', 64), 'keep <script> lights',
+            ]
+        );
+        $diff = $digest->snapshotDiff($userId, $cursorId, '2026-10-20', '2026-10-01');
+        self::assertSame('2026-10-01', $diff['from_captured_on']);
+        self::assertSame('2026-10-20', $diff['to_captured_on']);
+        self::assertStringContainsString('&lt;script&gt;', $diff['diff']['html']);
+        self::assertStringContainsString('<ins>', $diff['diff']['html']);
+        self::assertStringNotContainsString('<script', $diff['diff']['html']);
+
+        $today = (string) $this->db->fetchScalar("SELECT CAST((now() AT TIME ZONE 'UTC') AS date)");
+        $this->db->execute(
+            'INSERT INTO digest_snapshots (user_id, source_id, captured_on, content_hash, body)
+             VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)',
+            [
+                $userId, $botId, '2001-01-01', str_repeat('c', 64), 'old snapshot',
+                $userId, $botId, $today, str_repeat('d', 64), 'today snapshot',
+            ]
+        );
+        self::assertSame(30, $digest->setRetention($userId, 30)['retention_days']);
+        $left = $this->db->fetchAll(
+            'SELECT captured_on FROM digest_snapshots WHERE user_id = ? AND source_id = ? ORDER BY captured_on',
+            [$userId, $botId]
+        );
+        self::assertSame([$today], array_map(static fn (array $row): string => (string) $row['captured_on'], $left));
+    }
+
+    private function sourceId(int $userId, string $product): int
+    {
+        $id = $this->db->fetchScalar(
+            'SELECT id FROM digest_sources WHERE user_id = ? AND product = ? ORDER BY id LIMIT 1',
+            [$userId, $product]
+        );
+        self::assertNotFalse($id);
+        return (int) $id;
+    }
+
+    private function entry(int $userId, int $sourceId, string $key, string $title, string $day, ?string $version): void
+    {
+        $parsed = $version === null ? null : DigestVersion::parse($version);
+        $this->db->execute(
+            'INSERT INTO digest_entries (user_id, source_id, entry_key, title, published_on, url, summary, content_hash, version_text, version_sort)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $userId, $sourceId, $key, $title, $day, 'https://notes.example.com/' . $key, 'Sample Ensemble',
+                str_repeat('e', 64),
+                $parsed['version_text'] ?? null,
+                $parsed['version_sort'] ?? null,
+            ]
+        );
     }
 }

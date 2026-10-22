@@ -14,9 +14,11 @@ from typing import Any, Callable
 
 from .config import REPO_ROOT
 from .digest_http import FetchResult, UrlRejected, fetch_with_backoff, urllib_transport
-from .digest_parse import plan_changes, read_page
+from .digest_parse import content_hash, plan_changes, read_page, snapshot_text
 
 SEED_FLAG = "defaults_seeded_digest"
+RETENTION_KEY = "digest_snapshot_days"
+DEFAULT_SNAPSHOT_DAYS = 180
 Fetch = Callable[[str, str | None, str | None], FetchResult]
 
 
@@ -74,7 +76,7 @@ def run_source(source: dict[str, Any], fetch: Fetch) -> dict[str, Any]:
     existing = source.get("entries") if isinstance(source.get("entries"), dict) else {}
     ops = plan_changes({str(key): str(value) for key, value in existing.items()}, parsed["entries"]) if parsed["status"] == "ok" else []
     mode = parsed["parse_mode"] if parsed["parse_mode"] else source.get("parse_mode")
-    return {
+    result: dict[str, Any] = {
         "status": parsed["status"],
         "error": parsed["error"],
         "parse_mode": mode,
@@ -83,6 +85,11 @@ def run_source(source: dict[str, Any], fetch: Fetch) -> dict[str, Any]:
         "last_modified": page.header("Last-Modified") or source.get("last_modified"),
         "ops": ops,
     }
+    if parsed["status"] == "ok":
+        text = snapshot_text(parsed["entries"])
+        if text:
+            result["snapshot"] = text
+    return result
 
 
 def _attention(source: dict[str, Any], error: str, page: FetchResult) -> dict[str, Any]:
@@ -112,6 +119,7 @@ class DigestSync:
                 for source_id in self._enabled(user_id):
                     self._check_source(source_id)
                     checked += 1
+                self._prune_snapshots(user_id)
             finally:
                 self._unlock(user_id)
         return checked
@@ -123,6 +131,7 @@ class DigestSync:
             ids = self._enabled(user_id)
             for source_id in ids:
                 self._check_source(source_id)
+            self._prune_snapshots(user_id)
             return len(ids)
         finally:
             self._unlock(user_id)
@@ -206,13 +215,14 @@ class DigestSync:
                 self.conn.execute(
                     """
                     INSERT INTO digest_entries
-                        (user_id, source_id, entry_key, title, published_on, url, summary, content_hash)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        (user_id, source_id, entry_key, title, published_on, url, summary, content_hash, version_text, version_sort)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (source_id, entry_key) DO NOTHING
                     """,
                     (
                         user_id, source_id, entry["entry_key"], entry["title"], entry["published_on"],
                         entry["url"], entry["summary"], entry["content_hash"],
+                        entry.get("version_text"), entry.get("version_sort"),
                     ),
                 )
             else:
@@ -220,14 +230,19 @@ class DigestSync:
                     """
                     UPDATE digest_entries
                     SET title = %s, published_on = %s, url = %s, summary = %s,
-                        content_hash = %s, edited_at = (now() AT TIME ZONE 'UTC')
+                        content_hash = %s, version_text = %s, version_sort = %s,
+                        edited_at = (now() AT TIME ZONE 'UTC')
                     WHERE source_id = %s AND entry_key = %s AND content_hash <> %s
                     """,
                     (
                         entry["title"], entry["published_on"], entry["url"], entry["summary"],
-                        entry["content_hash"], source_id, entry["entry_key"], entry["content_hash"],
+                        entry["content_hash"], entry.get("version_text"), entry.get("version_sort"),
+                        source_id, entry["entry_key"], entry["content_hash"],
                     ),
                 )
+        snapshot = result.get("snapshot")
+        if isinstance(snapshot, str) and snapshot.strip():
+            self._save_snapshot(user_id, source_id, snapshot)
         self.conn.execute(
             """
             UPDATE digest_sources
@@ -243,6 +258,48 @@ class DigestSync:
         detail = result.get("error") or result["status"]
         mode = result.get("parse_mode") or ""
         self._note(f"{label}: {detail}" + (f" ({mode}, {len(result['ops'])} changes)" if result["status"] == "ok" else ""))
+
+    def _save_snapshot(self, user_id: int, source_id: int, text: str) -> None:
+        body = text[:200_000]
+        digest = content_hash(body)
+        latest = self.conn.execute(
+            "SELECT content_hash FROM digest_snapshots WHERE source_id = %s ORDER BY captured_on DESC, id DESC LIMIT 1",
+            (source_id,),
+        ).fetchone()
+        if latest is not None and str(latest[0]) == digest:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO digest_snapshots (user_id, source_id, captured_on, content_hash, body)
+            VALUES (%s, %s, CAST((now() AT TIME ZONE 'UTC') AS date), %s, %s)
+            ON CONFLICT (source_id, captured_on) DO UPDATE
+            SET content_hash = EXCLUDED.content_hash, body = EXCLUDED.body
+            WHERE digest_snapshots.content_hash <> EXCLUDED.content_hash
+            """,
+            (user_id, source_id, digest, body),
+        )
+
+    def _prune_snapshots(self, user_id: int) -> None:
+        self.conn.execute(
+            """
+            DELETE FROM digest_snapshots
+            WHERE user_id = %s
+              AND captured_on < (CAST((now() AT TIME ZONE 'UTC') AS date) - %s)
+            """,
+            (user_id, self._retention_days(user_id)),
+        )
+
+    def _retention_days(self, user_id: int) -> int:
+        row = self.conn.execute(
+            "SELECT pref_value FROM user_preferences WHERE user_id = %s AND pref_key = %s",
+            (user_id, RETENTION_KEY),
+        ).fetchone()
+        if row is None or not str(row[0]).isdigit():
+            return DEFAULT_SNAPSHOT_DAYS
+        days = int(row[0])
+        if days < 1 or days > 3650:
+            return DEFAULT_SNAPSHOT_DAYS
+        return days
 
     def _lock(self, user_id: int) -> None:
         self.conn.execute("SELECT pg_advisory_lock(81021, %s)", (user_id,))
