@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\DB\Database;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Router\Router;
 use Dashboard\Spotify\SpotifyAccess;
@@ -150,7 +151,9 @@ final class SpotifyApi
     {
         $this->runner->run(function (int $userId) use ($fn, $mutating): array {
             if ($mutating) {
-                $enabled = (new DeployService())->mcpUpdatesEnabled();
+                // A DeployService with no database reports the switch as off.
+                // deploy_status reads server_flags through the app database.
+                $enabled = (new DeployService(Database::getInstance()))->mcpUpdatesEnabled();
                 SpotifyAccess::assertChange($this->runner->tokenId(), $enabled);
             }
             try {

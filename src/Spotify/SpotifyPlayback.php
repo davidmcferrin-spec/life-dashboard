@@ -33,15 +33,31 @@ final class SpotifyPlayback
                 throw ValidationException::withFields(['type' => 'type must be track, artist, or album.']);
             }
         }
-        $data = $this->account->call($userId, fn (string $token): array => $this->http->api('GET', '/search', $token, null, [
-            'q' => $q,
-            'type' => implode(',', $types),
-            'limit' => 20,
-        ]));
+        $data = $this->account->call($userId, fn (string $token): array => $this->http->api(
+            'GET',
+            '/search',
+            $token,
+            null,
+            self::searchParams($q, implode(',', $types)),
+        ));
         return [
             'tracks' => self::tracks($data['tracks']['items'] ?? []),
             'artists' => self::artists($data['artists']['items'] ?? []),
             'albums' => self::albums($data['albums']['items'] ?? []),
+        ];
+    }
+
+    /**
+     * Spotify search answers 400 Invalid limit when limit is above 10.
+     *
+     * @return array{q: string, type: string, limit: int}
+     */
+    public static function searchParams(string $q, string $type): array
+    {
+        return [
+            'q' => $q,
+            'type' => $type,
+            'limit' => 10,
         ];
     }
 

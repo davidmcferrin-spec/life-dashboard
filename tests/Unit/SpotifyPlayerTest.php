@@ -57,4 +57,12 @@ final class SpotifyPlayerTest extends TestCase
         $this->expectException(ValidationException::class);
         SpotifyPlayback::transferPayload([]);
     }
+
+    public function testSearchAsksSpotifyForAtMostTen(): void
+    {
+        self::assertSame(
+            ['q' => 'north', 'type' => 'track', 'limit' => 10],
+            SpotifyPlayback::searchParams('north', 'track')
+        );
+    }
 }
