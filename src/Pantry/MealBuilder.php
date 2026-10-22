@@ -298,6 +298,7 @@ AND (
 ORDER BY c.category, pair_hits DESC, pair_score DESC, c.name, c.id
 SQL;
         $rows = $this->db->fetchAll($sql, [$userId, $csv, $userId]);
+        $matches = $this->recipeMatches($userId, $csv, $pickIds);
         $pickSet = array_fill_keys($pickIds, true);
         $grouped = [];
         foreach (array_merge(self::FILTER, self::SUPPORT) as $category) {
@@ -328,7 +329,8 @@ SQL;
                 'vegetable' => $grouped['vegetable'],
                 'spice' => $grouped['spice'],
             ],
-            'made_before' => $pickIds === [] ? [] : $this->madeBefore($userId, $csv),
+            'made_before' => $matches['made_before'],
+            'matching_recipes' => $matches['matching_recipes'],
             'on_hand_only' => $only,
         ];
     }
@@ -382,12 +384,13 @@ SQL;
     ) THEN 1 ELSE 0 END";
 
     /**
-     * Protein, base, sauce, and side must match the picks.
-     * Aromatics, vegetables, spices, and ingredients with no component are listed, not compared.
+     * One mapping query for both lists. made_before stays the exact filter-category set.
+     * matching_recipes is every recipe whose filter-category components contain the picks.
      *
-     * @return list<array<string, mixed>>
+     * @param list<int> $pickIds
+     * @return array{made_before: list<array<string, mixed>>, matching_recipes: list<array<string, mixed>>}
      */
-    private function madeBefore(int $userId, string $csv): array
+    private function recipeMatches(int $userId, string $csv, array $pickIds): array
     {
         $rows = $this->db->fetchAll(
             <<<'SQL'
@@ -441,27 +444,23 @@ filter_parts AS (
     JOIN components c ON c.id = m.component_id
     WHERE c.category IN ('protein', 'base', 'sauce', 'side')
 ),
-eligible AS (
+hits AS (
     SELECT r.id, r.name
     FROM pantry_recipes r
     WHERE r.user_id = ?
-      AND (SELECT COUNT(DISTINCT fp.component_id) FROM filter_parts fp WHERE fp.recipe_id = r.id) > 0
-      AND (SELECT COUNT(DISTINCT fp.component_id) FROM filter_parts fp WHERE fp.recipe_id = r.id) = (SELECT COUNT(*) FROM picks)
-      AND NOT EXISTS (
-          SELECT 1 FROM picks pk
-          WHERE NOT EXISTS (
-              SELECT 1 FROM filter_parts fp
-              WHERE fp.recipe_id = r.id AND fp.component_id = pk.id
+      AND (
+          (SELECT COUNT(*) FROM picks) = 0
+          OR NOT EXISTS (
+              SELECT 1 FROM picks pk
+              WHERE NOT EXISTS (
+                  SELECT 1 FROM filter_parts fp
+                  WHERE fp.recipe_id = r.id AND fp.component_id = pk.id
+              )
           )
       )
-      AND NOT EXISTS (
-          SELECT 1 FROM filter_parts fp
-          WHERE fp.recipe_id = r.id
-            AND NOT EXISTS (SELECT 1 FROM picks pk WHERE pk.id = fp.component_id)
-      )
 )
-SELECT e.id, e.name, uses.also_uses
-FROM eligible e
+SELECT h.id, h.name, ing.ingredients
+FROM hits h
 LEFT JOIN LATERAL (
     SELECT json_agg(
                json_build_object(
@@ -479,28 +478,104 @@ LEFT JOIN LATERAL (
                    END
                )
                ORDER BY m.ingredient_id
-           ) AS also_uses
+           ) AS ingredients
     FROM mapped m
     LEFT JOIN components c ON c.id = m.component_id
-    WHERE m.recipe_id = e.id
-      AND (c.id IS NULL OR c.category IN ('aromatic', 'vegetable', 'spice'))
-) uses ON true
-ORDER BY e.name, e.id
+    WHERE m.recipe_id = h.id
+) ing ON true
 SQL,
             [$userId, $csv, $userId, $userId, $userId, $userId]
         );
-        $out = [];
+        $pickSet = array_fill_keys($pickIds, true);
+        $ranked = [];
         foreach ($rows as $row) {
             $id = (int) $row['id'];
-            $out[] = [
+            $ingredients = $this->alsoUses($row['ingredients'] ?? null);
+            $filterIds = [];
+            $seen = [];
+            $onHand = 0;
+            $uses = [];
+            foreach ($ingredients as $item) {
+                if ($item['on_hand']) {
+                    $onHand++;
+                }
+                $category = $item['category'];
+                $componentId = $item['component_id'];
+                $support = $componentId === null || in_array($category, self::SUPPORT, true);
+                if ($support) {
+                    $uses[] = $item;
+                }
+                if ($componentId !== null && in_array($category, self::FILTER, true) && !isset($seen[$componentId])) {
+                    $seen[$componentId] = true;
+                    $filterIds[] = $componentId;
+                }
+            }
+            $extra = 0;
+            foreach ($filterIds as $componentId) {
+                if (!isset($pickSet[$componentId])) {
+                    $extra++;
+                }
+            }
+            $exact = $pickIds !== [] && $extra === 0 && count($filterIds) === count($pickIds);
+            $ranked[] = [
                 'kind' => 'recipe',
                 'id' => $id,
                 'name' => (string) $row['name'],
                 'url' => '/pantry?view=recipes&recipe=' . $id,
-                'also_uses' => $this->alsoUses($row['also_uses'] ?? null),
+                'exact' => $exact,
+                'picks' => $filterIds,
+                'ingredients' => $ingredients,
+                'also_uses' => $uses,
+                'extra' => $extra,
+                'on_hand_count' => $onHand,
             ];
         }
-        return $out;
+        $hasPicks = $pickIds !== [];
+        usort($ranked, static function (array $a, array $b) use ($hasPicks): int {
+            if ($hasPicks) {
+                if ($a['exact'] !== $b['exact']) {
+                    return $a['exact'] ? -1 : 1;
+                }
+                if ($a['extra'] !== $b['extra']) {
+                    return $a['extra'] <=> $b['extra'];
+                }
+            }
+            if ($a['on_hand_count'] !== $b['on_hand_count']) {
+                return $b['on_hand_count'] <=> $a['on_hand_count'];
+            }
+            $name = strcmp($a['name'], $b['name']);
+            if ($name !== 0) {
+                return $name;
+            }
+            return $a['id'] <=> $b['id'];
+        });
+        $made = [];
+        $matching = [];
+        foreach ($ranked as $row) {
+            if ($row['exact']) {
+                $made[] = [
+                    'kind' => 'recipe',
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'url' => $row['url'],
+                    'also_uses' => $row['also_uses'],
+                ];
+            }
+            $matching[] = [
+                'kind' => 'recipe',
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'url' => $row['url'],
+                'exact' => $row['exact'],
+                'picks' => $row['picks'],
+                'ingredients' => $row['ingredients'],
+            ];
+        }
+        usort($made, static function (array $a, array $b): int {
+            $name = strcmp($a['name'], $b['name']);
+            return $name !== 0 ? $name : $a['id'] <=> $b['id'];
+        });
+        return ['made_before' => $made, 'matching_recipes' => $matching];
     }
 
     /**

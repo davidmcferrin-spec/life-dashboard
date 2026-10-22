@@ -1162,6 +1162,8 @@
             const focusId = new URLSearchParams(location.search).get('recipe');
             const focus = focusId ? document.getElementById('recipe-' + focusId) : null;
             if (focus) focus.scrollIntoView({ block: 'center' });
+            const recipe = focusId ? recipeCache.find((row) => row.id === Number(focusId)) : null;
+            if (recipe) openRecipe(recipe);
         }
         if (recipeBound) return;
         recipeBound = true;
@@ -1284,6 +1286,126 @@
         return kept.reverse();
     }
 
+    // Per browser, not the account.
+    const MEAL_DRAWER_KEY = 'meal_recipes_open';
+    let mealDrawerOpen = false;
+
+    function mealDrawerStored() {
+        try {
+            return localStorage.getItem(MEAL_DRAWER_KEY) === '1';
+        } catch (err) {
+            return mealDrawerOpen;
+        }
+    }
+
+    function mealDrawerRemember(open) {
+        mealDrawerOpen = open;
+        try {
+            localStorage.setItem(MEAL_DRAWER_KEY, open ? '1' : '0');
+        } catch (err) {
+            // Storage can throw. mealDrawerOpen already holds this browser's state.
+        }
+    }
+
+    function applyMealDrawer(open, moveFocus) {
+        const drawer = document.getElementById('meal-drawer');
+        const app = document.getElementById('pantry-app');
+        if (!drawer) return;
+        drawer.classList.toggle('is-open', open);
+        if (app) app.classList.toggle('is-drawer-open', open);
+        const handle = document.getElementById('meal-drawer-handle');
+        const panel = document.getElementById('meal-drawer-panel');
+        if (handle) handle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (panel) {
+            panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+            if (open) panel.removeAttribute('inert');
+            else panel.setAttribute('inert', '');
+        }
+        if (!moveFocus) return;
+        if (open) {
+            const first = panel && panel.querySelector('a, button');
+            if (first) first.focus();
+            else if (panel) panel.focus();
+        } else if (handle) {
+            handle.focus();
+        }
+    }
+
+    function ensureMealDrawer() {
+        let drawer = document.getElementById('meal-drawer');
+        if (drawer) return drawer;
+        const app = document.getElementById('pantry-app');
+        if (!app) return null;
+        drawer = document.createElement('div');
+        drawer.id = 'meal-drawer';
+        drawer.className = 'ld-meal-drawer';
+        drawer.innerHTML = `
+            <button type="button" class="ld-meal-drawer-handle" id="meal-drawer-handle" aria-expanded="false" aria-controls="meal-drawer-panel">
+                Matching recipes (<span id="meal-drawer-count">0</span>)
+            </button>
+            <div class="ld-meal-drawer-panel" id="meal-drawer-panel" role="region" tabindex="-1" aria-labelledby="meal-drawer-handle" aria-hidden="true" inert>
+                <ul id="meal-drawer-list"></ul>
+            </div>`;
+        app.appendChild(drawer);
+        mealDrawerOpen = mealDrawerStored();
+        applyMealDrawer(mealDrawerOpen, false);
+        document.getElementById('meal-drawer-handle').addEventListener('click', () => {
+            const next = !mealDrawerOpen;
+            mealDrawerRemember(next);
+            applyMealDrawer(next, true);
+        });
+        document.getElementById('meal-drawer-list').addEventListener('click', (event) => {
+            const load = event.target.closest('[data-load-picks]');
+            if (!load) return;
+            const ids = String(load.dataset.loadPicks || '').split(',').map(Number).filter((id) => id > 0);
+            const prev = mealPicks.slice();
+            mealPicks = ids;
+            meals().catch((err) => {
+                mealPicks = prev;
+                fail(err);
+            });
+        });
+        return drawer;
+    }
+
+    function renderMealDrawer(recipes) {
+        const drawer = ensureMealDrawer();
+        if (!drawer) return;
+        const list = document.getElementById('meal-drawer-list');
+        const count = document.getElementById('meal-drawer-count');
+        const panel = document.getElementById('meal-drawer-panel');
+        const rows = recipes || [];
+        const scroll = panel ? panel.scrollTop : 0;
+        const active = document.activeElement;
+        const activeKey = active && drawer.contains(active) ? active.getAttribute('data-drawer-focus') : '';
+        if (count) count.textContent = String(rows.length);
+        if (!list) return;
+        if (!rows.length) {
+            list.innerHTML = '<li class="ld-meal-drawer-empty">No matching recipes.</li>';
+        } else {
+            list.innerHTML = rows.map((row) => {
+                const parts = (row.ingredients || []).map((item) => {
+                    if (!item || !item.name) return '';
+                    return item.on_hand ? esc(item.name) : `<span class="is-off">${esc(item.name)}</span>`;
+                }).filter(Boolean);
+                const badge = row.exact ? '<span class="ld-meal-exact">exact match</span>' : '';
+                const picks = (row.picks || []).join(',');
+                const id = Number(row.id);
+                return `<li class="ld-meal-drawer-row">
+                    <a data-drawer-focus="recipe-${id}" href="${esc(row.url || '')}">${esc(row.name || '')}</a>
+                    ${badge}
+                    <div class="ld-meal-uses">${parts.join(', ')}</div>
+                    <button type="button" class="ld-meal-chip" data-drawer-focus="load-${id}" data-load-picks="${esc(picks)}">Load picks</button>
+                </li>`;
+            }).join('');
+        }
+        if (panel) panel.scrollTop = scroll;
+        if (activeKey) {
+            const next = drawer.querySelector('[data-drawer-focus="' + activeKey.replace(/"/g, '') + '"]');
+            if (next) next.focus();
+        }
+    }
+
     async function meals(repair) {
         const gen = ++mealGen;
         const qs = new URLSearchParams();
@@ -1378,6 +1500,7 @@
         const nextNote = document.getElementById('meal-note');
         if (nextNote && typedNote) nextNote.textContent = typedNote;
         window.scrollTo(0, scrollY);
+        renderMealDrawer(board.matching_recipes || []);
         body.querySelector('#meal-modes').addEventListener('click', (event) => {
             const mode = event.target.closest('[data-hand]');
             if (mode) {

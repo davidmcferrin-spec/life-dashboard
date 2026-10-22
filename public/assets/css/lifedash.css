@@ -1527,4 +1527,76 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     }
     .ld-meal-flavor { display: block; }
 }
+.ld-meal-drawer {
+    background: var(--surface-bg, var(--surface));
+    border-top: 1px solid var(--surface-border);
+    bottom: 0;
+    color: var(--text-primary);
+    left: 0;
+    position: fixed;
+    right: 0;
+    z-index: 40;
+}
+.ld-meal-drawer-handle {
+    background: transparent;
+    border: 0;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: block;
+    font-size: 0.8125rem;
+    min-height: 2.75rem;
+    padding: 0.65rem 1rem;
+    text-align: left;
+    width: 100%;
+}
+.ld-meal-drawer-handle:focus-visible,
+.ld-meal-drawer-panel a:focus-visible,
+.ld-meal-drawer-panel button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+.ld-meal-drawer-panel {
+    height: 0;
+    overflow: hidden;
+    transition: height 180ms ease;
+}
+.ld-meal-drawer.is-open .ld-meal-drawer-panel {
+    height: clamp(25vh, 30vh, 33vh);
+    overflow: auto;
+}
+.ld-meal-drawer-list { list-style: none; margin: 0; padding: 0; }
+.ld-meal-drawer-row {
+    border-top: 1px solid var(--surface-border);
+    padding: 0.55rem 1rem 0.7rem;
+}
+.ld-meal-drawer-empty {
+    color: var(--text-muted);
+    list-style: none;
+    padding: 0.6rem 1rem;
+}
+.ld-meal-exact {
+    color: var(--accent);
+    font-size: 0.7rem;
+    margin-left: 0.4rem;
+}
+.ld-meal-drawer .ld-meal-uses .is-off {
+    color: var(--text-muted);
+    font-style: italic;
+}
+.ld-meal-drawer-row .ld-meal-chip { margin-top: 0.4rem; }
+#pantry-app.is-meals {
+    padding-bottom: 3rem;
+    transition: padding-bottom 180ms ease;
+}
+#pantry-app.is-meals.is-drawer-open {
+    padding-bottom: calc(3rem + clamp(25vh, 30vh, 33vh));
+}
+@media (max-width: 959px) {
+    .ld-meal-drawer.is-open .ld-meal-drawer-panel { height: 33vh; }
+    #pantry-app.is-meals.is-drawer-open { padding-bottom: calc(3rem + 33vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ld-meal-drawer-panel,
+    #pantry-app.is-meals { transition: none; }
+}
 

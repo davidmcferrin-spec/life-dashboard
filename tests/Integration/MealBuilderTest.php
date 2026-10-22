@@ -301,6 +301,113 @@ final class MealBuilderTest extends PgsqlTestCase
         self::assertNotContains($italian['id'], $sausageIds);
     }
 
+    public function testMatchingRecipesAreSupersetsRankedByExactThenExtraThenOnHand(): void
+    {
+        $beefProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Ground beef', 'category' => 'Meat']);
+        $riceProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Rice', 'category' => 'Other']);
+        $noodlesProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Noodles', 'category' => 'Other']);
+        $onionProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Onion', 'category' => 'Produce']);
+        $oliveProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Olives', 'category' => 'Other']);
+        $this->svc->pantry->addItems($this->user, [
+            ['product_id' => $beefProduct['id'], 'quantity' => 1, 'location' => 'fridge'],
+            ['product_id' => $noodlesProduct['id'], 'quantity' => 1, 'location' => 'pantry'],
+            ['product_id' => $onionProduct['id'], 'quantity' => 1, 'location' => 'pantry'],
+            ['product_id' => $oliveProduct['id'], 'quantity' => 1, 'location' => 'pantry'],
+        ], 'david');
+
+        $beef = $this->component('Ground beef', 'protein', $beefProduct['id']);
+        $rice = $this->component('Rice', 'base', $riceProduct['id']);
+        $noodles = $this->component('Noodles', 'base', $noodlesProduct['id']);
+        $onion = $this->component('Onion', 'aromatic', $onionProduct['id']);
+        $olives = $this->component('Olives', 'side', $oliveProduct['id']);
+        $this->pair($beef['id'], $rice['id'], 3);
+
+        $exactBare = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Exact bare',
+            'ingredients' => [
+                ['product_id' => $beefProduct['id']],
+                ['product_id' => $riceProduct['id']],
+            ],
+        ]);
+        $exactOnion = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Exact with onion',
+            'ingredients' => [
+                ['product_id' => $beefProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $onionProduct['id']],
+            ],
+        ]);
+        $withNoodles = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'With noodles',
+            'ingredients' => [
+                ['product_id' => $beefProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $noodlesProduct['id']],
+            ],
+        ]);
+        $wide = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Wide',
+            'ingredients' => [
+                ['product_id' => $beefProduct['id']],
+                ['product_id' => $riceProduct['id']],
+                ['product_id' => $noodlesProduct['id']],
+                ['product_id' => $oliveProduct['id']],
+            ],
+        ]);
+        $beefOnly = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Beef only',
+            'ingredients' => [['product_id' => $beefProduct['id']]],
+        ]);
+        $aromatics = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Aromatics only',
+            'ingredients' => [['product_id' => $onionProduct['id']]],
+        ]);
+
+        $board = $this->svc->meals->suggest($this->user, [$beef['id'], $rice['id']], false, false);
+        $matching = $board['matching_recipes'];
+        self::assertSame(
+            ['Exact with onion', 'Exact bare', 'With noodles', 'Wide'],
+            array_column($matching, 'name')
+        );
+        self::assertSame(
+            [$exactOnion['id'], $exactBare['id'], $withNoodles['id'], $wide['id']],
+            array_column($matching, 'id')
+        );
+        self::assertSame([true, true, false, false], array_column($matching, 'exact'));
+        self::assertNotContains($beefOnly['id'], array_column($matching, 'id'));
+        self::assertNotContains($aromatics['id'], array_column($matching, 'id'));
+        self::assertSame(
+            ['Exact bare', 'Exact with onion'],
+            array_column($board['made_before'], 'name')
+        );
+        foreach ($board['made_before'] as $row) {
+            self::assertSame(['kind', 'id', 'name', 'url', 'also_uses'], array_keys($row));
+        }
+        $bare = $matching[1];
+        self::assertSame(['kind', 'id', 'name', 'url', 'exact', 'picks', 'ingredients'], array_keys($bare));
+        self::assertSame([$beef['id'], $rice['id']], $bare['picks']);
+        self::assertSame('/pantry?view=recipes&recipe=' . $exactBare['id'], $bare['url']);
+        self::assertSame('Rice', $bare['ingredients'][1]['name']);
+        self::assertFalse($bare['ingredients'][1]['on_hand']);
+        $withOnion = $matching[0];
+        self::assertSame([$beef['id'], $rice['id']], $withOnion['picks']);
+        self::assertSame('Onion', $withOnion['ingredients'][2]['name']);
+        self::assertTrue($withOnion['ingredients'][2]['on_hand']);
+        self::assertSame('aromatic', $withOnion['ingredients'][2]['category']);
+        self::assertSame($onion['id'], $withOnion['ingredients'][2]['component_id']);
+        self::assertSame([$beef['id'], $rice['id'], $noodles['id'], $olives['id']], $matching[3]['picks']);
+
+        $open = $this->svc->meals->suggest($this->user, [], false, false);
+        self::assertSame([], $open['made_before']);
+        self::assertSame(
+            ['Wide', 'Exact with onion', 'With noodles', 'Aromatics only', 'Beef only', 'Exact bare'],
+            array_column($open['matching_recipes'], 'name')
+        );
+        foreach ($open['matching_recipes'] as $row) {
+            self::assertFalse($row['exact']);
+        }
+    }
+
     public function testAddMissingSendsOnlyAbsentPicksToGroceries(): void
     {
         $beefProduct = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Ground beef', 'category' => 'Meat']);
