@@ -80,7 +80,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - Reader `/reddit` and widget `reddit_feed`. MCP: `list_tracked_subreddits`, `add_tracked_subreddit`, `remove_tracked_subreddit`, `get_reddit_posts`, `get_reddit_post_comments`. Scope area `reddit`.
 
 **Grok Digest**
-- Page `/digest` (top nav **Grok Digest**) and widget `digest`. Sources are rows in `digest_sources` (migration `0036`), seeded once per user from `services/lifedash/digest_seeds.json`. Add, disable, and remove from the page. No env list.
+- Page `/digest` (top nav **Grok Digest**) and widget `digest`. Sources are rows in `digest_sources` (migration `0035`), seeded once per user from `services/lifedash/digest_seeds.json`. Add, disable, and remove from the page. No env list. Version keys and daily snapshots are migration `0036`.
 - `lifedash-digest.timer` every 2 hours runs `python -m lifedash.digest_sync tick`. **Check now** queues `digest-check` on the service spool. Prefer an advertised RSS/Atom feed; otherwise heading entries; otherwise a visible-text hash. A blocked or browser-only page is `needs_attention` on that source.
 - Unread is `digest_cursors.read_through_at`. Opening the page does not advance it. **Mark all read** does. An edited entry (`edited_at`) is unread again.
 - MCP: `list_digest_items`, `mark_digest_read`, `digest_sources`, `digest_check_now`, `digest_compare` (`digest:read` / `digest:write`). Bearer writes need **Allow MCP updates**. `digest_compare` takes a product plus either `from_date`/`to_date` or `from_version`/`to_version`.
