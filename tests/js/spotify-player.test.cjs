@@ -82,10 +82,16 @@ test('device and playlist labels stay inside the panel', () => {
 });
 
 test('the player surface is opaque and selects cannot grow past it', () => {
+    const raised = {
+        light: '#ffffff',
+        dark: '#1d2325',
+        jarvis: '#141b1d',
+    };
     for (const theme of ['light', 'dark', 'jarvis']) {
         const block = themes.match(new RegExp('html\\[data-theme="' + theme + '"\\] \\{[^}]+\\}'));
         assert.ok(block, theme);
-        assert.match(block[0], /--player-bg:\s*#[0-9a-fA-F]{6};/);
+        assert.match(block[0], new RegExp('--surface-raised:\\s*' + raised[theme] + ';'));
+        assert.match(block[0], /--player-bg:\s*var\(--surface-raised\);/);
     }
     const panel = css.match(/\.sp-player \{[^}]+\}/);
     assert.ok(panel);
