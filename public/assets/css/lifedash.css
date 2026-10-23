@@ -9418,3 +9418,119 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+/* Weekday dinner and lunch. Five columns collapse so a phone shows one day. */
+.ld-meal-week {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    margin: 0 0 16px;
+}
+.ld-meal-day {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius, 10px);
+    display: flex;
+    flex-direction: column;
+    min-height: 260px;
+    min-width: 0;
+    padding: 14px;
+}
+.ld-meal-day > header {
+    align-items: baseline;
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 13px;
+    justify-content: space-between;
+    padding-bottom: 12px;
+}
+.ld-meal-day > header strong {
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+.ld-meal-slot {
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: block;
+    font-family: var(--font-sans);
+    margin-top: 13px;
+    padding: 12px;
+    text-align: left;
+    width: 100%;
+}
+.ld-meal-slot span,
+.ld-meal-slot strong,
+.ld-meal-slot small {
+    display: block;
+}
+.ld-meal-slot span {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+}
+.ld-meal-slot strong {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.4;
+    margin-top: 8px;
+}
+.ld-meal-slot small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    margin-top: 6px;
+}
+.ld-meal-slot.is-empty strong {
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+}
+.ld-meal-slot-lunch {
+    background: transparent;
+    border-color: var(--border-soft);
+}
+.ld-meal-slot-lunch span {
+    color: var(--text-secondary);
+}
+.ld-meal-add {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    gap: 6px;
+    margin-top: auto;
+    min-height: 44px;
+    padding: 8px 0 0;
+}
+.ld-meal-add svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+.ld-meal-add:hover {
+    color: var(--accent);
+}
+.ld-pantry-dialog #meal-day-form select.input {
+    width: 100%;
+}
+@media (max-width: 1100px) {
+    .ld-meal-week { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 850px) {
+    .ld-meal-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+    .ld-meal-week { grid-template-columns: minmax(0, 1fr); }
+}
+
