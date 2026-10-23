@@ -7,6 +7,8 @@
     const { api, esc, fmt } = window.LD;
     const shell = document.querySelector('.brain-shell');
     const tree = document.getElementById('brain-tree');
+    tree.setAttribute('role', 'tree');
+    tree.setAttribute('aria-label', 'Vault folders');
     const titleEl = document.getElementById('brain-title');
     const bodyEl = document.getElementById('brain-body');
     const preview = document.getElementById('brain-preview');
@@ -35,6 +37,7 @@
     let dirtyBeforeView = false;
     let activeFolder = null;
     let didExpand = false;
+    let treeCursor = '';
     const expanded = new Set();
     const split = document.getElementById('brain-split');
     try {
@@ -106,31 +109,134 @@
         return pages.filter((page) => (page.folder_id || null) === folderId);
     }
 
-    function folderHtml(nodes) {
+    function treeLabel(text) {
+        return `<span class="brain-tree-label">${esc(text)}</span>`;
+    }
+
+    function folderHtml(nodes, parentKey) {
         return nodes.map((folder) => {
             const open = expanded.has(folder.id);
-            const kids = folderHtml(folder.children || []);
-            const pageButtons = pagesIn(folder.id).map(pageButton).join('');
-            return `<div class="brain-folder${activeFolder === folder.id ? ' is-active' : ''}" data-folder="${folder.id}">
-                <div class="brain-folder-row" data-drop="${folder.id}">
-                    <button type="button" class="brain-folder-toggle" data-toggle="${folder.id}" aria-label="${open ? 'Collapse' : 'Expand'}">${open ? '▾' : '▸'}</button>
-                    <button type="button" class="brain-folder-name" data-folder-pick="${folder.id}">${esc(folder.name)}</button>
+            const key = 'folder:' + folder.id;
+            const kids = folderHtml(folder.children || [], key);
+            const pageButtons = pagesIn(folder.id).map((page) => pageButton(page, key)).join('');
+            const selected = activeFolder === folder.id;
+            const verb = open ? 'Collapse' : 'Expand';
+            return `<div class="brain-folder${selected ? ' is-active' : ''}" data-folder="${folder.id}">
+                <div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="${folder.id}" data-tree-key="${key}" data-tree-kind="folder" data-tree-id="${folder.id}" data-parent-key="${parentKey}" aria-expanded="${open ? 'true' : 'false'}" aria-selected="${selected ? 'true' : 'false'}">
+                    <button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle="${folder.id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${verb} ${esc(folder.name)}"><span class="brain-chevron" aria-hidden="true"></span></button>
+                    <button type="button" class="brain-folder-name" tabindex="-1" data-folder-pick="${folder.id}" title="${esc(folder.name)}"><span class="brain-tree-folder" aria-hidden="true"></span>${treeLabel(folder.name)}</button>
                 </div>
-                <div class="brain-folder-children"${open ? '' : ' hidden'}>${kids}${pageButtons}</div>
+                <div class="brain-folder-children${open ? '' : ' is-collapsed'}" role="group"><div class="brain-folder-branch">${kids}${pageButtons}</div></div>
             </div>`;
         }).join('');
     }
 
-    function pageButton(page) {
-        return `<button type="button" class="brain-node${current && current.id === page.id ? ' is-active' : ''}" draggable="true" data-id="${page.id}">
-            <i class="brain-kind brain-kind-${esc(page.kind)}"></i><span>${esc(page.title)}</span>
+    function pageButton(page, parentKey) {
+        const on = current && current.id === page.id;
+        return `<button type="button" class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
+            <span class="brain-tree-slot" aria-hidden="true"></span><i class="brain-kind brain-kind-${esc(page.kind)}"></i>${treeLabel(page.title)}
         </button>`;
     }
 
+    function focusInsideTree() {
+        const active = document.activeElement;
+        if (!active || typeof tree.contains !== 'function') return false;
+        return tree.contains(active);
+    }
+
+    function rowConcealed(row) {
+        if (!row || typeof row.closest !== 'function') return false;
+        return !!(row.closest('[hidden]') || row.closest('.brain-folder-children.is-collapsed'));
+    }
+
+    function visibleRows() {
+        if (typeof tree.querySelectorAll !== 'function') return [];
+        return Array.from(tree.querySelectorAll('[data-tree-key]')).filter((row) => !rowConcealed(row));
+    }
+
+    function syncCollapsedGroups() {
+        if (typeof tree.querySelectorAll !== 'function') return;
+        tree.querySelectorAll('.brain-folder-children').forEach((group) => {
+            const collapsed = group.classList.contains('is-collapsed');
+            if (collapsed) group.setAttribute('inert', '');
+            else if (typeof group.removeAttribute === 'function') group.removeAttribute('inert');
+        });
+        tree.querySelectorAll('[data-tree-key]').forEach((row) => {
+            if (rowConcealed(row)) row.tabIndex = -1;
+        });
+    }
+
+    function placeTreeTab(restoreFocus) {
+        const rows = visibleRows();
+        let row = rows.find((item) => item.dataset.treeKey === treeCursor);
+        if (!row) row = rows[0] || null;
+        rows.forEach((item) => { item.tabIndex = item === row ? 0 : -1; });
+        syncCollapsedGroups();
+        if (restoreFocus && row && typeof row.focus === 'function') row.focus();
+    }
+
+    function moveTree(row) {
+        if (!row) return;
+        treeCursor = row.dataset.treeKey || '';
+        visibleRows().forEach((item) => { item.tabIndex = item === row ? 0 : -1; });
+        if (typeof row.focus === 'function') row.focus();
+        if (typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+    }
+
+    function currentTreeRow() {
+        const active = document.activeElement;
+        if (active && typeof active.closest === 'function' && typeof tree.contains === 'function') {
+            const row = active.closest('[data-tree-key]');
+            if (row && tree.contains(row)) return row;
+        }
+        return visibleRows().find((item) => item.tabIndex === 0) || null;
+    }
+
+    function firstChildRow(row) {
+        const folder = row.closest('.brain-folder');
+        if (!folder || typeof folder.querySelector !== 'function') return null;
+        const group = folder.querySelector('.brain-folder-children');
+        if (!group || group.hidden || group.classList.contains('is-collapsed') || typeof group.querySelector !== 'function') return null;
+        const child = group.querySelector('[data-tree-key]');
+        if (!child || rowConcealed(child)) return null;
+        return child;
+    }
+
+    function toggleFolder(id) {
+        const folderId = Number(id);
+        if (!folderId) return;
+        treeCursor = 'folder:' + folderId;
+        const willOpen = !expanded.has(folderId);
+        if (willOpen) expanded.add(folderId);
+        else expanded.delete(folderId);
+        const foldersInTree = typeof tree.querySelectorAll === 'function' ? Array.from(tree.querySelectorAll('.brain-folder')) : [];
+        const folder = foldersInTree.find((node) => node.dataset.folder === String(folderId));
+        const group = folder && folder.querySelector('.brain-folder-children');
+        if (!folder || !group) {
+            renderTree();
+            return;
+        }
+        group.classList.toggle('is-collapsed', !willOpen);
+        const expandedText = willOpen ? 'true' : 'false';
+        const row = folder.querySelector('.brain-tree-row');
+        if (row) row.setAttribute('aria-expanded', expandedText);
+        const toggle = folder.querySelector('.brain-folder-toggle');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', expandedText);
+            const name = folder.querySelector('.brain-folder-name');
+            const label = name && name.getAttribute ? (name.getAttribute('title') || '') : '';
+            toggle.setAttribute('aria-label', (willOpen ? 'Collapse' : 'Expand') + (label ? ' ' + label : ''));
+        }
+        placeTreeTab(focusInsideTree());
+    }
+
     function renderTree() {
-        const rootPages = pagesIn(null).map(pageButton).join('');
-        const rootDrop = '<div class="brain-folder-row" data-drop="root"><span class="brain-folder-name">Root</span></div>';
-        const body = folderHtml(folders) + rootPages;
+        const restoreFocus = focusInsideTree();
+        const rootPages = pagesIn(null).map((page) => pageButton(page, '')).join('');
+        const rootDrop = `<div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="root" data-tree-key="root" data-tree-kind="root" data-parent-key="" aria-selected="false">
+            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-tree-folder" aria-hidden="true"></span><span class="brain-folder-name" title="Root">${treeLabel('Root')}</span>
+        </div>`;
+        const body = folderHtml(folders, '') + rootPages;
         tree.innerHTML = rootDrop + (body || window.DashboardEmpty.html({
             title: 'No pages yet',
             body: 'Create a page to start the vault.',
@@ -140,6 +246,7 @@
         tree.querySelector('#brain-empty-new')?.addEventListener('click', () => {
             document.getElementById('brain-new')?.click();
         });
+        placeTreeTab(restoreFocus);
         fillMoveMenu();
     }
 
@@ -231,6 +338,7 @@
             `<li><button type="button" data-rev="${rev.version}" aria-pressed="false">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
         ).join('');
         renderCrumbs(page);
+        if (page) treeCursor = 'page:' + page.id;
         renderTree();
         renderMarkdown(bodyEl.value);
         if (page) history.replaceState(null, '', '/brain?page=' + page.id);
@@ -293,20 +401,63 @@
     tree.addEventListener('click', (e) => {
         const toggle = e.target.closest('[data-toggle]');
         if (toggle) {
-            const id = Number(toggle.dataset.toggle);
-            if (expanded.has(id)) expanded.delete(id);
-            else expanded.add(id);
-            renderTree();
+            toggleFolder(toggle.dataset.toggle);
             return;
         }
         const folderBtn = e.target.closest('[data-folder-pick]');
         if (folderBtn) {
             activeFolder = Number(folderBtn.dataset.folderPick);
+            treeCursor = 'folder:' + activeFolder;
             loadList(document.getElementById('brain-search').value.trim()).catch((err) => setStatus(err.message));
             return;
         }
         const btn = e.target.closest('[data-id]');
         if (btn) openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
+    });
+    // Space is handled here so the tree does not scroll the page.
+    tree.addEventListener('keydown', (e) => {
+        const key = e.key;
+        if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight' && key !== 'Enter' && key !== ' ') return;
+        const row = currentTreeRow();
+        if (!row) return;
+        if (key === 'ArrowDown' || key === 'ArrowUp') {
+            e.preventDefault();
+            const rows = visibleRows();
+            const index = rows.indexOf(row);
+            const next = key === 'ArrowDown' ? rows[index + 1] : rows[index - 1];
+            if (next) moveTree(next);
+            return;
+        }
+        if (key === 'ArrowLeft') {
+            e.preventDefault();
+            if (row.dataset.treeKind === 'folder' && expanded.has(Number(row.dataset.treeId))) {
+                toggleFolder(row.dataset.treeId);
+                return;
+            }
+            const parent = visibleRows().find((item) => item.dataset.treeKey === row.dataset.parentKey);
+            if (parent) moveTree(parent);
+            return;
+        }
+        if (key === 'ArrowRight') {
+            e.preventDefault();
+            if (row.dataset.treeKind !== 'folder') return;
+            const id = Number(row.dataset.treeId);
+            if (!expanded.has(id)) {
+                toggleFolder(id);
+                return;
+            }
+            const child = firstChildRow(row);
+            if (child) moveTree(child);
+            return;
+        }
+        if (key === ' ') {
+            e.preventDefault();
+            if (row.dataset.treeKind === 'folder') toggleFolder(row.dataset.treeId);
+            return;
+        }
+        e.preventDefault();
+        if (row.dataset.treeKind === 'folder') toggleFolder(row.dataset.treeId);
+        else if (row.dataset.treeKind === 'page') openPage(Number(row.dataset.treeId)).catch((err) => setStatus(err.message));
     });
     tree.addEventListener('dragstart', (e) => {
         const btn = e.target.closest('[data-id]');
