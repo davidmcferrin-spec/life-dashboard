@@ -17,8 +17,20 @@
 
     const view = new URLSearchParams(location.search).get('view') || 'inventory';
     document.querySelectorAll('#pantry-nav a[data-view]').forEach((link) => {
-        link.classList.toggle('is-on', link.dataset.view === view);
+        const on = link.dataset.view === view;
+        link.classList.toggle('is-on', on);
+        if (on) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
     });
+
+    function icon(id) {
+        const source = document.getElementById(id);
+        return source && source.innerHTML ? source.innerHTML : '';
+    }
+
+    function closeButton() {
+        return `<button type="button" class="app-modal-close" data-close aria-label="Close">${icon('pantry-icon-x')}</button>`;
+    }
     if (view === 'meals') {
         const pantryApp = document.getElementById('pantry-app');
         if (pantryApp) pantryApp.classList.add('is-meals');
@@ -55,14 +67,25 @@
         return shown + ' ' + (lot.unit || '') + level;
     }
 
-    function lotRow(lot, extra) {
-        return `<li class="ld-pantry-lot" data-lot="${lot.id}">
-            <div class="ld-pantry-lot-main">
-                <span class="ld-pantry-name">${esc(lot.name)}${lot.brand ? ' <span class="ld-meta">' + esc(lot.brand) + '</span>' : ''}</span>
-                <span class="ld-pantry-qty ld-pantry-${esc(lot.freshness)}">${esc(qtyText(lot))}${lot.use_by ? ' · ' + esc(lot.use_by) : ''}</span>
-            </div>
-            <div class="ld-pantry-actions mt-1">${extra}</div>
-        </li>`;
+    function inventoryKicker(lots) {
+        const soon = lots.filter((lot) => lot.freshness === 'soon').length;
+        const expired = lots.filter((lot) => lot.freshness === 'expired').length;
+        const bits = [lots.length + (lots.length === 1 ? ' item' : ' items')];
+        if (soon) bits.push(soon + ' expiring soon');
+        if (expired) bits.push(expired + ' expired');
+        return bits.join(' · ');
+    }
+
+    function lotTableRow(lot) {
+        const meta = [lot.brand, lot.location].filter(Boolean).map((bit) => esc(bit)).join(' · ');
+        const badge = esc(lot.category || lot.location || '');
+        return `<tr data-lot="${lot.id}">
+            <td class="ld-pantry-item" data-label="Item"><strong>${esc(lot.name)}</strong>${meta ? `<span class="ld-pantry-meta">${meta}</span>` : ''}</td>
+            <td data-label="Quantity">${esc(qtyText(lot))}</td>
+            <td data-label="Category">${badge ? `<span class="ld-pantry-badge">${badge}</span>` : ''}</td>
+            <td data-label="Best within"><span class="ld-pantry-chip ld-pantry-${esc(lot.freshness)}">${esc(lot.use_by || 'No date')}</span></td>
+            <td class="ld-pantry-actions" data-label="Actions">${lotActions(lot)}</td>
+        </tr>`;
     }
 
     function go(query) {
@@ -118,6 +141,7 @@
     let lotCache = [];
     let inventoryBound = false;
     let inventoryGen = 0;
+    let openAddOnPaint = false;
 
     function paintLots() {
         const search = document.getElementById('pantry-search');
@@ -126,18 +150,26 @@
         const q = (search.value || '').toLowerCase();
         const locBtn = body.querySelector('[data-loc].is-on');
         const loc = locBtn ? locBtn.dataset.loc : '';
-        const groups = { fridge: [], freezer: [], pantry: [] };
-        lotCache.forEach((lot) => {
-            if (loc && lot.location !== loc) return;
+        const places = ['fridge', 'freezer', 'pantry'];
+        const freshRank = { expired: 0, soon: 1, fresh: 2, unknown: 3 };
+        const placeRank = (location) => {
+            const index = places.indexOf(location);
+            return index === -1 ? places.length : index;
+        };
+        const shown = lotCache.filter((lot) => {
+            if (loc && lot.location !== loc) return false;
             const hay = (lot.name + ' ' + (lot.brand || '') + ' ' + (lot.category || '')).toLowerCase();
-            if (q && !hay.includes(q)) return;
-            if (groups[lot.location]) groups[lot.location].push(lot);
+            return !q || hay.includes(q);
+        }).sort((a, b) => {
+            const place = placeRank(a.location) - placeRank(b.location);
+            if (place) return place;
+            const fresh = (freshRank[a.freshness] ?? 9) - (freshRank[b.freshness] ?? 9);
+            if (fresh) return fresh;
+            return String(a.name).localeCompare(String(b.name));
         });
-        lotsEl.innerHTML = ['fridge', 'freezer', 'pantry'].map((key) => {
-            if (!groups[key].length) return '';
-            const rows = groups[key].map((lot) => lotRow(lot, lotActions(lot))).join('');
-            return `<section class="ld-pantry-group"><h2 class="ld-pantry-label">${esc(key)}</h2><ul>${rows}</ul></section>`;
-        }).join('') || window.DashboardEmpty.html({
+        const kicker = document.getElementById('pantry-kicker');
+        if (kicker) kicker.textContent = inventoryKicker(shown);
+        lotsEl.innerHTML = shown.length ? `<table class="ld-pantry-table"><thead><tr><th>Item</th><th>Quantity</th><th>Category</th><th>Best within</th><th></th></tr></thead><tbody>${shown.map(lotTableRow).join('')}</tbody></table>` : window.DashboardEmpty.html({
             title: 'Nothing matches',
             body: 'Try another search, or clear the filter.',
             actionLabel: 'Pantry',
@@ -172,18 +204,30 @@
                 `<option value="${value}"${value === status ? ' selected' : ''}>${label}</option>`
             ).join('');
             body.innerHTML = `
-                <div class="ld-pantry-filters">
-                    <input id="pantry-search" class="input flex-1" placeholder="Search" aria-label="Search pantry">
-                    <select id="pantry-status" class="input" aria-label="Status" title="Any is everything except tossed.">${statusOptions}</select>
-                    <select id="pantry-category" class="input" aria-label="Category">
-                        <option value="">All categories</option>${catOptions}
-                    </select>
-                    <button type="button" data-loc="" class="is-on">All</button>
-                    <button type="button" data-loc="fridge">Fridge</button>
-                    <button type="button" data-loc="freezer">Freezer</button>
-                    <button type="button" data-loc="pantry">Pantry</button>
-                </div>
-                <div id="pantry-lots"></div><div id="pantry-sheet"></div>`;
+                <section class="ld-pantry-card">
+                    <header class="ld-pantry-card-head">
+                        <div class="ld-pantry-card-title">
+                            <span class="ld-pantry-mark" aria-hidden="true">${icon('pantry-icon-basket')}</span>
+                            <div>
+                                <p class="ld-pantry-kicker" id="pantry-kicker"></p>
+                                <h2>Inventory</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <div class="ld-pantry-filters">
+                        <input id="pantry-search" class="input flex-1" placeholder="Search" aria-label="Search pantry">
+                        <select id="pantry-status" class="input" aria-label="Status" title="Any is everything except tossed.">${statusOptions}</select>
+                        <select id="pantry-category" class="input" aria-label="Category">
+                            <option value="">All categories</option>${catOptions}
+                        </select>
+                        <button type="button" data-loc="" class="is-on">All</button>
+                        <button type="button" data-loc="fridge">Fridge</button>
+                        <button type="button" data-loc="freezer">Freezer</button>
+                        <button type="button" data-loc="pantry">Pantry</button>
+                    </div>
+                    <div id="pantry-lots"></div>
+                </section>
+                <div id="pantry-sheet"></div>`;
         } else {
             const statusSel = document.getElementById('pantry-status');
             if (statusSel && statusSel.value !== status) statusSel.value = status;
@@ -201,6 +245,10 @@
             }
         }
         paintLots();
+        if (openAddOnPaint && !document.getElementById('add-form')) {
+            openAddOnPaint = false;
+            openAddSheet({});
+        }
         if (inventoryBound) return;
         inventoryBound = true;
         document.getElementById('pantry-search').addEventListener('input', paintLots);
@@ -372,13 +420,13 @@
                 <input class="input" name="${place}" type="number" step="any" min="0" inputmode="decimal" value="${value}" aria-label="${label} ${esc(lot.unit)}">
             </label>`;
         };
-        return `<div id="pantry-move-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-move-title">
+        return `<div id="pantry-move-modal" class="app-modal ld-pantry-dialog" role="dialog" aria-modal="true" aria-labelledby="pantry-move-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="move-form">
                     <div class="flex items-start justify-between gap-3">
-                        <p id="pantry-move-title" class="text-sm">Split ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <p id="pantry-move-title" class="ld-pantry-dialog-title">Split ${esc(lot.name)} (${esc(String(lot.quantity))} ${esc(lot.unit)})</p>
+                        ${closeButton()}
                     </div>
                     <p class="text-xs text-muted mt-1">Counts are ${esc(lot.unit)}, not packages. They must add up to ${esc(String(lot.quantity))}.</p>
                     ${field('fridge', 'Fridge')}
@@ -423,13 +471,13 @@
     }
 
     function editSheet(lot) {
-        return `<div id="pantry-edit-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-edit-title">
+        return `<div id="pantry-edit-modal" class="app-modal ld-pantry-dialog" role="dialog" aria-modal="true" aria-labelledby="pantry-edit-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="edit-form">
                     <div class="flex items-start justify-between gap-3">
-                        <p id="pantry-edit-title" class="text-sm">Edit ${esc(lot.name)}</p>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <p id="pantry-edit-title" class="ld-pantry-dialog-title">Edit ${esc(lot.name)}</p>
+                        ${closeButton()}
                     </div>
                     <label class="block text-xs text-muted mt-2">Quantity
                         <input class="input w-full" name="quantity" type="number" step="any" min="0" inputmode="decimal" value="${esc(String(lot.quantity))}">
@@ -487,13 +535,13 @@
         closeMove();
         closeEdit();
         closeConsume();
-        const modal = mountDialog(`<div id="pantry-consume-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-consume-title">
+        const modal = mountDialog(`<div id="pantry-consume-modal" class="app-modal ld-pantry-dialog" role="dialog" aria-modal="true" aria-labelledby="pantry-consume-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="consume-form">
                     <div class="flex items-start justify-between gap-3">
-                        <p id="pantry-consume-title" class="text-sm">Use ${esc(lot.name)}</p>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <p id="pantry-consume-title" class="ld-pantry-dialog-title">Use ${esc(lot.name)}</p>
+                        ${closeButton()}
                     </div>
                     <label class="block text-xs text-muted mt-2">Quantity (${esc(lot.unit || 'each')})
                         <input class="input w-full" name="quantity" type="number" step="any" min="0" inputmode="decimal" value="1" required>
@@ -531,9 +579,10 @@
 
     function purgeRows(lots, checked) {
         return (lots || []).map((lot) => `
-            <label class="ld-pantry-lot flex gap-2 items-start">
+            <label class="ld-pantry-lot">
                 <input type="checkbox" value="${lot.id}"${checked.has(String(lot.id)) ? ' checked' : ''}>
-                <span class="ld-pantry-${esc(lot.freshness)}">${esc(lot.name)} · ${esc(lot.location)} · ${esc(lot.use_by || '')}</span>
+                <span><strong class="ld-pantry-name">${esc(lot.name)}</strong><span class="ld-pantry-meta">${esc(lot.location || '')}</span></span>
+                <span class="ld-pantry-chip ld-pantry-${esc(lot.freshness)}">${esc(lot.use_by || 'No date')}</span>
             </label>`).join('');
     }
 
@@ -556,8 +605,16 @@
         });
         if (!form) {
             body.innerHTML = `
-                <form id="purge-form">
-                    <label class="text-xs text-muted">Due within days
+                <form id="purge-form" class="ld-pantry-card">
+                    <header class="ld-pantry-card-head">
+                        <div class="ld-pantry-card-title">
+                            <div>
+                                <p class="ld-pantry-kicker">Use soon</p>
+                                <h2>Purge</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <label class="ld-pantry-field">Due within days
                         <input class="input" name="days" inputmode="numeric" value="${esc(days)}">
                     </label>
                     <div class="mt-3" id="purge-lots">${rows}</div>
@@ -600,8 +657,9 @@
             return !q || (row.name + ' ' + (row.brand || '') + ' ' + (row.upc || '')).toLowerCase().includes(q);
         }).slice(0, 40).map((row) => `
             <li class="ld-pantry-lot">
-                <button type="button" class="text-left w-full" data-product="${row.id}">
-                    ${esc(row.name)} <span class="ld-meta">${esc(row.category)}${row.units_per_package ? ' · ' + esc(String(row.units_per_package)) + ' ' + esc(row.piece_unit || '') : ''}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
+                <button type="button" data-product="${row.id}">
+                    <strong class="ld-pantry-name">${esc(row.name)}</strong>
+                    <span class="ld-pantry-meta">${esc(row.category)}${row.units_per_package ? ' · ' + esc(String(row.units_per_package)) + ' ' + esc(row.piece_unit || '') : ''}${row.upc ? ' · ' + esc(row.upc) : ''}</span>
                 </button>
             </li>`).join('');
     }
@@ -613,8 +671,18 @@
         productCache = data.products || [];
         if (!document.getElementById('product-search')) {
             body.innerHTML = `
-                <input id="product-search" class="input w-full" placeholder="Search produce or a product" aria-label="Search products">
-                <ul id="product-list" class="mt-3"></ul>
+                <section class="ld-pantry-card">
+                    <header class="ld-pantry-card-head">
+                        <div class="ld-pantry-card-title">
+                            <div>
+                                <p class="ld-pantry-kicker">Catalog</p>
+                                <h2>Products</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <input id="product-search" class="input w-full" placeholder="Search produce or a product" aria-label="Search products">
+                    <ul id="product-list" class="ld-pantry-list"></ul>
+                </section>
                 <div id="product-sheet"></div>`;
         }
         paintProducts();
@@ -772,20 +840,31 @@
     async function scan() {
         const live = cameraAvailable();
         body.innerHTML = `
-            ${live ? '<video id="pantry-video" class="ld-pantry-video" autoplay playsinline muted></video>' : '<p class="text-xs text-muted">This address is not secure, so the camera stays off. Take a photo of the barcode.</p>'}
-            <img id="pantry-photo" class="ld-pantry-video hidden" alt="Barcode photo">
-            <div class="flex gap-2 mt-3">
-                <button type="button" class="btn-primary text-sm" id="scan-start">${live ? 'Scan' : 'Take a photo'}</button>
-                ${live ? '<button type="button" class="btn text-sm" id="scan-photo">Photo</button>' : ''}
-            </div>
-            <input id="pantry-photo-input" class="hidden" type="file" accept="image/*" capture="environment">
-            <form id="manual-upc" class="flex gap-2 mt-3">
-                <input class="input flex-1" name="upc" inputmode="numeric" placeholder="Type a UPC" aria-label="UPC">
-                <button type="submit" class="btn">Look up</button>
-            </form>
-            <input id="produce-search" class="input w-full mt-3" placeholder="Search produce" aria-label="Search produce">
-            <ul id="produce-list"></ul>
-            <div id="pantry-sheet"></div>`;
+            <section class="ld-pantry-card">
+                <header class="ld-pantry-card-head">
+                    <div class="ld-pantry-card-title">
+                        <span class="ld-pantry-mark" aria-hidden="true">${icon('pantry-icon-scan')}</span>
+                        <div>
+                            <p class="ld-pantry-kicker">Barcode</p>
+                            <h2>Scan</h2>
+                        </div>
+                    </div>
+                </header>
+                ${live ? '<video id="pantry-video" class="ld-pantry-video" autoplay playsinline muted></video>' : '<p class="ld-pantry-lede">This address is not secure, so the camera stays off. Take a photo of the barcode.</p>'}
+                <img id="pantry-photo" class="ld-pantry-video hidden" alt="Barcode photo">
+                <div class="ld-pantry-scan-actions">
+                    <button type="button" class="btn-primary text-sm ld-pantry-scan-btn" id="scan-start">${icon('pantry-icon-scan')}${live ? 'Scan' : 'Take a photo'}</button>
+                    ${live ? '<button type="button" class="btn text-sm" id="scan-photo">Photo</button>' : ''}
+                </div>
+                <input id="pantry-photo-input" class="hidden" type="file" accept="image/*" capture="environment">
+                <form id="manual-upc">
+                    <input class="input flex-1" name="upc" inputmode="numeric" placeholder="Type a UPC" aria-label="UPC">
+                    <button type="submit" class="btn">Look up</button>
+                </form>
+                <input id="produce-search" class="input w-full mt-3" placeholder="Search produce" aria-label="Search produce">
+                <ul id="produce-list" class="ld-pantry-list"></ul>
+                <div id="pantry-sheet"></div>
+            </section>`;
         document.getElementById('manual-upc').addEventListener('submit', (event) => {
             event.preventDefault();
             const upc = new FormData(event.target).get('upc');
@@ -812,7 +891,7 @@
                 return;
             }
             list.innerHTML = (produce.products || []).filter((row) => row.name.toLowerCase().includes(q)).slice(0, 8).map((row) =>
-                `<li><button type="button" class="ld-pantry-lot w-full text-left" data-pick="${row.id}">${esc(row.name)}</button></li>`
+                `<li><button type="button" data-pick="${row.id}">${esc(row.name)}</button></li>`
             ).join('');
         });
         list.addEventListener('click', (event) => {
@@ -1020,13 +1099,13 @@
     function openRecipe(recipe) {
         closeRecipe();
         const lines = (recipe.ingredients || []).map(ingredientLine).join('\n');
-        const modal = mountDialog(`<div id="pantry-recipe-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-recipe-title">
+        const modal = mountDialog(`<div id="pantry-recipe-modal" class="app-modal ld-pantry-dialog" role="dialog" aria-modal="true" aria-labelledby="pantry-recipe-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="recipe-edit-form">
                     <div class="flex items-start justify-between gap-3">
-                        <p id="pantry-recipe-title" class="text-sm">Edit recipe</p>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <p id="pantry-recipe-title" class="ld-pantry-dialog-title">Edit recipe</p>
+                        ${closeButton()}
                     </div>
                     <label class="block text-xs text-muted mt-2">Name
                         <input class="input w-full" name="name" required value="${esc(recipe.name)}">
@@ -1118,10 +1197,11 @@
     function recipeItems(rows) {
         return (rows || []).map((row) => `
             <li class="ld-pantry-lot" id="recipe-${row.id}">
-                <div class="flex items-center justify-between gap-2">
-                    <span class="text-sm">${esc(row.name)} ${proteinBit(row)} ${prepBit(row)}</span>
-                    <button type="button" data-recipe="${row.id}">Edit</button>
+                <div>
+                    <strong class="ld-pantry-name">${esc(row.name)}</strong>
+                    ${proteinBit(row)} ${prepBit(row)}
                 </div>
+                <button type="button" class="btn text-sm" data-recipe="${row.id}">Edit</button>
             </li>`).join('');
     }
 
@@ -1141,22 +1221,33 @@
         ).join('');
         if (!document.getElementById('recipe-form')) {
             body.innerHTML = `
-                <h2 class="ld-pantry-label">What you can make</h2>
-                <ul id="recipe-ideas"></ul>
-                <div class="ld-meal-chips" id="recipe-filters">
-                    <button type="button" class="ld-meal-chip" data-prep="0">All recipes</button>
-                    <button type="button" class="ld-meal-chip" data-prep="1">Meal prep</button>
-                </div>
-                <form id="recipe-form" class="ld-pantry-sheet">
-                    <label class="block text-xs text-muted">Name <input class="input w-full" name="name" required></label>
-                    <label class="block text-xs text-muted mt-2">Notes <textarea class="input w-full" name="notes" rows="2"></textarea></label>
-                    ${recipeFields(null)}
-                    <label class="block text-xs text-muted mt-2">Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
-                        <textarea class="input w-full" name="lines" rows="4"></textarea>
-                    </label>
-                    <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
-                </form>
-                <ul class="mt-3" id="recipe-list"></ul>`;
+                <section class="ld-pantry-card">
+                    <header class="ld-pantry-card-head">
+                        <div class="ld-pantry-card-title">
+                            <div>
+                                <p class="ld-pantry-kicker">On hand</p>
+                                <h2>What you can make</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <ul id="recipe-ideas" class="ld-pantry-list"></ul>
+                </section>
+                <section class="ld-pantry-card">
+                    <div class="ld-meal-chips" id="recipe-filters">
+                        <button type="button" class="ld-meal-chip" data-prep="0">All recipes</button>
+                        <button type="button" class="ld-meal-chip" data-prep="1">Meal prep</button>
+                    </div>
+                    <form id="recipe-form" class="ld-pantry-sheet">
+                        <label>Name <input class="input w-full" name="name" required></label>
+                        <label>Notes <textarea class="input w-full" name="notes" rows="2"></textarea></label>
+                        ${recipeFields(null)}
+                        <label>Ingredients, one per line. Optional amount and unit, then a product name or category:Produce
+                            <textarea class="input w-full" name="lines" rows="4"></textarea>
+                        </label>
+                        <button type="submit" class="btn-primary text-sm mt-2">Save recipe</button>
+                    </form>
+                    <ul id="recipe-list" class="ld-pantry-list"></ul>
+                </section>`;
         }
         document.querySelectorAll('#recipe-filters [data-prep]').forEach((button) => {
             const on = (button.dataset.prep === '1') === recipePrep;
@@ -1271,7 +1362,7 @@
         if (apart) classes.push('is-apart');
         if (!row.on_hand) classes.push('is-off');
         const unpick = picked
-            ? `<button type="button" class="ld-meal-x" data-unpick="${row.id}" aria-label="Remove ${esc(row.name)}">×</button>`
+            ? `<button type="button" class="ld-meal-x" data-unpick="${row.id}" aria-label="Remove ${esc(row.name)}">${icon('pantry-icon-minus')}</button>`
             : '';
         return `<div class="ld-meal-line"><button type="button" class="${classes.join(' ')}" data-pick="${row.id}" data-apart="${apart ? '1' : '0'}" data-category="${esc(row.category)}" aria-pressed="${picked ? 'true' : 'false'}">${esc(row.name)}</button>${unpick}</div>`;
     }
@@ -1288,8 +1379,8 @@
         const divided = apart.length
             ? `<div class="ld-meal-split" role="separator"></div><p class="ld-meal-split-label">doesn't pair</p>${apart.map((row) => mealLine(row, false, true)).join('')}`
             : '';
-        const empty = !lines && !apart.length ? '<p class="text-muted text-xs">None</p>' : '';
-        return `<section class="ld-meal-col"><h2 class="ld-pantry-label">${esc(label)}</h2>${lines}${divided}${empty}</section>`;
+        const empty = !lines && !apart.length ? '<p class="ld-meal-empty">None</p>' : '';
+        return `<section class="ld-meal-col"><header class="ld-meal-day-head"><span>${esc(label)}</span></header>${lines}${divided}${empty}</section>`;
     }
 
     function renderPlan(plan) {
@@ -1300,7 +1391,7 @@
             return `<li${mark}>${esc(line.name)} (${esc(String(line.quantity))} ${esc(line.unit || '')})${short}</li>`;
         }).join('');
         const protein = proteinBit(plan);
-        return `<p class="text-sm">${esc(plan.label || '')}</p><p class="ld-meta">Use by ${esc(plan.use_by || '')} · keeps ${esc(String(plan.keeps_days || ''))} days</p>${protein}<ol class="ld-meal-steps">${steps}</ol><ul class="ld-meal-scale">${lines}</ul>`;
+        return `<div class="ld-meal-plan"><p class="ld-meal-plan-title">${esc(plan.label || '')}</p><p class="ld-pantry-meta">Use by ${esc(plan.use_by || '')} · keeps ${esc(String(plan.keeps_days || ''))} days</p>${protein}<ol class="ld-meal-steps">${steps}</ol><ul class="ld-meal-scale">${lines}</ul></div>`;
     }
 
     function prepPayload() {
@@ -1345,7 +1436,7 @@
 
     function mealSupport(label, rows) {
         const lines = (rows || []).map(mealSuggestion).join('');
-        return `<section class="ld-meal-col"><h2 class="ld-pantry-label">${esc(label)}</h2>${lines || '<p class="text-muted text-xs">None</p>'}</section>`;
+        return `<section class="ld-meal-col"><header class="ld-meal-day-head"><span>${esc(label)}</span></header>${lines || '<p class="ld-meal-empty">None</p>'}</section>`;
     }
 
     // A grayed item stays. Current picks it does not pair with are dropped, then the column cap is applied.
@@ -1558,25 +1649,34 @@
             : '';
         const planHtml = mealPlan ? renderPlan(mealPlan) : '';
         body.innerHTML = `
-            <div class="ld-meal-chips" id="meal-modes">
-                <button type="button" class="ld-meal-chip ld-meal-mode${only ? '' : ' is-on'}" data-hand="0" aria-pressed="${only ? 'false' : 'true'}">Show everything</button>
-                <button type="button" class="ld-meal-chip ld-meal-mode${only ? ' is-on' : ''}" data-hand="1" aria-pressed="${only ? 'true' : 'false'}">Only what I have</button>
-                <button type="button" class="ld-meal-chip" id="meal-clear">Clear</button>
+            <section class="ld-pantry-card">
+                <header class="ld-pantry-card-head">
+                    <div class="ld-pantry-card-title">
+                        <span class="ld-pantry-mark" aria-hidden="true">${icon('pantry-icon-pot')}</span>
+                        <div>
+                            <p class="ld-pantry-kicker">From what you have</p>
+                            <h2>Build a meal</h2>
+                        </div>
+                    </div>
+                </header>
+                <div class="ld-meal-chips" id="meal-modes">
+                    <button type="button" class="ld-meal-chip ld-meal-mode${only ? '' : ' is-on'}" data-hand="0" aria-pressed="${only ? 'false' : 'true'}">Show everything</button>
+                    <button type="button" class="ld-meal-chip ld-meal-mode${only ? ' is-on' : ''}" data-hand="1" aria-pressed="${only ? 'true' : 'false'}">Only what I have</button>
+                    <button type="button" class="ld-meal-chip" id="meal-clear">Clear</button>
+                </div>
+            </section>
+            <div class="ld-meal-board" id="meal-board">${columns}</div>
+            <div class="ld-meal-support">
+                <h2 class="ld-pantry-label">Flavor</h2>
+                <div class="ld-meal-rail" aria-label="Flavor">${rail}</div>
             </div>
-            <div class="ld-meal-board" id="meal-board">
-                ${columns}
-                <aside class="ld-meal-rail" aria-label="Flavor">
-                    <h2 class="ld-pantry-label ld-meal-flavor">Flavor</h2>
-                    ${rail}
-                </aside>
-            </div>
-            <div class="mt-3" id="meal-made">${made ? '<p class="text-sm">Made before</p>' + made : ''}</div>
-            <p class="text-sm text-muted" id="meal-note"></p>
-            <section class="ld-meal-prep" id="meal-prep">
+            <div id="meal-made">${made ? '<h2 class="ld-pantry-label">Made before</h2><div class="ld-meal-made-grid">' + made + '</div>' : ''}</div>
+            <p id="meal-note" class="ld-pantry-lede"></p>
+            <section class="ld-pantry-card ld-meal-prep" id="meal-prep">
                 <h2 class="ld-pantry-label">Meal prep</h2>
                 ${fromRecipe}
                 <div class="ld-meal-actions">
-                    <label class="text-xs text-muted">Servings
+                    <label class="ld-pantry-field">Servings
                         <input class="input" name="servings" type="number" min="1" max="30" inputmode="numeric" value="${esc(String(mealServings))}" aria-label="Servings">
                     </label>
                     <input class="input" name="prep_name" placeholder="Prep name" aria-label="Prep name" value="${esc(mealPrepName)}">
@@ -1585,7 +1685,7 @@
                 </div>
                 <div id="meal-plan-out">${planHtml}</div>
             </section>
-            <form id="meal-recipe" class="ld-meal-actions">
+            <form id="meal-recipe" class="ld-pantry-card ld-meal-actions">
                 <input class="input" name="name" placeholder="Recipe name" aria-label="Recipe name" required>
                 <button type="submit" class="btn-primary text-sm">Save as recipe</button>
                 <button type="button" class="btn text-sm" id="meal-groceries">Add missing to Groceries</button>
@@ -1712,6 +1812,32 @@
                     ? 'Added to Groceries: ' + names.join(', ')
                     : 'Nothing missing from Groceries.';
             }).catch(fail);
+        });
+    }
+
+    const addItem = document.getElementById('pantry-add');
+    if (addItem) {
+        addItem.addEventListener('click', () => {
+            const open = document.getElementById('add-form');
+            if (open) {
+                const field = open.querySelector('input, button');
+                if (field) field.focus();
+                return;
+            }
+            if (!document.getElementById('pantry-sheet')) {
+                openAddOnPaint = true;
+                return;
+            }
+            openAddSheet({});
+        });
+    }
+    const addMeal = document.getElementById('pantry-add-meal');
+    if (addMeal) {
+        addMeal.addEventListener('click', () => {
+            const name = document.querySelector('#meal-recipe [name="name"]');
+            if (!name) return;
+            name.scrollIntoView({ block: 'center' });
+            name.focus();
         });
     }
 
