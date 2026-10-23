@@ -86,6 +86,7 @@ if (!function_exists('settings_nav_groups')) {
             ['Reddit reader', '/reddit'],
             ['Playlists', '/spotify'],
             ['Todo lists', '/todos'],
+            ['Configure JARVIS', '/settings/jarvis'],
         ];
     }
 
