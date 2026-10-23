@@ -18,13 +18,10 @@ final class PgsqlMigrationFilesTest extends TestCase
         $names = array_keys(Schema::pgsqlMigrationFiles());
         self::assertNotEmpty($names);
         $numbers = array_map(static fn (string $name): int => (int) substr($name, 0, 4), $names);
-        // A reserved number can exist in another change before its file is in this checkout.
-        $previous = 0;
-        foreach ($numbers as $number) {
-            self::assertGreaterThan($previous, $number, 'duplicate or out-of-order migration number');
-            $previous = $number;
-        }
-        self::assertSame(1, $numbers[0], 'migrations must start at 0001');
+        self::assertSame($numbers, array_values(array_unique($numbers)), 'duplicate migration number');
+        // 0043, 0044, and 0045 are reserved on other open branches.
+        $missing = array_values(array_diff(range(1, max($numbers)), $numbers, [43, 44, 45]));
+        self::assertSame([], $missing, 'unexpected gap in database/pgsql');
     }
 
     public function testInvalidFileNameIsRejected(): void
