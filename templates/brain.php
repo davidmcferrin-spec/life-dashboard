@@ -25,13 +25,13 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                 <h2 class="brain-tree-title">Vault</h2>
             </div>
             <div class="brain-tree-actions">
-                <button type="button" id="brain-folder" class="btn" title="New folder">Folder</button>
-                <button type="button" id="brain-new" class="btn" title="New note">New</button>
+                <button type="button" id="brain-new" class="brain-icon-btn" title="New note" aria-label="New note"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/plus.svg'); ?></button>
             </div>
         </header>
         <div class="brain-search-field">
             <span class="brain-search-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/search.svg'); ?></span>
             <input id="brain-search" type="search" class="input" placeholder="Search notes" autocomplete="off" aria-label="Search notes">
+            <button type="button" id="brain-collapse" class="brain-icon-btn" title="Collapse all" aria-label="Collapse all"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/archive.svg'); ?></button>
         </div>
         <div id="brain-tree" class="brain-tree"></div>
         <?php // Inline the vendored files so their stroke stays currentColor. ?>
@@ -41,6 +41,8 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         <template id="brain-icon-link"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/link.svg'); ?></template>
         <template id="brain-icon-tag"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/tag.svg'); ?></template>
         <template id="brain-icon-list-tree"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/list-tree.svg'); ?></template>
+        <template id="brain-icon-plus"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/plus.svg'); ?></template>
+        <template id="brain-icon-ellipsis"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/ellipsis.svg'); ?></template>
         <template id="brain-icon-x"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/x.svg'); ?></template>
     </aside>
     <section class="brain-stage is-preview">
@@ -59,18 +61,24 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                     <button type="button" data-brain-tab="preview" class="is-active" aria-pressed="true">Preview</button>
                     <button type="button" data-brain-tab="edit" aria-pressed="false">Edit</button>
                 </div>
-                <select id="brain-kind" class="input" aria-label="Page kind">
-                    <option value="note">Note</option>
-                    <option value="daily">Daily</option>
-                    <option value="project">Project</option>
-                    <option value="reference">Reference</option>
-                    <option value="review">Review</option>
-                </select>
-                <label class="brain-move-label">Move
-                    <select id="brain-move" class="input" aria-label="Move page to folder"></select>
-                </label>
-                <button type="button" id="brain-save" class="btn-primary">Save</button>
-                <button type="button" id="brain-archive" class="btn">Archive</button>
+                <div class="brain-note-menu">
+                    <button type="button" id="brain-note-menu" class="brain-icon-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Note actions" title="Note actions"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/ellipsis.svg'); ?></button>
+                    <div id="brain-note-panel" class="brain-menu-panel" role="menu" hidden>
+                        <label class="brain-menu-field">Kind
+                            <select id="brain-kind" class="input" aria-label="Page kind">
+                                <option value="note">Note</option>
+                                <option value="daily">Daily</option>
+                                <option value="project">Project</option>
+                                <option value="reference">Reference</option>
+                                <option value="review">Review</option>
+                            </select>
+                        </label>
+                        <label class="brain-menu-field">Move
+                            <select id="brain-move" class="input" aria-label="Move page to folder"></select>
+                        </label>
+                        <button type="button" id="brain-archive" class="brain-menu-item is-danger" role="menuitem">Archive</button>
+                    </div>
+                </div>
             </div>
         </header>
         <div class="brain-split" id="brain-split" style="grid-template-columns: 1fr">

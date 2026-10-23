@@ -86,6 +86,34 @@ async function flush() {
     }
 }
 
+const editorIds = [
+    'brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links',
+    'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view',
+    'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-split', 'brain-new',
+    'brain-search', 'brain-collapse', 'brain-note-menu', 'brain-note-panel', 'brain-icon-chevron',
+    'brain-icon-folder', 'brain-icon-file', 'brain-icon-plus', 'brain-icon-ellipsis',
+];
+
+function installTimers(sandbox) {
+    const pending = [];
+    let next = 1;
+    sandbox.setTimeout = (fn) => {
+        const id = next++;
+        pending.push({ id, fn });
+        return id;
+    };
+    sandbox.clearTimeout = (id) => {
+        const index = pending.findIndex((item) => item.id === id);
+        if (index >= 0) pending.splice(index, 1);
+    };
+    return async function drain() {
+        while (pending.length) {
+            const batch = pending.splice(0, pending.length);
+            for (const item of batch) await item.fn();
+        }
+    };
+}
+
 function boot() {
     const store = {
         7: page(7, 'Home', '# Hello'),
@@ -104,7 +132,7 @@ function boot() {
         return node;
     }
 
-    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search', 'brain-icon-chevron', 'brain-icon-folder', 'brain-icon-file'].forEach(make);
+    editorIds.forEach(make);
     mountTreeIcons(nodes);
 
     const sandbox = {
@@ -169,19 +197,21 @@ function boot() {
     };
     sandbox.window = sandbox;
     sandbox.globalThis = sandbox;
+    const drain = installTimers(sandbox);
     vm.runInNewContext(script, sandbox);
 
     return {
         posts,
+        drain,
         editBtn,
         previewBtn,
         stage,
         body: nodes['brain-body'],
         preview: nodes['brain-preview'],
         title: nodes['brain-title'],
+        kind: nodes['brain-kind'],
         status: nodes['brain-status'],
         tree: nodes['brain-tree'],
-        saveBtn: nodes['brain-save'],
         split: nodes['brain-split'],
     };
 }
@@ -215,6 +245,15 @@ test('the vault template opens on preview', () => {
     assert.match(template, /id="brain-body" class="brain-editor" hidden /);
     assert.match(template, /id="brain-preview" class="brain-preview km"><\/div>/);
     assert.equal(template.includes('data-brain-tab="edit" class="is-active"'), false);
+    assert.equal(template.includes('id="brain-save"'), false);
+    assert.match(template, /aria-label="Note actions"/);
+    assert.match(template, /aria-label="Collapse all"/);
+    assert.match(template, /aria-label="New note"/);
+    assert.match(template, /vendor\/lucide\/archive\.svg/);
+    assert.match(template, /id="brain-note-panel"/);
+    assert.match(template, /id="brain-archive"/);
+    assert.match(template, /id="brain-kind"/);
+    assert.match(template, /id="brain-move"/);
 });
 
 function camelData(name) {
@@ -317,6 +356,17 @@ function richDocument() {
                 delete this.attrs[name];
             },
             focus() { state.active = el; },
+            appendChild(child) {
+                el.children.push(child);
+                child.parent = el;
+                return child;
+            },
+            remove() {
+                if (el.parent && el.parent.children) {
+                    el.parent.children = el.parent.children.filter((child) => child !== el);
+                    el.parent = null;
+                }
+            },
             closest(selector) {
                 let node = el;
                 while (node) {
@@ -421,7 +471,8 @@ function richDocument() {
     };
 }
 
-function bootTree() {
+function bootTree(options) {
+    const recordPosts = Boolean(options && options.recordPosts);
     const longName = 'A very long folder name that should truncate';
     const folders = [{
         id: 1,
@@ -435,14 +486,16 @@ function bootTree() {
         9: Object.assign(page(9, "Bob's plan", '# Plan'), { folder_id: 2, kind: 'project' }),
     };
     const gets = [];
+    const posts = [];
     const doc = richDocument();
     const nodes = {};
     const editBtn = element({ brainTab: 'edit' });
     const previewBtn = element({ brainTab: 'preview' });
     const shell = element({ openPage: '0' });
     const stage = element();
+    const body = doc.make('body', {});
 
-    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search', 'brain-icon-chevron', 'brain-icon-folder', 'brain-icon-file'].forEach((id) => {
+    editorIds.forEach((id) => {
         nodes[id] = doc.make('div', { id });
     });
     mountTreeIcons(nodes);
@@ -454,16 +507,29 @@ function bootTree() {
                 if (!nodes[id]) throw new Error('missing ' + id);
                 return nodes[id];
             },
+            createElement(tag) {
+                return doc.make(tag, {});
+            },
             querySelector(selector) {
                 if (selector === '.brain-shell') return shell;
                 if (selector === '.brain-stage') return stage;
+                if (selector === '.app-modal:not(.hidden)') {
+                    const modal = body.querySelector('.app-modal');
+                    if (modal && !modal.classList.contains('hidden')) return modal;
+                    return null;
+                }
+                if (selector.startsWith('#')) {
+                    const id = selector.slice(1);
+                    if (nodes[id]) return nodes[id];
+                    return body.querySelector(selector);
+                }
                 return null;
             },
             querySelectorAll(selector) {
                 if (selector === '[data-brain-tab]') return [editBtn, previewBtn];
                 return [];
             },
-            body: element(),
+            body,
         },
         localStorage: { getItem() { return null; }, setItem() {} },
         history: { replaceState() {} },
@@ -488,7 +554,30 @@ function bootTree() {
                     if (found) return { page: store[Number(found[1])] };
                     throw new Error('GET ' + url);
                 },
-                async post() { throw new Error('unexpected post'); },
+                async post(url, payload) {
+                    if (!recordPosts) throw new Error('unexpected post');
+                    posts.push({ url, payload });
+                    if (url === '/pages') {
+                        const id = 40 + posts.length;
+                        const created = Object.assign(page(id, payload.title, payload.body || ''), {
+                            folder_id: payload.folder_id || null,
+                            kind: payload.kind || 'note',
+                        });
+                        store[id] = created;
+                        return { page: created };
+                    }
+                    const updated = /^\/pages\/(\d+)\/update$/.exec(url);
+                    if (updated) {
+                        const id = Number(updated[1]);
+                        store[id] = Object.assign({}, store[id], {
+                            title: payload.title,
+                            body: payload.body,
+                            kind: payload.kind,
+                        });
+                        return { page: store[id] };
+                    }
+                    throw new Error('POST ' + url);
+                },
             },
             esc: (value) => String(value)
                 .replace(/&/g, '&amp;')
@@ -507,6 +596,7 @@ function bootTree() {
     vm.runInNewContext(script, sandbox);
     return {
         gets,
+        posts,
         longName,
         editBtn,
         previewBtn,
@@ -515,8 +605,10 @@ function bootTree() {
         preview: nodes['brain-preview'],
         title: nodes['brain-title'],
         tree: nodes['brain-tree'],
-        saveBtn: nodes['brain-save'],
         split: nodes['brain-split'],
+        pageBody: body,
+        newBtn: nodes['brain-new'],
+        collapse: nodes['brain-collapse'],
     };
 }
 
@@ -538,32 +630,49 @@ async function press(tree, key) {
     return event;
 }
 
-test('a note opens in preview and Edit is a toggle', async () => {
+test('a note opens in preview and autosave keeps the Edit toggle', async () => {
     const ui = boot();
     await flush();
 
     assertPreview(ui, '# Hello');
     assert.equal(ui.title.value, 'Home');
     assert.equal(ui.body.value, '# Hello');
+    assert.match(ui.status.innerHTML, /Saved automatically/);
 
-    await ui.saveBtn.dispatch('click');
+    await ui.title.dispatch('input');
+    await ui.drain();
+    await flush();
+    assert.equal(ui.posts.length, 0);
+
+    ui.title.value = 'Home note';
+    await ui.title.dispatch('input');
+    await ui.drain();
     await flush();
     assertPreview(ui, '# Hello');
     assert.equal(ui.posts.at(-1).url, '/pages/7/update');
     assert.equal(ui.posts.at(-1).payload.body, '# Hello');
-    assert.equal(ui.posts.at(-1).payload.title, 'Home');
-    assert.equal(ui.status.textContent, 'Saved.');
+    assert.equal(ui.posts.at(-1).payload.title, 'Home note');
+    assert.match(ui.status.innerHTML, /Saved automatically/);
+    assert.equal(ui.status.innerHTML.includes('brain-saved'), true);
 
     ui.editBtn.dispatch('click');
     assertEdit(ui);
 
     ui.body.value = '# Hello\n\nedited';
-    await ui.saveBtn.dispatch('click');
+    await ui.body.dispatch('input');
+    await ui.drain();
     await flush();
     assertEdit(ui);
     assert.equal(ui.posts.at(-1).payload.body, '# Hello\n\nedited');
     assert.equal(ui.body.value, '# Hello\n\nedited');
-    assert.equal(ui.status.textContent, 'Saved.');
+    assert.match(ui.status.innerHTML, /Saved automatically/);
+
+    ui.kind.value = 'project';
+    await ui.kind.dispatch('change');
+    await ui.drain();
+    await flush();
+    assertEdit(ui);
+    assert.equal(ui.posts.at(-1).payload.kind, 'project');
 
     await ui.tree.dispatch('click', {
         target: {
@@ -731,4 +840,82 @@ test('vault tree keys move, expand, and open without scrolling', async () => {
     assert.equal(projectRow.closest('.brain-folder').classList.contains('is-active'), true);
     assert.equal(ui.gets.includes('/pages?folder_id=1'), true);
     assertPreview(ui, '# Hello');
+});
+
+test('collapse all closes every folder and tree rows keep hover actions', async () => {
+    const css = fs.readFileSync(path.join(root, 'public/assets/css/lifedash.css'), 'utf8');
+    assert.match(css, /\.brain-tree-row:hover > \.brain-row-actions/);
+    assert.match(css, /\.brain-saved \{ color: var\(--ok\);/);
+    assert.match(script, /function scheduleAutosave\(/);
+    assert.match(script, /function openCreateNote\(/);
+    assert.match(script, /function collapseAll\(/);
+
+    const ui = bootTree();
+    await flush();
+    const html = ui.tree.innerHTML;
+    assert.match(html, /data-tree-action="add"/);
+    assert.match(html, /data-tree-action="menu"/);
+    assert.match(html, /aria-label="New note"/);
+    assert.match(html, /aria-label="Row actions"/);
+    assert.match(html, /data-menu="new-folder"/);
+    assert.match(html, /data-menu="rename"/);
+    assert.match(html, /data-menu="delete"/);
+    assert.match(html, /data-menu="archive"/);
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:9'), true);
+
+    await ui.collapse.dispatch('click');
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:9'), false);
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:8'), false);
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'folder:2'), false);
+    const projects = treeRows(ui.tree).find((row) => row.dataset.treeKey === 'folder:1');
+    assert.equal(projects.attrs['aria-expanded'], 'false');
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:7'), true);
+});
+
+test('create note posts the title and the folder from the tree row', async () => {
+    const ui = bootTree({ recordPosts: true });
+    await flush();
+
+    const projects = treeRows(ui.tree).find((row) => row.dataset.treeKey === 'folder:1');
+    const add = projects.querySelectorAll('[data-tree-action]').find((node) => node.dataset.treeAction === 'add');
+    await add.dispatch('click');
+    const modal = ui.pageBody.querySelector('#brain-note-modal');
+    assert.equal(modal !== null, true);
+    assert.match(modal.innerHTML, /Create note/);
+    assert.match(modal.innerHTML, /Add a new note to your knowledge vault\./);
+    assert.match(modal.innerHTML, /Note title/);
+    assert.match(modal.innerHTML, /Untitled note/);
+
+    const field = modal.querySelector('#brain-note-title');
+    const form = modal.querySelector('#brain-note-modal-form');
+    field.value = '   ';
+    await form.dispatch('submit');
+    await flush();
+    assert.equal(ui.posts.length, 0);
+    assert.equal(modal.querySelector('[data-error]').textContent, 'Add a title first.');
+    assert.equal(ui.pageBody.querySelector('#brain-note-modal') !== null, true);
+
+    field.value = 'Field notes';
+    await form.dispatch('submit');
+    await flush();
+    assert.equal(ui.posts.length, 1);
+    assert.equal(ui.posts[0].url, '/pages');
+    assert.equal(ui.posts[0].payload.title, 'Field notes');
+    assert.equal(ui.posts[0].payload.kind, 'note');
+    assert.equal(ui.posts[0].payload.body, '');
+    assert.equal(ui.posts[0].payload.folder_id, 1);
+    assert.equal(ui.title.value, 'Field notes');
+    assert.equal(ui.pageBody.querySelector('#brain-note-modal'), null);
+
+    await ui.newBtn.dispatch('click');
+    const rootModal = ui.pageBody.querySelector('#brain-note-modal');
+    const rootField = rootModal.querySelector('#brain-note-title');
+    rootField.value = 'Root note';
+    await rootModal.querySelector('#brain-note-modal-form').dispatch('submit');
+    await flush();
+    assert.equal(ui.posts[1].url, '/pages');
+    assert.equal(ui.posts[1].payload.title, 'Root note');
+    assert.equal(ui.posts[1].payload.folder_id, undefined);
+    assert.equal(ui.title.value, 'Root note');
+    assertPreview(ui, '');
 });
