@@ -8,6 +8,8 @@
 (function () {
     const { api, esc } = window.LD;
     const canvas = document.getElementById('brain-canvas');
+    // The vault editor still draws this canvas. The graph screen has none.
+    if (!canvas || typeof canvas.getContext !== 'function') return;
     const ctx = canvas.getContext('2d');
     const ticker = document.getElementById('brain-ticker');
     const titleEl = document.getElementById('brain-panel-title');

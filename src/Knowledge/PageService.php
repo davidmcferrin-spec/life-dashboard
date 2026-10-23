@@ -464,14 +464,26 @@ final class PageService
     public function graph(int $userId): array
     {
         $pages = [];
+        $meta = [];
         foreach ($this->db->fetchAll(
-            'SELECT id, title, kind FROM pages WHERE user_id = ? AND archived_at IS NULL ORDER BY id ASC',
+            'SELECT p.id, p.title, p.kind, p.folder_id, p.updated_at, f.name AS folder_name
+             FROM pages p
+             LEFT JOIN page_folders f ON f.id = p.folder_id AND f.user_id = p.user_id
+             WHERE p.user_id = ? AND p.archived_at IS NULL
+             ORDER BY p.id ASC',
             [$userId]
         ) as $row) {
+            $id = (int) $row['id'];
             $pages[] = [
-                'id'    => (int) $row['id'],
+                'id'    => $id,
                 'title' => (string) $row['title'],
                 'kind'  => (string) $row['kind'],
+            ];
+            $folderId = $row['folder_id'];
+            $meta[$id] = [
+                'folder_id'  => $folderId !== null && $folderId !== '' ? (int) $folderId : null,
+                'folder'     => $row['folder_name'] !== null && $row['folder_name'] !== '' ? (string) $row['folder_name'] : null,
+                'updated_at' => (string) $row['updated_at'],
             ];
         }
         $edges = [];
@@ -492,6 +504,10 @@ final class PageService
         foreach ($placed['nodes'] as $node) {
             $known[$node['id']] = true;
             $node['hot'] = isset($hot[$node['id']]);
+            $extra = $meta[$node['id']] ?? ['folder_id' => null, 'folder' => null, 'updated_at' => ''];
+            $node['folder_id'] = $extra['folder_id'];
+            $node['folder'] = $extra['folder'];
+            $node['updated_at'] = $extra['updated_at'];
             $nodes[] = $node;
         }
         $presented = BrainActivity::present($this->audit->recent($userId, 60));
@@ -511,6 +527,16 @@ final class PageService
             'tokens'   => $presented['tokens'],
             'activity' => $activity,
         ];
+    }
+
+    /**
+     * Rolling page reads and writes for the mesh panel. No titles.
+     *
+     * @return list<array{id: int, page_id: int, verb: string, actor: string, source: string, at: string}>
+     */
+    public function graphAccess(int $userId, int $limit = 80): array
+    {
+        return BrainActivity::signals($this->audit->pageEvents($userId, $limit));
     }
 
     /**

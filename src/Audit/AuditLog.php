@@ -102,6 +102,33 @@ final class AuditLog
     }
 
     /**
+     * Recent page reads and writes for the brain mesh. Titles stay out.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function pageEvents(int $userId, int $limit = 80): array
+    {
+        $limit = max(1, min(200, $limit));
+        $rows = $this->db->fetchAll(
+            "SELECT id, actor, tool, action, resource, detail, created_at
+             FROM audit_events
+             WHERE user_id = ?
+               AND actor IN ('ai', 'user')
+               AND (resource LIKE 'page:%' OR resource LIKE '%/pages/%')
+             ORDER BY id DESC
+             LIMIT {$limit}",
+            [$userId]
+        );
+        $events = [];
+        foreach ($rows as $row) {
+            $detail = is_string($row['detail']) ? json_decode($row['detail'], true) : $row['detail'];
+            $row['detail'] = is_array($detail) ? $detail : [];
+            $events[] = $row;
+        }
+        return $events;
+    }
+
+    /**
      * Page ids touched in the audit log during the last 7 days.
      *
      * @return list<int>
