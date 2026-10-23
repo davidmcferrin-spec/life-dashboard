@@ -4,23 +4,34 @@
  *
  * @var bool $showNewsFeed
  */
+if (empty($ldMediaWidgetsCss)) {
+    $ldMediaWidgetsCss = true;
+    ?>
+<link rel="stylesheet" href="/assets/css/widgets-media.css?v=<?= e($assetVer ?? '') ?>">
+    <?php
+}
 ?>
-<section data-feed-scope="dashboard">
-    <div class="flex items-center justify-between mb-2 dashboard-widget-head">
-        <h2 class="section-title">News Feed</h2>
-        <div class="flex items-center gap-3">
-            <span id="feed-count" class="text-faint mono text-xs"></span>
-            <a href="/settings/feeds" class="nav-link mono text-xs">Manage</a>
-            <a href="/news" class="nav-link mono text-xs">View all →</a>
+<section class="ld-mk ld-mk-news" data-feed-scope="dashboard">
+    <div class="ld-mk-head dashboard-widget-head">
+        <h2 class="section-title ld-mk-heading">
+            <span class="ld-mk-ico" aria-hidden="true"><?php readfile(__DIR__ . '/../../../public/assets/vendor/lucide/newspaper.svg'); ?></span>
+            News feed
+        </h2>
+        <div class="ld-mk-tools">
+            <span id="feed-count" class="ld-mk-meta"></span>
+            <a href="/settings/feeds" class="ld-mk-link">Manage</a>
+            <a href="/news" class="ld-mk-link">View all
+                <span class="ld-mk-ico" aria-hidden="true"><?php readfile(__DIR__ . '/../../../public/assets/vendor/lucide/chevron-right.svg'); ?></span>
+            </a>
         </div>
     </div>
 
     <?php if ($showNewsFeed): ?>
         <?php require dirname(__DIR__) . '/news-feed-filters.php'; ?>
-        <div id="news-feed" class="space-y-0.5">
-            <div class="empty-state mono py-4 text-center">Loading feed...</div>
+        <div id="news-feed" class="ld-mk-news-grid">
+            <div class="empty-state py-4 text-center">Loading feed...</div>
         </div>
-        <div class="mt-4 text-center">
+        <div class="ld-mk-more">
             <button type="button" id="load-more-feed" class="hidden btn">Load more</button>
         </div>
     <?php else: ?>
