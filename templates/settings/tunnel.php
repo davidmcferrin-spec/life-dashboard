@@ -51,7 +51,17 @@ require __DIR__ . '/_shell-top.php';
                             <?= $tunnel['token_set'] ? ('Set' . ($tunnel['token_hint'] !== '' && $tunnel['token_hint'] !== 'set' ? '. Ending in ' . e((string) $tunnel['token_hint']) : '.')) : 'Not set' ?>
                             <?php endif; ?>
                         </p>
-                        <input id="tunnel-token" class="input text-sm w-full hidden" name="token" type="password" autocomplete="off" placeholder="Paste a new token">
+                        <?php
+                        $secretId = 'tunnel-token';
+                        $secretName = 'token';
+                        $secretLabel = '';
+                        $secretHint = $tunnelExisting ? '' : (string) ($tunnel['token_hint'] ?? '');
+                        $secretValue = '';
+                        $secretPlaceholder = 'Paste a new token';
+                        $secretAutocomplete = 'off';
+                        $secretHidden = true;
+                        require __DIR__ . '/../partials/secret-field.php';
+                        ?>
                         <div class="flex flex-wrap gap-2 mt-2">
                             <button type="button" class="btn text-xs" id="tunnel-replace">Replace</button>
                             <?php if (!empty($tunnel['token_set'])): ?>
