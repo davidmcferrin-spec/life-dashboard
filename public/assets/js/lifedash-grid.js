@@ -327,19 +327,45 @@
         if (ro && ['chart', 'mood'].includes(entry.widget.type)) ro.observe(entry.body);
     }
 
+    function ldIcon(name) {
+        const tpl = document.getElementById('ld-ico-' + name);
+        return tpl ? tpl.innerHTML : '';
+    }
+
+    function menuItem(action, icon, label, danger) {
+        return `<button type="button" class="ld-menu-item${danger ? ' ld-danger' : ''}" role="menuitem" data-action="${action}" title="${esc(label)}" aria-label="${esc(label)}"><span class="ld-ico">${ldIcon(icon)}</span><span class="ld-menu-label">${esc(label)}</span></button>`;
+    }
+
+    function lockItem(action, kind) {
+        const label = 'Lock ' + kind;
+        return `<button type="button" class="ld-menu-item" role="menuitem" data-action="${action}" aria-pressed="false" title="${esc(label)}" aria-label="${esc(label)}"><span class="ld-ico ld-ico-open">${ldIcon('lock-keyhole-open')}</span><span class="ld-ico ld-ico-shut">${ldIcon('lock-keyhole')}</span><span class="ld-menu-label">${esc(label)}</span></button>`;
+    }
+
+    function editBarHtml() {
+        return `
+                <div class="ld-edit-bar ld-edit-only">
+                    <span class="ld-drag" title="Drag to move" aria-hidden="true">${ldIcon('grip-vertical')}</span>
+                    <div class="ld-menu">
+                        <button type="button" class="ld-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Widget menu">${ldIcon('ellipsis')}</button>
+                        <div class="ld-menu-panel" role="menu" hidden>
+                            ${menuItem('configure', 'sliders-horizontal', 'Settings')}
+                            ${lockItem('lock-height', 'height')}
+                            ${lockItem('lock-place', 'place')}
+                            ${menuItem('fit', 'maximize-2', 'Fit to content')}
+                            ${menuItem('remove', 'trash-2', 'Remove', true)}
+                        </div>
+                    </div>
+                </div>`;
+    }
+
     function nativeItemHtml(w) {
         return `
             <div class="grid-stack-item-content surface ld-w ld-w-native">
                 <div class="ld-fit">
-                <div class="ld-edit-bar ld-edit-only">
-                    <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
-                    <button type="button" class="ld-icon-btn" data-action="lock" title="Lock size and position" aria-label="Lock size and position" aria-pressed="false">Lock</button>
-                    <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
-                    <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>
-                    <button type="button" class="ld-icon-btn ld-danger" data-action="remove" title="Remove" aria-label="Remove widget">✕</button>
-                </div>
+                ${editBarHtml()}
                 <div class="ld-w-head dashboard-widget-head">
                     <h2 class="section-title ld-w-title">${esc(w.title || w.label)}</h2>
+                    <span class="ld-lock-badge" hidden aria-label="Locked">${ldIcon('lock-keyhole')}</span>
                     <div class="ld-w-tools"></div>
                 </div>
                 <div class="ld-w-body"><div class="empty-state mono text-xs">Loading…</div></div>
@@ -400,7 +426,9 @@
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
         widgets.forEach((entry) => applyPin(entry));
-        editBtn.textContent = on ? 'Done' : 'Edit layout';
+        const editLabel = editBtn.querySelector('.ld-edit-label');
+        if (editLabel) editLabel.textContent = on ? 'Done' : 'Edit layout';
+        else editBtn.textContent = on ? 'Done' : 'Edit layout';
         editBtn.setAttribute('aria-pressed', String(on));
         if (!on) {
             saveLayout.flush();
@@ -474,21 +502,35 @@
         }), { columns: cols });
     }
 
+    function setLockItem(root, action, on, kind) {
+        const btn = root.querySelector(`[data-action="${action}"]`);
+        if (!btn) return;
+        const text = (on ? 'Unlock ' : 'Lock ') + kind;
+        btn.classList.toggle('is-on', on);
+        const label = btn.querySelector('.ld-menu-label');
+        if (label) label.textContent = text;
+        btn.title = text;
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        btn.setAttribute('aria-label', text);
+    }
+
+    function syncLockMenu(entry) {
+        const place = !!entry.widget.placement_locked;
+        const height = !!entry.widget.height_locked;
+        entry.el.classList.toggle('ld-place-lock', place);
+        entry.el.classList.toggle('ld-h-lock', place || height);
+        const badge = entry.el.querySelector('.ld-lock-badge');
+        if (badge) badge.hidden = !(place || height);
+        setLockItem(entry.el, 'lock-place', place, 'place');
+        setLockItem(entry.el, 'lock-height', height, 'height');
+    }
+
     function applyPin(entry) {
         if (!entry) return;
-        const on = !!entry.widget.placement_locked;
-        entry.el.classList.toggle('ld-place-lock', on);
-        entry.el.classList.toggle('ld-h-lock', on || !!entry.widget.height_locked);
-        const btn = entry.el.querySelector('[data-action="lock"]');
-        if (btn) {
-            btn.classList.toggle('is-on', on);
-            btn.textContent = on ? 'Locked' : 'Lock';
-            btn.title = on ? 'Unlock size and position' : 'Lock size and position';
-            btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-            btn.setAttribute('aria-label', btn.title);
-        }
+        syncLockMenu(entry);
+        const place = !!entry.widget.placement_locked;
         if (entry.el.gridstackNode) {
-            grid.update(entry.el, { locked: on, noMove: on, noResize: on });
+            grid.update(entry.el, { locked: place, noMove: place, noResize: place });
         }
     }
 
@@ -953,7 +995,9 @@
     grid.on('resizestart', (_e, el) => {
         el.classList.add('ld-h-lock');
         const entry = widgets.get(Number(el.dataset.widgetId));
-        if (entry) entry.widget.height_locked = 1;
+        if (!entry) return;
+        entry.widget.height_locked = 1;
+        syncLockMenu(entry);
     });
 
     grid.on('dragstop', () => {
@@ -995,11 +1039,14 @@
         const id = Number(btn.closest('.grid-stack-item')?.dataset.widgetId);
         if (!widgets.has(id)) return;
 
-        if (btn.dataset.action === 'lock') {
+        if (btn.dataset.action === 'lock-place') {
             const entry = widgets.get(id);
-            const on = !entry.widget.placement_locked;
-            entry.widget.placement_locked = on ? 1 : 0;
-            if (on) entry.widget.height_locked = 1;
+            entry.widget.placement_locked = entry.widget.placement_locked ? 0 : 1;
+            applyPin(entry);
+            persistPin(entry);
+        } else if (btn.dataset.action === 'lock-height') {
+            const entry = widgets.get(id);
+            entry.widget.height_locked = entry.widget.height_locked ? 0 : 1;
             applyPin(entry);
             persistPin(entry);
         } else if (btn.dataset.action === 'fit') {

@@ -11,13 +11,30 @@
 .ld-toolbar {
     align-items: center;
     display: flex;
-    gap: 0.5rem;
+    gap: 8px;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
-    min-height: 1.75rem;
+    margin: 0 0 8px;
+    min-height: 0;
 }
 
-.ld-toolbar-actions { display: flex; gap: 0.5rem; }
+.ld-toolbar-actions { display: flex; gap: 8px; }
+
+.ld-toolbar .btn {
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-size: 13px;
+    gap: 8px;
+    min-height: 32px;
+}
+
+.ld-toolbar .ld-ico { display: inline-flex; }
+
+.ld-toolbar svg {
+    display: block;
+    height: 15px;
+    width: 15px;
+}
+
+#ld-edit[aria-pressed="true"] .ld-edit-icon { display: none; }
 
 .ld-edit-only { display: none !important; }
 .ld-editing .ld-edit-only { display: flex !important; }
@@ -51,11 +68,19 @@
    Widget chrome
    ------------------------------------------------------- */
 .grid-stack > .grid-stack-item > .grid-stack-item-content.ld-w {
-    border-radius: 0.5rem;
+    border-radius: var(--radius);
     container-type: inline-size;
     display: block;
     overflow: hidden;
     padding: 0;
+}
+
+.grid-stack > .grid-stack-item:has(.ld-menu.is-open) {
+    z-index: 40 !important;
+}
+
+.grid-stack > .grid-stack-item:has(.ld-menu.is-open) > .grid-stack-item-content.ld-w {
+    overflow: visible;
 }
 
 /* Measured by GridStack.resizeToContent (first child of the content box).
@@ -94,15 +119,22 @@
 
 .ld-w-head {
     align-items: center;
+    border-bottom: 1px solid var(--line);
     display: flex;
     flex: 0 0 auto;
-    gap: 0.5rem;
+    gap: 8px;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: 12px;
+    min-height: 32px;
     min-width: 0;
+    padding-bottom: 8px;
 }
 
 .ld-w-title {
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -112,10 +144,37 @@
     align-items: center;
     display: flex;
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    gap: 0.5rem;
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-size: 12px;
+    gap: 8px;
 }
+
+.ld-lock-badge {
+    color: var(--text-muted);
+    display: inline-flex;
+    flex: 0 0 auto;
+    pointer-events: none;
+}
+
+.ld-lock-badge[hidden] { display: none !important; }
+
+.ld-lock-badge svg {
+    display: block;
+    height: 14px;
+    width: 14px;
+}
+
+.ld-fit > .ld-lock-badge {
+    left: auto;
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    z-index: 4;
+}
+
+.ld-editing .ld-fit > .ld-lock-badge { right: 84px; }
+
+.ld-w-head .ld-lock-badge { position: static; }
 
 /* Clipboard textarea grows with the widget. */
 .grid-stack-item[data-widget-type="mood"] .ld-fit,
@@ -183,14 +242,14 @@
 /* Edit mode */
 .ld-edit-bar {
     align-items: center;
-    background: var(--surface-bg);
-    border: 1px solid var(--surface-border);
-    border-radius: 0.375rem;
-    gap: 0.15rem;
-    padding: 0.1rem 0.2rem;
+    background: color-mix(in srgb, var(--surface-bg) 92%, transparent);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    gap: 0;
+    padding: 2px;
     position: absolute;
-    right: 0.4rem;
-    top: 0.35rem;
+    right: 8px;
+    top: 8px;
     z-index: 5;
 }
 
@@ -199,17 +258,103 @@
     color: var(--text-muted);
     cursor: grab;
     display: inline-flex;
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
-    font-size: 0.75rem;
-    height: 2.5rem;
+    height: 32px;
     justify-content: center;
-    letter-spacing: -0.15em;
-    min-width: 2.5rem;
     padding: 0;
     user-select: none;
+    width: 32px;
 }
 
 .ld-drag:active { cursor: grabbing; }
+
+.ld-drag svg,
+.ld-menu-trigger svg,
+.ld-menu-item svg {
+    display: block;
+    height: 15px;
+    width: 15px;
+}
+
+.ld-menu { position: relative; }
+
+.ld-menu-trigger {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+    width: 32px;
+}
+
+.ld-menu-trigger:hover,
+.ld-menu.is-open .ld-menu-trigger {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.ld-menu-panel {
+    background: var(--surface-raised);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    min-width: 11.5rem;
+    padding: 4px;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+}
+
+.ld-menu-panel[hidden] { display: none !important; }
+
+.ld-menu-item {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-size: 13px;
+    gap: 8px;
+    min-height: 32px;
+    padding: 0 8px;
+    text-align: left;
+    width: 100%;
+}
+
+.ld-menu-item:hover,
+.ld-menu-item:focus-visible {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.ld-menu-item.is-on { color: var(--accent); }
+
+.ld-menu-item.ld-danger,
+.ld-menu-item.ld-danger:hover,
+.ld-menu-item.ld-danger:focus-visible { color: var(--danger); }
+
+.ld-ico { display: inline-flex; flex: 0 0 auto; }
+
+.ld-menu-item .ld-ico-shut { display: none; }
+
+.ld-menu-item.is-on .ld-ico-open { display: none; }
+
+.ld-menu-item.is-on .ld-ico-shut { display: inline-flex; }
+
+.ld-menu-trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
 
 .ld-icon-btn {
     align-items: center;
@@ -239,7 +384,7 @@
 
 /* Make room for the edit bar so it never covers header links (Manage, View all…). */
 .ld-editing .ld-fit {
-    padding-top: 2.1rem;
+    padding-top: 3rem;
 }
 
 .ld-editing .grid-stack-placeholder > .placeholder-content {
@@ -3118,10 +3263,26 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 /* The search row is the same width as the widget grid (the board cap).
-   The box itself is centered and is not a widget. */
+   The box itself is centered and is not a widget. Nothing sits between it and the grid. */
 .ld-search-row {
-    margin: 0 auto 0.75rem;
+    margin: 0 auto;
     width: 100%;
+}
+
+.ld-search-shell {
+    background: color-mix(in srgb, var(--bg-elev) 92%, transparent);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow), 0 0 28px color-mix(in srgb, var(--accent) 10%, transparent);
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 42rem;
+    backdrop-filter: blur(18px);
+}
+
+.ld-search-shell:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow);
 }
 
 .ld-search-row .ov-engines,
@@ -3129,6 +3290,34 @@ html.app-sidebar-rail .app-nav-group {
     margin-left: auto;
     margin-right: auto;
     max-width: 42rem;
+}
+
+.ld-search-shell .ov-engines {
+    border-top: 1px solid var(--line);
+    margin-top: 0;
+    padding: 8px 12px 8px 16px;
+}
+
+.ld-search-shell .seg-btn {
+    background: transparent;
+    border-color: transparent;
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    min-height: 32px;
+    padding: 0 10px;
+}
+
+.ld-search-shell .seg-btn:hover {
+    border-color: transparent;
+    color: var(--text);
+}
+
+.ld-search-shell .seg-btn-active,
+.ld-search-shell .seg-btn-active:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent);
 }
 .ov-sr {
     border: 0;
@@ -3177,9 +3366,16 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 #search-form.ov-composer.ld-search-box {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    display: flex;
+    gap: 8px;
     margin-left: auto;
     margin-right: auto;
     max-width: 42rem;
+    padding: 6px 6px 6px 14px;
 }
 
 #local-search.ov-results {
@@ -3192,22 +3388,30 @@ html.app-sidebar-rail .app-nav-group {
 #search-form.ov-composer .search-input {
     background: transparent;
     border: 0;
-    border-radius: var(--radius);
+    border-radius: 0;
     box-shadow: none;
-    font-family: var(--font-sans);
+    flex: 1 1 auto;
+    font-family: 'IBM Plex Sans', var(--font-sans);
     font-size: 15px;
     line-height: 22px;
-    min-height: 56px;
-    padding: 16px 56px 16px 44px;
+    min-height: 48px;
+    min-width: 0;
+    padding: 8px 0;
+    width: auto;
+}
+
+#search-form.ov-composer .search-input:focus-visible {
+    border: 0;
+    box-shadow: none;
+    outline: none;
 }
 
 .ov-command {
-    color: var(--text-label);
-    left: 16px;
+    color: var(--accent);
+    flex: 0 0 auto;
     pointer-events: none;
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
+    position: static;
+    transform: none;
 }
 
 .ov-command svg {
@@ -3217,14 +3421,14 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 #search-form.ov-composer .ov-send {
-    height: 40px;
-    min-height: 40px;
+    border-radius: 8px;
+    flex: 0 0 auto;
+    height: 36px;
+    min-height: 36px;
     padding: 0;
-    position: absolute;
-    right: 8px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 40px;
+    position: static;
+    transform: none;
+    width: 36px;
 }
 
 #search-form.ov-composer .ov-send svg {
@@ -3238,7 +3442,7 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 .ov-results {
-    margin-top: 12px;
+    margin-top: 8px;
 }
 
 .ov-vitals {

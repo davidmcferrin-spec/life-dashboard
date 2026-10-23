@@ -10,6 +10,15 @@ $pageEyebrow = (string) ($pageEyebrow ?? '');
 $pageHeading = (string) ($pageHeading ?? '');
 $pageHeadingId = (string) ($pageHeadingId ?? '');
 $pageHeadingCenter = !empty($pageHeadingCenter);
+$headingPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if (!is_string($headingPath) || $headingPath === '') {
+    $headingPath = '/';
+}
+// Home keeps the timezone bar and drops this block so the search row can sit higher.
+if ($headingPath === '/') {
+    unset($pageEyebrow, $pageHeading, $pageHeadingId, $pageHeadingCenter);
+    return;
+}
 $headingClass = 'page-heading' . ($pageHeadingCenter ? ' page-heading-center' : '');
 ?>
 <div class="<?= e($headingClass) ?>">
