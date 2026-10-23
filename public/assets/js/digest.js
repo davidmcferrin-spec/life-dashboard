@@ -8,7 +8,7 @@
     const app = document.getElementById('digest-app');
     if (!app || !api) return;
 
-    const PAGE = 12;
+    const PAGE = 8;
     const DATE_ORDER = ['Today', 'Yesterday', 'This week', 'Older'];
     const els = {
         checked: document.getElementById('digest-checked'),
@@ -42,7 +42,7 @@
     let hasMore = false;
     let newCount = 0;
     let today = '';
-    let loading = false;
+    let loadGen = 0;
     const openIds = new Set();
 
     function showError(error) {
@@ -149,7 +149,7 @@
                 ${badges}
                 ${date ? `<time class="ld-digest-date" datetime="${esc(item.day || item.published_on || '')}">${esc(date)}</time>` : ''}
             </div>
-            <h2 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h2>
+            <h3 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
             ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
             ${extra}
         </article>`;
@@ -245,14 +245,14 @@
     }
 
     async function load(reset) {
-        if (loading) return;
-        loading = true;
+        const gen = ++loadGen;
         clearError();
         const offset = reset ? 0 : items.length;
         try {
             const feedPromise = api.get('/digest/items' + query(offset));
             const sourcePromise = reset ? api.get('/digest/sources') : Promise.resolve(null);
             const [feed, sources] = await Promise.all([feedPromise, sourcePromise]);
+            if (gen !== loadGen) return;
             today = feed.today || today;
             newCount = Number(feed.new_count || 0);
             hasMore = !!feed.has_more;
@@ -263,9 +263,8 @@
             renderFeed();
             if (sources) renderSources(sources);
         } catch (error) {
+            if (gen !== loadGen) return;
             showError(error);
-        } finally {
-            loading = false;
         }
     }
 
