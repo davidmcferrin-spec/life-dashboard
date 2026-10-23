@@ -9,6 +9,21 @@ const vm = require('node:vm');
 const root = path.join(__dirname, '..', '..');
 const script = fs.readFileSync(path.join(root, 'public/assets/js/brain.js'), 'utf8');
 const template = fs.readFileSync(path.join(root, 'templates/brain.php'), 'utf8');
+const treeIconFiles = {
+    'brain-icon-chevron': 'chevron-right.svg',
+    'brain-icon-folder': 'folder.svg',
+    'brain-icon-file': 'file-text.svg',
+};
+const treeIcons = Object.fromEntries(Object.entries(treeIconFiles).map(([id, name]) => [
+    id,
+    fs.readFileSync(path.join(root, 'public/assets/vendor/lucide', name), 'utf8'),
+]));
+
+function mountTreeIcons(nodes) {
+    Object.entries(treeIcons).forEach(([id, svg]) => {
+        nodes[id].innerHTML = svg;
+    });
+}
 
 function element(dataset) {
     const listeners = {};
@@ -89,7 +104,8 @@ function boot() {
         return node;
     }
 
-    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search'].forEach(make);
+    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search', 'brain-icon-chevron', 'brain-icon-folder', 'brain-icon-file'].forEach(make);
+    mountTreeIcons(nodes);
 
     const sandbox = {
         document: {
@@ -365,6 +381,11 @@ function richDocument() {
             while (index < html.length) {
                 while (index < html.length && html[index] !== '<') index += 1;
                 if (index >= html.length) break;
+                if (html.startsWith('<!--', index)) {
+                    const end = html.indexOf('-->', index);
+                    index = end === -1 ? html.length : end + 3;
+                    continue;
+                }
                 if (html.startsWith('</', index)) {
                     const end = html.indexOf('>', index);
                     const name = html.slice(index + 2, end).trim().toLowerCase();
@@ -421,9 +442,10 @@ function bootTree() {
     const shell = element({ openPage: '0' });
     const stage = element();
 
-    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search'].forEach((id) => {
+    ['brain-tree', 'brain-title', 'brain-body', 'brain-preview', 'brain-kind', 'brain-status', 'brain-links', 'brain-backlinks', 'brain-revs', 'brain-crumbs', 'brain-move', 'brain-redline', 'brain-redline-view', 'brain-redline-summary', 'brain-rev-current', 'brain-rev-restore', 'brain-save', 'brain-split', 'brain-new', 'brain-folder', 'brain-search', 'brain-icon-chevron', 'brain-icon-folder', 'brain-icon-file'].forEach((id) => {
         nodes[id] = doc.make('div', { id });
     });
+    mountTreeIcons(nodes);
 
     const sandbox = {
         document: {
@@ -580,8 +602,18 @@ test('the vault tree uses guides, chevrons, and kind marks', async () => {
     assert.match(css, /\.brain-node\.is-active \.brain-tree-label\s*\{[^}]*var\(--accent\)/);
     assert.match(css, /@media \(prefers-reduced-motion: no-preference\) \{\n    \.brain-folder-children \{ transition: grid-template-rows 160ms ease; \}\n    \.brain-chevron \{ transition: transform 160ms ease; \}\n\}/);
     assert.equal(chevron.includes('transition'), false);
+    assert.equal(chevron.includes('border'), false);
+    assert.equal(css.includes('.brain-tree-folder::before'), false);
+    assert.match(css, /\.brain-kind-daily \{ color: var\(--ok\); \}/);
     assert.equal(script.includes('▾'), false);
     assert.equal(script.includes('▸'), false);
+    Object.entries(treeIconFiles).forEach(([id, name]) => {
+        assert.match(template, new RegExp("readfile\\(__DIR__ \\. '/\\.\\./public/assets/vendor/lucide/" + name.replace('.', '\\.') + "'\\)"));
+        const pathD = /<path d="([^"]+)"/.exec(treeIcons[id])[1];
+        assert.equal(script.includes(pathD), false);
+        assert.match(treeIcons[id], /stroke="currentColor"/);
+        assert.match(treeIcons[id], /lucide-static v1\.61\.0 - ISC/);
+    });
 
     const ui = bootTree();
     await flush();
@@ -590,9 +622,16 @@ test('the vault tree uses guides, chevrons, and kind marks', async () => {
     assert.equal(ui.tree.attrs['aria-label'], 'Vault folders');
     const html = ui.tree.innerHTML;
     assert.match(html, /class="brain-chevron"/);
+    assert.match(html, /class="lucide lucide-chevron-right"/);
     assert.match(html, /class="brain-tree-folder"/);
+    assert.match(html, /class="lucide lucide-folder"/);
     assert.match(html, /class="brain-kind brain-kind-daily"/);
     assert.match(html, /class="brain-kind brain-kind-project"/);
+    assert.match(html, /class="lucide lucide-file-text"/);
+    Object.values(treeIcons).forEach((svg) => {
+        const pathD = /<path d="([^"]+)"/.exec(svg)[1];
+        assert.equal(html.includes(pathD), true);
+    });
     assert.match(html, /class="brain-tree-label"/);
     assert.match(html, /title="A very long folder name that should truncate"/);
     assert.match(html, /title="Bob&#39;s plan"/);

@@ -113,6 +113,11 @@
         return `<span class="brain-tree-label">${esc(text)}</span>`;
     }
 
+    function treeIcon(id) {
+        const source = document.getElementById(id);
+        return source && source.innerHTML ? source.innerHTML : '';
+    }
+
     function folderHtml(nodes, parentKey) {
         return nodes.map((folder) => {
             const open = expanded.has(folder.id);
@@ -123,8 +128,8 @@
             const verb = open ? 'Collapse' : 'Expand';
             return `<div class="brain-folder${selected ? ' is-active' : ''}" data-folder="${folder.id}">
                 <div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="${folder.id}" data-tree-key="${key}" data-tree-kind="folder" data-tree-id="${folder.id}" data-parent-key="${parentKey}" aria-expanded="${open ? 'true' : 'false'}" aria-selected="${selected ? 'true' : 'false'}">
-                    <button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle="${folder.id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${verb} ${esc(folder.name)}"><span class="brain-chevron" aria-hidden="true"></span></button>
-                    <button type="button" class="brain-folder-name" tabindex="-1" data-folder-pick="${folder.id}" title="${esc(folder.name)}"><span class="brain-tree-folder" aria-hidden="true"></span>${treeLabel(folder.name)}</button>
+                    <button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle="${folder.id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${verb} ${esc(folder.name)}"><span class="brain-chevron" aria-hidden="true">${treeIcon('brain-icon-chevron')}</span></button>
+                    <button type="button" class="brain-folder-name" tabindex="-1" data-folder-pick="${folder.id}" title="${esc(folder.name)}"><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span>${treeLabel(folder.name)}</button>
                 </div>
                 <div class="brain-folder-children${open ? '' : ' is-collapsed'}" role="group"><div class="brain-folder-branch">${kids}${pageButtons}</div></div>
             </div>`;
@@ -134,7 +139,7 @@
     function pageButton(page, parentKey) {
         const on = current && current.id === page.id;
         return `<button type="button" class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
-            <span class="brain-tree-slot" aria-hidden="true"></span><i class="brain-kind brain-kind-${esc(page.kind)}"></i>${treeLabel(page.title)}
+            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-kind brain-kind-${esc(page.kind)}" aria-hidden="true">${treeIcon('brain-icon-file')}</span>${treeLabel(page.title)}
         </button>`;
     }
 
@@ -234,7 +239,7 @@
         const restoreFocus = focusInsideTree();
         const rootPages = pagesIn(null).map((page) => pageButton(page, '')).join('');
         const rootDrop = `<div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="root" data-tree-key="root" data-tree-kind="root" data-parent-key="" aria-selected="false">
-            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-tree-folder" aria-hidden="true"></span><span class="brain-folder-name" title="Root">${treeLabel('Root')}</span>
+            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span><span class="brain-folder-name" title="Root">${treeLabel('Root')}</span>
         </div>`;
         const body = folderHtml(folders, '') + rootPages;
         tree.innerHTML = rootDrop + (body || window.DashboardEmpty.html({

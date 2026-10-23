@@ -662,40 +662,26 @@ button.brain-tree-row { cursor: pointer; }
 }
 .brain-tree-slot { flex: none; height: 1.05rem; width: 1.05rem; }
 .brain-chevron {
-    border-bottom: 1.5px solid currentColor;
-    border-right: 1.5px solid currentColor;
-    box-sizing: border-box;
-    display: block;
-    height: 0.38rem;
-    transform: rotate(45deg) translate(-1px, -1px);
-    width: 0.38rem;
-}
-.brain-folder-toggle[aria-expanded="false"] .brain-chevron {
-    transform: rotate(-45deg) translate(-1px, 1px);
-}
-.brain-tree-folder {
-    border: 1.5px solid currentColor;
-    border-radius: 1px 2px 2px 2px;
-    box-sizing: border-box;
-    color: inherit;
     display: block;
     flex: none;
-    height: 0.56rem;
-    margin-top: 0.16rem;
-    position: relative;
-    width: 0.78rem;
+    height: 0.9rem;
+    transform: rotate(90deg);
+    width: 0.9rem;
 }
-.brain-tree-folder::before {
-    border: 1.5px solid currentColor;
-    border-bottom: 0;
-    border-radius: 2px 2px 0 0;
-    box-sizing: border-box;
-    content: "";
-    height: 0.18rem;
-    left: -1.5px;
-    position: absolute;
-    top: -0.16rem;
-    width: 0.36rem;
+.brain-chevron svg,
+.brain-tree-folder,
+.brain-tree-folder svg,
+.brain-kind svg {
+    display: block;
+    height: 0.9rem;
+    width: 0.9rem;
+}
+.brain-folder-toggle[aria-expanded="false"] .brain-chevron {
+    transform: rotate(0deg);
+}
+.brain-tree-folder,
+.brain-kind {
+    flex: none;
 }
 .brain-folder-name {
     align-items: center;
@@ -754,10 +740,10 @@ button.brain-folder-name { font: inherit; }
 }
 .brain-back:hover { background: var(--row-hover); color: var(--text-primary); }
 .brain-node.brain-tree-row { gap: 0.35rem; padding: 0.16rem 0.28rem; }
-.brain-kind { border-radius: 99px; height: 0.45rem; margin-top: 0; width: 0.45rem; background: var(--accent); flex: none; }
-.brain-kind-daily { background: var(--ok); }
-.brain-kind-project { background: var(--warn); }
-.brain-kind-reference { background: #b894ff; }
+.brain-kind { color: var(--accent); }
+.brain-kind-daily { color: var(--ok); }
+.brain-kind-project { color: var(--warn); }
+.brain-kind-reference { color: #b894ff; }
 /* The branch uses grid rows so the chevron can ease open. Reduced motion snaps. */
 @media (prefers-reduced-motion: no-preference) {
     .brain-folder-children { transition: grid-template-rows 160ms ease; }
