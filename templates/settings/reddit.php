@@ -24,7 +24,7 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <form id="reddit-add" method="post" action="/settings/reddit/add" class="surface p-4 space-y-3 mb-4">
+            <form id="reddit-add" method="post" action="/settings/reddit/add" class="settings-block space-y-3 mb-4">
                 <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                 <h2 class="section-title">Add a subreddit</h2>
                 <div class="grid gap-3 sm:grid-cols-2">
@@ -63,7 +63,7 @@ require __DIR__ . '/_shell-top.php';
                 ?>
                 <?php endif; ?>
                 <?php foreach ($subs as $sub): ?>
-                <form method="post" action="/settings/reddit/update" class="surface p-4 space-y-3">
+                <form method="post" action="/settings/reddit/update" class="settings-block space-y-3">
                     <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                     <input type="hidden" name="name" value="<?= e($sub['name']) ?>">
                     <div class="flex items-baseline justify-between gap-3">

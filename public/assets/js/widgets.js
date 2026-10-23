@@ -38,7 +38,7 @@ async function loadFlightsWidget() {
                 title: 'No active flights',
                 body: 'Add a watch to follow a flight here.',
                 actionLabel: 'Add a watch',
-                actionHref: '/settings/flights',
+                actionHref: '/flights',
             });
             return;
         }
@@ -71,7 +71,7 @@ async function loadFlightsWidget() {
             title: 'Flights unavailable',
             body: 'The list could not be loaded.',
             actionLabel: 'Check watches',
-            actionHref: '/settings/flights',
+            actionHref: '/flights',
         });
     }
 }

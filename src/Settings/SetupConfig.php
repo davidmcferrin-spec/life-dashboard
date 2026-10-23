@@ -333,7 +333,7 @@ final class SetupConfig
         if ($saved) {
             return 'Saved';
         }
-        return $env ? 'From environment' : 'Not set';
+        return $env ? 'Set' : 'Not set';
     }
 
     /**

@@ -175,7 +175,7 @@ function folderSection(folder) {
     const icon = folder.icon ? esc(folder.icon) + ' ' : '';
 
     return `
-        <section class="surface p-3" data-folder-id="${folder.id}">
+        <section class="settings-block" data-folder-id="${folder.id}">
             <div class="flex items-center gap-2 mb-1">
                 <button type="button" class="bm-folder-toggle flex items-center gap-1.5 flex-1 min-w-0 text-left" data-id="${folder.id}" aria-expanded="${!collapsed}">
                     <span class="bm-folder-arrow mono text-xs text-faint${collapsed ? '' : ' bm-folder-open'}">▶</span>
@@ -215,7 +215,7 @@ function render() {
     let html = bmFolders.map(folderSection).join('');
 
     html += `
-        <section class="surface p-3">
+        <section class="settings-block">
             <h3 class="section-title text-sm mb-2">Unfiled <span class="text-faint mono text-xs font-normal">${bmUnfiled.length}</span></h3>
             <div class="space-y-0.5">
                 ${bmUnfiled.length === 0

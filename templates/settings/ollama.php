@@ -27,7 +27,7 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <section class="surface p-4 space-y-2 mb-4">
+            <section class="settings-block space-y-2 mb-4">
                 <h2 class="section-title">Status</h2>
                 <p class="text-sm ld-ollama-status" data-ollama-health data-status="<?= e((string) $health['status']) ?>"><?= e((string) $health['detail']) ?></p>
                 <p class="text-sm text-muted" data-ollama-hardware>
@@ -49,7 +49,7 @@ require __DIR__ . '/_shell-top.php';
                 <p class="text-sm" data-ollama-test-result></p>
             </section>
 
-            <section class="surface p-4 space-y-3 mb-4">
+            <section class="settings-block space-y-3 mb-4">
                 <h2 class="section-title">Settings</h2>
                 <form class="space-y-3" data-ollama-settings>
                     <label class="block text-sm">
@@ -70,7 +70,7 @@ require __DIR__ . '/_shell-top.php';
                 </form>
             </section>
 
-            <section class="surface p-4 space-y-3">
+            <section class="settings-block space-y-3">
                 <h2 class="section-title">Models</h2>
                 <div class="ld-ollama-list" data-ollama-models>
                     <?php if ($ollama['models'] === []): ?>

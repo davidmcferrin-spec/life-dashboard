@@ -28,12 +28,13 @@ $pageTitle   = 'Focus Clock';
 $active      = 'clock';
 $flash       = $_SESSION['settings_flash'] ?? null;
 unset($_SESSION['settings_flash']);
+$settingsFormId = 'settings-clock';
+$settingsSubmitLabel = 'Save';
 
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <section class="surface p-5">
-                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Focus Clock'; require __DIR__ . '/../partials/page-heading.php'; ?>
+                <?php $pageEyebrow = ''; $pageHeading = 'Focus Clock'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Style and alarm for the large clock at
                     <a href="/clock" class="text-accent hover:underline">/clock</a>.
@@ -41,7 +42,7 @@ require __DIR__ . '/_shell-top.php';
                     Dashboard timezone bar options are under <a href="/settings" class="text-accent hover:underline">Dashboard</a> settings.
                 </p>
 
-                <form method="post" action="/settings/clock" class="space-y-6">
+                <form id="settings-clock" method="post" action="/settings/clock" class="space-y-6">
                     <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
 
                     <div class="grid sm:grid-cols-2 gap-4 max-w-2xl">
@@ -61,11 +62,11 @@ require __DIR__ . '/_shell-top.php';
                             <p class="text-faint text-xs mt-1">When auto is on, the clock follows your browser zone (updates when you travel). The list is used as fallback if detection fails.</p>
                         </div>
                         <div>
-                            <span class="text-sm text-muted block mb-1">Time format</span>
-                            <div class="flex flex-wrap gap-3">
+                            <span class="settings-label" id="focus-format-label">Time format</span>
+                            <div class="settings-seg" role="radiogroup" aria-labelledby="focus-format-label">
                                 <?php foreach (['12h' => '12-hour', '24h' => '24-hour'] as $key => $label): ?>
-                                <label class="flex items-center gap-2 cursor-pointer text-sm text-muted">
-                                    <input type="radio" name="focus_clock_format" value="<?= e($key) ?>"
+                                <label class="settings-seg-btn">
+                                    <input class="settings-seg-input" type="radio" name="focus_clock_format" value="<?= e($key) ?>"
                                         <?= ($focusClock['format'] ?? '12h') === $key ? 'checked' : '' ?>>
                                     <?= e($label) ?>
                                 </label>
@@ -205,9 +206,7 @@ require __DIR__ . '/_shell-top.php';
                         <p id="focus-clock-alarm-upload-status" class="text-faint text-xs mono mt-2"></p>
                     </div>
 
-                    <button type="submit" class="btn-primary">Save focus clock settings</button>
                 </form>
-            </section>
 
             <link rel="stylesheet" href="/assets/css/clock.css?v=<?= e($assetVer ?? '20260604a') ?>">
             <script src="/assets/js/focus-clock-tz.js?v=<?= e($assetVer ?? '20260605a') ?>"></script>

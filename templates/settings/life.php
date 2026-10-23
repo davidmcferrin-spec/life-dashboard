@@ -20,12 +20,12 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <section class="surface p-4 mb-4">
+            <section class="settings-block mb-4">
                 <h2 class="section-title">Today</h2>
                 <form id="life-form" class="mt-3 space-y-3"></form>
             </section>
 
-            <section class="surface p-4">
+            <section class="settings-block">
                 <h2 class="section-title">Home Assistant webhook</h2>
                 <p class="text-muted text-sm mt-1">POST JSON to the URL. The secret is shown once. Sending it again updates the same day.</p>
                 <form id="life-hook-form" class="flex gap-2 mt-3">

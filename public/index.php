@@ -182,8 +182,9 @@ $router->get('/clipboards', function (): void {
     redirect('/settings/clipboards');
 });
 
-$router->get('/flights', function (): void {
-    redirect('/settings/flights');
+$router->get('/flights', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/flights.php';
 });
 
 $router->get('/packages', function (): void {
@@ -247,9 +248,43 @@ $router->get('/settings/feeds', function () use ($auth): void {
     require VIEWS_DIR . '/settings/feeds.php';
 });
 
-$router->get('/settings/flights', function () use ($auth): void {
-    $user = $auth->requireAuth();
-    require VIEWS_DIR . '/settings/flights.php';
+$router->get('/settings/flights', function (): void {
+    redirect('/flights');
+});
+
+$router->get('/settings/flight-provider', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $flightSetup = null;
+    foreach ((new \Dashboard\Settings\SetupConfig($db))->view()['groups'] as $group) {
+        if (($group['id'] ?? '') === 'flights') {
+            $flightSetup = $group;
+            break;
+        }
+    }
+    if (!is_array($flightSetup)) {
+        http_response_code(500);
+        echo 'Flight provider settings are unavailable.';
+        return;
+    }
+    require VIEWS_DIR . '/settings/flight-provider.php';
+});
+
+$router->post('/settings/flight-provider', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAdmin();
+    $values = [
+        'FLIGHT_PROVIDER'         => (string) ($_POST['provider'] ?? ''),
+        'OPENSKY_CLIENT_ID'       => (string) ($_POST['opensky_client_id'] ?? ''),
+        'OPENSKY_CLIENT_SECRET'   => (string) ($_POST['opensky_client_secret'] ?? ''),
+        'FLIGHTAWARE_API_KEY'     => (string) ($_POST['flightaware_key'] ?? ''),
+    ];
+    try {
+        (new \Dashboard\Settings\SetupConfig($db))->save('flights', $values, (int) $user['id']);
+        $_SESSION['settings_flash'] = 'Flight provider saved.';
+    } catch (\InvalidArgumentException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/flight-provider');
 });
 
 $router->get('/settings/packages', function () use ($auth): void {

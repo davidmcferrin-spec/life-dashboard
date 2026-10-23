@@ -25,13 +25,14 @@ $pageTitle        = 'Settings';
 $flash            = $_SESSION['settings_flash'] ?? null;
 unset($_SESSION['settings_flash']);
 $active           = 'general';
+$settingsFormId   = 'settings-general';
+$settingsSubmitLabel = 'Save';
 
 require __DIR__ . '/settings/_shell-top.php';
 ?>
 
-            <section class="surface p-5">
-                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Dashboard'; require __DIR__ . '/partials/page-heading.php'; ?>
-                <p class="text-muted text-sm mb-4">Appearance, search engine, and which dashboard sections to show.</p>
+            <?php $pageEyebrow = ''; $pageHeading = 'Dashboard'; require __DIR__ . '/partials/page-heading.php'; ?>
+            <p class="text-muted text-sm mb-6">Appearance, search, and which dashboard sections to show.</p>
 
                 <p class="text-faint mono text-xs mb-4">
                     Account <span class="text-muted"><?= e((string) $user['username']) ?></span>
@@ -43,21 +44,22 @@ require __DIR__ . '/settings/_shell-top.php';
                     <?php endif; ?>
                 </p>
 
-                <form method="post" action="/settings/preferences" class="space-y-6">
+                <form id="settings-general" method="post" action="/settings/preferences" class="space-y-2">
                     <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
 
-                    <div>
-                        <h3 class="section-title mb-3">Appearance</h3>
-                        <div class="flex flex-wrap gap-4 mb-1">
+                    <h2 class="settings-section">Appearance</h2>
+                    <div class="settings-field">
+                        <span class="settings-label" id="theme-label">Theme</span>
+                        <div class="settings-seg" role="radiogroup" aria-labelledby="theme-label">
                             <?php foreach (['jarvis' => 'JARVIS', 'light' => 'Light', 'dark' => 'Dark', 'system' => 'System'] as $key => $label): ?>
-                            <label class="flex items-center gap-2 cursor-pointer text-sm text-muted">
-                                <input type="radio" name="theme" value="<?= e($key) ?>"
+                            <label class="settings-seg-btn">
+                                <input class="settings-seg-input" type="radio" name="theme" value="<?= e($key) ?>"
                                     <?= $themePref === $key ? 'checked' : '' ?>>
                                 <?= e($label) ?>
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono">JARVIS and Dark share the near-black canvas. Light keeps the light canvas. System follows your device and the same teal. Starfield is a Dark-mode extra on the dashboard nav.</p>
+                        <p class="settings-help">JARVIS and Dark share the near-black canvas. Light keeps the light canvas. System follows the device and the same teal. Starfield is a Dark-mode extra on the dashboard.</p>
 
                         <div id="jarvis-accent" class="jarvis-accent mt-4">
                             <h3 class="section-title mb-2">JARVIS accent</h3>
@@ -89,75 +91,82 @@ require __DIR__ . '/settings/_shell-top.php';
                         </div>
                     </div>
 
-                    <div>
-                        <h3 class="section-title mb-3">Timezone bar</h3>
-                        <div class="flex flex-wrap gap-4 mb-1">
-                            <?php foreach (['12h' => '12-hour (AM/PM)', '24h' => '24-hour'] as $key => $label): ?>
-                            <label class="flex items-center gap-2 cursor-pointer text-sm text-muted">
-                                <input type="radio" name="clock_format" value="<?= e($key) ?>"
+                    <h2 class="settings-section">Timezone bar</h2>
+                    <div class="settings-field">
+                        <span class="settings-label" id="clock-format-label">Clock format</span>
+                        <div class="settings-seg" role="radiogroup" aria-labelledby="clock-format-label">
+                            <?php foreach (['12h' => '12-hour', '24h' => '24-hour'] as $key => $label): ?>
+                            <label class="settings-seg-btn">
+                                <input class="settings-seg-input" type="radio" name="clock_format" value="<?= e($key) ?>"
                                     <?= $clockFormat === $key ? 'checked' : '' ?>>
                                 <?= e($label) ?>
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono">Applies to the timezone bar on the dashboard. Hover a clock to see sync offset. Press <kbd class="mono">Alt+J</kbd> on the dashboard to jam time from the server.</p>
-                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                        <p class="settings-help">Applies to the timezone bar on the dashboard. Hover a clock to see sync offset. Press <kbd class="mono">Alt+J</kbd> on the dashboard to jam time from the server.</p>
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-check">
                             <input type="checkbox" name="show_broadcast_week" value="1"
                                 <?= $showBroadcastWeek ? 'checked' : '' ?>>
-                            Show broadcast week (EPOCH) under clocks
+                            <span>
+                                <span class="settings-label">Broadcast week</span>
+                                <span class="settings-help">Monday–Sunday weeks. Week 1 contains January 1, using Eastern Time for today. The large clock and alarm are under <a href="/settings/clock" class="link">Focus Clock</a>.</span>
+                            </span>
                         </label>
-                        <p class="text-faint text-xs mono mt-1">
-                            US broadcast calendar: Monday–Sunday weeks; week 1 contains January 1. Uses Eastern Time for “today.”
-                            Large focus clock and alarm:
-                            <a href="/settings/clock" class="text-accent hover:underline">Focus Clock settings</a>.
-                        </p>
                     </div>
 
-                    <div>
-                        <h3 class="section-title mb-3">Search engine</h3>
-                        <div class="flex flex-wrap gap-3">
+                    <h2 class="settings-section">Search</h2>
+                    <div class="settings-field">
+                        <span class="settings-label" id="search-engine-label">Search engine</span>
+                        <div class="settings-seg" role="radiogroup" aria-labelledby="search-engine-label">
                             <?php foreach (PreferenceService::searchEnginesForUi() as $key => $engine): ?>
-                            <label class="flex items-center gap-2 cursor-pointer mono text-sm text-muted">
-                                <input type="radio" name="search_engine" value="<?= e($key) ?>"
+                            <label class="settings-seg-btn">
+                                <input class="settings-seg-input" type="radio" name="search_engine" value="<?= e($key) ?>"
                                     <?= $searchEngine === $key ? 'checked' : '' ?>>
                                 <?= e($engine['name']) ?>
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono mt-1">This dashboard searches stored text on this server. The others open in a new tab.</p>
+                        <p class="settings-help">This dashboard searches stored text on this server. The others open in a new tab.</p>
                     </div>
 
-                    <div>
-                        <h3 class="section-title mb-3">Dashboard widgets</h3>
-                        <p class="text-muted text-sm">
-                            Widgets are arranged on the dashboard itself: choose <span class="text-secondary">Edit layout</span>
-                            to drag, resize, add, configure or remove them. Habits and other trackers are managed under
-                            <a href="/settings/trackers" class="link">Habits &amp; trackers</a>.
-                        </p>
-                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                    <h2 class="settings-section">Dashboard widgets</h2>
+                    <p class="settings-help settings-help-block">
+                        Arrange widgets on the dashboard with Edit layout.
+                        Habits and other trackers are under
+                        <a href="/settings/trackers" class="link">Habits &amp; trackers</a>.
+                    </p>
+                    <div class="settings-field">
+                        <label class="settings-check">
                             <input type="checkbox" name="show_bookmark_icons" value="1"
                                 <?= $showBookmarkIcons ? 'checked' : '' ?>>
-                            Show bookmark icons on dashboard
+                            <span>
+                                <span class="settings-label">Bookmark icons</span>
+                                <span class="settings-help">Show icons on the dashboard bookmark rows.</span>
+                            </span>
                         </label>
-                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-check">
                             <input type="checkbox" name="ai_presence" value="1"
                                 <?= $showAiPresence ? 'checked' : '' ?>>
-                            Show the AI presence sprite
+                            <span>
+                                <span class="settings-label">AI presence</span>
+                                <span class="settings-help">When an agent uses a token, a small core names the token and the tool. It fades after about 30 seconds of quiet. Reduced motion keeps a still badge. The bubble never includes notes or account numbers.</span>
+                            </span>
                         </label>
-                        <label class="flex items-center gap-2 cursor-pointer text-sm text-muted mt-3">
+                    </div>
+                    <div class="settings-field">
+                        <label class="settings-check">
                             <input type="checkbox" name="grid_max_width" value="1"
                                 <?= $gridMaxWidth ? 'checked' : '' ?>>
-                            Cap the widget grid and center it
+                            <span>
+                                <span class="settings-label">Cap the grid</span>
+                                <span class="settings-help">Columns stay fluid up to 1600px (12 columns), 2400px (18), or 3200px (24). A wider window keeps that width, with equal space on both sides. Off, and the grid fills the window.</span>
+                            </span>
                         </label>
-                        <p class="text-faint text-xs mono mt-1">Columns stay fluid up to 1600px (12 columns), 2400px (18), or 3200px (24). A wider window keeps that width, with equal space on both sides. Turn this off and the grid fills the window.</p>
-                        <p class="text-faint text-xs mono mt-1">When an agent uses a token, a small core drifts across the dashboard and names the token and the tool. It fades after about 30 seconds of quiet. Reduced motion keeps a still badge. The bubble never includes notes or account numbers.</p>
                     </div>
-
-                    <button type="submit" class="btn-primary">
-                        Save general settings
-                    </button>
                 </form>
-
-            </section>
 
 <?php require __DIR__ . '/settings/_shell-bottom.php'; ?>

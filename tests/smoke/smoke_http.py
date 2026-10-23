@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 PAGES = [
-    "/", "/news", "/todos", "/clock",
+    "/", "/news", "/todos", "/clock", "/flights",
     "/settings", "/settings/bookmarks", "/settings/clipboards", "/settings/clock",
     "/settings/cloud-storage", "/settings/feeds", "/settings/flights", "/settings/packages",
     "/settings/pings", "/settings/stocks", "/settings/system", "/settings/todos",

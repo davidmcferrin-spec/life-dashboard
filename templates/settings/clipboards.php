@@ -33,7 +33,7 @@ require __DIR__ . '/_shell-top.php';
 
             <div id="clipboards-tab-panel" class="<?= $initialTab !== 'boards' ? 'hidden' : '' ?>">
             <div class="flex flex-col lg:flex-row gap-4 min-h-[70vh]">
-                <aside class="lg:w-56 flex-shrink-0 surface p-3">
+                <aside class="lg:w-56 flex-shrink-0 settings-block">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="section-title">Boards</h2>
                         <button type="button" id="clip-new-board" class="text-accent hover:text-accent mono text-lg leading-none" title="New board">+</button>
@@ -43,7 +43,7 @@ require __DIR__ . '/_shell-top.php';
                     </ul>
                 </aside>
 
-                <section class="flex-1 flex flex-col surface p-4 min-h-[60vh]">
+                <section class="flex-1 flex flex-col settings-block min-h-[60vh]">
                     <div class="flex flex-wrap items-center gap-3 mb-3 border-b border-chrome pb-3">
                         <input type="text" id="clip-board-name" class="input mono text-sm flex-1 min-w-[12rem] max-w-md" placeholder="Board name">
                         <label class="flex items-center gap-2 text-xs text-muted cursor-pointer">
@@ -164,7 +164,7 @@ require __DIR__ . '/_shell-top.php';
             </div>
 
             <div id="files-tab-panel" class="<?= $initialTab === 'files' ? '' : 'hidden' ?> space-y-6">
-                <section id="cloud-storage-panel" class="surface p-4">
+                <section id="cloud-storage-panel" class="settings-block">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
                         <div>
                             <h2 id="storage-section-title" class="section-title">Storage</h2>
@@ -301,7 +301,7 @@ require __DIR__ . '/_shell-top.php';
                     </div>
                 </section>
 
-                <section id="local-storage-panel" class="surface p-4">
+                <section id="local-storage-panel" class="settings-block">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
                         <div>
                             <h2 class="section-title">Local storage</h2>
@@ -328,7 +328,7 @@ require __DIR__ . '/_shell-top.php';
                     </ul>
                 </section>
 
-                <section class="surface p-4">
+                <section class="settings-block">
                     <h2 class="section-title mb-3">Shared with me</h2>
                     <ul id="files-shared-list" class="space-y-2 text-sm">
                         <li class="text-faint mono text-xs py-2">Loading…</li>
@@ -415,7 +415,7 @@ require __DIR__ . '/_shell-top.php';
 
             <div id="cloudpad-tab-panel" class="<?= $initialTab === 'cloudpad' ? '' : 'hidden' ?>">
                 <div class="flex flex-col lg:flex-row gap-4 min-h-[70vh]">
-                    <aside class="lg:w-56 flex-shrink-0 surface p-3">
+                    <aside class="lg:w-56 flex-shrink-0 settings-block">
                         <div class="flex items-center justify-between mb-1">
                             <h2 class="section-title">Canvases</h2>
                             <span id="cloudpad-canvas-count" class="mono text-xs text-faint">…</span>
@@ -427,7 +427,7 @@ require __DIR__ . '/_shell-top.php';
                         <p class="text-faint mono text-xs mt-3">Desktop recommended for editing. Use <strong>Full screen</strong> for sharing controls on small screens.</p>
                     </aside>
 
-                    <section class="flex-1 flex flex-col surface p-4 min-h-[60vh]">
+                    <section class="flex-1 flex flex-col settings-block min-h-[60vh]">
                         <div id="cloudpad-embed-empty" class="flex-1 flex items-center justify-center min-h-[50vh]">
                             <?php
                             $emptyTitle = 'No canvas open';

@@ -70,7 +70,7 @@ require __DIR__ . '/_shell-top.php';
                 <p class="empty-state mono text-xs">Loading…</p>
             </div>
 
-            <section id="todo-share-panel" class="surface p-4 hidden">
+            <section id="todo-share-panel" class="settings-block hidden">
                 <h2 class="section-title mb-1">Share list</h2>
                 <p class="text-muted text-sm mb-3">
                     Sharing <span id="todo-share-list-name" class="text-secondary"></span> with another dashboard user.

@@ -14,7 +14,7 @@ $tunnelExisting = !empty($tunnel['status']['existing']) && !empty($tunnel['statu
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <section class="surface p-5 space-y-4" id="tunnel-app">
+            <section class="settings-block space-y-4" id="tunnel-app">
                 <header>
                     <?php $pageEyebrow = 'Settings'; $pageHeading = 'Tunnel'; require __DIR__ . '/../partials/page-heading.php'; ?>
                     <p id="tunnel-lead" class="text-muted text-sm">

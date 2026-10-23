@@ -61,12 +61,12 @@ $shellGroups = [
         ['Clock', '/clock'],
         ['Pantry', '/pantry'],
         ['Meals', '/pantry?view=meals'],
-        ['Flights', '/settings/flights'],
+        ['Flights', '/flights'],
         ['Packages', '/settings/packages'],
     ],
 ];
 
-$shellClaimedByGroup = ['/settings/agents', '/settings/flights', '/settings/packages'];
+$shellClaimedByGroup = ['/settings/agents', '/settings/packages'];
 $shellSettingsActive = str_starts_with($shellPath, '/settings')
     && !in_array($shellPath, $shellClaimedByGroup, true);
 
@@ -100,10 +100,14 @@ if ($shellUserName === '') {
             <?php endforeach; ?>
         </div>
         <?php endforeach; ?>
-        <div class="app-nav-group">
-            <a class="app-nav-link<?= $shellSettingsActive ? ' is-active' : '' ?>" href="/settings">Settings</a>
-        </div>
     </nav>
+    <a class="app-settings-pin<?= $shellSettingsActive ? ' is-active' : '' ?>" href="/settings"<?= $shellSettingsActive ? ' aria-current="page"' : '' ?>>
+        <svg class="app-settings-cog" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
+            <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M18.5 5.5l-1.6 1.6M7.1 16.9l-1.6 1.6"/>
+        </svg>
+        <span class="app-settings-label">Settings</span>
+    </a>
     <div class="app-user">
         <p class="app-user-name"><?= e($shellUserName) ?></p>
         <?php require __DIR__ . '/appearance-nav.php'; ?>

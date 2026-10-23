@@ -14,9 +14,9 @@ require __DIR__ . '/_shell-top.php';
             <header class="mb-4">
                 <?php $pageEyebrow = 'Settings'; $pageHeading = 'Package tracking'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
-                    Live status via direct UPS, FedEx, and DHL APIs (cron every 2 hours).
-                    USPS, Amazon, OnTrac, and LaserShip are link-only — no public recipient tracking API.
-                    Set live carrier keys in <code class="mono text-xs">.env</code>.
+                    Live status via UPS, FedEx, and DHL (checked every 2 hours).
+                    USPS, Amazon, OnTrac, and LaserShip are link-only.
+                    Carrier keys are saved in <a href="/settings/setup" class="link">Setup</a>.
                 </p>
             </header>
 

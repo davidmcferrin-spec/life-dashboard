@@ -17,7 +17,7 @@ $active        = 'cloud-storage';
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <?php $pageEyebrow = 'Settings'; $pageHeading = 'Cloud storage setup'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     System-wide defaults for cloud file storage. Each user connects their own
@@ -28,7 +28,7 @@ require __DIR__ . '/_shell-top.php';
                 <p id="cloud-admin-source" class="text-faint mono text-xs mb-4"></p>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Shared settings</h2>
                 <p class="text-muted text-sm mb-4">Folder name created in each user’s cloud account and per-user cloud quota.</p>
                 <div class="grid sm:grid-cols-2 gap-3 max-w-2xl text-sm">
@@ -46,7 +46,7 @@ require __DIR__ . '/_shell-top.php';
                 </div>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <div class="flex flex-wrap items-center gap-3">
                     <button type="button" id="cloud-admin-save" class="btn-primary text-sm">Save settings</button>
                     <span id="cloud-admin-save-msg" class="text-xs mono"></span>
