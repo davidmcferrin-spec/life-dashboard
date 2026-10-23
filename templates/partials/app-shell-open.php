@@ -20,6 +20,15 @@ if (is_string($shellRawQuery) && $shellRawQuery !== '') {
 }
 
 $shellCurrent = static function (string $href) use ($shellPath, $shellQuery): bool {
+    // Canvases are CloudPad even though the list lives on the clipboards tab.
+    if ($href === '/settings/clipboards?tab=cloudpad' && str_starts_with($shellPath, '/cloudpad/')) {
+        return true;
+    }
+    foreach (['/money', '/investing', '/stocks', '/feeds'] as $shellPrefix) {
+        if ($href === $shellPrefix && ($shellPath === $shellPrefix || str_starts_with($shellPath, $shellPrefix . '/'))) {
+            return true;
+        }
+    }
     $parts = parse_url($href);
     $path = is_array($parts) ? (string) ($parts['path'] ?? '/') : $href;
     if ($path !== $shellPath) {
@@ -27,6 +36,9 @@ $shellCurrent = static function (string $href) use ($shellPath, $shellQuery): bo
     }
     if ($path === '/pantry' && (!is_array($parts) || !isset($parts['query']))) {
         return (string) ($shellQuery['view'] ?? '') !== 'meals';
+    }
+    if ($path === '/settings/clipboards' && (!is_array($parts) || !isset($parts['query']))) {
+        return (string) ($shellQuery['tab'] ?? '') !== 'cloudpad';
     }
     if (!is_array($parts) || !isset($parts['query'])) {
         return true;
@@ -41,46 +53,23 @@ $shellCurrent = static function (string $href) use ($shellPath, $shellQuery): bo
     return true;
 };
 
-$shellGroups = [
-    'Overview' => [
-        ['Dashboard', '/'],
-    ],
-    'Intelligence' => [
-        ['Vault', '/brain'],
-        ['Brain', '/brain/graph'],
-        ['Grok Digest', '/digest'],
-        ['News', '/news'],
-        ['Reddit', '/reddit'],
-    ],
-    'Automations' => [
-        ['Agents', '/settings/agents'],
-        ['Playlists', '/spotify'],
-    ],
-    'Schedule' => [
-        ['Todos', '/todos'],
-        ['Clock', '/clock'],
-        ['Pantry', '/pantry'],
-        ['Meals', '/pantry?view=meals'],
-        ['Flights', '/flights'],
-        ['Packages', '/settings/packages'],
-    ],
-];
-
-$shellIcons = [
-    '/' => 'layout-dashboard',
-    '/brain' => 'book',
-    '/brain/graph' => 'brain',
-    '/digest' => 'bot',
-    '/news' => 'newspaper',
-    '/reddit' => 'message-square',
-    '/settings/agents' => 'sparkles',
-    '/spotify' => 'music-2',
-    '/todos' => 'list-checks',
-    '/clock' => 'clock-3',
-    '/pantry' => 'shopping-basket',
-    '/pantry?view=meals' => 'cooking-pot',
-    '/flights' => 'plane',
-    '/settings/packages' => 'package',
+// Flat list from the Figma Make sidebar. Vault stays Vault (the file spells it Valut).
+$shellItems = [
+    ['Dashboard', '/', 'layout-dashboard'],
+    ['Music', '/spotify', 'music-2'],
+    ['Money', '/money', 'wallet-cards'],
+    ['Investing', '/investing', 'trending-up'],
+    ['Stocks', '/stocks', 'chart-column'],
+    ['Pantry', '/pantry', 'shopping-basket'],
+    ['Meal Prep', '/pantry?view=meals', 'cooking-pot'],
+    ['Vault', '/brain', 'book'],
+    ['Brain', '/brain/graph', 'brain'],
+    ['Clipboard', '/settings/clipboards', 'clipboard-list'],
+    ['CloudPad', '/settings/clipboards?tab=cloudpad', 'cloud'],
+    ['Clock', '/clock', 'clock-3'],
+    ['Flights', '/flights', 'plane'],
+    ['Feeds', '/feeds', 'inbox'],
+    ['Grok Digest', '/digest', 'bot'],
 ];
 
 $shellIcon = static function (string $name): void {
@@ -90,9 +79,9 @@ $shellIcon = static function (string $name): void {
     }
 };
 
-$shellClaimedByGroup = ['/settings/agents', '/settings/packages'];
+$shellClaimedByNav = ['/settings/clipboards'];
 $shellSettingsActive = str_starts_with($shellPath, '/settings')
-    && !in_array($shellPath, $shellClaimedByGroup, true);
+    && !in_array($shellPath, $shellClaimedByNav, true);
 
 if ((!isset($starfieldPref) || !isset($themePref) || !isset($clockFormat)) && !empty($user['id'])) {
     try {
@@ -143,15 +132,33 @@ $shellInitials = static function (string $name) use ($shellCut): string {
     return function_exists('mb_strtoupper') ? mb_strtoupper($letters) : strtoupper($letters);
 };
 $shellUserInitials = $shellInitials($shellUserName);
+$shellUserRole = ((int) ($user['is_admin'] ?? 0) === 1) ? 'Admin' : 'Member';
+
+$shellDigestUnread = 0;
+$shellNotifyUnread = 0;
+if (!empty($user['id'])) {
+    $shellUserId = (int) $user['id'];
+    try {
+        $shellDigestUnread = (new \Dashboard\Digest\DigestService(\Dashboard\DB\Database::getInstance()))->unreadCount($shellUserId);
+    } catch (\Throwable) {
+        $shellDigestUnread = 0;
+    }
+    try {
+        $shellNotifyUnread = (new \Dashboard\Notification\NotificationService(\Dashboard\DB\Database::getInstance()))->unreadCount($shellUserId);
+    } catch (\Throwable) {
+        $shellNotifyUnread = 0;
+    }
+}
+$shellCountLabel = static function (int $count): string {
+    return $count > 99 ? '99+' : (string) $count;
+};
 
 $shellCrumbGroup = '';
 $shellCrumbPage = '';
-foreach ($shellGroups as $shellLabel => $shellItems) {
-    foreach ($shellItems as [$shellItemLabel, $shellHref]) {
-        if ($shellCurrent($shellHref)) {
-            $shellCrumbGroup = (string) $shellLabel;
-            $shellCrumbPage = (string) $shellItemLabel;
-        }
+foreach ($shellItems as [$shellItemLabel, $shellHref]) {
+    if ($shellCurrent($shellHref)) {
+        $shellCrumbGroup = 'Life Dashboard';
+        $shellCrumbPage = (string) $shellItemLabel;
     }
 }
 if ($shellCrumbPage === '' && $shellSettingsActive) {
@@ -186,6 +193,7 @@ if ($shellCrumbPage === '') {
 })();
 </script>
 <div class="app-shell">
+<div class="app-ambient-grid" aria-hidden="true"></div>
 <aside id="app-sidebar" class="app-sidebar" aria-label="Primary">
     <div class="app-sidebar-brand">
         <a class="app-wordmark" href="/">
@@ -198,17 +206,21 @@ if ($shellCrumbPage === '') {
         </button>
     </div>
     <nav class="app-sidebar-scroll">
-        <?php foreach ($shellGroups as $shellLabel => $shellItems): ?>
-        <div class="app-nav-group">
-            <p class="app-nav-label"><?= e($shellLabel) ?></p>
-            <?php foreach ($shellItems as [$shellItemLabel, $shellHref]): ?>
-            <?php $shellItemActive = $shellCurrent($shellHref); ?>
-            <a class="app-nav-link<?= $shellItemActive ? ' is-active' : '' ?>" href="<?= e($shellHref) ?>" title="<?= e($shellItemLabel) ?>"<?= $shellItemActive ? ' aria-current="page"' : '' ?>>
-                <span class="app-nav-icon" aria-hidden="true"><?php $shellIcon($shellIcons[$shellHref] ?? 'layout-dashboard'); ?></span>
-                <span class="app-nav-text"><?= e($shellItemLabel) ?></span>
-            </a>
-            <?php endforeach; ?>
-        </div>
+        <?php foreach ($shellItems as [$shellItemLabel, $shellHref, $shellItemIcon]): ?>
+        <?php
+            $shellItemActive = $shellCurrent($shellHref);
+            $shellItemUnread = $shellItemLabel === 'Grok Digest' ? $shellDigestUnread : 0;
+            $shellItemTitle = $shellItemUnread > 0
+                ? $shellItemLabel . ', ' . $shellCountLabel($shellItemUnread) . ' unread'
+                : $shellItemLabel;
+        ?>
+        <a class="app-nav-link<?= $shellItemActive ? ' is-active' : '' ?>" href="<?= e($shellHref) ?>" title="<?= e($shellItemTitle) ?>"<?= $shellItemActive ? ' aria-current="page"' : '' ?>>
+            <span class="app-nav-icon" aria-hidden="true"><?php $shellIcon($shellItemIcon); ?></span>
+            <span class="app-nav-text"><?= e($shellItemLabel) ?></span>
+            <?php if ($shellItemUnread > 0): ?>
+            <span class="app-nav-badge"><?= e($shellCountLabel($shellItemUnread)) ?></span>
+            <?php endif; ?>
+        </a>
         <?php endforeach; ?>
     </nav>
     <a class="app-settings-pin<?= $shellSettingsActive ? ' is-active' : '' ?>" href="/settings" title="Settings"<?= $shellSettingsActive ? ' aria-current="page"' : '' ?>>
@@ -220,11 +232,19 @@ if ($shellCrumbPage === '') {
     </a>
     <div class="app-user">
         <span class="app-user-avatar" aria-hidden="true"><?= e($shellUserInitials) ?></span>
-        <p class="app-user-name"><?= e($shellUserName) ?></p>
-        <a href="/logout" class="nav-link nav-link-danger app-signout" title="Sign out">
-            <span class="app-signout-icon" aria-hidden="true"><?php $shellIcon('log-out'); ?></span>
-            <span class="app-signout-label">Sign out</span>
-        </a>
+        <span class="app-user-id">
+            <p class="app-user-name"><?= e($shellUserName) ?></p>
+            <p class="app-user-role"><?= e($shellUserRole) ?></p>
+        </span>
+        <div class="app-user-menu">
+            <button type="button" id="app-user-menu-btn" class="app-user-menu-btn" aria-expanded="false" aria-haspopup="menu" aria-controls="app-user-menu-list" aria-label="Account menu">
+                <span aria-hidden="true"><?php $shellIcon('ellipsis'); ?></span>
+            </button>
+            <div id="app-user-menu-list" class="app-user-menu-list" role="menu" hidden>
+                <a href="/settings" class="app-user-menu-link" role="menuitem">Settings</a>
+                <a href="/logout" class="app-user-menu-link" role="menuitem">Sign out</a>
+            </div>
+        </div>
     </div>
 </aside>
 <button type="button" id="app-nav-backdrop" class="app-nav-backdrop" hidden aria-label="Close menu"></button>
@@ -278,6 +298,21 @@ if ($shellCrumbPage === '') {
             <div id="app-search-results" class="app-header-results" hidden></div>
         </form>
         <?php require __DIR__ . '/appearance-nav.php'; ?>
+        <div class="app-notify">
+            <button type="button" id="app-notify-btn" class="app-notify-btn" aria-expanded="false" aria-controls="app-notify-panel" aria-label="<?= $shellNotifyUnread > 0 ? e('Notifications, ' . $shellCountLabel($shellNotifyUnread) . ' unread') : 'Notifications' ?>">
+                <span aria-hidden="true"><?php $shellIcon('bell'); ?></span>
+                <?php if ($shellNotifyUnread > 0): ?>
+                <span class="app-notify-badge"><?= e($shellCountLabel($shellNotifyUnread)) ?></span>
+                <?php endif; ?>
+            </button>
+            <div id="app-notify-panel" class="app-notify-panel" role="dialog" aria-label="Notifications" hidden>
+                <div class="app-notify-head">
+                    <span>Notifications</span>
+                    <button type="button" id="app-notify-read" class="app-notify-read" hidden>Mark all read</button>
+                </div>
+                <div id="app-notify-list" class="app-notify-list"></div>
+            </div>
+        </div>
         <div class="app-header-clock"<?= $shellClock24 ? ' data-hour12="0"' : '' ?>>
             <span id="live-clock" class="app-header-clock-time"></span>
             <span id="live-date" class="app-header-clock-date"></span>
