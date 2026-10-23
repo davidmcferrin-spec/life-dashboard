@@ -1,8 +1,9 @@
 """Hardware-sized Ollama defaults and the health verdict for that service.
 
 The chat model stays in the 1B–7B range. Embeddings use the model the vault
-and search already expect. A missing install is not a warning; a public bind,
-a dead API, a failed pull, or a missing default model is.
+and search already expect. A missing install is not a warning. A public bind,
+a dead API, a failed pull, or a default model that is still absent after the
+download finishes is. A model that is still downloading is pending.
 """
 
 from __future__ import annotations
@@ -116,23 +117,28 @@ def assess(
     embed: str,
     pull_state: str,
     pull_detail: str = "",
+    downloading: bool = False,
 ) -> dict[str, str]:
     state = (systemd or "").strip().lower() or "unknown"
     pull = (pull_state or "").strip().lower()
     if any(host not in _LOOPBACK for host in hosts):
         return _row("fail", "Ollama is listening outside this machine.")
-    if pull == "pulling":
-        return _row("ok", "Pulling the default models.")
     if pull == "failed":
         return _row("warn", pull_detail.strip() or "The model pull failed.")
+    if pull == "pulling":
+        return _row("pending", pull_detail.strip() or "Pulling the default models.")
     if state == "active" and not api_ok:
         return _row("warn", "Ollama is running but the API did not answer.")
     if installed and state in ("failed", "inactive", "deactivating"):
         return _row("warn", "Ollama service is not running.")
     if api_ok:
         names = set(models)
-        missing_chat = bool(chat) and chat not in names
-        missing_embed = bool(embed) and embed not in names
+        missing_chat = bool(chat) and not _model_present(names, chat)
+        missing_embed = bool(embed) and not _model_present(names, embed)
+        # status.json says "pulling" only after hardware detection, so the
+        # oneshot can already be running while the models still look missing.
+        if downloading and (missing_chat or missing_embed):
+            return _row("pending", _downloading_detail(missing_chat, missing_embed))
         if missing_chat and missing_embed:
             return _row("warn", "The default chat model and the embedding model are not installed.")
         if missing_chat:
@@ -143,6 +149,22 @@ def assess(
     if not installed:
         return _row("ok", "Ollama is not installed.")
     return _row("warn", "Ollama API did not answer.")
+
+
+def _model_present(names: set[str], wanted: str) -> bool:
+    # An untagged pull is stored as name:latest.
+    if wanted in names:
+        return True
+    prefix = wanted + ":"
+    return any(name.startswith(prefix) for name in names)
+
+
+def _downloading_detail(missing_chat: bool, missing_embed: bool) -> str:
+    if missing_chat and missing_embed:
+        return "The default chat model and the embedding model are still downloading."
+    if missing_chat:
+        return "The default chat model is still downloading."
+    return "The embedding model is still downloading."
 
 
 def _row(status: str, detail: str) -> dict[str, str]:
