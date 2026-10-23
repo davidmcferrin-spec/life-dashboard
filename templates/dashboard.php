@@ -357,105 +357,9 @@ try {
         <?php endif; ?>
     </div>
 
-    <section class="ov" aria-label="Overview">
-        <div class="ov-layout">
-            <div class="ov-primary">
-                <form id="search-form" method="GET" target="_blank" class="ov-composer" action="https://www.google.com/search">
-                    <label class="ov-sr" for="search-input">How can I assist you?</label>
-                    <svg class="ov-command" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8l4 4-4 4M13 16h5"/>
-                    </svg>
-                    <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
-                    <button type="submit" class="ov-send btn-primary" aria-label="Send">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 6l6 6-6 6"/>
-                        </svg>
-                    </button>
-                </form>
-                <div class="seg-group ov-engines">
-                    <?php foreach ($searchEngines as $key => $engine): ?>
-                    <button
-                        type="button"
-                        class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
-                        data-engine="<?= e($key) ?>"
-                        data-url="<?= e($engine['url']) ?>"
-                        data-param="<?= e($engine['param']) ?>"
-                    >
-                        <?= e($engine['label']) ?>
-                    </button>
-                    <?php endforeach; ?>
-                </div>
-                <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
-            </div>
-
-            <aside class="ov-rail">
-                <?php if ($overviewNote !== null): ?>
-                <p class="ov-empty"><?= e($overviewNote) ?></p>
-                <?php else: ?>
-                <section class="ov-card" aria-labelledby="ov-vitals-title">
-                    <h2 id="ov-vitals-title" class="ov-kicker">System vitals</h2>
-                    <?php if ($vitals === []): ?>
-                    <p class="ov-empty">Nothing logged yet.</p>
-                    <?php else: ?>
-                    <ul class="ov-vitals">
-                        <?php foreach ($vitals as $vital): ?>
-                        <li class="ov-vital">
-                            <div class="ov-vital-row">
-                                <span class="ov-vital-label"><?= e($vital['label']) ?></span>
-                                <span class="ov-vital-detail"><?= e($vital['detail']) ?></span>
-                            </div>
-                            <?php if ($vital['meter'] !== null): ?>
-                            <div class="ov-bar" role="meter"
-                                 aria-valuemin="<?= e($overviewMeter((float) $vital['meter']['min'])) ?>"
-                                 aria-valuemax="<?= e($overviewMeter((float) $vital['meter']['max'])) ?>"
-                                 aria-valuenow="<?= e($overviewMeter((float) $vital['meter']['now'])) ?>"
-                                 aria-label="<?= e($vital['label']) ?>">
-                                <span style="width: <?= (int) $vital['meter']['pct'] ?>%"></span>
-                            </div>
-                            <?php endif; ?>
-                        </li>
-                        <?php endforeach; ?>
-                    </ul>
-                    <?php endif; ?>
-                </section>
-                <section class="ov-card" aria-labelledby="ov-agenda-title">
-                    <h2 id="ov-agenda-title" class="ov-kicker">Today's agenda</h2>
-                    <?php if ($agenda === []): ?>
-                    <p class="ov-empty">Nothing due today.</p>
-                    <?php else: ?>
-                    <ol class="ov-agenda">
-                        <?php foreach ($agenda as $item): ?>
-                        <li>
-                            <time datetime="<?= e($item['datetime']) ?>"><?= e($item['time']) ?></time>
-                            <a href="<?= e($item['href']) ?>"><?= e($item['title']) ?></a>
-                        </li>
-                        <?php endforeach; ?>
-                    </ol>
-                    <?php endif; ?>
-                </section>
-                <?php endif; ?>
-            </aside>
-        </div>
-
-        <h2 class="ov-sr">Quick actions</h2>
-        <div class="ov-actions">
-            <a class="ov-action" href="/digest">
-                <span class="ov-action-title">Brief my day</span>
-                <span class="ov-action-line">Grok Digest</span>
-            </a>
-            <a class="ov-action" href="/settings/pings">
-                <span class="ov-action-title">Analyze systems</span>
-                <span class="ov-action-line">System status</span>
-            </a>
-            <a class="ov-action" href="/settings/life">
-                <span class="ov-action-title">Optimize energy</span>
-                <span class="ov-action-line">Sleep, steps, and exercise</span>
-            </a>
-        </div>
-    </section>
-
     <!-- -------------------------------------------------------
-         WIDGET GRID (12 / 18 / 24 fluid columns, capped and centered; 1 column under 700px)
+         WIDGET GRID. Overview blocks are locked cells in this grid
+         (12 / 18 / 24 fluid columns, capped and centered; 1 column under 700px).
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
         <div class="ld-toolbar">
@@ -473,6 +377,132 @@ try {
         <?php endif; ?>
 
         <div id="ld-grid" class="grid-stack dashboard-widgets ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="search"
+                 gs-x="0" gs-y="0" gs-w="9" gs-h="4" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <form id="search-form" method="GET" target="_blank" class="ov-composer" action="https://www.google.com/search">
+                            <label class="ov-sr" for="search-input">How can I assist you?</label>
+                            <svg class="ov-command" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8l4 4-4 4M13 16h5"/>
+                            </svg>
+                            <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
+                            <button type="submit" class="ov-send btn-primary" aria-label="Send">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 6l6 6-6 6"/>
+                                </svg>
+                            </button>
+                        </form>
+                        <div class="seg-group ov-engines">
+                            <?php foreach ($searchEngines as $key => $engine): ?>
+                            <button
+                                type="button"
+                                class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
+                                data-engine="<?= e($key) ?>"
+                                data-url="<?= e($engine['url']) ?>"
+                                data-param="<?= e($engine['param']) ?>"
+                            >
+                                <?= e($engine['label']) ?>
+                            </button>
+                            <?php endforeach; ?>
+                        </div>
+                        <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="vitals"
+                 gs-x="9" gs-y="0" gs-w="3" gs-h="6" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <section class="ov-card" aria-labelledby="ov-vitals-title">
+                            <h2 id="ov-vitals-title" class="ov-kicker">System vitals</h2>
+                            <?php if ($overviewNote !== null): ?>
+                            <p class="ov-empty"><?= e($overviewNote) ?></p>
+                            <?php elseif ($vitals === []): ?>
+                            <p class="ov-empty">Nothing logged yet.</p>
+                            <?php else: ?>
+                            <ul class="ov-vitals">
+                                <?php foreach ($vitals as $vital): ?>
+                                <li class="ov-vital">
+                                    <div class="ov-vital-row">
+                                        <span class="ov-vital-label"><?= e($vital['label']) ?></span>
+                                        <span class="ov-vital-detail"><?= e($vital['detail']) ?></span>
+                                    </div>
+                                    <?php if ($vital['meter'] !== null): ?>
+                                    <div class="ov-bar" role="meter"
+                                         aria-valuemin="<?= e($overviewMeter((float) $vital['meter']['min'])) ?>"
+                                         aria-valuemax="<?= e($overviewMeter((float) $vital['meter']['max'])) ?>"
+                                         aria-valuenow="<?= e($overviewMeter((float) $vital['meter']['now'])) ?>"
+                                         aria-label="<?= e($vital['label']) ?>">
+                                        <span style="width: <?= (int) $vital['meter']['pct'] ?>%"></span>
+                                    </div>
+                                    <?php endif; ?>
+                                </li>
+                                <?php endforeach; ?>
+                            </ul>
+                            <?php endif; ?>
+                        </section>
+                    </div>
+                </div>
+            </div>
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-digest"
+                 gs-x="0" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <h2 class="ov-sr">Quick actions</h2>
+                        <a class="ov-action" href="/digest">
+                            <span class="ov-action-title">Brief my day</span>
+                            <span class="ov-action-line">Grok Digest</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-pings"
+                 gs-x="3" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <a class="ov-action" href="/settings/pings">
+                            <span class="ov-action-title">Analyze systems</span>
+                            <span class="ov-action-line">System status</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-life"
+                 gs-x="6" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <a class="ov-action" href="/settings/life">
+                            <span class="ov-action-title">Optimize energy</span>
+                            <span class="ov-action-line">Sleep, steps, and exercise</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="agenda"
+                 gs-x="9" gs-y="6" gs-w="3" gs-h="6" gs-locked="true" gs-no-move="true" gs-no-resize="true">
+                <div class="grid-stack-item-content ld-hero-content">
+                    <div class="ld-hero-fit">
+                        <section class="ov-card" aria-labelledby="ov-agenda-title">
+                            <h2 id="ov-agenda-title" class="ov-kicker">Today's agenda</h2>
+                            <?php if ($overviewNote !== null): ?>
+                            <p class="ov-empty"><?= e($overviewNote) ?></p>
+                            <?php elseif ($agenda === []): ?>
+                            <p class="ov-empty">Nothing due today.</p>
+                            <?php else: ?>
+                            <ol class="ov-agenda">
+                                <?php foreach ($agenda as $item): ?>
+                                <li>
+                                    <time datetime="<?= e($item['datetime']) ?>"><?= e($item['time']) ?></time>
+                                    <a href="<?= e($item['href']) ?>"><?= e($item['title']) ?></a>
+                                </li>
+                                <?php endforeach; ?>
+                            </ol>
+                            <?php endif; ?>
+                        </section>
+                    </div>
+                </div>
+            </div>
             <?php foreach ($widgets as $w):
                 $legacyKey = WidgetTypeRegistry::isLegacy($w['type']) ? substr($w['type'], 7) : null;
                 $partial   = $legacyKey !== null ? __DIR__ . '/partials/widgets/' . $legacyKey . '.php' : null;

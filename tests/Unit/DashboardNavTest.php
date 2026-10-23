@@ -129,4 +129,42 @@ final class DashboardNavTest extends TestCase
         self::assertStringContainsString('aria-label="Dashboard widgets"', $html);
         self::assertDoesNotMatchRegularExpression('/href="\/systems"/', $html);
     }
+
+    public function testOverviewHeroSitsInsideTheWidgetGrid(): void
+    {
+        $html = file_get_contents(VIEWS_DIR . '/dashboard.php');
+        self::assertIsString($html);
+        $gridAt = strpos($html, 'id="ld-grid"');
+        $heroAt = strpos($html, 'data-hero="search"');
+        $formAt = strpos($html, 'id="search-form"');
+        $endAt = strpos($html, 'id="ld-initial"');
+        self::assertNotFalse($gridAt);
+        self::assertNotFalse($heroAt);
+        self::assertNotFalse($formAt);
+        self::assertNotFalse($endAt);
+        self::assertGreaterThan($gridAt, $heroAt);
+        self::assertGreaterThan($heroAt, $formAt);
+        self::assertGreaterThan($formAt, $endAt);
+        foreach (['vitals', 'agenda', 'act-digest', 'act-pings', 'act-life'] as $hero) {
+            $at = strpos($html, 'data-hero="' . $hero . '"');
+            self::assertNotFalse($at);
+            self::assertGreaterThan($gridAt, $at);
+            self::assertGreaterThan($at, $endAt);
+        }
+        self::assertStringNotContainsString('ov-layout', $html);
+        self::assertStringContainsString('gs-no-move="true"', $html);
+        self::assertStringContainsString('gs-no-resize="true"', $html);
+        self::assertStringContainsString('How can I assist you?', $html);
+
+        $css = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        self::assertIsString($css);
+        self::assertStringNotContainsString('minmax(0, 1fr) 320px', $css);
+        self::assertStringContainsString('.ld-hero-item', $css);
+
+        $js = file_get_contents(ROOT_DIR . '/public/assets/js/lifedash-grid.js');
+        self::assertIsString($js);
+        self::assertStringContainsString('function heroPlan', $js);
+        self::assertStringContainsString('function storedY', $js);
+        self::assertStringContainsString('editBtn.disabled = phone', $js);
+    }
 }
