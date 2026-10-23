@@ -25,7 +25,7 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
 </nav>
 
 <main class="dash-main mx-auto py-6 space-y-6" id="digest-app" data-tz="<?= e($digestTz) ?>">
-<div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>">
+<div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
     <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
             <h1 class="text-primary text-xl font-medium">Grok Digest</h1>
@@ -50,9 +50,9 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
                 Unread only
             </label>
         </form>
+        <p id="digest-status" class="text-sm text-muted" role="status"></p>
+        <p id="digest-count" class="text-sm text-muted"></p>
     </div>
-    <p id="digest-status" class="text-sm text-muted" role="status"></p>
-    <p id="digest-count" class="text-sm text-muted"></p>
     <p id="digest-error" class="ld-error hidden"></p>
     <div id="digest-feed" class="ld-digest-feed"></div>
     <button type="button" class="btn hidden" id="digest-more">Load more</button>
@@ -115,6 +115,7 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/lifedash-grid.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/digest.js?v=<?= e($assetVer) ?>"></script>
 </body>

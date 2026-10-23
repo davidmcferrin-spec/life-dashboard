@@ -34,13 +34,6 @@
 'use strict';
 
 (function () {
-    const { api, esc, status, debounce } = window.LD;
-    const GS = window.GridStack;
-
-    const boardEl = document.querySelector('.ld-board');
-    const gridEl = document.getElementById('ld-grid');
-    if (!boardEl || !gridEl || !GS) return;
-
     const COLUMNS = 12;
     const WIDE = [18, 24];
     const BREAK_NARROW = 700;
@@ -49,7 +42,6 @@
     const HYSTERESIS = 120;
     /** Keep in step with WidgetService::GRID_MAX_WIDTH. */
     const GRID_MAX = { 12: 1600, 18: 2400, 24: 3200 };
-    const capEnabled = gridEl.dataset.gridCap !== '0';
 
     // Keep in step with WidgetService::columnsForWidth.
     function columnsForWidth(width, previous) {
@@ -62,6 +54,52 @@
         if (width < BREAK_ULTRA) return 18;
         return 24;
     }
+
+    // One inline max-width for #ld-grid and any other .ld-grid[data-grid-cap].
+    // CSS only centers that box; a copied media-query width drifts from the column count.
+    function applyCap(el, cols) {
+        if (!el) return;
+        el.style.width = '';
+        el.classList.remove('ld-cols-fixed');
+        const max = el.dataset.gridCap !== '0' ? (GRID_MAX[cols] || 0) : 0;
+        if (!max) {
+            el.style.maxWidth = '';
+            el.classList.remove('ld-cols-capped');
+            return;
+        }
+        el.style.maxWidth = max + 'px';
+        el.classList.add('ld-cols-capped');
+    }
+
+    const pageCaps = [];
+    document.querySelectorAll('.ld-grid[data-grid-cap]').forEach((el) => {
+        if (el.id !== 'ld-grid') pageCaps.push(el);
+    });
+    const pageCols = new WeakMap();
+    function syncPageCaps() {
+        const width = window.innerWidth;
+        pageCaps.forEach((el) => {
+            const prev = pageCols.has(el) ? pageCols.get(el) : null;
+            const cols = columnsForWidth(width, prev);
+            pageCols.set(el, cols);
+            applyCap(el, cols);
+        });
+    }
+    if (pageCaps.length) {
+        syncPageCaps();
+        let capTimer = 0;
+        window.addEventListener('resize', () => {
+            clearTimeout(capTimer);
+            capTimer = setTimeout(syncPageCaps, 220);
+        });
+    }
+
+    const { api, esc, status, debounce } = window.LD;
+    const GS = window.GridStack;
+
+    const boardEl = document.querySelector('.ld-board');
+    const gridEl = document.getElementById('ld-grid');
+    if (!boardEl || !gridEl || !GS) return;
 
     /** id → { widget, data, el, body, tools, loading, queued } */
     const widgets = new Map();
@@ -1421,16 +1459,7 @@
      * setting, fill the board.
      */
     function applyGridCap(cols) {
-        gridEl.style.width = '';
-        gridEl.classList.remove('ld-cols-fixed');
-        const max = capEnabled ? GRID_MAX[cols] : 0;
-        if (!max) {
-            gridEl.style.maxWidth = '';
-            gridEl.classList.remove('ld-cols-capped');
-            return;
-        }
-        gridEl.style.maxWidth = max + 'px';
-        gridEl.classList.add('ld-cols-capped');
+        applyCap(gridEl, cols);
     }
 
     function applyColumns(cols, animate) {
