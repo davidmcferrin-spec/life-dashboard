@@ -28,6 +28,60 @@ function formatQuote(s) {
         <span class="mono text-xs ${color}">${chg} (${pct})</span>`;
 }
 
+function openModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    if (!modal) return;
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) closeModal(modal);
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function toast(message, tone) {
+    if (window.DashboardToast) {
+        window.DashboardToast.show(message, tone);
+        return;
+    }
+    alert(message);
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        toast(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+const addModal = document.getElementById('stocks-add-modal');
+bindModal(addModal);
+
+function openAdd() {
+    clearFieldError('stocks-add-error');
+    openModal(addModal);
+}
+
 let maxSymbols = 10;
 let maxWidgetSymbols = 10;
 
@@ -36,11 +90,16 @@ async function loadList() {
     const countEl = document.getElementById('stocks-manage-count');
     const pinCountEl = document.getElementById('stocks-pin-count');
     const addBtn = document.querySelector('#stocks-add-form button[type="submit"]');
+    const openBtn = document.getElementById('stocks-add-open');
     if (!el) return;
 
     const { res, data } = await api('/api/stocks');
     if (!res.ok) {
-        el.innerHTML = '<p class="text-danger text-sm mono">Could not load symbols.</p>';
+        const message = 'Could not load symbols.';
+        el.innerHTML = window.DashboardEmpty
+            ? window.DashboardEmpty.html({ title: 'Could not load symbols', body: message })
+            : '<p class="text-danger text-sm mono">Could not load symbols.</p>';
+        toast(message);
         return;
     }
 
@@ -48,6 +107,7 @@ async function loadList() {
     maxWidgetSymbols = data.max_widget_symbols ?? 10;
     const symbols = data.symbols || [];
     const pinnedCount = symbols.filter(s => s.pin_to_dashboard).length;
+    const atMax = symbols.length >= maxSymbols;
 
     if (countEl) {
         countEl.textContent = `${symbols.length} / ${maxSymbols}`;
@@ -56,15 +116,18 @@ async function loadList() {
         pinCountEl.textContent = `${pinnedCount} / ${maxWidgetSymbols} on dashboard`;
     }
     if (addBtn) {
-        addBtn.disabled = symbols.length >= maxSymbols;
+        addBtn.disabled = atMax;
+    }
+    if (openBtn) {
+        openBtn.disabled = atMax;
     }
 
     if (symbols.length === 0) {
         el.innerHTML = window.DashboardEmpty.html({
             title: 'No symbols yet',
-            body: 'Add a ticker in the form below.',
-            actionLabel: 'Stock symbols',
-            actionHref: '/settings/stocks',
+            body: 'Add a ticker to your watch list.',
+            actionLabel: 'Add symbol',
+            actionAttrs: 'type="button" data-open-symbol',
         });
         return;
     }
@@ -89,7 +152,7 @@ async function loadList() {
                 const checked = el.querySelectorAll('.stock-pin:checked').length;
                 if (checked > maxWidgetSymbols) {
                     box.checked = false;
-                    alert(`Maximum of ${maxWidgetSymbols} symbols can appear on the dashboard.`);
+                    toast(`Maximum of ${maxWidgetSymbols} symbols can appear on the dashboard.`);
                     return;
                 }
             }
@@ -100,7 +163,7 @@ async function loadList() {
             });
             if (!pinRes.ok) {
                 box.checked = !box.checked;
-                alert(pinData.error || 'Could not update dashboard display.');
+                toast(pinData.error || 'Could not update dashboard display.');
                 return;
             }
             loadList();
@@ -109,21 +172,40 @@ async function loadList() {
 
     el.querySelectorAll('.stock-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Remove this symbol from your watch list?')) {
-                return;
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            try {
+                const ask = globalThis.AppModal && globalThis.AppModal.confirm;
+                const ok = typeof ask === 'function'
+                    ? await ask({
+                        title: 'Remove symbol',
+                        message: 'Remove this symbol from your watch list?',
+                        confirmLabel: 'Remove',
+                        danger: true,
+                    })
+                    : false;
+                if (!ok) return;
+                const { res: delRes, data: delData } = await api(`/api/stocks/${btn.dataset.id}/delete`, {
+                    method: 'POST',
+                    body: '{}',
+                });
+                if (!delRes.ok) {
+                    toast(delData.error || 'Could not remove symbol.');
+                    return;
+                }
+                loadList();
+            } finally {
+                if (btn.isConnected) btn.dataset.confirming = '';
             }
-            const { res: delRes, data: delData } = await api(`/api/stocks/${btn.dataset.id}/delete`, {
-                method: 'POST',
-                body: '{}',
-            });
-            if (!delRes.ok) {
-                alert(delData.error || 'Could not remove symbol.');
-                return;
-            }
-            loadList();
         });
     });
 }
+
+document.getElementById('stocks-add-open')?.addEventListener('click', openAdd);
+
+document.getElementById('stocks-manage-list')?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-open-symbol]')) openAdd();
+});
 
 document.getElementById('stocks-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -131,15 +213,17 @@ document.getElementById('stocks-add-form')?.addEventListener('submit', async e =
     const symbol = String(fd.get('symbol') || '').trim();
     if (!symbol) return;
 
+    clearFieldError('stocks-add-error');
     const { res, data } = await api('/api/stocks/create', {
         method: 'POST',
         body: JSON.stringify({ symbol }),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not add symbol.');
+        showFieldError('stocks-add-error', data.error || 'Could not add symbol.');
         return;
     }
     e.target.reset();
+    closeModal(addModal);
     loadList();
 });
 
