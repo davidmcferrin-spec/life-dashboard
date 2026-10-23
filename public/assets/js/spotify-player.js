@@ -176,6 +176,7 @@ function spotifyDeviceIcon(type) {
             'chevron-up': '<path d="M6 15l6-6 6 6"/>',
             speaker: '<path d="M4 10h3l4-3v10l-4-3H4z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5"/><path d="M17.2 7.2a6.5 6.5 0 0 1 0 9.6"/>',
             'speaker-off': '<path d="M4 10h3l4-3v10l-4-3H4z"/><path d="M16 10l4 4"/><path d="M20 10l-4 4"/>',
+            queue: '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>',
         };
         const filled = {
             play: '<path d="M8 5v14l12-7z"/>',
@@ -290,6 +291,7 @@ function spotifyDeviceIcon(type) {
                 <button type="button" class="sp-play" data-cmd="${playName}" aria-label="${playing ? 'Pause' : 'Play'}" title="${playing ? 'Pause' : 'Play'}">${icon(playName)}</button>
                 <button type="button" data-cmd="next" aria-label="Next" title="Next">${icon('next')}</button>
                 <button type="button" data-cmd="repeat" class="${repeatMode === 'off' ? '' : 'is-on'}" aria-pressed="${repeatMode === 'off' ? 'false' : 'true'}" aria-label="${repeatText}" title="${repeatText}">${icon(repeatMode === 'track' ? 'repeat-one' : 'repeat')}</button>
+                <button type="button" class="sp-queue-compact" data-queue aria-label="Queue" title="Queue">${icon('queue')}</button>
                 <div class="sp-vol-pop sp-mini-only">
                     <button type="button" data-mute aria-pressed="${volume > 0 ? 'false' : 'true'}" aria-label="${muteLabel}" title="${muteLabel}">${volumeIcon(volume)}</button>
                     <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume">
