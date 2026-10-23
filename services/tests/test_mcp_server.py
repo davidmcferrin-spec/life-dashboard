@@ -299,6 +299,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "update_pantry_category", "update_pantry_product", "what_can_i_make",
         "list_meal_components", "add_meal_component", "update_meal_component", "remove_meal_component",
         "add_meal_pairing", "remove_meal_pairing", "list_meal_pairings", "suggest_meal",
+        "plan_meal_prep", "log_meal_prep",
         "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
         "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
         "get_now_playing", "list_spotify_devices", "list_devices", "list_playlist_changes", "get_taste_profile",
@@ -344,6 +345,22 @@ def test_pantry_tools_map_onto_the_pantry_api():
     assert (method, path, body) == ("POST", "/api/v1/pantry/consume", {"lot_id": 4, "quantity": 0.5})
     method, path, body = resolve("update_recipe", {"recipe_id": 3, "name": "Soup", "notes": None, "ingredients": []})
     assert (method, path, body) == ("POST", "/api/v1/pantry/recipes/3", {"name": "Soup", "notes": None, "ingredients": []})
+    method, path, body = resolve("list_recipes", {"meal_prep": True})
+    assert method == "GET" and body is None and "meal_prep=1" in path
+    method, path, body = resolve("upsert_recipe", {
+        "name": "Jar", "meal_prep": True, "keeps_days": 3, "protein_g": 32.5, "servings": 1,
+    })
+    assert body["meal_prep"] is True and body["keeps_days"] == 3 and body["protein_g"] == 32.5
+    method, path, body = resolve("plan_meal_prep", {"servings": 3, "recipe_id": 4})
+    assert method == "GET" and body is None and path.startswith("/api/v1/pantry/meals/prep?")
+    assert "servings=3" in path and "recipe_id=4" in path
+    method, path, body = resolve("log_meal_prep", {"servings": 3, "picks": [1, 2], "name": "Week jars"})
+    assert (method, path) == ("POST", "/api/v1/pantry/meals/prep")
+    assert body["servings"] == 3 and body["picks"] == [1, 2] and body["name"] == "Week jars"
+    plan = next(tool for tool in TOOLS if tool["name"] == "plan_meal_prep")
+    log = next(tool for tool in TOOLS if tool["name"] == "log_meal_prep")
+    assert "preview" in plan["description"].lower()
+    assert "Allow MCP updates" in log["description"]
     method, path, body = resolve("update_pantry_category", {"category": "Dairy", "fridge_days": 21, "opened_days": None})
     assert (method, path, body) == ("POST", "/api/v1/pantry/categories", {"category": "Dairy", "fridge_days": 21, "opened_days": None})
     method, path, body = resolve(

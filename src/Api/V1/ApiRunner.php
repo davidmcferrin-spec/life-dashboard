@@ -356,6 +356,7 @@ final class ApiRunner
             '/pantry/products'      => 'product',
             '/pantry/recipes'       => 'recipe',
             '/pantry/meals/recipe'  => 'recipe',
+            '/pantry/meals/prep'    => 'pantry_lot',
             '/pantry/categories'    => 'pantry_category',
             '/pantry/meals'         => 'meal_component',
             '/pantry'               => 'pantry_lot',

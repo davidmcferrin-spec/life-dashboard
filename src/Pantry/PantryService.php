@@ -779,10 +779,57 @@ final class PantryService
     /**
      * @return list<array<string, mixed>>
      */
-    public function listRecipes(int $userId): array
+    public function listRecipes(int $userId, ?bool $mealPrep = null): array
     {
-        $rows = $this->db->fetchAll('SELECT id, name, notes FROM pantry_recipes WHERE user_id = ? ORDER BY name, id', [$userId]);
+        $flag = $mealPrep === null ? '' : ($mealPrep ? '1' : '0');
+        $rows = $this->db->fetchAll(
+            'SELECT id, name, notes, servings, keeps_days, meal_prep, protein_g
+             FROM pantry_recipes
+             WHERE user_id = ? AND (? = \'\' OR meal_prep::text = ?)
+             ORDER BY name, id',
+            [$userId, $flag, $flag]
+        );
         return array_map(fn (array $row): array => $this->publicRecipe($userId, $row), $rows);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function recipe(int $userId, int $id): array
+    {
+        $row = $this->db->fetchOne(
+            'SELECT id, name, notes, servings, keeps_days, meal_prep, protein_g
+             FROM pantry_recipes WHERE id = ? AND user_id = ?',
+            [$id, $userId]
+        );
+        if ($row === null) {
+            throw new NotFoundException('Recipe not found.');
+        }
+        return $this->publicRecipe($userId, $row);
+    }
+
+    public function localToday(): string
+    {
+        return $this->clock->today();
+    }
+
+    /**
+     * @return array{have: float, name: string}
+     */
+    public function onHandAmount(int $userId, int $productId): array
+    {
+        $product = $this->requireProduct($userId, $productId);
+        $lots = $this->db->fetchAll(
+            "SELECT quantity, qty_level FROM pantry_lots
+             WHERE user_id = ? AND product_id = ? AND status = 'on_hand'",
+            [$userId, $productId]
+        );
+        $have = 0.0;
+        foreach ($lots as $lot) {
+            $level = $this->trackedLevel($lot);
+            $have += $level !== null ? PantryDates::stepsLeft($level) : (float) $lot['quantity'];
+        }
+        return ['have' => round($have, 3), 'name' => (string) $product['name']];
     }
 
     /**
@@ -801,22 +848,44 @@ final class PantryService
             throw ValidationException::withFields(['ingredients' => 'ingredients must be a list.']);
         }
         $id = isset($body['recipe_id']) && $body['recipe_id'] !== '' && $body['recipe_id'] !== null ? (int) $body['recipe_id'] : 0;
-        return $this->db->transaction(function () use ($userId, $id, $name, $notes, $ingredients): array {
+        return $this->db->transaction(function () use ($userId, $id, $name, $notes, $ingredients, $body): array {
+            $existing = null;
             if ($id > 0) {
-                $existing = $this->db->fetchOne('SELECT id FROM pantry_recipes WHERE id = ? AND user_id = ?', [$id, $userId]);
+                $existing = $this->db->fetchOne(
+                    'SELECT id, servings, keeps_days, meal_prep, protein_g FROM pantry_recipes WHERE id = ? AND user_id = ?',
+                    [$id, $userId]
+                );
                 if ($existing === null) {
                     throw new NotFoundException('Recipe not found.');
                 }
+            }
+            $servings = array_key_exists('servings', $body)
+                ? $this->recipeServings($body['servings'])
+                : ($existing !== null && $existing['servings'] !== null ? (int) $existing['servings'] : null);
+            $keeps = array_key_exists('keeps_days', $body)
+                ? $this->keepsDays($body['keeps_days'])
+                : ($existing !== null ? (int) $existing['keeps_days'] : 3);
+            $prep = array_key_exists('meal_prep', $body)
+                ? $this->mealPrepFlag($body['meal_prep'])
+                : ($existing !== null ? ((int) $existing['meal_prep'] === 1 ? 1 : 0) : 0);
+            $protein = array_key_exists('protein_g', $body)
+                ? $this->proteinGrams($body['protein_g'])
+                : ($existing !== null && $existing['protein_g'] !== null ? (string) $existing['protein_g'] : null);
+            if ($id > 0) {
                 $this->db->execute(
-                    'UPDATE pantry_recipes SET name = ?, notes = ?, updated_at = (now() AT TIME ZONE \'UTC\') WHERE id = ? AND user_id = ?',
-                    [$name, $notes, $id, $userId]
+                    'UPDATE pantry_recipes
+                     SET name = ?, notes = ?, servings = ?, keeps_days = ?, meal_prep = ?, protein_g = ?,
+                         updated_at = (now() AT TIME ZONE \'UTC\')
+                     WHERE id = ? AND user_id = ?',
+                    [$name, $notes, $servings, $keeps, $prep, $protein, $id, $userId]
                 );
                 $this->db->execute('DELETE FROM pantry_recipe_ingredients WHERE recipe_id = ? AND user_id = ?', [$id, $userId]);
                 $recipeId = $id;
             } else {
                 $recipeId = (int) $this->db->fetchScalar(
-                    'INSERT INTO pantry_recipes (user_id, name, notes) VALUES (?, ?, ?) RETURNING id',
-                    [$userId, $name, $notes]
+                    'INSERT INTO pantry_recipes (user_id, name, notes, servings, keeps_days, meal_prep, protein_g)
+                     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+                    [$userId, $name, $notes, $servings, $keeps, $prep, $protein]
                 );
             }
             foreach ($ingredients as $i => $ingredient) {
@@ -846,7 +915,10 @@ final class PantryService
                     [$recipeId, $userId, $productId, $category, $qty, $unit]
                 );
             }
-            $row = $this->db->fetchOne('SELECT id, name, notes FROM pantry_recipes WHERE id = ? AND user_id = ?', [$recipeId, $userId]);
+            $row = $this->db->fetchOne(
+                'SELECT id, name, notes, servings, keeps_days, meal_prep, protein_g FROM pantry_recipes WHERE id = ? AND user_id = ?',
+                [$recipeId, $userId]
+            );
             return $this->publicRecipe($userId, $row ?? []);
         });
     }
@@ -891,6 +963,10 @@ final class PantryService
                 'needed' => $needed,
                 'missing' => $missing,
                 'soonest_use_by' => $soonest,
+                'servings' => $recipe['servings'],
+                'keeps_days' => $recipe['keeps_days'],
+                'meal_prep' => $recipe['meal_prep'],
+                'protein_g' => $recipe['protein_g'],
             ];
         }
         usort($ranked, static function (array $a, array $b): int {
@@ -1324,6 +1400,10 @@ final class PantryService
             'id' => (int) $row['id'],
             'name' => (string) $row['name'],
             'notes' => $row['notes'] !== null ? (string) $row['notes'] : null,
+            'servings' => isset($row['servings']) && $row['servings'] !== null && $row['servings'] !== '' ? (int) $row['servings'] : null,
+            'keeps_days' => isset($row['keeps_days']) ? (int) $row['keeps_days'] : 3,
+            'meal_prep' => isset($row['meal_prep']) && (int) $row['meal_prep'] === 1,
+            'protein_g' => isset($row['protein_g']) && $row['protein_g'] !== null && $row['protein_g'] !== '' ? (float) $row['protein_g'] : null,
             'ingredients' => array_map(static function (array $ingredient): array {
                 $label = $ingredient['name'] !== null ? (string) $ingredient['name'] : (string) $ingredient['category'];
                 return [
@@ -1875,6 +1955,57 @@ final class PantryService
             throw ValidationException::withFields([$key => 'Days must be a whole number from 1 to 3650, or empty.']);
         }
         return $days;
+    }
+
+    private function recipeServings(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return $this->wholeBetween($value, 1, 30, 'servings', 'Servings must be a whole number from 1 to 30, or empty.');
+    }
+
+    private function keepsDays(mixed $value): int
+    {
+        return $this->wholeBetween($value, 1, 30, 'keeps_days', 'Keeps days must be a whole number from 1 to 30.');
+    }
+
+    private function mealPrepFlag(mixed $value): int
+    {
+        if ($value === true || $value === 1 || $value === '1' || $value === 'true') {
+            return 1;
+        }
+        if ($value === false || $value === 0 || $value === '0' || $value === 'false') {
+            return 0;
+        }
+        throw ValidationException::withFields(['meal_prep' => 'meal_prep must be true or false.']);
+    }
+
+    private function proteinGrams(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (!is_numeric($value)) {
+            throw ValidationException::withFields(['protein_g' => 'Protein must be a number of grams, or empty.']);
+        }
+        $n = round((float) $value, 1);
+        if ($n < 0 || $n > 999.9) {
+            throw ValidationException::withFields(['protein_g' => 'Protein must be from 0 to 999.9 grams, or empty.']);
+        }
+        return number_format($n, 1, '.', '');
+    }
+
+    private function wholeBetween(mixed $value, int $min, int $max, string $field, string $message): int
+    {
+        $whole = is_int($value)
+            || (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1)
+            || (is_float($value) && floor($value) === $value);
+        $n = $whole ? (int) $value : 0;
+        if (!$whole || $n < $min || $n > $max) {
+            throw ValidationException::withFields([$field => $message]);
+        }
+        return $n;
     }
 
     private function productName(string $name): string
