@@ -19,8 +19,8 @@ final class PgsqlMigrationFilesTest extends TestCase
         self::assertNotEmpty($names);
         $numbers = array_map(static fn (string $name): int => (int) substr($name, 0, 4), $names);
         self::assertSame($numbers, array_values(array_unique($numbers)), 'duplicate migration number');
-        $missing = array_values(array_diff(range(1, max($numbers)), $numbers));
-        self::assertSame([], $missing, 'unexpected gap in database/pgsql');
+        self::assertSame(1, $numbers[0] ?? 0);
+        // A claimed number can land before the ones between it and main. An unused claim stays spent.
     }
 
     public function testInvalidFileNameIsRejected(): void
