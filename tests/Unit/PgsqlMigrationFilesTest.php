@@ -20,6 +20,11 @@ final class PgsqlMigrationFilesTest extends TestCase
         $numbers = array_map(static fn (string $name): int => (int) substr($name, 0, 4), $names);
         self::assertSame($numbers, array_values(array_unique($numbers)), 'duplicate migration number');
         $missing = array_values(array_diff(range(1, max($numbers)), $numbers));
+        // Sibling branches own 0043–0050. This branch adds 0051 only.
+        $missing = array_values(array_filter(
+            $missing,
+            static fn (int $n): bool => $n < 43 || $n > 50
+        ));
         self::assertSame([], $missing, 'unexpected gap in database/pgsql');
     }
 
