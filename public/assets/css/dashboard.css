@@ -5,46 +5,46 @@
  */
 
 @font-face {
-    font-family: 'IBM Plex Sans';
-    font-style: normal;
-    font-weight: 300;
-    font-display: swap;
-    src: url('/assets/fonts/ibm-plex-sans-latin-300.woff2') format('woff2');
-}
-@font-face {
-    font-family: 'IBM Plex Sans';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('/assets/fonts/ibm-plex-sans-latin-400.woff2') format('woff2');
+    src: url('/assets/fonts/inter/Inter-Regular.woff2') format('woff2');
 }
 @font-face {
-    font-family: 'IBM Plex Sans';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 500;
     font-display: swap;
-    src: url('/assets/fonts/ibm-plex-sans-latin-500.woff2') format('woff2');
+    src: url('/assets/fonts/inter/Inter-Medium.woff2') format('woff2');
 }
 @font-face {
-    font-family: 'IBM Plex Sans';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 600;
     font-display: swap;
-    src: url('/assets/fonts/ibm-plex-sans-latin-600.woff2') format('woff2');
+    src: url('/assets/fonts/inter/Inter-SemiBold.woff2') format('woff2');
 }
 @font-face {
-    font-family: 'JetBrains Mono';
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/assets/fonts/inter/Inter-Bold.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'DM Mono';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('/assets/fonts/jetbrains-mono-latin-400.woff2') format('woff2');
+    src: url('/assets/fonts/dm-mono/DMMono-Regular.ttf') format('truetype');
 }
 @font-face {
-    font-family: 'JetBrains Mono';
+    font-family: 'DM Mono';
     font-style: normal;
     font-weight: 500;
     font-display: swap;
-    src: url('/assets/fonts/jetbrains-mono-latin-500.woff2') format('woff2');
+    src: url('/assets/fonts/dm-mono/DMMono-Medium.ttf') format('truetype');
 }
 
 /* -------------------------------------------------------
@@ -56,8 +56,8 @@
    ------------------------------------------------------- */
 
 :root {
-    --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
-    --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'DM Mono', ui-monospace, monospace;
     --radius-sm: 6px;
     --radius-control: 6px;
     --radius: 10px;
@@ -348,7 +348,7 @@ input[type="radio"] {
 
 .clock-sync-warn {
     color: var(--warn);
-    font-size: 0.65rem;
+    font-size: 11px;
     letter-spacing: 0.04em;
     text-transform: lowercase;
     white-space: nowrap;
@@ -885,12 +885,12 @@ body.is-widget-resizing {
 }
 
 .dashboard-widgets .chip {
-    font-size: clamp(0.6rem, 1.5cqi, 0.7rem);
+    font-size: clamp(11px, 1.5cqi, 0.7rem);
     padding: 0.1rem 0.35rem;
 }
 
 .dashboard-widgets .widget-mono-sm {
-    font-size: clamp(0.65rem, 2cqi, 0.75rem);
+    font-size: clamp(11px, 2cqi, 0.75rem);
 }
 
 .dashboard-widgets .stock-line {
@@ -1161,7 +1161,7 @@ a.widget-row-link:hover {
 
 .chip {
     border-radius: 0.25rem;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     padding: 0.125rem 0.5rem;
 }
@@ -1217,7 +1217,7 @@ a.widget-row-link:hover {
 .feed-time {
     color: var(--text-faint);
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     white-space: nowrap;
 }
@@ -1227,7 +1227,7 @@ a.widget-row-link:hover {
     border-width: 1px;
     border-style: solid;
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     overflow: hidden;
     padding: 0.125rem 0.375rem;
@@ -1284,7 +1284,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 .news-filter-label {
     color: var(--text-faint);
     flex-shrink: 0;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     padding-top: 0.3rem;
     width: 4.5rem;
@@ -1297,7 +1297,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
     color: var(--text-secondary);
     display: none;
     flex: 1;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     min-width: 10rem;
     padding: 0.35rem 0.5rem;
@@ -1368,8 +1368,8 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 
 .local-hit-kicker {
     color: var(--text-faint);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    font-size: 11px;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
@@ -1388,7 +1388,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 
 .clock-label {
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -1412,7 +1412,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
     border: 1px solid var(--surface-border);
     border-radius: 0.375rem;
     box-shadow: 0 4px 12px var(--shadow-focus);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     line-height: 1.45;
     color: var(--text-muted);
@@ -1446,7 +1446,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
     border: 1px solid var(--accent-border);
     border-radius: 0.25rem;
     color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1470,7 +1470,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 }
 
 .broadcast-week-primary {
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-sans);
 }
 
 #timezone-bar[data-clock-format="24h"] .clock-ampm {
@@ -1484,7 +1484,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 
 .clock-time {
     color: var(--text-primary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 1.125rem;
     font-variant-numeric: tabular-nums;
     font-weight: 500;
@@ -1493,7 +1493,7 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 
 .clock-ampm {
     color: var(--text-faint);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
 }
 
