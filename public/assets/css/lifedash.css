@@ -5727,3 +5727,533 @@ html[data-theme="light"] .app-modal-backdrop {
     }
 }
 
+/* -------------------------------------------------------
+   Finance settings (Money, Investing, Stocks).
+   Teal is the theme accent. Type stays on 11–32px.
+   IBM Plex Sans only inside .fin-page.
+   ------------------------------------------------------- */
+
+.fin-page {
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.fin-page button,
+.fin-page input,
+.fin-page select,
+.fin-page textarea,
+.fin-page .btn,
+.fin-page .btn-primary,
+.fin-page .btn-danger,
+.fin-page .input,
+.fin-page .mono,
+.fin-page code,
+.fin-page .ld-field > span,
+.fin-page .ld-field label,
+.fin-page .ld-field-error {
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+
+.fin-page .btn,
+.fin-page .btn-primary,
+.fin-page .btn-danger,
+.fin-page .input,
+.fin-page select.input,
+.fin-page code {
+    font-size: 14px;
+}
+
+.fin-page .ld-field > span,
+.fin-page .ld-field label {
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.fin-page .ld-field-error {
+    font-size: 12px;
+}
+
+.fin-page .app-modal-close svg,
+.fin-icon svg,
+.fin-upload-icon svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.fin-head {
+    align-items: flex-end;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.fin-eyebrow {
+    color: var(--text-muted);
+    display: block;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+    margin: 0 0 4px;
+    text-transform: uppercase;
+}
+
+.fin-title {
+    color: var(--text);
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 36px;
+    margin: 0;
+}
+
+.fin-lead,
+.fin-note {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 8px 0 0;
+    max-width: 42rem;
+}
+
+.fin-note {
+    margin: 0 0 12px;
+}
+
+.fin-stats {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 16px;
+}
+
+.fin-stat,
+.fin-card {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    min-width: 0;
+}
+
+.fin-stat {
+    min-height: 108px;
+    padding: 16px;
+}
+
+.fin-stat-label {
+    color: var(--text-secondary);
+    display: block;
+    font-size: 12px;
+}
+
+.fin-stat-value {
+    color: var(--text);
+    display: block;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 1.2;
+    margin: 12px 0 8px;
+}
+
+.fin-delta {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.fin-delta span {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+.fin-page .is-up {
+    color: var(--ok);
+}
+
+.fin-page .is-down {
+    color: var(--danger);
+}
+
+.fin-grid {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    margin-bottom: 16px;
+}
+
+.fin-card {
+    margin-bottom: 16px;
+    padding: 16px;
+}
+
+.fin-grid .fin-card {
+    margin-bottom: 0;
+}
+
+.fin-card-head {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.fin-card-title {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    min-width: 0;
+}
+
+.fin-card-title h2,
+.fin-modal-title {
+    color: var(--text);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0;
+}
+
+.fin-icon {
+    align-items: center;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    display: grid;
+    flex: 0 0 auto;
+    height: 30px;
+    place-items: center;
+    width: 30px;
+}
+
+.fin-chart {
+    min-height: 180px;
+}
+
+.fin-chart-frame {
+    align-items: stretch;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr);
+}
+
+.fin-chart-y {
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    justify-content: space-between;
+    min-width: 4.5rem;
+}
+
+.fin-chart svg {
+    display: block;
+    height: 180px;
+    width: 100%;
+}
+
+.fin-chart-line {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    vector-effect: non-scaling-stroke;
+}
+
+.fin-chart-area {
+    fill: color-mix(in srgb, var(--accent) 22%, transparent);
+    stroke: none;
+}
+
+.fin-axis {
+    color: var(--text-muted);
+    display: flex;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    gap: 8px;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.fin-accounts {
+    display: flex;
+    flex-direction: column;
+}
+
+.fin-account {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    padding: 12px 0;
+}
+
+.fin-account:last-child {
+    border-bottom: 0;
+}
+
+.fin-account-plain {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.fin-account-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.fin-account-meta {
+    color: var(--text-muted);
+    display: block;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+}
+
+.fin-account-side {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.fin-account-balance {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+}
+
+.fin-table-wrap {
+    overflow-x: auto;
+}
+
+.fin-table {
+    border-collapse: collapse;
+    font-size: 13px;
+    width: 100%;
+}
+
+.fin-table th {
+    border-bottom: 1px solid var(--border-soft);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    padding: 8px 12px 8px 0;
+    text-align: left;
+    text-transform: uppercase;
+}
+
+.fin-table td {
+    border-bottom: 1px solid var(--border-soft);
+    padding: 12px 12px 12px 0;
+    vertical-align: middle;
+}
+
+.fin-table tr:last-child td {
+    border-bottom: 0;
+}
+
+.fin-table th:last-child,
+.fin-table td:last-child {
+    padding-right: 0;
+}
+
+.fin-num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.fin-table th.fin-num {
+    text-align: right;
+}
+
+.fin-symbol {
+    font-size: 14px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+
+.fin-symbol-input {
+    font-variant-numeric: tabular-nums;
+    text-transform: uppercase;
+}
+
+.fin-await {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.fin-pin {
+    align-items: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 13px;
+    gap: 8px;
+}
+
+.fin-actions {
+    text-align: right;
+}
+
+.fin-tools {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.fin-tools-split {
+    margin-top: 12px;
+}
+
+.fin-upload {
+    position: relative;
+}
+
+.fin-upload-icon {
+    color: inherit;
+    display: inline-flex;
+}
+
+.fin-file {
+    cursor: pointer;
+    font-size: 16px;
+    inset: 0;
+    opacity: 0;
+    position: absolute;
+}
+
+.fin-upload:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.fin-status {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 8px 0 0;
+    min-height: 1.2em;
+}
+
+.fin-modal-head {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.fin-modal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.fin-bars {
+    align-items: flex-end;
+    display: flex;
+    gap: 8px;
+    height: 180px;
+    overflow-x: auto;
+}
+
+.fin-bar {
+    align-items: center;
+    display: flex;
+    flex: 1 0 48px;
+    flex-direction: column;
+    gap: 8px;
+    height: 100%;
+    justify-content: flex-end;
+    min-width: 48px;
+}
+
+.fin-bar-track {
+    align-items: flex-end;
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    width: 100%;
+}
+
+.fin-bar-fill {
+    background: var(--accent);
+    border-radius: 6px 6px 0 0;
+    display: block;
+    min-height: 4px;
+    width: 12px;
+}
+
+.fin-bar-fill.is-down {
+    background: var(--danger);
+}
+
+.fin-bar-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    text-align: center;
+}
+
+.fin-bar-label strong {
+    color: var(--text);
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+html[data-theme="light"] .fin-stat,
+html[data-theme="light"] .fin-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 248, 0.94));
+    box-shadow: 0 10px 28px rgba(42, 67, 70, 0.07);
+}
+
+@media (max-width: 1100px) {
+    .fin-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 850px) {
+    .fin-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .fin-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 620px) {
+    .fin-stats {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fin-account,
+    .fin-account-plain {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fin-account-side {
+        justify-content: space-between;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .fin-page,
+    .fin-page * {
+        transition: none;
+    }
+}
+
