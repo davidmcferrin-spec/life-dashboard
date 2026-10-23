@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Dashboard\Invest;
 
 use Dashboard\DB\Database;
+use Dashboard\Money\AccountNumberGuard;
 use Dashboard\Support\HttpClient;
+use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
 /**
@@ -28,16 +30,135 @@ final class InvestService
         $market = 0.0;
         $unrealized = 0.0;
         foreach ($positions as $position) {
-            $market += (float) $position['market_value'];
-            $unrealized += (float) $position['unrealized'];
+            // A missing price adds nothing. It is not turned into a loss.
+            if ($position['market_value'] !== null) {
+                $market += (float) $position['market_value'];
+            }
+            if ($position['unrealized'] !== null) {
+                $unrealized += (float) $position['unrealized'];
+            }
         }
+        $observed = $this->observe($userId, $positions);
         return [
-            'market_value' => $market,
-            'unrealized'   => $unrealized,
-            'positions'    => $positions,
-            'activity'     => $this->activity($userId, 20),
-            'wallets'      => $this->wallets($userId),
+            'market_value'     => $market,
+            'portfolio_value'  => $observed['portfolio_value'],
+            'unrealized'       => $unrealized,
+            'day_change'       => $observed['day_change'],
+            'day_change_ratio' => $observed['day_change_ratio'],
+            'buying_power'     => $observed['buying_power'],
+            'annual_return'    => $observed['annual_return'],
+            'series'           => $observed['series'],
+            'as_of'            => $observed['as_of'],
+            'positions'        => $positions,
+            'activity'         => $this->activity($userId, 20),
+            'wallets'          => $this->wallets($userId),
         ];
+    }
+
+    /**
+     * Manual holding only. No broker and no order.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function saveManualPosition(int $userId, array $input): array
+    {
+        $symbol = $this->cleanSymbol($input['symbol'] ?? '');
+        $name = $this->cleanHoldingName($input['name'] ?? null);
+        $quantity = $this->cleanQuantity($input['quantity'] ?? null);
+        $costSet = $this->hasNumber($input, 'avg_cost');
+        $priceSet = $this->hasNumber($input, 'mark');
+        $avg = $costSet ? $this->cleanMoney($input['avg_cost'], 'avg_cost') : 0.0;
+        $mark = $priceSet ? $this->cleanMoney($input['mark'], 'mark') : 0.0;
+        $meta = json_encode([
+            'source'    => 'manual',
+            'name'      => $name,
+            'price_set' => $priceSet,
+            'cost_set'  => $costSet,
+        ], JSON_THROW_ON_ERROR);
+        $id = isset($input['id']) ? (int) $input['id'] : 0;
+
+        if ($id > 0) {
+            $existing = $this->db->fetchOne(
+                "SELECT id FROM invest_positions WHERE id = ? AND user_id = ? AND venue = 'manual'",
+                [$id, $userId]
+            );
+            if ($existing === null) {
+                throw new NotFoundException('Position not found.');
+            }
+            $clash = $this->db->fetchOne(
+                "SELECT id FROM invest_positions WHERE user_id = ? AND venue = 'manual' AND symbol = ? AND id <> ?",
+                [$userId, $symbol, $id]
+            );
+            if ($clash !== null) {
+                throw ValidationException::withFields(['symbol' => 'That symbol is already a manual holding.']);
+            }
+            $this->db->execute(
+                "UPDATE invest_positions
+                 SET symbol = ?, quantity = ?, avg_cost = ?, mark = ?, meta = ?::jsonb,
+                     updated_at = (now() AT TIME ZONE 'UTC')
+                 WHERE id = ? AND user_id = ? AND venue = 'manual'",
+                [$symbol, $quantity, $avg, $mark, $meta, $id, $userId]
+            );
+        } else {
+            $this->db->execute(
+                "INSERT INTO invest_positions (user_id, venue, symbol, quantity, avg_cost, mark, meta)
+                 VALUES (?, 'manual', ?, ?, ?, ?, ?::jsonb)
+                 ON CONFLICT (user_id, venue, symbol) DO UPDATE
+                    SET quantity = EXCLUDED.quantity,
+                        avg_cost = EXCLUDED.avg_cost,
+                        mark = EXCLUDED.mark,
+                        meta = EXCLUDED.meta,
+                        updated_at = (now() AT TIME ZONE 'UTC')",
+                [$userId, $symbol, $quantity, $avg, $mark, $meta]
+            );
+        }
+
+        $this->observe($userId, $this->positions($userId));
+        $saved = $this->db->fetchOne(
+            "SELECT * FROM invest_positions WHERE user_id = ? AND venue = 'manual' AND symbol = ?",
+            [$userId, $symbol]
+        );
+        if ($saved === null) {
+            throw new NotFoundException('Position not found.');
+        }
+        return $this->formatPosition($saved);
+    }
+
+    public function deleteManualPosition(int $userId, int $id): void
+    {
+        $deleted = $this->db->execute(
+            "DELETE FROM invest_positions WHERE id = ? AND user_id = ? AND venue = 'manual'",
+            [$id, $userId]
+        );
+        if ($deleted < 1) {
+            throw new NotFoundException('Position not found.');
+        }
+        $this->observe($userId, $this->positions($userId));
+    }
+
+    /**
+     * Records buying power for today. Null clears it. This is not a trade.
+     *
+     * @return array{as_of: string, cash: float|null}
+     */
+    public function saveCash(int $userId, mixed $cash): array
+    {
+        $asOf = gmdate('Y-m-d');
+        if ($cash === null || (is_string($cash) && trim($cash) === '')) {
+            $this->db->execute(
+                'UPDATE invest_value_history SET cash = NULL WHERE user_id = ? AND as_of = ?',
+                [$userId, $asOf]
+            );
+            return ['as_of' => $asOf, 'cash' => null];
+        }
+        $amount = $this->cleanMoney($cash, 'cash');
+        $this->db->execute(
+            'INSERT INTO invest_value_history (user_id, as_of, cash) VALUES (?, ?, ?)
+             ON CONFLICT (user_id, as_of) DO UPDATE SET cash = EXCLUDED.cash',
+            [$userId, $asOf, $amount]
+        );
+        return ['as_of' => $asOf, 'cash' => $amount];
     }
 
     /**
@@ -69,6 +190,7 @@ final class InvestService
             }
         });
         $positions = $this->rebuildRobinhood($userId);
+        $this->observe($userId, $this->positions($userId));
         return ['imported' => $imported, 'positions' => $positions];
     }
 
@@ -143,7 +265,45 @@ final class InvestService
                 $count++;
             }
         });
+        $this->observe($userId, $this->positions($userId));
         return ['positions' => $count];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $positions
+     * @return array<string, mixed>
+     */
+    private function observe(int $userId, array $positions): array
+    {
+        // Today's total is stored when it is known. Earlier days are never filled in.
+        $portfolio = ValueHistory::portfolioValue($positions);
+        $asOf = gmdate('Y-m-d');
+        $this->db->execute(
+            'INSERT INTO invest_value_history (user_id, as_of, market_value) VALUES (?, ?, ?)
+             ON CONFLICT (user_id, as_of) DO UPDATE SET market_value = EXCLUDED.market_value',
+            [$userId, $asOf, $portfolio]
+        );
+        $metrics = ValueHistory::metrics($this->history($userId), $asOf);
+        $metrics['as_of'] = $asOf;
+        $metrics['portfolio_value'] = $portfolio;
+        return $metrics;
+    }
+
+    /**
+     * @return list<array{as_of: string, market_value: float|null, cash: float|null}>
+     */
+    private function history(int $userId): array
+    {
+        return array_map(static function (array $row): array {
+            return [
+                'as_of'        => substr((string) $row['as_of'], 0, 10),
+                'market_value' => $row['market_value'] !== null ? (float) $row['market_value'] : null,
+                'cash'         => $row['cash'] !== null ? (float) $row['cash'] : null,
+            ];
+        }, $this->db->fetchAll(
+            'SELECT as_of, market_value, cash FROM invest_value_history WHERE user_id = ? ORDER BY as_of ASC',
+            [$userId]
+        ));
     }
 
     /**
@@ -155,20 +315,115 @@ final class InvestService
             'SELECT * FROM invest_positions WHERE user_id = ? AND quantity <> 0 ORDER BY venue ASC, symbol ASC',
             [$userId]
         );
-        return array_map(static function (array $row): array {
-            $qty = (float) $row['quantity'];
-            $avg = (float) $row['avg_cost'];
-            $mark = (float) $row['mark'];
-            return [
-                'symbol'       => (string) $row['symbol'],
-                'venue'        => (string) $row['venue'],
-                'quantity'     => $qty,
-                'avg_cost'     => $avg,
-                'mark'         => $mark,
-                'market_value' => $mark * $qty,
-                'unrealized'   => ($mark - $avg) * $qty,
-            ];
-        }, $rows);
+        return array_map(fn (array $row): array => $this->formatPosition($row), $rows);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function formatPosition(array $row): array
+    {
+        $meta = $this->meta($row['meta'] ?? null);
+        $qty = (float) $row['quantity'];
+        $avg = (float) $row['avg_cost'];
+        $mark = (float) $row['mark'];
+        $priceKnown = !array_key_exists('price_set', $meta) || $meta['price_set'] === true;
+        $costKnown = !array_key_exists('cost_set', $meta) || $meta['cost_set'] === true;
+        $name = isset($meta['name']) && is_string($meta['name']) && $meta['name'] !== ''
+            ? $meta['name']
+            : (string) $row['symbol'];
+        $knownMark = $priceKnown ? $mark : null;
+        $knownAvg = $costKnown ? $avg : null;
+        return [
+            'id'           => (int) $row['id'],
+            'symbol'       => (string) $row['symbol'],
+            'name'         => $name,
+            'venue'        => (string) $row['venue'],
+            'quantity'     => $qty,
+            'avg_cost'     => $knownAvg,
+            'mark'         => $knownMark,
+            'market_value' => ValueHistory::positionValue($knownMark, $qty, $priceKnown),
+            'unrealized'   => ValueHistory::unrealized($knownMark, $knownAvg, $qty, $priceKnown, $costKnown),
+            'return_ratio' => ValueHistory::positionReturn($knownMark, $knownAvg, $qty, $priceKnown, $costKnown),
+            'manual'       => (string) $row['venue'] === 'manual',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function meta(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return $raw;
+        }
+        if (!is_string($raw) || $raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function cleanSymbol(mixed $value): string
+    {
+        $symbol = strtoupper(trim((string) $value));
+        if ($symbol === '' || preg_match('/^[A-Z0-9][A-Z0-9.\-]{0,15}$/', $symbol) !== 1) {
+            throw ValidationException::withFields(['symbol' => 'Enter a symbol of up to 16 letters, digits, dots, or hyphens.']);
+        }
+        AccountNumberGuard::assertNoFullNumber($symbol, 'symbol');
+        return $symbol;
+    }
+
+    private function cleanHoldingName(mixed $value): ?string
+    {
+        $name = trim((string) $value);
+        if ($name === '') {
+            return null;
+        }
+        if (mb_strlen($name) > 80) {
+            throw ValidationException::withFields(['name' => 'Name must be 80 characters or fewer.']);
+        }
+        AccountNumberGuard::assertNoFullNumber($name, 'name');
+        return $name;
+    }
+
+    private function cleanQuantity(mixed $value): float
+    {
+        if (!is_numeric($value)) {
+            throw ValidationException::withFields(['quantity' => 'Enter the number of shares.']);
+        }
+        $quantity = (float) $value;
+        if ($quantity <= 0 || $quantity > 1000000000) {
+            throw ValidationException::withFields(['quantity' => 'Shares must be greater than zero.']);
+        }
+        return $quantity;
+    }
+
+    private function cleanMoney(mixed $value, string $field): float
+    {
+        if (is_string($value)) {
+            $value = trim($value);
+        }
+        if (!is_numeric($value)) {
+            throw ValidationException::withFields([$field => 'Enter a number.']);
+        }
+        $amount = (float) $value;
+        if ($amount < 0 || $amount > 1000000000000) {
+            throw ValidationException::withFields([$field => 'Amount must be zero or greater.']);
+        }
+        return $amount;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function hasNumber(array $input, string $key): bool
+    {
+        if (!array_key_exists($key, $input) || $input[$key] === null) {
+            return false;
+        }
+        return !(is_string($input[$key]) && trim($input[$key]) === '');
     }
 
     /**

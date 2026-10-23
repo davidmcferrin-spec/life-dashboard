@@ -56,6 +56,11 @@ $shellGroups = [
         ['Agents', '/settings/agents'],
         ['Playlists', '/spotify'],
     ],
+    'Finance' => [
+        ['Money', '/money'],
+        ['Investing', '/investing'],
+        ['Stocks', '/stocks'],
+    ],
     'Schedule' => [
         ['Todos', '/todos'],
         ['Clock', '/clock'],
@@ -75,6 +80,9 @@ $shellIcons = [
     '/reddit' => 'message-square',
     '/settings/agents' => 'sparkles',
     '/spotify' => 'music-2',
+    '/money' => 'wallet-cards',
+    '/investing' => 'trending-up',
+    '/stocks' => 'chart-column',
     '/todos' => 'list-checks',
     '/clock' => 'clock-3',
     '/pantry' => 'shopping-basket',
