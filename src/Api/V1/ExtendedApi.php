@@ -583,6 +583,7 @@ final class ExtendedApi
         ], 200, true));
 
         $this->registerPantry($r);
+        (new DigestApi($this->runner, $this->svc))->register($r);
     }
 
     private function registerPantry(Router $r): void

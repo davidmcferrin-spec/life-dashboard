@@ -17,6 +17,7 @@ final class DashboardNavTest extends TestCase
             . '.*<a href="\/brain" class="nav-link">Vault<\/a>\s*'
             . '<a href="\/spotify" class="nav-link">Playlists<\/a>\s*'
             . '<a href="\/pantry" class="nav-link">Pantry<\/a>\s*'
+            . '<a href="\/digest" class="nav-link">Grok Digest<\/a>\s*'
             . '<a href="\/settings" class="nav-link">Settings<\/a>/s',
             $html
         );

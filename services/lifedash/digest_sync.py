@@ -1,0 +1,347 @@
+"""Fetch enabled digest sources and store new or edited entries.
+
+One source that is blocked, empty, or unreadable is marked needs_attention.
+The rest of the run continues.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Callable
+
+from .config import REPO_ROOT
+from .digest_http import FetchResult, UrlRejected, fetch_with_backoff, urllib_transport
+from .digest_parse import content_hash, plan_changes, read_page, snapshot_text
+
+SEED_FLAG = "defaults_seeded_digest"
+RETENTION_KEY = "digest_snapshot_days"
+DEFAULT_SNAPSHOT_DAYS = 180
+Fetch = Callable[[str, str | None, str | None], FetchResult]
+
+
+def load_seeds() -> list[dict[str, str]]:
+    path = Path(__file__).with_name("digest_seeds.json")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        return []
+    seeds = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        product = str(row.get("product") or "")
+        label = str(row.get("label") or "")
+        url = str(row.get("url") or "")
+        if product and label and url:
+            seeds.append({"product": product, "label": label, "url": url})
+    return seeds
+
+
+def run_source(source: dict[str, Any], fetch: Fetch) -> dict[str, Any]:
+    """Decide the source row and entry inserts/updates. fetch raises nothing."""
+    url = str(source.get("url") or "")
+    try:
+        page = fetch(url, source.get("etag"), source.get("last_modified"))
+    except UrlRejected as exc:
+        page = FetchResult(error=str(exc))
+    except TimeoutError:
+        page = FetchResult(error="The request timed out.")
+    except OSError:
+        page = FetchResult(error="The host could not be reached.")
+    except Exception:
+        page = FetchResult(error="The fetch failed.")
+    if page.error and page.status == 0:
+        return _attention(source, page.error, page)
+    if page.status == 304:
+        return {
+            "status": "ok",
+            "error": None,
+            "parse_mode": source.get("parse_mode"),
+            "content_hash": source.get("content_hash"),
+            "etag": page.header("ETag") or source.get("etag"),
+            "last_modified": page.header("Last-Modified") or source.get("last_modified"),
+            "ops": [],
+        }
+
+    def fetch_feed(feed_url: str) -> dict[str, Any]:
+        try:
+            result = fetch(feed_url, None, None)
+        except Exception:
+            return {"error": "The feed could not be fetched.", "status": 0}
+        return {"status": result.status, "body": result.body, "content_type": result.content_type, "error": result.error}
+
+    parsed = read_page(page.status, page.body, page.content_type, url, source.get("content_hash"), fetch_feed)
+    existing = source.get("entries") if isinstance(source.get("entries"), dict) else {}
+    ops = plan_changes({str(key): str(value) for key, value in existing.items()}, parsed["entries"]) if parsed["status"] == "ok" else []
+    mode = parsed["parse_mode"] if parsed["parse_mode"] else source.get("parse_mode")
+    result: dict[str, Any] = {
+        "status": parsed["status"],
+        "error": parsed["error"],
+        "parse_mode": mode,
+        "content_hash": parsed["content_hash"],
+        "etag": page.header("ETag") or source.get("etag"),
+        "last_modified": page.header("Last-Modified") or source.get("last_modified"),
+        "ops": ops,
+    }
+    if parsed["status"] == "ok":
+        text = snapshot_text(parsed["entries"])
+        if text:
+            result["snapshot"] = text
+    return result
+
+
+def _attention(source: dict[str, Any], error: str, page: FetchResult) -> dict[str, Any]:
+    return {
+        "status": "needs_attention",
+        "error": error,
+        "parse_mode": source.get("parse_mode"),
+        "content_hash": source.get("content_hash"),
+        "etag": source.get("etag"),
+        "last_modified": source.get("last_modified"),
+        "ops": [],
+    }
+
+
+class DigestSync:
+    def __init__(self, conn: Any, fetch: Fetch | None = None, sleep: Callable[[float], None] | None = None) -> None:
+        self.conn = conn
+        self._transport = fetch
+        self._sleep = sleep or (lambda seconds: __import__("time").sleep(seconds))
+
+    def tick(self) -> int:
+        checked = 0
+        for user_id in self._users():
+            self._lock(user_id)
+            try:
+                self._seed(user_id)
+                for source_id in self._enabled(user_id):
+                    self._check_source(source_id)
+                    checked += 1
+                self._prune_snapshots(user_id)
+            finally:
+                self._unlock(user_id)
+        return checked
+
+    def check_user(self, user_id: int) -> int:
+        self._lock(user_id)
+        try:
+            self._seed(user_id)
+            ids = self._enabled(user_id)
+            for source_id in ids:
+                self._check_source(source_id)
+            self._prune_snapshots(user_id)
+            return len(ids)
+        finally:
+            self._unlock(user_id)
+
+    def _users(self) -> list[int]:
+        rows = self.conn.execute("SELECT id FROM users ORDER BY id").fetchall()
+        return [int(row[0]) for row in rows]
+
+    def _enabled(self, user_id: int) -> list[int]:
+        rows = self.conn.execute(
+            "SELECT id FROM digest_sources WHERE user_id = %s AND enabled = 1 ORDER BY id",
+            (user_id,),
+        ).fetchall()
+        return [int(row[0]) for row in rows]
+
+    def _seed(self, user_id: int) -> None:
+        row = self.conn.execute(
+            "SELECT pref_value FROM user_preferences WHERE user_id = %s AND pref_key = %s",
+            (user_id, SEED_FLAG),
+        ).fetchone()
+        if row is not None:
+            return
+        for seed in load_seeds():
+            self.conn.execute(
+                """
+                INSERT INTO digest_sources (user_id, product, label, url)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (user_id, url) DO NOTHING
+                """,
+                (user_id, seed["product"], seed["label"], seed["url"]),
+            )
+        self.conn.execute(
+            """
+            INSERT INTO user_preferences (user_id, pref_key, pref_value)
+            VALUES (%s, %s, '1')
+            ON CONFLICT (user_id, pref_key) DO NOTHING
+            """,
+            (user_id, SEED_FLAG),
+        )
+
+    def _check_source(self, source_id: int) -> None:
+        row = self.conn.execute(
+            """
+            SELECT id, user_id, label, url, etag, last_modified, parse_mode, content_hash
+            FROM digest_sources WHERE id = %s AND enabled = 1
+            """,
+            (source_id,),
+        ).fetchone()
+        if row is None:
+            return
+        entries = {
+            str(item[0]): str(item[1])
+            for item in self.conn.execute(
+                "SELECT entry_key, content_hash FROM digest_entries WHERE source_id = %s",
+                (source_id,),
+            ).fetchall()
+        }
+        source = {
+            "url": row[3],
+            "etag": row[4],
+            "last_modified": row[5],
+            "parse_mode": row[6],
+            "content_hash": row[7],
+            "entries": entries,
+        }
+        try:
+            result = run_source(source, self._fetch)
+        except Exception:
+            result = _attention(source, "The fetch failed.", FetchResult())
+        self._store(int(row[0]), int(row[1]), str(row[2]), result)
+
+    def _fetch(self, url: str, etag: str | None, modified: str | None) -> FetchResult:
+        if self._transport is not None:
+            return self._transport(url, etag, modified)
+        return fetch_with_backoff(urllib_transport, url, etag, modified, self._sleep)
+
+    def _store(self, source_id: int, user_id: int, label: str, result: dict[str, Any]) -> None:
+        for op in result["ops"]:
+            entry = op["entry"]
+            if op["op"] == "insert":
+                self.conn.execute(
+                    """
+                    INSERT INTO digest_entries
+                        (user_id, source_id, entry_key, title, published_on, url, summary, content_hash, version_text, version_sort)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_id, entry_key) DO NOTHING
+                    """,
+                    (
+                        user_id, source_id, entry["entry_key"], entry["title"], entry["published_on"],
+                        entry["url"], entry["summary"], entry["content_hash"],
+                        entry.get("version_text"), entry.get("version_sort"),
+                    ),
+                )
+            else:
+                self.conn.execute(
+                    """
+                    UPDATE digest_entries
+                    SET title = %s, published_on = %s, url = %s, summary = %s,
+                        content_hash = %s, version_text = %s, version_sort = %s,
+                        edited_at = (now() AT TIME ZONE 'UTC')
+                    WHERE source_id = %s AND entry_key = %s AND content_hash <> %s
+                    """,
+                    (
+                        entry["title"], entry["published_on"], entry["url"], entry["summary"],
+                        entry["content_hash"], entry.get("version_text"), entry.get("version_sort"),
+                        source_id, entry["entry_key"], entry["content_hash"],
+                    ),
+                )
+        snapshot = result.get("snapshot")
+        if isinstance(snapshot, str) and snapshot.strip():
+            self._save_snapshot(user_id, source_id, snapshot)
+        self.conn.execute(
+            """
+            UPDATE digest_sources
+            SET etag = %s, last_modified = %s, last_checked_at = (now() AT TIME ZONE 'UTC'),
+                status = %s, last_error = %s, parse_mode = %s, content_hash = %s
+            WHERE id = %s
+            """,
+            (
+                result.get("etag"), result.get("last_modified"), result["status"], result.get("error"),
+                result.get("parse_mode"), result.get("content_hash"), source_id,
+            ),
+        )
+        detail = result.get("error") or result["status"]
+        mode = result.get("parse_mode") or ""
+        self._note(f"{label}: {detail}" + (f" ({mode}, {len(result['ops'])} changes)" if result["status"] == "ok" else ""))
+
+    def _save_snapshot(self, user_id: int, source_id: int, text: str) -> None:
+        body = text[:200_000]
+        digest = content_hash(body)
+        latest = self.conn.execute(
+            "SELECT content_hash FROM digest_snapshots WHERE source_id = %s ORDER BY captured_on DESC, id DESC LIMIT 1",
+            (source_id,),
+        ).fetchone()
+        if latest is not None and str(latest[0]) == digest:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO digest_snapshots (user_id, source_id, captured_on, content_hash, body)
+            VALUES (%s, %s, CAST((now() AT TIME ZONE 'UTC') AS date), %s, %s)
+            ON CONFLICT (source_id, captured_on) DO UPDATE
+            SET content_hash = EXCLUDED.content_hash, body = EXCLUDED.body
+            WHERE digest_snapshots.content_hash <> EXCLUDED.content_hash
+            """,
+            (user_id, source_id, digest, body),
+        )
+
+    def _prune_snapshots(self, user_id: int) -> None:
+        self.conn.execute(
+            """
+            DELETE FROM digest_snapshots
+            WHERE user_id = %s
+              AND captured_on < (CAST((now() AT TIME ZONE 'UTC') AS date) - %s)
+            """,
+            (user_id, self._retention_days(user_id)),
+        )
+
+    def _retention_days(self, user_id: int) -> int:
+        row = self.conn.execute(
+            "SELECT pref_value FROM user_preferences WHERE user_id = %s AND pref_key = %s",
+            (user_id, RETENTION_KEY),
+        ).fetchone()
+        if row is None or not str(row[0]).isdigit():
+            return DEFAULT_SNAPSHOT_DAYS
+        days = int(row[0])
+        if days < 1 or days > 3650:
+            return DEFAULT_SNAPSHOT_DAYS
+        return days
+
+    def _lock(self, user_id: int) -> None:
+        self.conn.execute("SELECT pg_advisory_lock(81021, %s)", (user_id,))
+
+    def _unlock(self, user_id: int) -> None:
+        self.conn.execute("SELECT pg_advisory_unlock(81021, %s)", (user_id,))
+
+    def _note(self, message: str) -> None:
+        stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        line = f"[{stamp}] {message}"
+        sys.stderr.write(line + "\n")
+        path = REPO_ROOT / "storage" / "logs" / "digest.log"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+        except OSError:
+            return
+
+
+def main(argv: list[str] | None = None) -> None:
+    from .config import Config
+    from .db import connect
+
+    args = list(sys.argv[1:] if argv is None else argv)
+    command = args[0] if args else "tick"
+    conn = connect(Config.load(), application_name="lifedash-digest")
+    sync = DigestSync(conn)
+    try:
+        if command == "tick":
+            count = sync.tick()
+        elif command == "check":
+            if len(args) < 2 or not args[1].isdigit() or int(args[1]) < 1:
+                raise SystemExit(2)
+            count = sync.check_user(int(args[1]))
+        else:
+            raise SystemExit(2)
+    finally:
+        conn.close()
+    sync_note = f"checked {count} sources"
+    sys.stderr.write(sync_note + "\n")
+
+
+if __name__ == "__main__":
+    main()
