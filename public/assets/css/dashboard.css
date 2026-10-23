@@ -239,6 +239,10 @@ input[type="radio"] {
 
 .chrome {
     border-bottom: 1px solid var(--chrome-border);
+    box-sizing: border-box;
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
 }
 
 .brand {
@@ -253,6 +257,14 @@ input[type="radio"] {
     color: var(--text-muted);
     font-family: var(--font-mono);
     font-size: 0.75rem;
+    /* Phone bar: take the leftover width and wrap inside it.
+       min-width: 0 lets the cluster shrink instead of stretching the page. */
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
 }
 
 .clock-sync-warn {
@@ -1446,6 +1458,18 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
 
 @media (max-width: 700px) {
     .theme-switch button { padding: 0.25rem 0.32rem; }
+    .chrome > * {
+        min-width: 0;
+    }
+    .nav-meta {
+        column-gap: 0.5rem;
+        flex-basis: 0;
+        row-gap: 0.125rem;
+    }
+    .appearance-nav {
+        flex-wrap: nowrap;
+        min-width: 0;
+    }
 }
 
 /* Wide and ultrawide: header, search and clocks use the viewport. The widget

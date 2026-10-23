@@ -22,4 +22,20 @@ final class DashboardNavTest extends TestCase
             $html
         );
     }
+
+    public function testPhoneNavWrapsInsteadOfStretchingThePage(): void
+    {
+        $css = file_get_contents(ROOT_DIR . '/public/assets/css/dashboard.css');
+        self::assertIsString($css);
+        self::assertMatchesRegularExpression('/\.nav-meta\s*\{[^}]*flex-wrap:\s*wrap;[^}]*min-width:\s*0;/s', $css);
+
+        foreach (['pantry.php', 'news.php', 'reddit.php', 'todos.php'] as $view) {
+            $html = file_get_contents(VIEWS_DIR . '/' . $view);
+            self::assertIsString($html);
+            self::assertStringContainsString(
+                'class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0"',
+                $html
+            );
+        }
+    }
 }
