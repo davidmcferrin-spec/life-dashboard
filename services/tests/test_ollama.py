@@ -72,7 +72,7 @@ def test_assess_warns_only_on_real_problems():
         installed=True, systemd="active", api_ok=False, hosts=[], models=[],
         chat="llama3.2:3b", embed="nomic-embed-text", pull_state="pulling",
     )
-    assert pulling["status"] == "ok"
+    assert pulling["status"] == "pending"
     assert pulling["detail"] == "Pulling the default models."
 
     down = assess(
@@ -86,6 +86,7 @@ def test_assess_warns_only_on_real_problems():
         installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"],
         models=["nomic-embed-text"], chat="qwen2.5:7b", embed="nomic-embed-text", pull_state="ready",
     )
+    assert missing["status"] == "warn"
     assert missing["detail"] == "The default chat model is not installed."
 
     public = assess(
@@ -96,6 +97,63 @@ def test_assess_warns_only_on_real_problems():
     assert public["detail"] == "Ollama is listening outside this machine."
     assert listen_public("LISTEN 0 128 0.0.0.0:11434 0.0.0.0:*")
     assert not listen_public("LISTEN 0 128 127.0.0.1:11434 0.0.0.0:*")
+
+
+def test_assess_pending_while_models_are_downloading():
+    both = assess(
+        installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"],
+        models=[], chat="llama3.2:3b", embed="nomic-embed-text", pull_state="",
+        downloading=True,
+    )
+    assert both["status"] == "pending"
+    assert both["detail"] == "The default chat model and the embedding model are still downloading."
+
+    embed = assess(
+        installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"],
+        models=["llama3.2:3b"], chat="llama3.2:3b", embed="nomic-embed-text", pull_state="ready",
+        downloading=True,
+    )
+    assert embed["status"] == "pending"
+    assert embed["detail"] == "The embedding model is still downloading."
+
+    named = assess(
+        installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"], models=[],
+        chat="llama3.2:3b", embed="nomic-embed-text", pull_state="pulling",
+        pull_detail="Pulling llama3.2:3b.",
+    )
+    assert named == {
+        "name": "ollama",
+        "status": "pending",
+        "detail": "Pulling llama3.2:3b.",
+    }
+
+
+def test_assess_untagged_model_matches_the_latest_tag():
+    row = assess(
+        installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"],
+        models=["llama3.2:3b", "nomic-embed-text:latest"],
+        chat="llama3.2:3b", embed="nomic-embed-text", pull_state="ready",
+        downloading=True,
+    )
+    assert row["status"] == "ok"
+    assert row["detail"] == "Ollama API answered."
+
+
+def test_assess_failed_pull_and_public_bind_stay_severe():
+    failed = assess(
+        installed=True, systemd="active", api_ok=True, hosts=["127.0.0.1"], models=[],
+        chat="llama3.2:3b", embed="nomic-embed-text", pull_state="failed",
+        pull_detail="timed out", downloading=True,
+    )
+    assert failed["status"] == "warn"
+    assert failed["detail"] == "timed out"
+
+    public = assess(
+        installed=True, systemd="active", api_ok=False, hosts=["0.0.0.0"], models=[],
+        chat="", embed="", pull_state="pulling", downloading=True,
+    )
+    assert public["status"] == "fail"
+    assert public["detail"] == "Ollama is listening outside this machine."
 
 
 def test_defaults_skip_models_that_are_already_installed(monkeypatch, tmp_path):

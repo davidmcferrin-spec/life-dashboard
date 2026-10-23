@@ -1,8 +1,9 @@
 """``lifedash-healthcheck`` — one-shot readiness check for deploys and monitoring.
 
 Checks: config loads · PostgreSQL reachable · session time zone is UTC ·
-no pending migrations · free disk space · lifedash-mcp · lifedash-push.
-Prints one JSON object; exit code 0 = ok, 1 = warn (degraded but serving), 2 = fail.
+no pending migrations · free disk space · lifedash-mcp · lifedash-push · ollama.
+Prints one JSON object. Exit code 0 = ok or pending (a model download is still
+running), 1 = warn (degraded but serving), 2 = fail.
 
 CheckMK can run it as a local check via ``--checkmk``.
 """
@@ -21,8 +22,10 @@ from urllib.request import urlopen
 from . import __version__
 from .config import REPO_ROOT, Config, ConfigError
 
-OK, WARN, FAIL = "ok", "warn", "fail"
-_RANK = {OK: 0, WARN: 1, FAIL: 2}
+OK, PENDING, WARN, FAIL = "ok", "pending", "warn", "fail"
+# Pending sorts above ok so the report names it, and below warn so a real problem still wins.
+_RANK = {OK: 0, PENDING: 1, WARN: 2, FAIL: 3}
+_EXIT = {OK: 0, PENDING: 0, WARN: 1, FAIL: 2}
 _DOWN_SYSTEMD = {"inactive", "failed", "deactivating", "activating"}
 
 
@@ -205,7 +208,7 @@ def check_push(port: int = 8766) -> dict:
 
 
 def check_ollama() -> dict:
-    """Quiet when Ollama was never installed. Warns when the service is up and unhealthy."""
+    """Quiet when Ollama was never installed. Pending while a model is still downloading."""
     import json
     import shutil
     from pathlib import Path
@@ -221,8 +224,11 @@ def check_ollama() -> dict:
             body = json.loads(res.read().decode("utf-8") or "{}")
         api_ok = True
         for item in body.get("models") or []:
-            if isinstance(item, dict) and isinstance(item.get("name"), str):
-                models.append(item["name"])
+            if not isinstance(item, dict):
+                continue
+            raw = item.get("name") if isinstance(item.get("name"), str) else item.get("model")
+            if isinstance(raw, str) and raw:
+                models.append(raw)
     except (OSError, TimeoutError, json.JSONDecodeError, ValueError):
         api_ok = False
     status = _ollama_state("status.json")
@@ -243,7 +249,13 @@ def check_ollama() -> dict:
         embed=embed if api_ok else "",
         pull_state=str(status.get("state") or ""),
         pull_detail=str(status.get("detail") or ""),
+        downloading=_ollama_pull_running(),
     )
+
+
+def _ollama_pull_running() -> bool:
+    # Type=oneshot stays "activating" until the pull process exits.
+    return systemd_is_active("lifedash-ollama-models.service") in {"active", "activating"}
 
 
 def _ollama_state(name: str) -> dict:
@@ -303,7 +315,7 @@ def run(cfg: Config | None = None) -> dict:
 
 def to_checkmk(result: dict) -> str:
     """CheckMK local-check line: <state> <service> <perfdata> <text>."""
-    state = _RANK[result["status"]]
+    state = _EXIT[result["status"]]
     text = "; ".join(f"{c['name']}={c['status']}" + (f" ({c['detail']})" if c["status"] != OK else "") for c in result["checks"])
     return f"{state} lifedash - {text}"
 
@@ -315,7 +327,7 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run()
     print(to_checkmk(result) if args.checkmk else json.dumps(result, indent=2))
-    return 0 if args.checkmk else _RANK[result["status"]]
+    return 0 if args.checkmk else _EXIT[result["status"]]
 
 
 def _worst(statuses: Any) -> str:

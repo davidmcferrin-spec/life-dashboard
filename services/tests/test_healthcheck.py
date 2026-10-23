@@ -45,6 +45,110 @@ def _quiet_services(monkeypatch, rows=None):
     )
 
 
+def test_pending_does_not_fail_and_does_not_hide_a_warning(monkeypatch):
+    monkeypatch.setattr(healthcheck, "check_database", lambda c: [{"name": "database", "status": "ok", "detail": ""}])
+    monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "ok", "detail": ""})
+    _quiet_services(
+        monkeypatch,
+        [
+            {"name": "lifedash-mcp", "status": "ok", "detail": ""},
+            {"name": "lifedash-push", "status": "ok", "detail": ""},
+            {"name": "ollama", "status": "pending", "detail": "Pulling the default models."},
+        ],
+    )
+    result = healthcheck.run(cfg(DB_DRIVER="pgsql"))
+    assert result["status"] == "pending"
+    assert healthcheck.to_checkmk(result).startswith("0 lifedash - ")
+    assert "ollama=pending" in healthcheck.to_checkmk(result)
+
+    monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "warn", "detail": "12% free"})
+    warned = healthcheck.run(cfg(DB_DRIVER="pgsql"))
+    assert warned["status"] == "warn"
+    assert healthcheck.to_checkmk(warned).startswith("1 lifedash - ")
+
+
+def test_process_exit_matches_warn_and_fail(monkeypatch):
+    holder = {"status": "pending"}
+    monkeypatch.setattr(
+        healthcheck,
+        "run",
+        lambda: {"status": holder["status"], "checks": [{"name": "ollama", "status": holder["status"], "detail": ""}]},
+    )
+    assert healthcheck.main([]) == 0
+    holder["status"] = "ok"
+    assert healthcheck.main([]) == 0
+    holder["status"] = "warn"
+    assert healthcheck.main([]) == 1
+    holder["status"] = "fail"
+    assert healthcheck.main([]) == 2
+
+
+def _stub_ollama(monkeypatch, *, models, states, units):
+    import shutil
+
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/local/bin/ollama" if name == "ollama" else None)
+
+    class Body:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return json.dumps({"models": [{"name": name} for name in models]}).encode()
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *args, **kwargs: Body())
+    monkeypatch.setattr(healthcheck, "listen_hosts", lambda port: ["127.0.0.1"])
+    monkeypatch.setattr(healthcheck, "_ollama_state", lambda name: states.get(name, {}))
+    monkeypatch.setattr(healthcheck, "systemd_is_active", lambda unit: units.get(unit, "inactive"))
+
+
+def test_ollama_models_still_downloading_are_pending(monkeypatch):
+    _stub_ollama(
+        monkeypatch,
+        models=[],
+        states={
+            "status.json": {"state": "", "chat_model": "llama3.2:3b", "embed_model": "nomic-embed-text"},
+            "plan.json": {},
+        },
+        units={"ollama.service": "active", "lifedash-ollama-models.service": "activating"},
+    )
+    row = healthcheck.check_ollama()
+    assert row["status"] == "pending"
+    assert row["detail"] == "The default chat model and the embedding model are still downloading."
+
+
+def test_ollama_latest_tag_counts_as_the_embed_model(monkeypatch):
+    _stub_ollama(
+        monkeypatch,
+        models=["llama3.2:3b", "nomic-embed-text:latest"],
+        states={
+            "status.json": {"state": "ready", "chat_model": "llama3.2:3b", "embed_model": "nomic-embed-text"},
+            "plan.json": {},
+        },
+        units={"ollama.service": "active", "lifedash-ollama-models.service": "inactive"},
+    )
+    row = healthcheck.check_ollama()
+    assert row["status"] == "ok"
+    assert row["detail"] == "Ollama API answered."
+
+
+def test_ollama_missing_model_stays_a_warning_after_the_pull(monkeypatch):
+    _stub_ollama(
+        monkeypatch,
+        models=["nomic-embed-text:latest"],
+        states={
+            "status.json": {"state": "ready", "chat_model": "qwen2.5:7b", "embed_model": "nomic-embed-text"},
+            "plan.json": {},
+        },
+        units={"ollama.service": "active", "lifedash-ollama-models.service": "inactive"},
+    )
+    row = healthcheck.check_ollama()
+    assert row["status"] == "warn"
+    assert row["detail"] == "The default chat model is not installed."
+
+
 def test_overall_status_is_worst_check(monkeypatch):
     monkeypatch.setattr(healthcheck, "check_database", lambda c: [{"name": "database", "status": "ok", "detail": ""}])
     monkeypatch.setattr(healthcheck, "check_disk", lambda p: {"name": "disk", "status": "warn", "detail": "12% free"})
