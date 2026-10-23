@@ -180,25 +180,33 @@ def parse_html(html: str, page_url: str) -> list[dict[str, Any]]:
     require_id = sum(1 for event in headings if event[2] == level and event[4] and not event[5]) >= 2
     entries: list[dict[str, Any]] = []
     current: dict[str, Any] | None = None
-    pending_time: str | None = None
+    # A date just before a heading belongs to that heading. A date after the
+    # heading's text belongs to the open entry. Holding it avoids giving the
+    # previous card the next card's date.
+    held_time: str | None = None
     now = datetime.now(timezone.utc)
     year = now.year
     month_value: int | None = None
     pending_month: str | None = None
+
+    def hold(value: str) -> None:
+        nonlocal held_time
+        held_time = value
+
+    def claim_held() -> None:
+        nonlocal held_time
+        if held_time and current is not None:
+            current["times"].append(held_time)
+            held_time = None
+
     for event in events:
         if event[0] == "time" and event[2]:
-            pending_time = str(event[2])
-            if current is not None:
-                current["times"].append(pending_time)
+            hold(str(event[2]))
             continue
         if event[0] == "h":
             month = _month_heading(str(event[3]))
             if month is not None:
-                if month_value is None and month > now.month:
-                    year -= 1
-                elif month_value is not None and month > month_value:
-                    year -= 1
-                month_value = month
+                year, month_value = _note_month(month, year, month_value, now)
                 pending_month = f"{year:04d}-{month:02d}-01"
         if event[0] == "h" and _starts_entry(event, level, require_id):
             if current is not None:
@@ -207,19 +215,36 @@ def parse_html(html: str, page_url: str) -> list[dict[str, Any]]:
                 "id": event[4],
                 "title": event[3],
                 "parts": [],
-                "times": [pending_time] if pending_time else [],
+                "times": [held_time] if held_time else [],
                 "href": event[6],
                 "month": pending_month,
             }
-            pending_time = None
+            held_time = None
             continue
+        if event[0] == "text" and event[2]:
+            if held_time and _version_badge(str(event[2])):
+                continue
+            if normalize_text(str(event[2])).lower() in {"read more", "company", "product"}:
+                continue
+            labeled = _label_date(str(event[2]), year, month_value, now)
+            if labeled is not None:
+                year, month_value = labeled[1], labeled[2]
+                if current is not None and current["parts"]:
+                    current["times"].append(labeled[0])
+                else:
+                    hold(labeled[0])
+                continue
         if current is None:
             continue
         if event[0] == "text" and event[2]:
+            claim_held()
             current["parts"].append(event[2])
         elif event[0] == "h" and event[3] and not _generic_title(str(event[3])) and _month_heading(str(event[3])) is None:
+            claim_held()
             current["parts"].append(event[3])
     if current is not None:
+        if current["parts"]:
+            claim_held()
         entries.append(_close(current, page_url))
     return _finish(entries)
 
@@ -392,6 +417,7 @@ def _collect(html: str) -> list[tuple[Any, ...]]:
                 return
             if self.time is not None:
                 self.time_buf += data
+                return
             text = normalize_text(data)
             if text:
                 events.append(("text", self.main > 0, text))
@@ -473,6 +499,108 @@ def _month_heading(title: str) -> int | None:
     return _MONTHS.get(normalize_text(title).lower())
 
 
+def _version_badge(value: str) -> bool:
+    text = normalize_text(value)
+    if text.lower() in {"v", "version"}:
+        return True
+    return re.fullmatch(r"v?\s*\d{1,4}(?:\.\d{1,4}){1,3}", text, re.I) is not None
+
+
+def _note_month(month: int, year: int, month_value: int | None, now: datetime) -> tuple[int, int]:
+    if month_value is None and month > now.month:
+        year -= 1
+    elif month_value is not None and month > month_value:
+        year -= 1
+    return year, month
+
+
+_LABEL_DATE = re.compile(
+    r"^(?:(?P<mon>jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*(?:\s+(?P<day>\d{1,2}))?(?:,?\s+(?P<year>\d{4}))?|(?P<iso>\d{4}-\d{2}-\d{2}))$",
+    re.I,
+)
+_TRAILING_DATE = re.compile(
+    r"(?:^|(?<=[.!?])\s+|\s)(?P<token>(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*(?:\s+\d{1,2})?(?:,?\s+\d{4})?|\d{4}-\d{2}-\d{2})\s*$",
+    re.I,
+)
+
+
+def _label_date(
+    value: str,
+    year: int,
+    month_value: int | None,
+    now: datetime,
+) -> tuple[str, int, int | None] | None:
+    """A date that is the whole text node. Returns the ISO day and the year cursor."""
+    text = normalize_text(value).strip(" .")
+    match = _LABEL_DATE.fullmatch(text)
+    if match is None:
+        return None
+    if match.group("iso"):
+        found = _date_from_text(match.group("iso"))
+        if found is None:
+            return None
+        return found, year, month_value
+    month = _MONTHS.get(match.group("mon").lower()[:3])
+    if month is None:
+        return None
+    day = int(match.group("day") or "1")
+    if match.group("year"):
+        found = _ymd(int(match.group("year")), month, day)
+        if found is None:
+            return None
+        return found, year, month_value
+    year, month_value = _note_month(month, year, month_value, now)
+    found = _ymd(year, month, day)
+    if found is None:
+        return None
+    return found, year, month_value
+
+
+def peel_trailing_date(text: str, today: datetime | None = None) -> tuple[str, str | None, str]:
+    """Drop a date glued onto the end of a note. Returns cleaned text, ISO day, token."""
+    raw = normalize_text(text)
+    match = _TRAILING_DATE.search(raw)
+    if match is None:
+        return raw, None, ""
+    token = match.group("token")
+    if re.fullmatch(r"[A-Za-z]+", token) and match.start() != 0 and raw[match.start() - 1] not in ".!?":
+        return raw, None, ""
+    now = today or datetime.now(timezone.utc)
+    labeled = _label_date(token, now.year, None, now)
+    if labeled is None:
+        return raw, None, ""
+    cleaned = normalize_text(raw[: match.start()])
+    if cleaned.lower() in {"product", "company", "read more", "read more company"}:
+        cleaned = ""
+    return cleaned, labeled[0], token
+
+
+def date_phrases(iso: str) -> list[str]:
+    year_s, month_s, day_s = iso.split("-")
+    month = int(month_s)
+    day = int(day_s)
+    year = int(year_s)
+    phrases = [iso]
+    for name, number in _MONTHS.items():
+        if number != month:
+            continue
+        label = name.title()
+        phrases.append(f"{label} {day}, {year}")
+        phrases.append(f"{label} {day} {year}")
+    return phrases
+
+
+def _prefer_date(existing: str | None, found: str | None) -> str | None:
+    """A day-1 month bucket yields to a real day in that same month."""
+    if not _valid_date(found):
+        return existing if _valid_date(existing) else None
+    if not _valid_date(existing):
+        return found
+    if existing is not None and found is not None and existing.endswith("-01") and found[:7] == existing[:7] and not found.endswith("-01"):
+        return found
+    return existing
+
+
 def _mostly_months(titles: list[str]) -> bool:
     if len(titles) < 2:
         return False
@@ -503,7 +631,9 @@ def _close(current: dict[str, Any], page_url: str) -> dict[str, Any]:
 def _entry(key: str, title: str, published: str | None, url: str, summary: str) -> dict[str, Any]:
     title = normalize_text(title)[:300] or "Untitled"
     summary = normalize_text(summary)[:SUMMARY_MAX]
+    summary, glued, _token = peel_trailing_date(summary)
     published = published if _valid_date(published) else None
+    published = _prefer_date(published, glued)
     digest = content_hash(title + "\n" + (published or "") + "\n" + summary)
     found = version_of(title)
     return {

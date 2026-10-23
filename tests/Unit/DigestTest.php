@@ -7,6 +7,7 @@ namespace Dashboard\Tests\Unit;
 use Dashboard\Api\V1\Scope;
 use Dashboard\Digest\DigestBrief;
 use Dashboard\Digest\DigestCatalog;
+use Dashboard\Digest\DigestDates;
 use Dashboard\Digest\DigestUrl;
 use Dashboard\Settings\ServiceControl;
 use Dashboard\Support\ValidationException;
@@ -78,7 +79,64 @@ final class DigestTest extends TestCase
         self::assertStringContainsString('One feed of Cursor, Grok Bot, Grok, and Grok Build release notes.', $html);
         self::assertStringContainsString('id="digest-group"', $html);
         self::assertStringContainsString('id="digest-more"', $html);
+        self::assertStringContainsString('ld-grid', $html);
+        self::assertStringContainsString('ld-cols-capped', $html);
         self::assertDoesNotMatchRegularExpression('/max-width\s*:/', $html);
+        $dash = file_get_contents(VIEWS_DIR . '/dashboard.php');
+        self::assertIsString($dash);
+        self::assertStringContainsString('class="dash-main mx-auto py-6 space-y-6"', $dash);
+        self::assertStringContainsString('ld-grid', $dash);
+        self::assertStringContainsString('ld-cols-capped', $dash);
+        $css = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/lifedash.css');
+        self::assertIsString($css);
+        self::assertStringContainsString('.ld-grid.ld-cols-capped', $css);
+        self::assertStringContainsString('max-width: 1600px', $css);
+        self::assertStringContainsString('max-width: 2400px', $css);
+        self::assertStringContainsString('max-width: 3200px', $css);
+        self::assertStringContainsString('.ld-digest-date.is-found', $css);
+        $js = file_get_contents(dirname(__DIR__, 2) . '/public/assets/js/digest.js');
+        self::assertIsString($js);
+        self::assertStringContainsString("item.date_source === 'found'", $js);
+        self::assertStringContainsString('is-found', $js);
+        self::assertStringContainsString('Found ', $js);
+    }
+
+    public function testPeelPullsATrailingDateAndLeavesADateInsideTheSentence(): void
+    {
+        $peeled = DigestDates::peel('We are releasing the model Grok-1. Mar 17, 2024');
+        self::assertSame('We are releasing the model Grok-1.', $peeled['text']);
+        self::assertSame('2024-03-17', $peeled['published_on']);
+        self::assertSame('Mar 17, 2024', $peeled['token']);
+
+        $crumb = DigestDates::peel('Product Oct 12, 2026');
+        self::assertSame('', $crumb['text']);
+        self::assertSame('2026-10-12', $crumb['published_on']);
+
+        $kept = 'Requests continue on October 2, 2026. The line stays.';
+        $inside = DigestDates::peel($kept);
+        self::assertSame($kept, $inside['text']);
+        self::assertNull($inside['published_on']);
+
+        $fixed = DigestDates::repair(
+            'Open Release of Grok-1',
+            null,
+            'We are releasing the model Grok-1. Mar 17, 2024',
+            'We are releasing the model Grok-1. March 17, 2024',
+            'ollama'
+        );
+        self::assertNotNull($fixed);
+        self::assertSame('We are releasing the model Grok-1.', $fixed['summary']);
+        self::assertSame('2024-03-17', $fixed['published_on']);
+        self::assertSame('excerpt', $fixed['brief_kind']);
+        self::assertSame('We are releasing the model Grok-1.', $fixed['brief']);
+        self::assertSame('02cffed9d1a3f454f1234d663139f42ec7bdf13a2fa9e1cdef58794b28b82aba', $fixed['content_hash']);
+        self::assertNull(DigestDates::repair(
+            'Open Release of Grok-1',
+            '2024-03-17',
+            'We are releasing the model Grok-1.',
+            'We are releasing the model Grok-1.',
+            'excerpt'
+        ));
     }
 
     public function testDashboardLinksDigestWithTheOtherModules(): void

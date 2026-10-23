@@ -48,6 +48,7 @@ final class DigestTest extends PgsqlTestCase
         self::assertSame(1, $feed['new_count']);
         self::assertTrue($feed['items'][0]['is_new']);
         self::assertSame('North Harbor Lights', $feed['items'][0]['title']);
+        self::assertSame('published', $feed['items'][0]['date_source']);
 
         $digest->markRead($userId);
         $after = $digest->items($userId, ['unread' => true]);
@@ -208,6 +209,63 @@ final class DigestTest extends PgsqlTestCase
             [$userId, $botId]
         );
         self::assertSame([$today], array_map(static fn (array $row): string => (string) $row['captured_on'], $left));
+    }
+
+    public function testStoredDateIsPeeledWithoutMarkingTheRowEdited(): void
+    {
+        $this->migrate();
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)',
+            ['digest3', 'digest3@example.com', 'h', 1]
+        );
+        $userId = (int) $this->db->lastInsertId();
+        $digest = new DigestService($this->db);
+        $digest->ensureSeeded($userId);
+        $sourceId = $this->sourceId($userId, 'grok');
+        $glued = 'We are releasing the model Grok-1. Mar 17, 2024';
+        $this->db->execute(
+            'INSERT INTO digest_entries (user_id, source_id, entry_key, title, url, summary, brief, brief_kind, content_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $userId, $sourceId, 'sample-1', 'Open Release of Grok-1', 'https://example.com/sample-1',
+                $glued, $glued, 'ollama', str_repeat('c', 64),
+            ]
+        );
+        $feed = $digest->items($userId, ['q' => 'Grok-1']);
+        self::assertSame('2024-03-17', $feed['items'][0]['published_on']);
+        self::assertSame('published', $feed['items'][0]['date_source']);
+        self::assertSame('We are releasing the model Grok-1.', $feed['items'][0]['body']);
+        self::assertSame('We are releasing the model Grok-1.', $feed['items'][0]['summary']);
+        self::assertStringNotContainsString('Mar 17', $feed['items'][0]['summary']);
+        $row = $this->db->fetchOne(
+            'SELECT published_on, summary, brief, brief_kind, content_hash, edited_at FROM digest_entries WHERE user_id = ? AND entry_key = ?',
+            [$userId, 'sample-1']
+        );
+        self::assertNotNull($row);
+        self::assertNull($row['edited_at']);
+        self::assertSame('excerpt', $row['brief_kind']);
+        self::assertSame('02cffed9d1a3f454f1234d663139f42ec7bdf13a2fa9e1cdef58794b28b82aba', $row['content_hash']);
+        $again = $digest->items($userId, ['q' => 'Grok-1']);
+        self::assertSame($feed['items'][0]['body'], $again['items'][0]['body']);
+        self::assertSame('2024-03-17', $again['items'][0]['published_on']);
+        $edited = $this->db->fetchScalar(
+            'SELECT edited_at FROM digest_entries WHERE user_id = ? AND entry_key = ?',
+            [$userId, 'sample-1']
+        );
+        self::assertNull($edited);
+
+        $this->db->execute(
+            'INSERT INTO digest_entries (user_id, source_id, entry_key, title, url, summary, content_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [
+                $userId, $sourceId, 'undated', 'Harbor sketch', 'https://example.com/undated',
+                'Sample Ensemble', str_repeat('d', 64),
+            ]
+        );
+        $found = $digest->items($userId, ['q' => 'sketch']);
+        self::assertNull($found['items'][0]['published_on']);
+        self::assertSame('found', $found['items'][0]['date_source']);
+        self::assertNotNull($found['items'][0]['day']);
     }
 
     private function sourceId(int $userId, string $product): int

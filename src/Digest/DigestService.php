@@ -45,6 +45,7 @@ final class DigestService
     public function items(int $userId, array $filter = []): array
     {
         $this->ensureSeeded($userId);
+        $this->repairStored($userId);
         $product = $this->productFilter($filter['product'] ?? null);
         $since = $this->sinceFilter($filter['since'] ?? null);
         $unread = !empty($filter['unread']);
@@ -231,6 +232,45 @@ final class DigestService
         );
     }
 
+    /** Pull a date glued onto a stored note. A date-only cleanup leaves edited_at alone. */
+    private function repairStored(int $userId): void
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT id, title, published_on, summary, brief, brief_kind, content_hash
+             FROM digest_entries WHERE user_id = ?',
+            [$userId]
+        );
+        foreach ($rows as $row) {
+            $published = $row['published_on'] !== null && (string) $row['published_on'] !== ''
+                ? substr((string) $row['published_on'], 0, 10)
+                : null;
+            $fixed = DigestDates::repair(
+                (string) ($row['title'] ?? ''),
+                $published,
+                (string) ($row['summary'] ?? ''),
+                (string) ($row['brief'] ?? ''),
+                (string) ($row['brief_kind'] ?? ''),
+            );
+            if ($fixed === null) {
+                continue;
+            }
+            $this->db->execute(
+                'UPDATE digest_entries
+                 SET summary = ?, published_on = ?, brief = ?, brief_kind = ?, content_hash = ?
+                 WHERE id = ? AND content_hash = ?',
+                [
+                    $fixed['summary'],
+                    $fixed['published_on'],
+                    $fixed['brief'],
+                    $fixed['brief_kind'],
+                    $fixed['content_hash'],
+                    (int) $row['id'],
+                    (string) $row['content_hash'],
+                ]
+            );
+        }
+    }
+
     private function newCount(int $userId, ?string $product = null): int
     {
         $cursor = $this->cursor($userId);
@@ -269,10 +309,14 @@ final class DigestService
         $isNew = $cursor === null || $first > $cursor || ($edited !== null && $edited > $cursor);
         $body = (string) $row['summary'];
         $stored = trim((string) ($row['brief'] ?? ''));
+        $published = $row['published_on'] !== null && (string) $row['published_on'] !== ''
+            ? substr((string) $row['published_on'], 0, 10)
+            : null;
         return [
             'id'            => (int) $row['id'],
             'title'         => (string) $row['title'],
-            'published_on'  => $row['published_on'] !== null ? (string) $row['published_on'] : null,
+            'published_on'  => $published,
+            'date_source'   => $published !== null ? 'published' : 'found',
             'day'           => $this->itemDay($row),
             'url'           => (string) $row['url'],
             'summary'       => $stored !== '' ? $stored : DigestBrief::excerpt($body),
@@ -298,6 +342,7 @@ final class DigestService
     public function compare(int $userId, array $filter): array
     {
         $this->ensureSeeded($userId);
+        $this->repairStored($userId);
         $hasDate = $this->filled($filter['from_date'] ?? null) || $this->filled($filter['to_date'] ?? null);
         $hasVersion = $this->filled($filter['from_version'] ?? null) || $this->filled($filter['to_version'] ?? null);
         if ($hasDate && $hasVersion) {

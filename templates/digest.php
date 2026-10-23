@@ -5,9 +5,13 @@
  * @var array<string, mixed> $user
  */
 
+use Dashboard\DB\Database;
+use Dashboard\Settings\PreferenceService;
+
 $pageTitle = 'Grok Digest';
 $extraStyles = ['/assets/css/lifedash.css'];
 $digestTz = \Dashboard\Config::get('APP_TIMEZONE', 'America/Chicago');
+$gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidth((int) $user['id']);
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
@@ -21,6 +25,7 @@ $digestTz = \Dashboard\Config::get('APP_TIMEZONE', 'America/Chicago');
 </nav>
 
 <main class="dash-main mx-auto py-6 space-y-6" id="digest-app" data-tz="<?= e($digestTz) ?>">
+<div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>">
     <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
             <h1 class="text-primary text-xl font-medium">Grok Digest</h1>
@@ -105,6 +110,7 @@ $digestTz = \Dashboard\Config::get('APP_TIMEZONE', 'America/Chicago');
             <button type="submit" class="btn">Add source</button>
         </form>
     </details>
+</div>
 </main>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>

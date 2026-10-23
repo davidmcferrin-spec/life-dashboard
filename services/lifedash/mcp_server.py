@@ -1772,7 +1772,7 @@ TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
-        "description": "Changelog entries, newest first. Each item has summary (one or two sentences) and body (the longer note). Filter by product (cursor_ide, grok_bot, grok, grok_build), since (YYYY-MM-DD), unread true, q, limit, or offset.",
+        "description": "Changelog entries, newest first. Each item has summary (one or two sentences), body (the longer note), published_on (the release date), and date_source (published when the source gave a release date, found when the row only records the day it was first stored). Filter by product (cursor_ide, grok_bot, grok, grok_build), since (YYYY-MM-DD), unread true, q, limit, or offset.",
         "inputSchema": {
             "type": "object",
             "properties": {

@@ -129,7 +129,9 @@
     function card(item) {
         const id = String(item.id);
         const open = openIds.has(id);
-        const date = formatDay(item.day || item.published_on || '');
+        const dateIso = item.day || item.published_on || '';
+        const date = formatDay(dateIso);
+        const found = item.date_source === 'found';
         const badges = [
             item.is_new ? '<span class="ld-digest-badge">Unread</span>' : '',
             item.edited ? '<span class="ld-digest-badge">Edited</span>' : '',
@@ -147,7 +149,7 @@
                 ${source}
                 ${version}
                 ${badges}
-                ${date ? `<time class="ld-digest-date" datetime="${esc(item.day || item.published_on || '')}">${esc(date)}</time>` : ''}
+                ${date ? `<time class="ld-digest-date${found ? ' is-found' : ''}" datetime="${esc(dateIso)}">${found ? 'Found ' : ''}${esc(date)}</time>` : ''}
             </div>
             <h3 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
             ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
