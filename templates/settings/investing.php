@@ -5,60 +5,113 @@
  * @var array<string, mixed> $user
  */
 
-$pageTitle   = 'Investing';
-$active      = 'investing';
-$extraStyles = ['/assets/css/lifedash.css'];
+$pageTitle = 'Investing';
+$active = 'investing';
+$settingsWide = true;
+$settingsFooterNote = '';
 
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <header class="mb-4">
-                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Investing'; require __DIR__ . '/../partials/page-heading.php'; ?>
-                <p class="text-muted text-sm mt-1">
-                    Positions come from a Robinhood activity CSV and the public Polymarket data API.
-                    This dashboard does not place trades.
-                </p>
-            </header>
+            <div class="fin-page">
+                <template id="fin-icon-wallet"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/wallet-cards.svg'); ?></template>
 
-            <section class="surface p-4 mb-4">
-                <h2 class="section-title">Robinhood activity CSV</h2>
-                <input id="invest-csv" type="file" accept=".csv,text/csv" class="text-sm mt-2">
-                <p id="invest-import-status" class="ld-meta mt-2"></p>
-            </section>
-
-            <p class="mb-4">
-                <button type="button" id="invest-wallet-open" class="btn-primary">Polymarket wallet</button>
-            </p>
-
-            <div id="invest-wallet-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="invest-wallet-title">
-                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
-                <div class="app-modal-panel surface">
-                    <div class="flex items-center justify-between gap-2 mb-3">
-                        <h2 id="invest-wallet-title" class="section-title text-sm">Polymarket wallet</h2>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                <header class="fin-head">
+                    <div>
+                        <p class="fin-eyebrow">Financial intelligence</p>
+                        <h1 class="fin-title">Investing</h1>
+                        <p class="fin-lead">Positions come from a Robinhood activity CSV and the public Polymarket data API. This dashboard does not place trades.</p>
                     </div>
-                    <form id="invest-wallet" class="space-y-3">
-                        <label class="block ld-field">
-                            <span>0x address</span>
-                            <input name="address" class="input w-full" placeholder="0x…" maxlength="42" autocomplete="off">
-                        </label>
-                        <p id="invest-wallet-error" class="ld-field-error hidden" role="alert"></p>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="submit" class="btn-primary">Save</button>
-                            <button type="button" class="btn" data-close>Cancel</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+                </header>
 
-            <section class="surface p-4">
-                <div class="flex items-center justify-between gap-2">
-                    <h2 class="section-title">Scorecard</h2>
-                    <button type="button" id="invest-refresh" class="btn text-xs">Refresh public positions</button>
+                <div id="invest-wallet-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="invest-wallet-title">
+                    <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                    <div class="app-modal-panel surface">
+                        <div class="fin-modal-head">
+                            <h2 id="invest-wallet-title" class="fin-modal-title">Polymarket wallet</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/x.svg'); ?></button>
+                        </div>
+                        <form id="invest-wallet" class="space-y-3">
+                            <label class="block ld-field">
+                                <span>0x address</span>
+                                <input name="address" class="input w-full" placeholder="0x…" maxlength="42" autocomplete="off">
+                            </label>
+                            <p id="invest-wallet-error" class="ld-field-error hidden" role="alert"></p>
+                            <div class="fin-modal-actions">
+                                <button type="submit" class="btn-primary">Save</button>
+                                <button type="button" class="btn" data-close>Cancel</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
-                <p id="invest-wallet-status" class="ld-meta mt-2"></p>
-                <div id="invest-card" class="mt-2"></div>
-            </section>
+
+                <div id="invest-stats" class="fin-stats" aria-live="polite"></div>
+
+                <div class="fin-grid">
+                    <section class="fin-card" aria-labelledby="invest-chart-title">
+                        <header class="fin-card-head">
+                            <div class="fin-card-title">
+                                <span class="fin-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/chart-column.svg'); ?></span>
+                                <div>
+                                    <span class="fin-eyebrow">Recent activity</span>
+                                    <h2 id="invest-chart-title">Activity</h2>
+                                </div>
+                            </div>
+                        </header>
+                        <div id="invest-chart" class="fin-chart"></div>
+                    </section>
+                    <section class="fin-card" aria-labelledby="invest-wallet-card-title">
+                        <header class="fin-card-head">
+                            <div class="fin-card-title">
+                                <span class="fin-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/wallet-cards.svg'); ?></span>
+                                <div>
+                                    <span class="fin-eyebrow">Connected</span>
+                                    <h2 id="invest-wallet-card-title">Wallets</h2>
+                                </div>
+                            </div>
+                            <button type="button" id="invest-wallet-open" class="btn">Polymarket wallet</button>
+                        </header>
+                        <p id="invest-wallet-status" class="fin-status" role="status"></p>
+                        <div id="invest-wallets"></div>
+                        <div class="fin-tools fin-tools-split">
+                            <button type="button" id="invest-refresh" class="btn">Refresh public positions</button>
+                        </div>
+                    </section>
+                </div>
+
+                <section class="fin-card" aria-labelledby="invest-holdings-title">
+                    <header class="fin-card-head">
+                        <div class="fin-card-title">
+                            <span class="fin-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/list-filter.svg'); ?></span>
+                            <div>
+                                <span class="fin-eyebrow">Scorecard</span>
+                                <h2 id="invest-holdings-title">Holdings</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <div id="invest-card"></div>
+                </section>
+
+                <section class="fin-card" aria-labelledby="invest-import-title">
+                    <header class="fin-card-head">
+                        <div class="fin-card-title">
+                            <div>
+                                <span class="fin-eyebrow">Robinhood</span>
+                                <h2 id="invest-import-title">Activity CSV</h2>
+                            </div>
+                        </div>
+                    </header>
+                    <p class="fin-note">Import a Robinhood activity export. Nothing on this page sends an order.</p>
+                    <div class="fin-tools">
+                        <label class="btn fin-upload">
+                            <span class="fin-upload-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/upload.svg'); ?></span>
+                            Import CSV
+                            <input id="invest-csv" class="fin-file" type="file" accept=".csv,text/csv">
+                        </label>
+                    </div>
+                    <p id="invest-import-status" class="fin-status" role="status"></p>
+                </section>
+            </div>
 
 <?php
 $settingsScripts = [
