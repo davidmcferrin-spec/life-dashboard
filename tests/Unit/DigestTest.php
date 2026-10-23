@@ -172,8 +172,9 @@ final class DigestTest extends TestCase
         $html = file_get_contents(VIEWS_DIR . '/partials/app-shell-open.php');
         self::assertIsString($html);
         self::assertMatchesRegularExpression(
-            "/\\['Vault', '\\/brain'\\].*\\['Grok Digest', '\\/digest'\\].*\\['Playlists', '\\/spotify'\\].*\\['Pantry', '\\/pantry'\\]/s",
+            "/\\['Music', '\\/spotify'.*\\['Pantry', '\\/pantry'.*\\['Vault', '\\/brain'.*\\['Feeds', '\\/feeds'.*\\['Grok Digest', '\\/digest'/s",
             $html
         );
+        self::assertStringContainsString('unreadCount', $html);
     }
 }
