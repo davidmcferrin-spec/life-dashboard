@@ -122,7 +122,7 @@ test('collapsed player keeps transport and a compact volume control', () => {
     assert.match(js, /event\.key === 'Escape'/);
     const mini = css.match(/\.sp-player\.is-min \{[^}]+\}/);
     assert.ok(mini);
-    assert.match(mini[0], /max-width:\s*min\(20rem/);
+    assert.match(mini[0], /max-width:\s*min\(390px/);
     assert.match(mini[0], /background:\s*var\(--player-bg/);
     assert.match(css, /\.sp-player\.is-min \.sp-expanded-only \{\s*display:\s*none/);
     assert.match(css, /\.sp-controls svg \{[^}]*fill:\s*none/);
