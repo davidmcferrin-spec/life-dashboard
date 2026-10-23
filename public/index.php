@@ -19,6 +19,7 @@ use Dashboard\Api\FlightsHandler;
 use Dashboard\Api\PackagesHandler;
 use Dashboard\Api\BookmarksHandler;
 use Dashboard\Api\PingsHandler;
+use Dashboard\Api\NotificationsHandler;
 use Dashboard\Api\ClockAlarmHandler;
 use Dashboard\Api\PreferencesHandler;
 use Dashboard\Api\StocksHandler;
@@ -878,6 +879,28 @@ $router->post('/api/pings/{id}/update', function (array $params) use ($auth, $pi
 $router->post('/api/pings/{id}/delete', function (array $params) use ($auth, $pingsApi): void {
     $user = $auth->requireAuth();
     $pingsApi->delete($user, $params);
+});
+
+$notificationsApi = new NotificationsHandler($db);
+
+$router->get('/api/notifications', function () use ($auth, $notificationsApi): void {
+    $user = $auth->requireApiUser();
+    $notificationsApi->list($user);
+});
+
+$router->post('/api/notifications', function () use ($auth, $notificationsApi): void {
+    $user = $auth->requireApiUser();
+    $notificationsApi->create($user);
+});
+
+$router->post('/api/notifications/read', function () use ($auth, $notificationsApi): void {
+    $user = $auth->requireApiUser();
+    $notificationsApi->markAll($user);
+});
+
+$router->post('/api/notifications/{id}/read', function (array $params) use ($auth, $notificationsApi): void {
+    $user = $auth->requireApiUser();
+    $notificationsApi->markRead($user, $params);
 });
 
 $router->get('/api/bookmarks', function () use ($auth, $bookmarksApi): void {

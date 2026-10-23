@@ -9418,3 +9418,272 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+/* Flat shell from the Figma Make sidebar: ambient grid, digest badge, user menu, bell. */
+.app-ambient-grid {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--accent) 24%, transparent) 1px, transparent 1px),
+        linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent) 1px, transparent 1px);
+    background-size: 64px 64px;
+    inset: 0;
+    mask-image: radial-gradient(circle at 55% 40%, #000, transparent 78%);
+    opacity: 0.14;
+    pointer-events: none;
+    position: fixed;
+    z-index: 0;
+}
+
+html[data-theme="light"] .app-ambient-grid {
+    opacity: 0.35;
+}
+
+.app-main {
+    position: relative;
+    z-index: 1;
+}
+
+.app-nav-badge,
+.app-notify-badge {
+    align-items: center;
+    background: var(--accent-soft);
+    border-radius: 999px;
+    color: var(--accent);
+    display: inline-grid;
+    flex: 0 0 auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    height: 18px;
+    justify-content: center;
+    margin-left: auto;
+    min-width: 18px;
+    padding: 0 4px;
+}
+
+.app-user-id {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.app-user-role {
+    color: var(--text-dim);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 16px;
+    margin: 2px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-user-menu {
+    position: relative;
+}
+
+.app-user-menu-btn,
+.app-notify-btn {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-dim);
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+    position: relative;
+    width: 32px;
+}
+
+.app-user-menu-btn:hover,
+.app-user-menu-btn[aria-expanded="true"],
+.app-notify-btn:hover,
+.app-notify-btn[aria-expanded="true"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.app-user-menu-btn svg,
+.app-notify-btn svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.app-user-menu-btn:focus-visible,
+.app-notify-btn:focus-visible,
+.app-user-menu-link:focus-visible,
+.app-notify-read:focus-visible,
+.app-notify-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.app-user-menu-list,
+.app-notify-panel {
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    z-index: 40;
+}
+
+.app-user-menu-list {
+    bottom: calc(100% + 6px);
+    min-width: 160px;
+    padding: 4px;
+    position: absolute;
+    right: 0;
+}
+
+.app-user-menu-list[hidden],
+.app-notify-panel[hidden] {
+    display: none;
+}
+
+.app-user-menu-link {
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    padding: 8px 10px;
+    text-decoration: none;
+}
+
+.app-user-menu-link:hover {
+    background: var(--row-hover);
+}
+
+.app-user-menu-link[href="/logout"]:hover {
+    color: var(--danger);
+}
+
+.app-notify {
+    flex: 0 0 auto;
+    position: relative;
+}
+
+.app-notify-badge {
+    height: 16px;
+    margin: 0;
+    min-width: 16px;
+    position: absolute;
+    right: 2px;
+    top: 2px;
+}
+
+.app-notify-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    width: min(320px, 70vw);
+}
+
+.app-notify-head {
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    justify-content: space-between;
+    padding: 10px 12px;
+}
+
+.app-notify-read {
+    background: transparent;
+    border: 0;
+    color: var(--accent);
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    padding: 0;
+}
+
+.app-notify-read[hidden] {
+    display: none;
+}
+
+.app-notify-list {
+    max-height: 320px;
+    overflow: auto;
+}
+
+.app-notify-empty {
+    color: var(--text-dim);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    margin: 0;
+    padding: 16px 12px;
+}
+
+.app-notify-item {
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+    gap: 2px;
+    padding: 10px 12px;
+    text-align: left;
+    text-decoration: none;
+    width: 100%;
+}
+
+.app-notify-item:last-child {
+    border-bottom: 0;
+}
+
+.app-notify-item:hover {
+    background: var(--row-hover);
+}
+
+.app-notify-item strong {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.app-notify-item span,
+.app-notify-item time {
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.app-notify-item.is-unread strong {
+    color: var(--accent);
+}
+
+html.app-sidebar-rail .app-user-id,
+html.app-sidebar-rail .app-nav-badge {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+@media (max-width: 699px) {
+    html.app-sidebar-rail .app-user-id,
+    html.app-sidebar-rail .app-nav-badge {
+        clip: auto;
+        height: auto;
+        margin: 0;
+        overflow: visible;
+        position: static;
+        width: auto;
+    }
+
+    html.app-sidebar-rail .app-nav-badge {
+        display: inline-grid;
+        margin-left: auto;
+    }
+}
+

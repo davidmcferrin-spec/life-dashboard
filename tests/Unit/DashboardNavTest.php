@@ -13,20 +13,26 @@ final class DashboardNavTest extends TestCase
         $html = file_get_contents(VIEWS_DIR . '/partials/app-shell-open.php');
         self::assertIsString($html);
         foreach ([
-            "['Dashboard', '/']",
-            "['Vault', '/brain']",
-            "['Brain', '/brain/graph']",
-            "['Grok Digest', '/digest']",
-            "['News', '/news']",
-            "['Reddit', '/reddit']",
-            "['Agents', '/settings/agents']",
-            "['Playlists', '/spotify']",
-            "['Todos', '/todos']",
-            "['Clock', '/clock']",
-            "['Pantry', '/pantry']",
-            "['Meals', '/pantry?view=meals']",
-            "['Flights', '/flights']",
-            "['Packages', '/settings/packages']",
+            "['Dashboard', '/', 'layout-dashboard']",
+            "['Music', '/spotify', 'music-2']",
+            "['Money', '/money', 'wallet-cards']",
+            "['Investing', '/investing', 'trending-up']",
+            "['Stocks', '/stocks', 'chart-column']",
+            "['Pantry', '/pantry', 'shopping-basket']",
+            "['Meal Prep', '/pantry?view=meals', 'cooking-pot']",
+            "['Vault', '/brain', 'book']",
+            "['Brain', '/brain/graph', 'brain']",
+            "['Clipboard', '/settings/clipboards', 'clipboard-list']",
+            "['CloudPad', '/settings/clipboards?tab=cloudpad', 'cloud']",
+            "['Clock', '/clock', 'clock-3']",
+            "['Flights', '/flights', 'plane']",
+            "['Feeds', '/feeds', 'inbox']",
+            "['Grok Digest', '/digest', 'bot']",
+            'class="app-ambient-grid"',
+            'class="app-nav-badge"',
+            'class="app-user-role"',
+            'id="app-user-menu-btn"',
+            'id="app-notify-btn"',
             'class="app-settings-pin',
             'class="app-settings-cog"',
             'app-settings-label">Settings</span>',
@@ -41,6 +47,11 @@ final class DashboardNavTest extends TestCase
         }
         self::assertStringNotContainsString('M12 3.2v2.2', $html);
         self::assertStringNotContainsString('M9.56 2.2A10.1', $html);
+        self::assertStringNotContainsString("['Playlists'", $html);
+        self::assertStringNotContainsString("'Valut'", $html);
+        self::assertStringNotContainsString('Pro workspace', $html);
+        self::assertStringNotContainsString('Alex Sterling', $html);
+        self::assertDoesNotMatchRegularExpression('/app-nav-badge">3</', $html);
 
         $gear = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/settings.svg');
         self::assertIsString($gear);
@@ -50,6 +61,14 @@ final class DashboardNavTest extends TestCase
         self::assertStringContainsString('stroke-width="2"', $gear);
         self::assertStringContainsString('lucide-static v1.61.0 - ISC', $gear);
         self::assertStringNotContainsString('M9.56 2.2A10.1', $gear);
+
+        foreach (['bell' => 'lucide-bell', 'cloud' => 'lucide-cloud'] as $name => $class) {
+            $icon = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/' . $name . '.svg');
+            self::assertIsString($icon);
+            self::assertStringContainsString('class="lucide ' . $class . '"', $icon);
+            self::assertStringContainsString('stroke="currentColor"', $icon);
+            self::assertStringContainsString('lucide-static v1.61.0 - ISC', $icon);
+        }
     }
 
     public function testPhoneDrawerDoesNotStretchTheHeader(): void
@@ -139,6 +158,29 @@ final class DashboardNavTest extends TestCase
         $shell = file_get_contents(ROOT_DIR . '/templates/partials/app-shell-open.php');
         self::assertIsString($shell);
         self::assertStringNotContainsString('href="/settings">Settings</a>', $shell);
+
+        $index = file_get_contents(ROOT_DIR . '/public/index.php');
+        self::assertIsString($index);
+        foreach ([
+            "get('/api/notifications'",
+            "post('/api/notifications'",
+            "post('/api/notifications/read'",
+            "post('/api/notifications/{id}/read'",
+            'new NotificationsHandler($db)',
+        ] as $route) {
+            self::assertStringContainsString($route, $index);
+        }
+        $readAll = strpos($index, "post('/api/notifications/read'");
+        $readOne = strpos($index, "post('/api/notifications/{id}/read'");
+        self::assertNotFalse($readAll);
+        self::assertNotFalse($readOne);
+        self::assertLessThan($readOne, $readAll);
+
+        $migration = file_get_contents(ROOT_DIR . '/database/pgsql/0043_notifications.sql');
+        self::assertIsString($migration);
+        self::assertStringContainsString('CREATE TABLE notifications', $migration);
+        self::assertStringContainsString('REFERENCES users(id)', $migration);
+        self::assertStringNotContainsString('0044_', $migration);
     }
 
     public function testWidgetGridStaysOnTheDashboard(): void

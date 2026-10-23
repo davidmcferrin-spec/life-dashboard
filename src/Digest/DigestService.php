@@ -271,6 +271,11 @@ final class DigestService
         }
     }
 
+    public function unreadCount(int $userId): int
+    {
+        return $this->newCount($userId);
+    }
+
     private function newCount(int $userId, ?string $product = null): int
     {
         $cursor = $this->cursor($userId);
