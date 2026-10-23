@@ -25,6 +25,10 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
             <button type="button" id="brain-new" class="btn text-xs" title="New page">+</button>
         </div>
         <div id="brain-tree" class="brain-tree"></div>
+        <?php // Inline the vendored files so their stroke stays currentColor. ?>
+        <template id="brain-icon-chevron"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/chevron-right.svg'); ?></template>
+        <template id="brain-icon-folder"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/folder.svg'); ?></template>
+        <template id="brain-icon-file"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/file-text.svg'); ?></template>
     </aside>
     <section class="brain-stage is-preview">
         <div class="brain-tabs">
