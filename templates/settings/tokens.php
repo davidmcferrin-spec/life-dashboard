@@ -32,7 +32,7 @@ require __DIR__ . '/_shell-top.php';
             <?php endif; ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">Create token</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Create token'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Tokens log you in via <code class="mono text-faint">/auto/{token}</code> without a password.
                     Treat them like passwords.

@@ -16,7 +16,7 @@ $shareToken = $shareToken ?? '';
 
 <main class="max-w-screen-lg mx-auto px-4 py-6">
     <section id="share-editor-wrap" class="hidden surface p-4">
-        <h1 id="share-board-name" class="text-primary font-medium mb-1"></h1>
+        <?php $pageEyebrow = 'Shared clipboard'; $pageHeading = ''; $pageHeadingId = 'share-board-name'; require __DIR__ . '/../partials/page-heading.php'; ?>
         <p id="share-perm-hint" class="text-faint mono text-xs mb-3"></p>
 
         <div id="share-remote-banner" class="hidden mb-2 mono text-xs px-3 py-2 rounded flash-warn">

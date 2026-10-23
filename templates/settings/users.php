@@ -22,6 +22,8 @@ $actingId      = (int) $user['id'];
 require __DIR__ . '/_shell-top.php';
 ?>
 
+            <?php $pageEyebrow = 'Settings'; $pageHeading = 'Users'; require __DIR__ . '/../partials/page-heading.php'; ?>
+
             <section class="surface p-5">
                 <h2 class="text-primary font-medium mb-1">Create user</h2>
                 <p class="text-muted text-sm mb-4">

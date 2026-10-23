@@ -13,7 +13,7 @@ require dirname(__DIR__) . '/partials/head.php';
 ?>
 <body class="page min-h-screen flex items-center justify-center px-4">
     <div class="surface p-6 w-full max-w-md" id="oauth-error">
-        <h1 class="text-primary text-xl font-medium">Connection failed</h1>
+        <?php $pageEyebrow = 'Connection'; $pageHeading = 'Connection failed'; require __DIR__ . '/../partials/page-heading.php'; ?>
         <p class="text-muted text-sm mt-2" role="alert"><?= e($message) ?></p>
         <a class="btn mt-4 inline-block" href="/">Back to the dashboard</a>
     </div>

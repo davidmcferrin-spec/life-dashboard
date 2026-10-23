@@ -20,7 +20,7 @@ require __DIR__ . '/_shell-top.php';
 
             <div id="ollama-app">
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Local AI (Ollama)</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Local AI (Ollama)'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     The service listens on 127.0.0.1:11434. Vault and search embeddings use the embedding model.
                     A model download runs in the background and does not hold a deploy.

@@ -12,7 +12,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Package tracking</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Package tracking'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Live status via direct UPS, FedEx, and DHL APIs (cron every 2 hours).
                     USPS, Amazon, OnTrac, and LaserShip are link-only — no public recipient tracking API.

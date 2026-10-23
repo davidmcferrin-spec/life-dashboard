@@ -27,7 +27,7 @@ $pageTitle     = 'Todo Lists';
 
 <main class="max-w-3xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <h1 class="text-primary text-xl font-medium">Todo lists</h1>
+        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Todo lists'; require __DIR__ . '/partials/page-heading.php'; ?>
         <p class="text-muted text-sm mt-1">
             Tasks grouped by list. Completed items stay until you archive them.
             Share a list or assign tasks from the full editor below.

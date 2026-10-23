@@ -27,6 +27,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
     </div>
 </nav>
 
+<?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Vault'; require __DIR__ . '/partials/page-heading.php'; ?>
 <div class="brain-shell" data-open-page="<?= (int) $openPage ?>">
     <aside class="brain-side">
         <div class="brain-side-bar">
@@ -109,7 +110,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         <div id="brain-ticker" class="brain-ticker"></div>
         <aside class="brain-panel">
             <p class="brain-kicker">Second brain</p>
-            <h1 id="brain-panel-title" class="text-primary text-lg mt-2">Vault</h1>
+            <h2 id="brain-panel-title" class="text-primary text-lg mt-2">Vault</h2>
             <p id="brain-panel-copy" class="text-secondary text-sm mt-2">Pages stay in clusters. Drag to pan. Scroll or pinch to zoom.</p>
             <a id="brain-panel-open" class="nav-link inline-block mt-3" href="/brain">Open vault</a>
             <p class="brain-kicker mt-4">Agents</p>

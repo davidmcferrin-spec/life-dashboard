@@ -21,7 +21,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Agents</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Agents'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     A bearer token lets Claude or Grok use the same dashboard data as this account.
                     Read and write covers every area, including money, todos, habits, and widgets.

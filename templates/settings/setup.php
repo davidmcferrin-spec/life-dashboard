@@ -14,7 +14,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">Setup</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Setup'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Keys for weather, stocks, flights, packages, X, and the local model.
                     Saved values override the environment. The app secret and database password stay in the environment file.

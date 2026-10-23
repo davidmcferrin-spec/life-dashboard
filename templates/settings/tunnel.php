@@ -16,7 +16,7 @@ require __DIR__ . '/_shell-top.php';
 
             <section class="surface p-5 space-y-4" id="tunnel-app">
                 <header>
-                    <h1 class="text-primary text-xl font-medium mb-1">Tunnel</h1>
+                    <?php $pageEyebrow = 'Settings'; $pageHeading = 'Tunnel'; require __DIR__ . '/../partials/page-heading.php'; ?>
                     <p id="tunnel-lead" class="text-muted text-sm">
                         <?php if ($tunnelExisting): ?>
                         cloudflared is already running on this server. This page shows that service. A token is not required, and this page will not install another tunnel.

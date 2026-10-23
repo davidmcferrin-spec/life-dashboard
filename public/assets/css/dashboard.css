@@ -310,6 +310,41 @@ input[type="radio"] {
     text-transform: uppercase;
 }
 
+.page-heading {
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 4px;
+}
+
+.page-heading-center {
+    align-items: center;
+    text-align: center;
+}
+
+.page-eyebrow {
+    color: var(--text-label);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    line-height: 1.2;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.page-title {
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 32px;
+    font-weight: 500;
+    letter-spacing: 0;
+    line-height: 36px;
+    margin: 0;
+    overflow-wrap: anywhere;
+    text-transform: none;
+}
+
 .text-primary { color: var(--text-primary); }
 .text-secondary { color: var(--text-secondary); }
 .text-muted { color: var(--text-muted); }

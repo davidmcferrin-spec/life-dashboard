@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Money</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Money'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Balances and signed transactions. A negative amount is money out.
                     CSV columns: Date, Amount, Merchant, Category, Account.

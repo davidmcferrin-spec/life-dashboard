@@ -2,22 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>500 — Server Error</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Server error</title>
     <link rel="icon" href="/favicon.ico" sizes="any">
-    <style>
-        body { background: #0a0e17; color: #94a3b8; font-family: 'JetBrains Mono', monospace;
-               display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .box { text-align: center; }
-        h1 { color: #f87171; font-size: 3rem; margin: 0; }
-        p { color: #475569; font-size: 0.875rem; }
-        a { color: #60a5fa; }
-    </style>
 </head>
-<body>
-    <div class="box">
-        <h1>500</h1>
-        <p>Something went wrong on our end.</p>
-        <p><a href="/">← Back to dashboard</a></p>
+<body style="margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; background:#07080c; color:#f4f7f8; font-family:'IBM Plex Sans', system-ui, sans-serif;">
+    <div style="text-align:center; padding:24px; max-width:24rem;">
+        <p class="page-eyebrow" style="margin:0 0 4px; font-family:'JetBrains Mono', ui-monospace, monospace; font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8b979e;">Dashboard</p>
+        <h1 class="page-title" style="margin:0; font-size:32px; line-height:36px; font-weight:500;">Something went wrong</h1>
+        <p style="margin:16px 0 0; font-size:15px; line-height:22px; color:#b7c2c7;">The dashboard could not finish this request.</p>
+        <p style="margin:16px 0 0;"><a href="/" style="color:#1aa6a6;">Back to Dashboard</a></p>
     </div>
 </body>
 </html>

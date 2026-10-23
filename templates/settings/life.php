@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Life</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Life'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Sleep, steps, exercise, weight, and whether today is a travel day.
                     Health Connect and Home Assistant post the same shape to the ingest API.

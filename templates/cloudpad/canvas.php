@@ -36,6 +36,8 @@ $canvasId      = (int) ($canvasId ?? 0);
     </div>
 </nav>
 
+<?php $pageEyebrow = 'Dashboard'; $pageHeading = 'CloudPad'; require __DIR__ . '/../partials/page-heading.php'; ?>
+
 <div id="cloudpad-mobile-warn" class="hidden flash-warn mono text-xs px-4 py-2 text-center">
     CloudPad editing works best on desktop. Viewing is supported on smaller screens.
 </div>

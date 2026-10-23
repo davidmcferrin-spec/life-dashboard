@@ -19,8 +19,8 @@ $shareToken = $shareToken ?? '';
     </div>
 </nav>
 
-<main class="px-2 pb-4">
-    <h1 id="share-cloudpad-name" class="text-primary font-medium px-2 py-2 mono text-sm"></h1>
+<main class="cloudpad-share-main px-2 pb-4">
+    <?php $pageEyebrow = 'Shared CloudPad'; $pageHeading = ''; $pageHeadingId = 'share-cloudpad-name'; require __DIR__ . '/../partials/page-heading.php'; ?>
     <div id="share-cloudpad-root" class="cloudpad-root cloudpad-root-share"></div>
 </main>
 

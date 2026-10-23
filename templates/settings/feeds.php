@@ -40,7 +40,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">News sources</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'News sources'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Add custom RSS feeds, then choose which built-in and personal sources appear on the
                     <strong>dashboard news widget</strong>. All sources are always available on the

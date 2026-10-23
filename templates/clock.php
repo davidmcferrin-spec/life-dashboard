@@ -47,6 +47,7 @@ $alarmOn       = !empty($fcAlarm['enabled']);
 </nav>
 
 <main class="focus-clock-main">
+    <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Clock'; require __DIR__ . '/partials/page-heading.php'; ?>
     <div
         id="focus-clock-stack"
         class="focus-clock-stack"

@@ -21,7 +21,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
 
 <main class="mx-auto px-4 py-6 space-y-4" id="pantry-app">
     <header>
-        <h1 class="text-primary text-xl font-medium">Pantry</h1>
+        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Pantry'; require __DIR__ . '/partials/page-heading.php'; ?>
         <p class="text-muted text-sm mt-1">What is on hand, and when to use it.</p>
     </header>
     <nav class="ld-pantry-nav" id="pantry-nav">

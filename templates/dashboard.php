@@ -98,6 +98,8 @@ $timezones = [
 
 <main class="dash-main mx-auto py-6 space-y-6">
 
+    <?php $pageEyebrow = 'Personal intelligence system'; $pageHeading = 'Dashboard'; require __DIR__ . '/partials/page-heading.php'; ?>
+
     <!-- -------------------------------------------------------
          TIMEZONE BAR
          ------------------------------------------------------- -->

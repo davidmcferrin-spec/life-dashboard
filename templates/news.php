@@ -27,7 +27,7 @@ $pageTitle     = 'News Reader';
 
 <main class="max-w-4xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <h1 class="text-primary text-xl font-medium">News reader</h1>
+        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'News reader'; require __DIR__ . '/partials/page-heading.php'; ?>
         <p class="text-muted text-sm mt-1">
             All built-in and custom RSS sources. Filter by category or provider, or pin sources to the
             <a href="/settings/feeds" class="text-accent hover:underline">dashboard news widget</a>.

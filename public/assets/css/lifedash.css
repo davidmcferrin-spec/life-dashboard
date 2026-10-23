@@ -657,6 +657,10 @@ button.nav-link { background: transparent; border: 0; cursor: pointer; font: inh
 .brain-map-layer[hidden] { display: none !important; }
 .brain-map-layer .brain-graph-wrap { height: 100%; }
 .brain-graph-wrap { position: relative; height: calc(100vh - 3.6rem); touch-action: none; }
+.page-heading + .brain-shell,
+.page-heading + .brain-graph-wrap {
+    height: calc(100vh - 8rem);
+}
 #brain-canvas { cursor: grab; display: block; height: 100%; touch-action: none; width: 100%; }
 #brain-canvas.is-panning { cursor: grabbing; }
 .brain-zoom {
