@@ -1,9 +1,8 @@
 /**
- * widgets.js — widget catalog groups, and the flights, packages, pings,
+ * widgets.js — catalog helpers, and the flights, packages, pings,
  * and stocks dashboard widgets.
  *
- * Categories are grouped here, not on the registry, so the catalog does
- * not need a PHP change. The same seven names are the only groups.
+ * Category slugs come from the registry. This file only labels them.
  */
 
 'use strict';
@@ -21,50 +20,13 @@ window.LD = window.LD || {};
 if (!window.LD.catalog) {
     window.LD.catalog = (function () {
         const ORDER = ['Tracking', 'Data', 'Life', 'Money', 'Knowledge', 'Media', 'Custom'];
-        const GROUP = {
-            habits: 'Tracking',
-            mood: 'Tracking',
-            goal: 'Tracking',
-            streak: 'Tracking',
-            stat: 'Data',
-            chart: 'Data',
-            gauge: 'Data',
-            table: 'Data',
+        const CATEGORY_LABEL = {
+            tracking: 'Tracking',
+            data: 'Data',
             life: 'Life',
-            calls: 'Life',
-            shopping: 'Life',
-            digest: 'Life',
-            vitals: 'Life',
-            agenda: 'Life',
-            quick_actions: 'Life',
-            pantry: 'Life',
-            'legacy.weather': 'Life',
-            'legacy.todos': 'Life',
-            'legacy.bookmarks': 'Life',
-            'legacy.flights': 'Life',
-            'legacy.packages': 'Life',
-            'legacy.pings': 'Life',
-            spending: 'Money',
-            networth: 'Money',
-            baby_step: 'Money',
-            debt_snowball: 'Money',
-            food_week: 'Money',
-            budget_actual: 'Money',
-            sinking_funds: 'Money',
-            bills_due: 'Money',
-            retirement: 'Money',
-            credit: 'Money',
-            portfolio: 'Money',
-            'legacy.stocks': 'Money',
-            pages: 'Knowledge',
-            'legacy.clipboards': 'Knowledge',
-            youtube: 'Media',
-            reddit: 'Media',
-            spotify: 'Media',
-            spotify_player: 'Media',
-            reddit_feed: 'Media',
-            x: 'Media',
-            'legacy.news': 'Media',
+            money: 'Money',
+            knowledge: 'Knowledge',
+            media: 'Media',
             custom: 'Custom',
         };
         const ICON = {
@@ -112,6 +74,9 @@ if (!window.LD.catalog) {
             x: 'command',
             'legacy.news': 'newspaper',
             custom: 'code-xml',
+            assistant: 'brain',
+            clock: 'clock-3',
+            features: 'sliders-horizontal',
         };
         const SETUP = {
             habits: { href: '/settings/trackers', label: 'Open habits' },
@@ -154,8 +119,9 @@ if (!window.LD.catalog) {
         };
         const iconCache = new Map();
 
-        function categoryOf(type) {
-            return GROUP[type] || 'Custom';
+        function categoryOf(row) {
+            if (!row || typeof row !== 'object') return 'Custom';
+            return CATEGORY_LABEL[row.category] || 'Custom';
         }
 
         function iconOf(type) {
@@ -173,7 +139,9 @@ if (!window.LD.catalog) {
             (types || []).forEach((row) => {
                 if (!row || row.type == null || seen.has(row.type)) return;
                 seen.add(row.type);
-                buckets[categoryOf(row.type)].push(row);
+                const name = categoryOf(row);
+                if (!buckets[name]) buckets[name] = [];
+                buckets[name].push(row);
             });
             return ORDER.filter((name) => buckets[name].length).map((name) => ({
                 name: name,

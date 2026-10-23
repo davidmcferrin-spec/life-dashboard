@@ -9418,3 +9418,261 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+/* Assistant, clock, and feature widgets. News and clipboard layout stay in widgets-media.css. */
+.ld-edit-bar { display: flex; }
+
+.ld-w-icon {
+    color: var(--accent);
+    display: inline-flex;
+    flex: 0 0 auto;
+    margin-right: 8px;
+    vertical-align: -3px;
+}
+
+.ld-w-icon svg,
+.ld-bar-icon svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.ld-bar-icon {
+    align-items: center;
+    color: var(--accent);
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    width: 32px;
+}
+
+.ld-w-native .ld-w-head { padding-right: 40px; }
+.ld-editing .ld-w-native .ld-w-head { padding-right: 84px; }
+
+.ld-fit > .ld-lock-badge { right: 52px; }
+.ld-editing .ld-fit > .ld-lock-badge { right: 92px; }
+
+.grid-stack-item[data-widget-type="legacy.news"] .ld-edit-bar,
+.grid-stack-item[data-widget-type="legacy.clipboards"] .ld-edit-bar {
+    left: 8px;
+    right: auto;
+}
+
+.ld-assistant {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+.ld-assistant-live {
+    align-items: center;
+    color: var(--accent);
+    display: flex;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    gap: 8px;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.ld-assistant-orb {
+    align-items: center;
+    animation: ld-orb-spin 14s linear infinite;
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    display: inline-flex;
+    height: 36px;
+    justify-content: center;
+    width: 36px;
+}
+
+.ld-assistant-orb svg { display: block; height: 18px; width: 18px; }
+
+.ld-assistant-title {
+    font-family: var(--font-sans);
+    font-size: 22px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin: 0;
+}
+
+.ld-assistant-status {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0;
+}
+
+.ld-assistant-form {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+}
+
+.ld-assistant-command { color: var(--text-faint); display: inline-flex; }
+.ld-assistant-command svg { display: block; height: 16px; width: 16px; }
+
+.ld-assistant-input { flex: 1 1 auto; min-width: 0; }
+
+.ld-assistant-mic,
+.ld-assistant-send {
+    align-items: center;
+    display: inline-flex;
+    flex: 0 0 auto;
+    justify-content: center;
+    min-height: 36px;
+    min-width: 36px;
+}
+
+.ld-assistant-mic svg,
+.ld-assistant-send svg { display: block; height: 16px; width: 16px; }
+
+.ld-assistant-mic[aria-pressed="true"] { color: var(--accent); }
+
+.ld-assistant-engines-label {
+    color: var(--text-faint);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.ld-assistant-engines { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ld-assistant-engine { align-items: center; display: inline-flex; gap: 4px; min-height: 32px; }
+.ld-assistant-engine svg { display: block; height: 14px; width: 14px; }
+.ld-assistant-engine.seg-btn-active { color: var(--accent); }
+
+.ld-clock {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    justify-content: center;
+}
+
+.ld-clock .broadcast-week-line { flex: 1 0 100%; text-align: center; }
+
+.ld-features { display: flex; flex-direction: column; gap: 8px; }
+
+.ld-feature {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    min-height: 44px;
+}
+
+.ld-feature-icon { color: var(--accent); display: inline-flex; flex: 0 0 auto; }
+.ld-feature-icon svg { display: block; height: 16px; width: 16px; }
+
+.ld-feature-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }
+.ld-feature-copy strong { font-family: var(--font-sans); font-size: 14px; font-weight: 500; }
+.ld-feature-copy span { color: var(--text-muted); font-size: 12px; }
+
+.ld-toggle {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    min-height: 32px;
+    min-width: 52px;
+    padding: 0 12px;
+}
+
+.ld-toggle[aria-pressed="true"] {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.ld-setting-row {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    margin-top: 12px;
+    min-height: 44px;
+}
+
+.ld-state-preview { margin-top: 16px; }
+
+.ld-state-preview-label {
+    color: var(--text-faint);
+    display: block;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.ld-state-preview-modes { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ld-state-preview-modes button {
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    min-height: 32px;
+    padding: 0 10px;
+}
+
+.ld-state-preview-stage {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    margin-top: 8px;
+    min-height: 72px;
+    padding: 8px;
+}
+
+.ld-empty-board {
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px auto 20px;
+    max-width: 28rem;
+    padding: 28px 20px;
+    text-align: center;
+}
+
+.ld-empty-icon { color: var(--accent); display: inline-flex; }
+.ld-empty-icon svg { display: block; height: 28px; width: 28px; }
+
+.ld-empty-title {
+    font-family: var(--font-sans);
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.ld-empty-copy {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 0 0 8px;
+}
+
+@keyframes ld-orb-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 700px) {
+    .ld-toolbar { flex-wrap: wrap; }
+    .ld-toolbar .btn,
+    .ld-menu-trigger,
+    .ld-assistant-mic,
+    .ld-assistant-send,
+    .ld-empty-add,
+    .ld-toggle {
+        min-height: 44px;
+        min-width: 44px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ld-assistant-orb { animation: none; }
+}
+

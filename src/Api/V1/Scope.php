@@ -123,6 +123,9 @@ final class Scope
         if (str_contains($path, '/widget') || str_contains($path, '/layout') || str_contains($path, '/realtime')) {
             $area = 'widgets';
         }
+        if (str_contains($path, '/speech') || str_contains($path, '/features')) {
+            $area = 'widgets';
+        }
         return $area . ($write ? ':write' : ':read');
     }
 

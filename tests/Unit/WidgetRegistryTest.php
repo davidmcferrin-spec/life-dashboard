@@ -398,4 +398,35 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame(5, $byId[1]['y']);
         self::assertSame(0, $byId[2]['y']);
     }
+
+    public function testCategoriesLiveOnTheRegistry(): void
+    {
+        self::assertSame(
+            ['tracking', 'data', 'life', 'money', 'knowledge', 'media', 'custom'],
+            WidgetTypeRegistry::categoryOrder()
+        );
+        self::assertSame('media', WidgetTypeRegistry::get('legacy.news')['category']);
+        self::assertSame('money', WidgetTypeRegistry::get('legacy.stocks')['category']);
+        self::assertSame('knowledge', WidgetTypeRegistry::get('legacy.clipboards')['category']);
+        foreach (['assistant', 'clock', 'features'] as $type) {
+            $def = WidgetTypeRegistry::get($type);
+            self::assertSame('life', $def['category']);
+            self::assertTrue($def['singleton']);
+            self::assertSame([], $def['fields']);
+            self::assertLessThanOrEqual(12, $def['size']['w']);
+        }
+        $order = WidgetTypeRegistry::categoryOrder();
+        foreach (WidgetTypeRegistry::types() as $type => $def) {
+            self::assertContains($def['category'], $order, $type);
+        }
+        $assistant = null;
+        foreach (WidgetTypeRegistry::catalogue() as $row) {
+            if ($row['type'] === 'assistant') {
+                $assistant = $row;
+            }
+            self::assertSame(WidgetTypeRegistry::icon($row['type']), $row['icon']);
+        }
+        self::assertNotNull($assistant);
+        self::assertSame('brain', $assistant['icon']);
+    }
 }

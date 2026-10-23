@@ -297,17 +297,104 @@ final class WidgetTypeRegistry
                     'metric_ids' => ['type' => 'metrics', 'label' => 'Metrics to pass in', 'min_items' => 0, 'max_items' => 8],
                 ],
             ],
+            'assistant' => [
+                'label' => 'Assistant', 'category' => 'life', 'singleton' => true,
+                'description' => 'Search from the board. The centered search stays where it is.',
+                'size' => ['w' => 8, 'h' => 6], 'min' => ['w' => 4, 'h' => 4],
+                'fields' => [],
+            ],
+            'clock' => [
+                'label' => 'Clock', 'category' => 'life', 'singleton' => true,
+                'description' => 'Eastern, Central, Mountain, and Pacific time.',
+                'size' => ['w' => 6, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [],
+            ],
+            'features' => [
+                'label' => 'Features', 'category' => 'life', 'singleton' => true,
+                'description' => 'Turn dashboard features on or off.',
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 3, 'h' => 4],
+                'fields' => [],
+            ],
 
             // ---------------- legacy (personal-dashboard) ----------------
-            'legacy.bookmarks'  => self::legacy('Bookmarks', 'Folders of links with favicons.', 4, 6),
-            'legacy.weather'    => self::legacy('Weather', 'Current conditions and forecast.', 3, 3, 2, 2),
-            'legacy.flights'    => self::legacy('Flights', 'Flight watches (ADS-B / FlightAware).', 4, 5),
-            'legacy.packages'   => self::legacy('Packages', 'Package tracking.', 4, 5),
-            'legacy.pings'      => self::legacy('System status', 'Ping / HTTP checks.', 4, 5),
-            'legacy.stocks'     => self::legacy('Stocks', 'Stock watchlist.', 4, 5),
-            'legacy.todos'      => self::legacy('Todos', 'Todo lists with tabs.', 3, 4, 2, 2),
-            'legacy.clipboards' => self::legacy('Cloud clipboards', 'Pinned clipboards with Markdown preview.', 12, 6),
-            'legacy.news'       => self::legacy('News feed', 'Merged RSS feed of your pinned sources.', 12, 8),
+            'legacy.bookmarks'  => self::legacy('Bookmarks', 'Folders of links with favicons.', 4, 6, 'life'),
+            'legacy.weather'    => self::legacy('Weather', 'Current conditions and forecast.', 3, 3, 'life', 2, 2),
+            'legacy.flights'    => self::legacy('Flights', 'Flight watches (ADS-B / FlightAware).', 4, 5, 'life'),
+            'legacy.packages'   => self::legacy('Packages', 'Package tracking.', 4, 5, 'life'),
+            'legacy.pings'      => self::legacy('System status', 'Ping / HTTP checks.', 4, 5, 'life'),
+            'legacy.stocks'     => self::legacy('Stocks', 'Stock watchlist.', 4, 5, 'money'),
+            'legacy.todos'      => self::legacy('Todos', 'Todo lists with tabs.', 3, 4, 'life', 2, 2),
+            'legacy.clipboards' => self::legacy('Cloud clipboards', 'Pinned clipboards with Markdown preview.', 12, 6, 'knowledge'),
+            'legacy.news'       => self::legacy('News feed', 'Merged RSS feed of your pinned sources.', 12, 8, 'media'),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function categoryOrder(): array
+    {
+        return ['tracking', 'data', 'life', 'money', 'knowledge', 'media', 'custom'];
+    }
+
+    public static function icon(string $type): string
+    {
+        return self::icons()[$type] ?? 'layout-dashboard';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function icons(): array
+    {
+        return [
+            'habits' => 'list-checks',
+            'mood' => 'smile',
+            'goal' => 'target',
+            'streak' => 'flame',
+            'stat' => 'activity',
+            'chart' => 'chart-line',
+            'gauge' => 'gauge',
+            'table' => 'square-pen',
+            'life' => 'cloud-sun',
+            'vitals' => 'heart-pulse',
+            'agenda' => 'calendar-days',
+            'quick_actions' => 'sparkles',
+            'calls' => 'phone',
+            'shopping' => 'shopping-cart',
+            'pantry' => 'cooking-pot',
+            'digest' => 'bot',
+            'legacy.weather' => 'sun',
+            'legacy.todos' => 'clipboard-list',
+            'legacy.bookmarks' => 'book',
+            'legacy.flights' => 'plane',
+            'legacy.packages' => 'package',
+            'legacy.pings' => 'server',
+            'spending' => 'wallet-cards',
+            'networth' => 'trending-up',
+            'baby_step' => 'trophy',
+            'debt_snowball' => 'credit-card',
+            'food_week' => 'utensils',
+            'budget_actual' => 'chart-column',
+            'sinking_funds' => 'piggy-bank',
+            'bills_due' => 'calendar-days',
+            'retirement' => 'trending-up',
+            'credit' => 'credit-card',
+            'portfolio' => 'landmark',
+            'legacy.stocks' => 'chart-column',
+            'pages' => 'book-open',
+            'legacy.clipboards' => 'file-text',
+            'spotify' => 'music-2',
+            'spotify_player' => 'music-2',
+            'youtube' => 'play-square',
+            'reddit' => 'message-square',
+            'reddit_feed' => 'inbox',
+            'x' => 'command',
+            'legacy.news' => 'newspaper',
+            'custom' => 'code-xml',
+            'assistant' => 'brain',
+            'clock' => 'clock-3',
+            'features' => 'sliders-horizontal',
         ];
     }
 
@@ -518,7 +605,9 @@ final class WidgetTypeRegistry
     {
         $out = [];
         foreach (self::types() as $type => $def) {
-            $out[] = ['type' => $type] + $def;
+            $row = ['type' => $type] + $def;
+            $row['icon'] = self::icon($type);
+            $out[] = $row;
         }
         return $out;
     }
@@ -528,10 +617,10 @@ final class WidgetTypeRegistry
     /**
      * @return array<string, mixed>
      */
-    private static function legacy(string $label, string $description, int $w, int $h, int $minW = 3, int $minH = 2): array
+    private static function legacy(string $label, string $description, int $w, int $h, string $category, int $minW = 3, int $minH = 2): array
     {
         return [
-            'label' => $label, 'category' => 'dashboard', 'singleton' => true,
+            'label' => $label, 'category' => $category, 'singleton' => true,
             'description' => $description,
             'size' => ['w' => $w, 'h' => $h], 'min' => ['w' => $minW, 'h' => $minH],
             'fields' => [],

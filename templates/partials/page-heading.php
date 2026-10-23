@@ -14,7 +14,7 @@ $headingPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if (!is_string($headingPath) || $headingPath === '') {
     $headingPath = '/';
 }
-// Home keeps the timezone bar and drops this block so the search row can sit higher.
+// The dashboard omits this heading so the fixed search can sit at the top.
 if ($headingPath === '/') {
     unset($pageEyebrow, $pageHeading, $pageHeadingId, $pageHeadingCenter);
     return;

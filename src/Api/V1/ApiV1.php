@@ -11,7 +11,11 @@ use Dashboard\DB\Database;
 use Dashboard\Support\PublicUrl;
 use Dashboard\Config;
 use Dashboard\Router\Router;
+use Dashboard\Settings\FeatureFlags;
 use Dashboard\Support\NotFoundException;
+use Dashboard\Settings\PreferenceService;
+use Dashboard\Speech\SpeechTranscriber;
+use Dashboard\Speech\SpeechUnavailableException;
 use Dashboard\Support\RealtimeToken;
 use Dashboard\Support\ValidationException;
 use Dashboard\Tracking\Services;
@@ -229,6 +233,26 @@ final class ApiV1
                 'updated' => $this->svc->widgets->saveLayout($u, $items),
                 'items'   => $items,
             ];
+        }, 200, true));
+
+        $r->post('/api/v1/speech/transcribe', fn () => $this->run(function (int $u): array {
+            try {
+                return SpeechTranscriber::make()->fromRequest();
+            } catch (SpeechUnavailableException $e) {
+                return ['error' => $e->getMessage(), 'http_status' => 503];
+            }
+        }, 200, true));
+        $r->get('/api/v1/features', fn () => $this->run(function (int $u): array {
+            return ['features' => FeatureFlags::list(new PreferenceService(Database::getInstance()), $u)];
+        }));
+        $r->post('/api/v1/features', fn () => $this->run(function (int $u): array {
+            $body = $this->body();
+            $prefs = new PreferenceService(Database::getInstance());
+            $key = isset($body['key']) ? (string) $body['key'] : '';
+            $enabled = filter_var($body['enabled'] ?? false, FILTER_VALIDATE_BOOL);
+            FeatureFlags::set($prefs, $u, $key, $enabled);
+
+            return ['features' => FeatureFlags::list($prefs, $u)];
         }, 200, true));
 
         // ---- realtime ------------------------------------------------

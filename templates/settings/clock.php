@@ -39,7 +39,7 @@ require __DIR__ . '/_shell-top.php';
                     Style and alarm for the large clock at
                     <a href="/clock" class="text-accent hover:underline">/clock</a>.
                     Press <kbd class="mono">Alt+Shift+C</kbd> on the dashboard to open it (not while typing in the search box).
-                    Dashboard timezone bar options are under <a href="/settings" class="text-accent hover:underline">Dashboard</a> settings.
+                    Clock widget options are under <a href="/settings" class="text-accent hover:underline">Dashboard</a> settings.
                 </p>
 
                 <form id="settings-clock" method="post" action="/settings/clock" class="space-y-6">

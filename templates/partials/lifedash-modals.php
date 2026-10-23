@@ -2,7 +2,7 @@
 /**
  * Dashboard grid modals — "Add widget" catalog and per-widget configure/history.
  * The catalog list is filled by lifedash-grid.js from /api/v1/widget-types.
- * Groups live in widgets.js (no registry category field).
+ * Groups follow each type's category on the registry.
  */
 ?>
 <div id="ld-add-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ld-add-title">

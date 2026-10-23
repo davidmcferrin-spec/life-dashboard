@@ -10,6 +10,8 @@ use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
 use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
+use Dashboard\Settings\FeatureFlags;
+use Dashboard\Settings\PreferenceService;
 use Dashboard\Shopping\ShoppingService;
 use Dashboard\Life\LifeService;
 use Dashboard\Money\MoneyPlanService;
@@ -95,6 +97,9 @@ final class WidgetDataService
             'spotify'     => \Dashboard\Spotify\SpotifyService::fromDatabase()->card($userId),
             'x'         => $this->media->payload($userId, 'x', $c),
             'custom'    => $this->customData($userId, $c),
+            'assistant' => $this->assistantData($userId),
+            'clock'     => $this->clockData($userId),
+            'features'  => $this->featuresData($userId),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };
     }
@@ -110,6 +115,82 @@ final class WidgetDataService
             'note'       => $board['note'],
             'items'      => $which === 'agenda' ? $board['agenda'] : $board['vitals'],
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function assistantData(int $userId): array
+    {
+        $items = $this->overviewCard($userId, 'agenda')['items'];
+        $status = 'Nothing is scheduled.';
+        if (isset($items[0]) && is_array($items[0])) {
+            $title = trim((string) ($items[0]['title'] ?? ''));
+            $time = trim((string) ($items[0]['time'] ?? ''));
+            if ($title !== '') {
+                $status = $time !== '' ? $title . ' · ' . $time : $title;
+            }
+        }
+        $prefs = new PreferenceService($this->db);
+
+        return [
+            'metric_ids' => [],
+            'status'     => $status,
+            'engine'     => $prefs->getSearchEngine($userId),
+            'engines'    => self::searchEngines(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function clockData(int $userId): array
+    {
+        $prefs = new PreferenceService($this->db);
+
+        return [
+            'metric_ids'     => [],
+            'format'         => $prefs->getClockFormat($userId),
+            'broadcast_week' => $prefs->getShowBroadcastWeek($userId),
+            'zones'          => [
+                ['label' => 'ET', 'tz' => 'America/New_York'],
+                ['label' => 'CT', 'tz' => 'America/Chicago'],
+                ['label' => 'MT', 'tz' => 'America/Denver'],
+                ['label' => 'PT', 'tz' => 'America/Los_Angeles'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function featuresData(int $userId): array
+    {
+        return [
+            'metric_ids' => [],
+            'features'   => FeatureFlags::list(new PreferenceService($this->db), $userId),
+        ];
+    }
+
+    /**
+     * Google uses its name. The short label is only the fixed search chip.
+     *
+     * @return list<array{key: string, label: string, url: string, param: string, local: bool}>
+     */
+    private static function searchEngines(): array
+    {
+        $out = [];
+        foreach (PreferenceService::searchEnginesForUi() as $key => $engine) {
+            $out[] = [
+                'key'   => $key,
+                'label' => $key === 'google' ? (string) $engine['name'] : (string) $engine['label'],
+                'url'   => (string) $engine['url'],
+                'param' => (string) $engine['param'],
+                'local' => $key === 'local',
+            ];
+        }
+
+        return $out;
     }
 
     private function callsData(int $userId, array $config): array
