@@ -1,9 +1,13 @@
 <?php
 /**
- * Settings layout. One steps rail and one content panel.
+ * Settings layout. Numbered steps, the page, and a sticky footer.
  *
  * Expects: $user, $active, $pageTitle. Optional $flash, $settingsFormId,
- * $settingsSubmitLabel, $settingsFooterNote, $settingsMainClass, $settingsWide.
+ * $settingsSubmitLabel, $settingsFooterNote, $settingsAutosave, $settingsMainClass,
+ * $settingsWide, $settingsPreview.
+ *
+ * $settingsPreview, when a page sets it, is an array of kicker, text, and percent.
+ * Nothing is filled in here.
  */
 $flash = $flash ?? null;
 $active = $active ?? 'general';
@@ -32,8 +36,31 @@ $settingsNext = ($settingsStepIndex !== null && $settingsStepIndex < $settingsSt
     : null;
 $settingsGroupTitle = $settingsCurrent['group'] ?? 'Settings';
 
+$settingsPreviewView = null;
+if (isset($settingsPreview) && is_array($settingsPreview)) {
+    $previewPercent = $settingsPreview['percent'] ?? null;
+    if ($previewPercent !== null && $previewPercent !== '') {
+        $previewPercent = max(0, min(100, (int) $previewPercent));
+    } else {
+        $previewPercent = null;
+    }
+    $settingsPreviewView = [
+        'kicker'  => trim((string) ($settingsPreview['kicker'] ?? '')),
+        'text'    => trim((string) ($settingsPreview['text'] ?? '')),
+        'percent' => $previewPercent,
+    ];
+    if ($settingsPreviewView['kicker'] === '' && $settingsPreviewView['text'] === '' && $settingsPreviewView['percent'] === null) {
+        $settingsPreviewView = null;
+    }
+}
+
 $settingsNarrow = !isset($settingsMainClass) && empty($settingsWide);
-$settingsMainClass = $settingsMainClass ?? 'settings-main';
+if (!isset($settingsMainClass)) {
+    $settingsMainClass = 'settings-main';
+}
+if (!str_contains($settingsMainClass, 'settings-shell')) {
+    $settingsMainClass = trim($settingsMainClass . ' settings-shell');
+}
 if (!isset($settingsContentClass)) {
     $settingsContentClass = 'settings-panel';
 } else {
@@ -42,6 +69,7 @@ if (!isset($settingsContentClass)) {
 if ($settingsNarrow) {
     $settingsContentClass .= ' is-narrow';
 }
+$settingsLayoutClass = 'settings-layout' . ($settingsPreviewView !== null ? ' has-preview' : '');
 
 if (!isset($themePref) && !empty($user['id'])) {
     $shellPrefs    = new \Dashboard\Settings\PreferenceService(\Dashboard\DB\Database::getInstance());
@@ -61,15 +89,10 @@ if (!isset($themePref) && !empty($user['id'])) {
     </div>
     <?php endif; ?>
 
-    <div class="page-heading settings-page-head">
-        <p class="page-eyebrow">Settings</p>
-        <p class="page-title"><?= e($settingsGroupTitle) ?></p>
-    </div>
-
     <button type="button" class="settings-rail-toggle" id="settings-rail-toggle" aria-expanded="false" aria-controls="settings-rail">Sections</button>
     <button type="button" class="settings-rail-backdrop" id="settings-rail-backdrop" hidden aria-label="Close sections"></button>
 
-    <div class="settings-layout">
+    <div class="<?= e($settingsLayoutClass) ?>">
         <?php
         $settingsRenderNav = true;
         include __DIR__ . '/_nav.php';
@@ -77,5 +100,6 @@ if (!isset($themePref) && !empty($user['id'])) {
 
         <div class="<?= e($settingsContentClass) ?>">
             <?php if ($settingsCurrent !== null): ?>
-            <p class="settings-kicker">Step <?= e(sprintf('%02d', $settingsCurrent['number'])) ?> / <?= e(sprintf('%02d', $settingsStepTotal)) ?></p>
+            <p class="settings-kicker">Step <?= e(sprintf('%02d', $settingsCurrent['number'])) ?> of <?= e(sprintf('%02d', $settingsStepTotal)) ?></p>
             <?php endif; ?>
+            <div class="settings-body">

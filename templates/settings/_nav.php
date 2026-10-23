@@ -7,6 +7,7 @@
  * @var list<array{0: string, 1: string}> $settingsPageLinks
  * @var list<array{key: string, label: string, href: string, group: string, number: int}> $settingsTrail
  * @var string $active
+ * @var string $settingsGroupTitle
  */
 
 if (!function_exists('settings_nav_groups')) {
@@ -105,6 +106,17 @@ if (!function_exists('settings_nav_groups')) {
 
         return $trail;
     }
+
+    function settings_shell_icon(string $name): void
+    {
+        if ($name !== 'chevron-left' && $name !== 'circle-dot') {
+            return;
+        }
+        $path = __DIR__ . '/../../public/assets/vendor/lucide/' . $name . '.svg';
+        if (is_file($path)) {
+            readfile($path);
+        }
+    }
 }
 
 if (empty($settingsRenderNav)) {
@@ -115,13 +127,22 @@ $active = $active ?? 'general';
 $settingsGroups = $settingsGroups ?? [];
 $settingsPageLinks = $settingsPageLinks ?? [];
 $settingsTrail = $settingsTrail ?? [];
+$settingsGroupTitle = $settingsGroupTitle ?? 'Settings';
 $numbered = [];
+$settingsCurrentNumber = 0;
 foreach ($settingsTrail as $step) {
     $numbered[$step['key']] = $step;
+    if ($step['key'] === $active) {
+        $settingsCurrentNumber = (int) $step['number'];
+    }
 }
 $lastKey = $settingsTrail === [] ? '' : $settingsTrail[count($settingsTrail) - 1]['key'];
 ?>
 <nav class="settings-rail" id="settings-rail" aria-label="Settings">
+    <div class="settings-rail-head">
+        <p class="settings-kicker">Settings</p>
+        <p class="settings-rail-title"><?= e($settingsGroupTitle) ?></p>
+    </div>
     <ol class="settings-steps">
         <?php foreach ($settingsGroups as $groupLabel => $items): ?>
         <?php if ($items === []) { continue; } ?>
@@ -130,11 +151,23 @@ $lastKey = $settingsTrail === [] ? '' : $settingsTrail[count($settingsTrail) - 1
         <?php
             $step = $numbered[$key] ?? null;
             $isActive = $active === $key;
+            $isVisited = $step !== null && $settingsCurrentNumber > 0 && (int) $step['number'] < $settingsCurrentNumber;
             $num = $step !== null ? sprintf('%02d', $step['number']) : '';
+            $linkClass = 'settings-step-link';
+            if ($isActive) {
+                $linkClass .= ' is-active';
+            } elseif ($isVisited) {
+                $linkClass .= ' is-visited';
+            }
         ?>
         <li class="settings-step-item<?= $key === $lastKey ? ' is-last' : '' ?>">
-            <a class="settings-step-link<?= $isActive ? ' is-active' : '' ?>" href="<?= e($href) ?>"<?= $isActive ? ' aria-current="page"' : '' ?>>
-                <span class="settings-step-num"><?= e($num) ?></span>
+            <a class="<?= e($linkClass) ?>" href="<?= e($href) ?>"<?= $isActive ? ' aria-current="page"' : '' ?>>
+                <span class="settings-step-num">
+                    <span class="settings-step-index<?= $isVisited ? ' is-clipped' : '' ?>"><?= e($num) ?></span>
+                    <?php if ($isVisited): ?>
+                    <span class="settings-step-icon" aria-hidden="true"><?php settings_shell_icon('circle-dot'); ?></span>
+                    <?php endif; ?>
+                </span>
                 <span class="settings-step-name"><?= e($label) ?></span>
             </a>
         </li>

@@ -90,4 +90,11 @@
     }
 
     sync();
+
+    if (!phone.matches) {
+        var current = rail.querySelector('[aria-current="page"]');
+        if (current && typeof current.scrollIntoView === 'function') {
+            current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+    }
 })();
