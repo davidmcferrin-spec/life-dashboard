@@ -106,7 +106,7 @@ html[data-theme="light"] {
     --row-hover: rgba(16, 20, 28, 0.04);
     --editor-bg: #fbfaf7;
     --nav-active-bg: rgba(15, 118, 110, 0.10);
-    --player-bg: var(--bg-elev);
+    --player-bg: #ffffff;
 }
 
 html[data-theme="dark"],
@@ -152,11 +152,16 @@ html[data-theme="jarvis"] {
     --row-hover: rgba(255, 255, 255, 0.04);
     --editor-bg: #0c1018;
     --nav-active-bg: rgba(26, 166, 166, 0.14);
-    --player-bg: var(--bg-elev);
+    --player-bg: #10141c;
+}
+
+html[data-theme="dark"] {
+    --player-bg: #10141c;
 }
 
 /* A saved JARVIS accent still tints links and gauges. The canvas stays near-black. */
 html[data-theme="jarvis"] {
+    --player-bg: #10141c;
     --accent: var(--hud-accent, #1aa6a6);
     --accent-hover: var(--hud-bright, #2cadad);
     --accent-ink: var(--hud-ink, #06201f);
