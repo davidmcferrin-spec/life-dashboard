@@ -19,12 +19,98 @@ function esc(s) {
         .replace(/"/g, '&quot;');
 }
 
+function openModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) {
+            closeModal(modal);
+        }
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) {
+        return;
+    }
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+function modalShell(id, titleId, title, wide) {
+    const modal = document.createElement('div');
+    modal.id = id;
+    modal.className = 'app-modal hidden';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', titleId);
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'app-modal-backdrop';
+    backdrop.setAttribute('data-close', '');
+    backdrop.setAttribute('aria-hidden', 'true');
+
+    const panel = document.createElement('div');
+    panel.className = 'app-modal-panel surface' + (wide ? ' ld-modal-wide' : '');
+
+    const head = document.createElement('div');
+    head.className = 'flex items-center justify-between gap-2 mb-3';
+
+    const heading = document.createElement('h2');
+    heading.id = titleId;
+    heading.className = 'section-title text-sm';
+    heading.textContent = title;
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'app-modal-close';
+    close.setAttribute('data-close', '');
+    close.setAttribute('aria-label', 'Close');
+    close.textContent = '×';
+
+    head.append(heading, close);
+    panel.append(head);
+    modal.append(backdrop, panel);
+    return modal;
+}
+
 let pageLists = [];
+let pageItems = [];
 let activeListId = null;
 let activeStatus = 'open';
 let canWrite = true;
 let assignableUsers = [];
-const expandedDetails = new Set();
+let editingItemId = null;
+
+let addModal = null;
+let editModal = null;
 
 function readInitialState() {
     const params = new URLSearchParams(window.location.search);
@@ -46,13 +132,13 @@ function syncStatusButtons() {
         btn.classList.toggle('seg-btn-active', btn.dataset.status === activeStatus);
     });
     const listSelect = document.getElementById('todo-page-list');
-    const addForm = document.getElementById('todo-page-add');
+    const addOpen = document.getElementById('todo-page-add-open-wrap');
     if (listSelect) {
         listSelect.disabled = activeStatus === 'assigned';
         listSelect.classList.toggle('opacity-50', activeStatus === 'assigned');
     }
-    if (addForm) {
-        addForm.classList.toggle('hidden', activeStatus !== 'open' || !canWrite);
+    if (addOpen) {
+        addOpen.classList.toggle('hidden', activeStatus !== 'open' || !canWrite);
     }
 }
 
@@ -80,6 +166,12 @@ function renderLinkFields(links = []) {
     `).join('');
 }
 
+function bindLinkRemoves(root) {
+    root.querySelectorAll('.todo-link-remove').forEach(btn => {
+        btn.addEventListener('click', () => btn.closest('.todo-link-row')?.remove());
+    });
+}
+
 function itemRow(item) {
     const isOpen = item.status === 'open';
     const isAssignedView = activeStatus === 'assigned';
@@ -89,14 +181,7 @@ function itemRow(item) {
     const assignee = item.assignee_username
         ? `<span class="text-faint mono text-xs ml-1">→ ${esc(item.assignee_username)}</span>`
         : '';
-    const expanded = expandedDetails.has(item.id);
     const { rowClass, flag, label } = dueMeta(item);
-
-    const assignOptions = assignableUsers.map(u =>
-        `<option value="${u.id}"${item.assigned_to_user_id === u.id ? ' selected' : ''}>${esc(u.username)}</option>`
-    ).join('');
-
-    const dueValue = item.due_date ? esc(item.due_date) : '';
 
     return `
         <article class="todo-item surface p-3${rowClass}" data-id="${item.id}">
@@ -109,46 +194,16 @@ function itemRow(item) {
                         <span class="text-sm text-primary${isOpen ? '' : ' line-through opacity-70'}">${esc(item.title)}</span>
                         ${label}
                         ${assignee}
-                        ${item.has_details && !expanded ? '<span class="text-faint text-xs" title="Has details">⋯</span>' : ''}
+                        ${item.has_details ? '<span class="text-faint text-xs" title="Has details">⋯</span>' : ''}
                     </div>
                     <div class="flex flex-wrap gap-2 mt-1">
-                        ${canWrite || isOpen ? `<button type="button" class="todo-details-toggle link text-xs" data-id="${item.id}">${expanded ? 'Hide details' : (item.has_details ? 'Show details' : 'Add details')}</button>` : ''}
+                        ${canWrite || isOpen ? `<button type="button" class="todo-details-toggle link text-xs" data-id="${item.id}">${item.has_details ? 'Show details' : 'Add details'}</button>` : ''}
                         ${canWrite && item.status === 'completed' ? `<button type="button" class="todo-reopen-item link text-xs" data-id="${item.id}">Mark incomplete</button>` : ''}
                         ${canWrite && item.status === 'completed' ? `<button type="button" class="todo-archive-one link text-xs" data-id="${item.id}">Archive</button>` : ''}
                         ${canWrite ? `<button type="button" class="todo-delete-item text-danger text-xs" data-id="${item.id}">Delete</button>` : ''}
                         ${item.status === 'archived' && canWrite ? `<button type="button" class="todo-restore-item link text-xs" data-id="${item.id}">Restore</button>` : ''}
                     </div>
-                    <div class="todo-details-panel mt-3 space-y-2${expanded ? '' : ' hidden'}" data-id="${item.id}">
-                        ${canWrite ? `
-                        <label class="block">
-                            <span class="mono text-xs text-faint">Due date</span>
-                            <div class="flex flex-wrap items-center gap-2 mt-1">
-                                <input type="date" class="todo-due-date input mono text-sm" value="${dueValue}">
-                                <button type="button" class="todo-due-clear link text-xs">Clear</button>
-                            </div>
-                        </label>
-                        ` : (dueValue ? `<p class="mono text-xs text-faint">Due ${dueValue}</p>` : '')}
-                        <label class="block">
-                            <span class="mono text-xs text-faint">Notes</span>
-                            <textarea class="todo-notes input w-full mt-1 mono text-sm" rows="3" maxlength="4000" placeholder="Optional notes…">${esc(item.notes || '')}</textarea>
-                        </label>
-                        <div>
-                            <span class="mono text-xs text-faint">Links</span>
-                            <div class="todo-links-wrap mt-1">${renderLinkFields(item.links || [])}</div>
-                            <button type="button" class="todo-link-add link text-xs mt-1">+ Add link</button>
-                        </div>
-                        ${canWrite ? `
-                        <label class="block">
-                            <span class="mono text-xs text-faint">Assign to</span>
-                            <select class="todo-assignee input mono text-xs mt-1 w-full max-w-xs">
-                                <option value="">Unassigned</option>
-                                ${assignOptions}
-                            </select>
-                        </label>
-                        ` : ''}
-                        <button type="button" class="todo-save-details btn text-xs" data-id="${item.id}">Save details</button>
-                    </div>
-                    ${!expanded && item.links && item.links.length ? `
+                    ${item.links && item.links.length ? `
                     <div class="mt-1 flex flex-wrap gap-2">
                         ${item.links.map(l => `<a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer" class="link text-xs mono">${esc(l.label || l.url)}</a>`).join('')}
                     </div>
@@ -157,6 +212,216 @@ function itemRow(item) {
             </div>
         </article>
     `;
+}
+
+function openPageAddModal() {
+    if (activeStatus !== 'open' || !canWrite || !activeListId) {
+        return;
+    }
+    closeModal(editModal);
+    clearFieldError('todo-page-add-error');
+    openModal(addModal);
+}
+
+function fillEditDue(item) {
+    const dueWrap = document.getElementById('todo-page-edit-due-wrap');
+    if (!dueWrap) {
+        return;
+    }
+    const dueValue = item.due_date ? String(item.due_date) : '';
+    if (canWrite) {
+        dueWrap.innerHTML = `
+            <label class="block">
+                <span class="mono text-xs text-faint">Due date</span>
+                <div class="flex flex-wrap items-center gap-2 mt-1">
+                    <input type="date" id="todo-page-edit-due" class="todo-due-date input mono text-sm" value="${esc(dueValue)}">
+                    <button type="button" class="todo-due-clear link text-xs">Clear</button>
+                </div>
+            </label>`;
+        dueWrap.querySelector('.todo-due-clear')?.addEventListener('click', () => {
+            const input = document.getElementById('todo-page-edit-due');
+            if (input) {
+                input.value = '';
+            }
+        });
+        return;
+    }
+    dueWrap.innerHTML = dueValue ? `<p class="mono text-xs text-faint">Due ${esc(dueValue)}</p>` : '';
+}
+
+function fillEditAssignee(item) {
+    const wrap = document.getElementById('todo-page-edit-assign-wrap');
+    const select = document.getElementById('todo-page-edit-assignee');
+    if (!wrap || !select) {
+        return;
+    }
+    wrap.classList.toggle('hidden', !canWrite);
+    if (!canWrite) {
+        return;
+    }
+    select.innerHTML = '<option value="">Unassigned</option>' + assignableUsers.map(u =>
+        `<option value="${u.id}">${esc(u.username)}</option>`
+    ).join('');
+    select.value = item.assigned_to_user_id == null ? '' : String(item.assigned_to_user_id);
+}
+
+function openPageEdit(item) {
+    if (!editModal || !item) {
+        return;
+    }
+    editingItemId = item.id;
+    closeModal(addModal);
+    clearFieldError('todo-page-edit-error');
+    const notes = document.getElementById('todo-page-edit-notes');
+    if (notes) {
+        notes.value = item.notes || '';
+    }
+    const linksWrap = document.getElementById('todo-page-edit-links');
+    if (linksWrap) {
+        linksWrap.innerHTML = renderLinkFields(item.links || []);
+        bindLinkRemoves(linksWrap);
+    }
+    fillEditDue(item);
+    fillEditAssignee(item);
+    openModal(editModal);
+}
+
+function mountPageDialogs() {
+    const form = document.getElementById('todo-page-add');
+    if (!form || document.getElementById('todo-page-add-modal')) {
+        return;
+    }
+
+    const openWrap = document.createElement('div');
+    openWrap.id = 'todo-page-add-open-wrap';
+    openWrap.className = 'pt-2 border-t border-chrome';
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.id = 'todo-page-add-open';
+    openBtn.className = 'btn-primary text-sm';
+    openBtn.textContent = 'Add task';
+    openWrap.append(openBtn);
+    form.before(openWrap);
+    openBtn.addEventListener('click', openPageAddModal);
+
+    form.className = 'space-y-3';
+    form.querySelectorAll('label').forEach(label => {
+        label.classList.add('block');
+    });
+    document.getElementById('todo-page-due')?.classList.add('w-full');
+
+    const error = document.createElement('p');
+    error.id = 'todo-page-add-error';
+    error.className = 'ld-field-error hidden';
+    error.setAttribute('role', 'alert');
+
+    const actions = document.createElement('div');
+    actions.className = 'flex flex-wrap gap-2';
+    const submit = form.querySelector('button[type="submit"]');
+    submit?.classList.remove('self-end');
+    if (submit) {
+        actions.append(submit);
+    }
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'btn text-sm';
+    cancel.setAttribute('data-close', '');
+    cancel.textContent = 'Cancel';
+    actions.append(cancel);
+    form.append(error, actions);
+
+    addModal = modalShell('todo-page-add-modal', 'todo-page-add-title', 'Add task', false);
+    addModal.querySelector('.app-modal-panel').append(form);
+    bindModal(addModal);
+    document.body.append(addModal);
+
+    editModal = modalShell('todo-page-edit-modal', 'todo-page-edit-title', 'Task details', true);
+    const editBody = document.createElement('div');
+    editBody.className = 'space-y-3';
+    editBody.innerHTML = `
+        <div id="todo-page-edit-due-wrap"></div>
+        <label class="block">
+            <span class="mono text-xs text-faint">Notes</span>
+            <textarea id="todo-page-edit-notes" class="input w-full mt-1 mono text-sm" rows="3" maxlength="4000" placeholder="Optional notes…"></textarea>
+        </label>
+        <div>
+            <span class="mono text-xs text-faint">Links</span>
+            <div id="todo-page-edit-links" class="todo-links-wrap mt-1"></div>
+            <button type="button" id="todo-page-edit-link-add" class="todo-link-add link text-xs mt-1">+ Add link</button>
+        </div>
+        <label class="block" id="todo-page-edit-assign-wrap">
+            <span class="mono text-xs text-faint">Assign to</span>
+            <select id="todo-page-edit-assignee" class="todo-assignee input mono text-xs mt-1 w-full max-w-xs">
+                <option value="">Unassigned</option>
+            </select>
+        </label>
+        <p id="todo-page-edit-error" class="ld-field-error hidden" role="alert"></p>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" id="todo-page-edit-save" class="todo-save-details btn text-xs">Save details</button>
+            <button type="button" class="btn text-xs" data-close>Cancel</button>
+        </div>
+    `;
+    editModal.querySelector('.app-modal-panel').append(editBody);
+    bindModal(editModal);
+    document.body.append(editModal);
+
+    document.getElementById('todo-page-edit-link-add')?.addEventListener('click', () => {
+        const wrap = document.getElementById('todo-page-edit-links');
+        if (!wrap) {
+            return;
+        }
+        const row = document.createElement('div');
+        row.className = 'todo-link-row flex flex-wrap gap-2 mb-2';
+        row.innerHTML = `
+            <input type="text" class="todo-link-label input mono text-xs flex-1 min-w-[6rem]" placeholder="Label (optional)" maxlength="128">
+            <input type="url" class="todo-link-url input mono text-xs flex-[2] min-w-[10rem]" placeholder="https://…">
+            <button type="button" class="todo-link-remove text-danger text-xs">Remove</button>
+        `;
+        wrap.append(row);
+        bindLinkRemoves(row);
+    });
+
+    document.getElementById('todo-page-edit-save')?.addEventListener('click', savePageDetails);
+}
+
+async function savePageDetails() {
+    const id = editingItemId;
+    if (!id) {
+        return;
+    }
+    const notes = document.getElementById('todo-page-edit-notes')?.value ?? '';
+    const links = [];
+    document.querySelectorAll('#todo-page-edit-links .todo-link-row').forEach(row => {
+        const url = row.querySelector('.todo-link-url')?.value.trim() ?? '';
+        if (url === '') {
+            return;
+        }
+        links.push({
+            label: row.querySelector('.todo-link-label')?.value.trim() ?? '',
+            url,
+        });
+    });
+    const assigneeEl = document.getElementById('todo-page-edit-assignee');
+    const assignWrap = document.getElementById('todo-page-edit-assign-wrap');
+    const dueEl = document.getElementById('todo-page-edit-due');
+    const body = { notes, links };
+    if (assigneeEl && assignWrap && !assignWrap.classList.contains('hidden')) {
+        body.assigned_to_user_id = assigneeEl.value === '' ? null : parseInt(assigneeEl.value, 10);
+    }
+    if (dueEl) {
+        body.due_date = dueEl.value === '' ? null : dueEl.value;
+    }
+    clearFieldError('todo-page-edit-error');
+    const { res, data } = await api(`/api/todos/items/${id}/update`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        showFieldError('todo-page-edit-error', data.error || 'Could not save details.');
+        return;
+    }
+    closeModal(editModal);
+    loadItems();
 }
 
 function bindItemEvents() {
@@ -177,84 +442,10 @@ function bindItemEvents() {
     document.querySelectorAll('.todo-details-toggle').forEach(btn => {
         btn.addEventListener('click', () => {
             const id = parseInt(btn.dataset.id, 10);
-            if (expandedDetails.has(id)) {
-                expandedDetails.delete(id);
-            } else {
-                expandedDetails.add(id);
+            const item = pageItems.find(entry => Number(entry.id) === id);
+            if (item) {
+                openPageEdit(item);
             }
-            loadItems();
-        });
-    });
-
-    document.querySelectorAll('.todo-due-clear').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const input = btn.closest('.todo-details-panel')?.querySelector('.todo-due-date');
-            if (input) {
-                input.value = '';
-            }
-        });
-    });
-
-    document.querySelectorAll('.todo-link-add').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const wrap = btn.previousElementSibling;
-            if (!wrap) {
-                return;
-            }
-            const row = document.createElement('div');
-            row.className = 'todo-link-row flex flex-wrap gap-2 mb-2';
-            row.innerHTML = `
-                <input type="text" class="todo-link-label input mono text-xs flex-1 min-w-[6rem]" placeholder="Label (optional)" maxlength="128">
-                <input type="url" class="todo-link-url input mono text-xs flex-[2] min-w-[10rem]" placeholder="https://…">
-                <button type="button" class="todo-link-remove text-danger text-xs">Remove</button>
-            `;
-            wrap.appendChild(row);
-            row.querySelector('.todo-link-remove')?.addEventListener('click', () => row.remove());
-        });
-    });
-
-    document.querySelectorAll('.todo-link-remove').forEach(btn => {
-        btn.addEventListener('click', () => btn.closest('.todo-link-row')?.remove());
-    });
-
-    document.querySelectorAll('.todo-save-details').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const article = btn.closest('.todo-item');
-            if (!article) {
-                return;
-            }
-            const id = parseInt(btn.dataset.id, 10);
-            const notes = article.querySelector('.todo-notes')?.value ?? '';
-            const links = [];
-            article.querySelectorAll('.todo-link-row').forEach(row => {
-                const url = row.querySelector('.todo-link-url')?.value.trim() ?? '';
-                if (url === '') {
-                    return;
-                }
-                links.push({
-                    label: row.querySelector('.todo-link-label')?.value.trim() ?? '',
-                    url,
-                });
-            });
-            const assigneeEl = article.querySelector('.todo-assignee');
-            const dueEl = article.querySelector('.todo-due-date');
-            const body = { notes, links };
-            if (assigneeEl) {
-                body.assigned_to_user_id = assigneeEl.value === '' ? null : parseInt(assigneeEl.value, 10);
-            }
-            if (dueEl) {
-                body.due_date = dueEl.value === '' ? null : dueEl.value;
-            }
-            const { res, data } = await api(`/api/todos/items/${id}/update`, {
-                method: 'POST',
-                body: JSON.stringify(body),
-            });
-            if (!res.ok) {
-                alert(data.error || 'Could not save details.');
-                return;
-            }
-            expandedDetails.add(id);
-            loadItems();
         });
     });
 
@@ -290,11 +481,27 @@ function bindItemEvents() {
 
     document.querySelectorAll('.todo-delete-item').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this task?')) {
+            if (btn.dataset.confirming === '1') {
                 return;
             }
-            await api(`/api/todos/items/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
-            loadItems();
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete task',
+                    message: 'Delete this task?',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) {
+                    return;
+                }
+                await api(`/api/todos/items/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
+                loadItems();
+            } finally {
+                if (btn.isConnected) {
+                    btn.dataset.confirming = '';
+                }
+            }
         });
     });
 }
@@ -343,6 +550,7 @@ async function loadItems() {
             return;
         }
         const items = (data.items || []).filter(i => i.status !== 'archived');
+        pageItems = items;
         canWrite = false;
         if (meta) {
             meta.innerHTML = `<span>${items.length} task(s) assigned to you</span>`;
@@ -362,6 +570,7 @@ async function loadItems() {
     }
 
     if (!activeListId) {
+        pageItems = [];
         container.innerHTML = window.DashboardEmpty.html({
             title: 'No lists yet',
             body: 'Create a list to start adding tasks.',
@@ -381,6 +590,7 @@ async function loadItems() {
     assignableUsers = data.assignable_users || [];
     const list = data.list;
     const items = data.items || [];
+    pageItems = items;
 
     syncStatusButtons();
 
@@ -401,7 +611,7 @@ async function loadItems() {
         container.innerHTML = window.DashboardEmpty.html({
             title: activeStatus === 'open' ? 'No open tasks' : 'Nothing here',
             body: activeStatus === 'open'
-                ? 'Add one in the field below.'
+                ? 'Add one with Add task.'
                 : 'No ' + activeStatus + ' tasks in this list.',
             actionLabel: 'Manage lists',
             actionHref: '/settings/todos',
@@ -412,6 +622,8 @@ async function loadItems() {
     container.innerHTML = items.map(itemRow).join('');
     bindItemEvents();
 }
+
+mountPageDialogs();
 
 document.getElementById('todo-page-list')?.addEventListener('change', e => {
     activeListId = parseInt(e.target.value, 10);
@@ -442,18 +654,20 @@ document.getElementById('todo-page-add')?.addEventListener('submit', async e => 
     if (dueVal) {
         body.due_date = dueVal;
     }
+    clearFieldError('todo-page-add-error');
     const { res, data } = await api(`/api/todos/${activeListId}/items/create`, {
         method: 'POST',
         body: JSON.stringify(body),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not add task.');
+        showFieldError('todo-page-add-error', data.error || 'Could not add task.');
         return;
     }
     input.value = '';
     if (dueInput) {
         dueInput.value = '';
     }
+    closeModal(addModal);
     loadItems();
 });
 
