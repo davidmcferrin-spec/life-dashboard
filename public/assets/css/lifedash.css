@@ -9468,7 +9468,7 @@ html[data-theme="light"] .flight-card {
     align-items: center;
     color: var(--accent);
     display: flex;
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 12px;
     gap: 8px;
     letter-spacing: 0.08em;
@@ -9490,7 +9490,7 @@ html[data-theme="light"] .flight-card {
 .ld-assistant-orb svg { display: block; height: 18px; width: 18px; }
 
 .ld-assistant-title {
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 22px;
     font-weight: 500;
     letter-spacing: -0.02em;
@@ -9531,7 +9531,7 @@ html[data-theme="light"] .flight-card {
 
 .ld-assistant-engines-label {
     color: var(--text-faint);
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 12px;
     letter-spacing: 0.08em;
     margin: 0;
@@ -9566,7 +9566,7 @@ html[data-theme="light"] .flight-card {
 .ld-feature-icon svg { display: block; height: 16px; width: 16px; }
 
 .ld-feature-copy { display: flex; flex: 1 1 auto; flex-direction: column; gap: 2px; min-width: 0; }
-.ld-feature-copy strong { font-family: 'IBM Plex Sans', var(--font-sans); font-size: 14px; font-weight: 500; }
+.ld-feature-copy strong { font-family: var(--font-sans); font-size: 14px; font-weight: 500; }
 .ld-feature-copy span { color: var(--text-muted); font-size: 12px; }
 
 .ld-toggle {
@@ -9574,7 +9574,7 @@ html[data-theme="light"] .flight-card {
     border: 1px solid var(--line);
     border-radius: 999px;
     color: var(--text-secondary);
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 12px;
     min-height: 32px;
     min-width: 52px;
@@ -9600,7 +9600,7 @@ html[data-theme="light"] .flight-card {
 .ld-state-preview-label {
     color: var(--text-faint);
     display: block;
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 12px;
     letter-spacing: 0.06em;
     margin-bottom: 8px;
@@ -9614,7 +9614,7 @@ html[data-theme="light"] .flight-card {
     border: 1px solid var(--line);
     border-radius: var(--radius-sm);
     color: var(--text-secondary);
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 12px;
     min-height: 32px;
     padding: 0 10px;
@@ -9645,7 +9645,7 @@ html[data-theme="light"] .flight-card {
 .ld-empty-icon svg { display: block; height: 28px; width: 28px; }
 
 .ld-empty-title {
-    font-family: 'IBM Plex Sans', var(--font-sans);
+    font-family: var(--font-sans);
     font-size: 20px;
     font-weight: 500;
     margin: 0;
