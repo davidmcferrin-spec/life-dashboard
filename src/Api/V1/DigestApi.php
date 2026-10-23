@@ -24,6 +24,7 @@ final class DigestApi
             'unread'  => ($_GET['unread'] ?? '') === '1',
             'q'       => $_GET['q'] ?? null,
             'limit'   => $_GET['limit'] ?? 50,
+            'offset'  => $_GET['offset'] ?? 0,
         ])));
         $r->get('/api/v1/digest/compare', fn () => $this->run(fn (int $u) => $this->svc->digest->compare($u, [
             'product' => $_GET['product'] ?? null,

@@ -1714,7 +1714,7 @@ TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
-        "description": "Changelog entries, newest first. Filter by product (cursor_ide, grok_bot, grok, grok_build), since (YYYY-MM-DD), unread true, or q.",
+        "description": "Changelog entries, newest first. Each item has summary (one or two sentences) and body (the longer note). Filter by product (cursor_ide, grok_bot, grok, grok_build), since (YYYY-MM-DD), unread true, q, limit, or offset.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1723,6 +1723,7 @@ TOOLS.extend([
                 "unread": {"type": "boolean"},
                 "q": {"type": "string"},
                 "limit": {"type": "integer"},
+                "offset": {"type": "integer"},
             },
             "additionalProperties": False,
         },
@@ -2303,6 +2304,8 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
             query["unread"] = "1"
         if args.get("limit"):
             query["limit"] = int(args["limit"])
+        if args.get("offset"):
+            query["offset"] = int(args["offset"])
         suffix = ("?" + urlencode(query)) if query else ""
         return "GET", "/api/v1/digest/items" + suffix, None
     if name == "mark_digest_read":
