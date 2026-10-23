@@ -93,5 +93,7 @@ jobs:
         run: bash tests/shell/deploy-confirm.sh
       - name: Service control and cloudflared unit choice
         run: bash tests/shell/service-control.sh
+      - name: Ollama loopback bind
+        run: bash tests/shell/ollama.sh
       - name: Spotify venv, revision file, and interpreter path
         run: bash tests/shell/spotify-health.sh

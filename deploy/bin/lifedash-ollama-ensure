@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Install Ollama on loopback and start the background model pull.
+set -euo pipefail
+
+SOURCE=$(readlink -f "$0")
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")/../.." && pwd)
+# shellcheck source=deploy/lib/ollama.sh
+source "$APP_DIR/deploy/lib/ollama.sh"
+lifedash_ollama_ensure "$APP_DIR"

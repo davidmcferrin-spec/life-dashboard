@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Dashboard\Knowledge;
 
 use Dashboard\Audit\AuditLog;
-use Dashboard\Config;
 use Dashboard\DB\Database;
+use Dashboard\Ollama\OllamaClient;
+use Dashboard\Ollama\OllamaSettings;
 use Dashboard\Support\HttpClient;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
@@ -599,27 +600,11 @@ final class PageService
 
     private function maybeEmbed(int $userId, int $pageId, string $title, string $body): void
     {
-        $base = Config::maybe('OLLAMA_URL');
-        if ($base === null) {
-            return;
-        }
-        $model = Config::get('OLLAMA_EMBED_MODEL', 'nomic-embed-text');
+        $target = OllamaSettings::effective((new OllamaSettings($this->db))->get(), null);
         $prompt = mb_substr($title . "\n" . $body, 0, 8000);
-        try {
-            $http = $this->http ?? new HttpClient();
-            $res = $http->requestJson(
-                'POST',
-                rtrim($base, '/') . '/api/embeddings',
-                json_encode(['model' => $model, 'prompt' => $prompt], JSON_THROW_ON_ERROR),
-                ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
-                20
-            );
-            $vector = is_array($res) ? ($res['embedding'] ?? ($res['embeddings'][0] ?? null)) : null;
-            if (is_array($vector) && $vector !== []) {
-                $this->setEmbedding($userId, $pageId, $vector, $model);
-            }
-        } catch (\Throwable $e) {
-            error_log('[Dashboard][brain] embedding skipped: ' . $e->getMessage());
+        $vector = (new OllamaClient())->embeddings($target['base_url'], $target['embed_model'], $prompt, 20);
+        if (is_array($vector) && $vector !== []) {
+            $this->setEmbedding($userId, $pageId, $vector, $target['embed_model']);
         }
     }
 
@@ -628,24 +613,13 @@ final class PageService
      */
     private function semantic(int $userId, string $query, int $limit): array
     {
-        $base = Config::maybe('OLLAMA_URL');
-        if ($base === null) {
-            return [];
-        }
-        $model = Config::get('OLLAMA_EMBED_MODEL', 'nomic-embed-text');
-        try {
-            $http = $this->http ?? new HttpClient();
-            $res = $http->requestJson(
-                'POST',
-                rtrim($base, '/') . '/api/embeddings',
-                json_encode(['model' => $model, 'prompt' => mb_substr($query, 0, 2000)], JSON_THROW_ON_ERROR),
-                ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
-                20
-            );
-        } catch (\Throwable) {
-            return [];
-        }
-        $queryVec = is_array($res) ? ($res['embedding'] ?? ($res['embeddings'][0] ?? null)) : null;
+        $target = OllamaSettings::effective((new OllamaSettings($this->db))->get(), null);
+        $queryVec = (new OllamaClient())->embeddings(
+            $target['base_url'],
+            $target['embed_model'],
+            mb_substr($query, 0, 2000),
+            20
+        );
         if (!is_array($queryVec) || $queryVec === []) {
             return [];
         }

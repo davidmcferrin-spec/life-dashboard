@@ -60,7 +60,13 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 **L4 — Second brain ✅**
 - [x] `pages`, `page_revisions`, `page_links`, `page_embeddings` (JSON vectors; full-text via `to_tsvector`), `page_folders` (nested, `pages.folder_id`; existing pages stay at the root)
 - [x] `/brain` editor (Markdown preview renders sanitized HTML, wikilinks, callouts, tree, backlinks, revision restore, folder tree, breadcrumbs) and `/brain/graph` (stable topic clusters, live per-token read/write traces from `audit_events`)
-- [x] Page MCP tools, including folder list/create/rename/move/delete and `move_page`. Optional `OLLAMA_URL` embeds on save. Agents may also `POST …/embedding`
+- [x] Page MCP tools, including folder list/create/rename/move/delete and `move_page`. Embeddings use Settings → Local AI (default `http://127.0.0.1:11434`, `nomic-embed-text`). Agents may also `POST …/embedding`
+
+**Local AI (Ollama)**
+- `setup.sh`, `provision.sh`, and `lifedash-deploy` install Ollama with the official installer when the binary is missing, bind it to `127.0.0.1:11434`, and start `lifedash-ollama-models.service` in the background. The timer retries after boot. The pull does not block deploy.
+- Hardware choice: `llama3.2:1b` under 8 GB RAM and under 4 GB VRAM, `llama3.2:3b` at 8 GB RAM or 4 GB VRAM, `qwen2.5:7b` at 16 GB RAM on CPU or 8 GB VRAM. Embeddings are always `nomic-embed-text`. NVIDIA and AMD are detected; otherwise CPU. The choice is logged.
+- Settings `/settings/ollama` stores the base URL, chat model, and embedding model in `ollama_settings` (migration `0038`). Test connection, installed models, and pull/remove go through the service spool. MCP: `ollama_status`, `ollama_list_models`, `ollama_generate`, `ollama_pull`, `ollama_remove`. Pull and remove need **Allow MCP updates**.
+- Health warns when the service is installed but down, the API does not answer, a pull failed, a default model is missing, or the bind is not loopback. A machine without Ollama stays quiet.
 - [x] `/brain/graph` pans (drag, touch) and zooms (wheel, pinch, buttons) with fit and reset. Node clicks still open the page
 - [x] Dashboard AI presence sprite: accent-colored geometric core driven by bearer/MCP `audit_events` on the realtime channel. Names the token and tool, fades after ~30s, flies toward the matching widget. Settings → Dashboard toggle. Reduced motion is a still badge. The bubble has no notes or account numbers
 
@@ -87,7 +93,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - Compare on `/digest`: a date range grouped by product, a version range in version order, and a redline of one source between two snapshot dates (`Knowledge\Redline`). Snapshots keep the normalized entry text. Retention is the preference `digest_snapshot_days`, default 180, set on the page.
 
 **Playlists (mixtape)**
-- `/spotify` stores per-track notes: BPM, musical key, Camelot code, energy 1–10, mood tags, season tags, and source `manual` or `estimated` (migration `0038`). Spotify audio-features is unavailable, so an estimate is labeled. MCP: `set_track_metadata`, `get_track_metadata`.
+- `/spotify` stores per-track notes: BPM, musical key, Camelot code, energy 1–10, mood tags, season tags, and source `manual` or `estimated` (migration `0039`). Spotify audio-features is unavailable, so an estimate is labeled. MCP: `set_track_metadata`, `get_track_metadata`.
 - Season windows are edited on the Playlists page. `christmas` and `holiday` default to Thanksgiving through January 6. Adding or pushing a track tagged for a closed season is refused unless that playlist's prompt lists the season in `season_tags` or `allow_seasons`. MCP: `list_active_seasons`.
 - Prompts store a theme and an energy arc (`opener`, `build`, `peak`, `breather`, `closer`). `plan_mixtape` orders candidate URIs along that arc using stored energy, BPM steps, and Camelot neighbors. It does not stage or push. Spotify search sends `limit=10`.
 

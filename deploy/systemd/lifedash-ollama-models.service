@@ -1,0 +1,30 @@
+# Downloads the hardware-sized chat model and the embedding model.
+# Deploy starts this with --no-block so the pull does not hold the update.
+
+[Unit]
+Description=life-dashboard Ollama model pull
+After=ollama.service network-online.target
+Wants=ollama.service
+
+[Service]
+Type=oneshot
+User=lifedash
+Group=lifedash
+Environment=PYTHONPATH=/srv/lifedash/app/services
+Environment=LIFEDASH_OLLAMA_DIR=/var/lib/lifedash/ollama
+Environment=LIFEDASH_OLLAMA_LOG=/srv/lifedash/app/storage/logs/ollama.log
+Environment=LIFEDASH_ENV_FILE=/run/lifedash/app.env
+WorkingDirectory=/srv/lifedash/app
+ExecStart=/srv/lifedash/venv/bin/python -m lifedash.ollama_models defaults
+TimeoutStartSec=0
+Nice=10
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/lifedash/ollama /srv/lifedash/app/storage
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+LockPersonality=yes

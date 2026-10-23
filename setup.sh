@@ -280,6 +280,9 @@ fi
 # --- 3. provision ---------------------------------------------------------------
 stage "Provision server (deploy/provision.sh)"
 run "$TARGET/deploy/provision.sh" "${PROVISION_ARGS[@]}"
+
+stage "Local model (Ollama)"
+run "$TARGET/deploy/bin/lifedash-ollama-ensure"
 cleanup; GENERATED_ENV=""
 
 # Keep APP_URL / SESSION_SECURE consistent with how the UI is actually served:

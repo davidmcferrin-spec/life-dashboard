@@ -1924,6 +1924,10 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     .sp-player { transition: none; }
 }
 
+.ld-ollama-list { display: flex; flex-direction: column; gap: 0.4rem; }
+.ld-ollama-row { display: flex; justify-content: space-between; gap: 0.75rem; align-items: center; }
+.ld-ollama-status[data-status="warn"],
+.ld-ollama-status[data-status="fail"] { color: var(--danger); }
 .ld-digest-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .ld-digest-chip, .ld-digest-badge {
     border: 1px solid var(--surface-border);
