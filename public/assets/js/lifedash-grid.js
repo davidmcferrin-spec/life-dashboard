@@ -14,7 +14,10 @@
  *     Inside a breakpoint the column count stays put, so a window resize
  *     only grows columns until the cap, then only the side margins change.
  *     A phone reorder is saved as a 12-column flow of the desktop widths,
- *     never as a 1-column layout.
+ *     never as a 1-column layout. Under 700px layout editing stays off.
+ *     Search, vitals, agenda, and quick actions are locked cells in this
+ *     grid. Their rows sit above the stored widget y and are removed
+ *     before a save, so the 12-column x/y/w stay put.
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
  *   - Unlocked widgets size to their content in place. Extra rows open
@@ -182,6 +185,17 @@
     let metricsCache = null;
     /** Column count last projected from the canonical (or saved wide) layout. */
     let projectedCols = 0;
+    /** Visual rows occupied by the locked overview cells. Subtracted on save. */
+    let heroOffset = 0;
+    const HERO_ORDER = ['search', 'vitals', 'agenda', 'act-digest', 'act-pings', 'act-life'];
+    const heroH = {
+        search: 4,
+        vitals: 6,
+        agenda: 6,
+        'act-digest': 3,
+        'act-pings': 3,
+        'act-life': 3,
+    };
 
     const initialEl = document.getElementById('ld-initial');
     const initial = initialEl ? JSON.parse(initialEl.textContent || '[]') : [];
@@ -222,7 +236,71 @@
             }
             placed.push(n);
         });
+        placeHeroNodes(newCols);
         projectedCols = newCols;
+    }
+
+    function heroPlan(cols) {
+        cols = cols | 0;
+        if (cols <= 1) {
+            // Search, then the actions under it, then the rail. Same reading
+            // order as the wide grid, in one column.
+            const order = ['search', 'act-digest', 'act-pings', 'act-life', 'vitals', 'agenda'];
+            let y = 0;
+            return order.map((id) => {
+                const h = heroH[id] || 1;
+                const slot = { id, x: 0, y, w: 1, h };
+                y += h;
+                return slot;
+            });
+        }
+        const rail = Math.min(3, Math.max(1, cols - 3));
+        const main = cols - rail;
+        const share = Math.floor(main / 3);
+        const extra = main - share * 3;
+        const widths = [share + (extra > 0 ? 1 : 0), share + (extra > 1 ? 1 : 0), share];
+        const searchH = heroH.search || 1;
+        const vitalsH = heroH.vitals || 1;
+        let x = 0;
+        const acts = ['act-digest', 'act-pings', 'act-life'].map((id, i) => {
+            const w = Math.max(1, widths[i] || 1);
+            const slot = { id, x, y: searchH, w, h: heroH[id] || 1 };
+            x += w;
+            return slot;
+        });
+        return [
+            { id: 'search', x: 0, y: 0, w: main, h: searchH },
+            { id: 'vitals', x: main, y: 0, w: rail, h: vitalsH },
+        ].concat(acts, [
+            { id: 'agenda', x: main, y: vitalsH, w: rail, h: heroH.agenda || 1 },
+        ]);
+    }
+
+    function heroEl(id) {
+        return gridEl.querySelector('.ld-hero-item[data-hero="' + id + '"]');
+    }
+
+    function lockHeroNode(node) {
+        node.locked = true;
+        node.noMove = true;
+        node.noResize = true;
+        node.autoPosition = false;
+    }
+
+    // Keep hero widths inside the column count while GridStack applies a breakpoint.
+    function placeHeroNodes(cols) {
+        const byId = new Map(heroPlan(cols).map((s) => [s.id, s]));
+        HERO_ORDER.forEach((id) => {
+            const el = heroEl(id);
+            const node = el && el.gridstackNode;
+            const slot = byId.get(id);
+            if (!node || !slot) return;
+            node.x = slot.x;
+            node.y = slot.y;
+            node.w = Math.max(1, Math.min(cols, slot.w));
+            node.h = slot.h;
+            lockHeroNode(node);
+        });
     }
 
     const grid = GS.init({
@@ -386,11 +464,31 @@
     // -----------------------------------------------------------------
     const editBtn = document.getElementById('ld-edit');
 
+    function lockHeroNodes() {
+        HERO_ORDER.forEach((id) => {
+            const el = heroEl(id);
+            const node = el?.gridstackNode;
+            if (!node) return;
+            lockHeroNode(node);
+            // setStatic rebinds drag from the flags it sees. Apply the lock
+            // again so a hero cannot be dragged once editing is on.
+            if (!grid.opts.staticGrid) grid.prepareDragDrop(el);
+        });
+    }
+
+    function syncPhoneEdit() {
+        const phone = grid.getColumn() === 1;
+        editBtn.disabled = phone;
+        if (phone && editing) setEditing(false);
+    }
+
     function setEditing(on) {
+        if (on && grid.getColumn() === 1) return;
         editing = on;
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
         widgets.forEach((entry) => applyPin(entry));
+        lockHeroNodes();
         editBtn.textContent = on ? 'Done' : 'Edit layout';
         editBtn.setAttribute('aria-pressed', String(on));
         if (!on) {
@@ -414,7 +512,7 @@
         return layoutNodes().map((n) => {
             const w = widgets.get(Number(n.id)).widget;
             return {
-                id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h,
+                id: Number(n.id), x: n.x, y: storedY(n.y), w: n.w, h: n.h,
                 height_locked: w.height_locked ? 1 : 0,
                 placement_locked: w.placement_locked ? 1 : 0,
             };
@@ -448,13 +546,15 @@
         const prior = Array.isArray(savedLayouts[cols])
             ? savedLayouts[cols].filter((s) => known.has(Number(s.id)))
             : snapshot.slice();
+        const had = Array.isArray(savedLayouts[cols]);
         const next = prior.concat([extra]);
         postLayout(next.map((s) => {
             const w = widgets.get(Number(s.id))?.widget;
+            const fromScreen = !had || Number(s.id) === Number(extra.id);
             return {
                 id: Number(s.id),
                 x: s.x,
-                y: s.y,
+                y: fromScreen ? storedY(s.y) : s.y,
                 w: s.w,
                 h: s.h,
                 height_locked: w && w.height_locked ? 1 : 0,
@@ -486,7 +586,7 @@
         const node = entry.el.gridstackNode;
         const onCanon = grid.getColumn() === COLUMNS;
         const x = onCanon && node ? node.x : w.x;
-        const y = onCanon && node ? node.y : w.y;
+        const y = onCanon && node ? storedY(node.y) : w.y;
         const width = onCanon && node ? node.w : w.w;
         const height = node ? node.h : w.h;
         w.x = x;
@@ -615,9 +715,18 @@
         return projectColumns(canon, cols);
     }
 
+    function isHeroNode(n) {
+        return !!(n && n.el && n.el.dataset && n.el.dataset.hero);
+    }
+
     function positionsFor(nodes, cols) {
-        const canon = nodes.filter((n) => n.id !== undefined).map(canonicalOf);
+        const canon = nodes.filter((n) => n.id !== undefined && !isHeroNode(n)).map(canonicalOf);
         return layoutPositions(canon, savedLayouts, cols);
+    }
+
+    // Widget y on screen includes the overview rows. Stored y does not.
+    function storedY(y) {
+        return Math.max(0, (y | 0) - heroOffset);
     }
 
     function writeNode(node) {
@@ -682,7 +791,10 @@
      * Content fit only pushes unlocked cards down. It does not change columns.
      */
     function growInPlace(prevHeights) {
-        const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
+        const nodes = layoutNodes();
+        nodes.forEach((n) => {
+            if (n._ldY !== undefined) n.y = n._ldY;
+        });
         const pins = pinSnapshot(nodes);
         const inserts = [];
         nodes.forEach((n) => {
@@ -701,17 +813,25 @@
             if (shift) n.y += shift;
         });
         restorePins(nodes, pins);
+        nodes.forEach((n) => { n._ldY = n.y; });
+        seatHero(grid.getColumn());
     }
 
     function commitPositions(prevHeights) {
         const cols = grid.getColumn();
-        if (cols === 1 || !grid.engine) return;
+        if (cols === 1 || !grid.engine) {
+            if (cols === 1) seatHero(1);
+            return;
+        }
         if (prevHeights) {
             growInPlace(prevHeights);
             return;
         }
         grid.engine._layouts = [];
-        const nodes = grid.engine.nodes.filter((n) => n.id !== undefined);
+        const nodes = layoutNodes();
+        nodes.forEach((n) => {
+            if (n._ldY !== undefined) n.y = n._ldY;
+        });
         const pins = pinSnapshot(nodes);
         const base = positionsFor(nodes, cols);
         const byId = new Map(base.map((p) => [Number(p.id), p]));
@@ -735,6 +855,8 @@
             writeNode(n);
         });
         restorePins(nodes, pins);
+        nodes.forEach((n) => { n._ldY = n.y; });
+        seatHero(cols);
     }
 
     function projectInPlace() {
@@ -814,7 +936,7 @@
         const items = layoutNodes().map((n) => {
             const w = widgets.get(Number(n.id)).widget;
             return {
-                id: Number(n.id), x: n.x, y: n.y, w: n.w, h: n.h,
+                id: Number(n.id), x: n.x, y: storedY(n.y), w: n.w, h: n.h,
                 height_locked: w.height_locked ? 1 : 0,
             };
         });
@@ -875,8 +997,16 @@
         postLayout(items, { pack: true });
     }
 
+    function rememberDraggedY() {
+        layoutNodes().forEach((n) => {
+            if (n._moving || n._resizing) return;
+            n._ldY = storedY(n.y);
+        });
+    }
+
     grid.on('change', () => {
         if (!editing || grid.isIgnoreChangeCB()) return;
+        rememberDraggedY();
         const cols = grid.getColumn();
         if (cols === COLUMNS) saveLayout();
         else if (WIDE.includes(cols)) saveWide();
@@ -889,10 +1019,12 @@
     });
 
     grid.on('dragstop', () => {
+        rememberDraggedY();
         if (editing && grid.getColumn() === 1) saveMobileOrder();
     });
 
     grid.on('resizestop', () => {
+        rememberDraggedY();
         if (grid.getColumn() === 1) saveMobileOrder();
     });
 
@@ -1516,9 +1648,10 @@
         nodes.forEach((n) => {
             if (n.locked) return;
             let y = n.y;
-            while (y > 0 && !grid.engine.collide(n, { x: n.x, y: y - 1, w: n.w, h: n.h })) y -= 1;
+            while (y > heroOffset && !grid.engine.collide(n, { x: n.x, y: y - 1, w: n.w, h: n.h })) y -= 1;
             if (y !== n.y) grid.update(n.el, { y });
         });
+        rememberDraggedY();
     }
 
     let fitting = false;
@@ -1556,15 +1689,122 @@
      * breakpoint cap and is centered by CSS. One column, and the uncapped
      * setting, fill the board.
      */
+    function seatHero(cols) {
+        const plan = heroPlan(cols);
+        if (cols <= 1) {
+            let y = 0;
+            plan.forEach((slot) => {
+                const node = heroEl(slot.id)?.gridstackNode;
+                if (!node) return;
+                node.x = 0;
+                node.y = y;
+                node.w = 1;
+                node.h = slot.h;
+                lockHeroNode(node);
+                writeNode(node);
+                y += slot.h;
+            });
+            const ordered = layoutNodes().slice().sort((a, b) => {
+                const ay = a._ldY !== undefined ? a._ldY : a.y;
+                const by = b._ldY !== undefined ? b._ldY : b.y;
+                return ay - by || a.x - b.x || (Number(a.id) || 0) - (Number(b.id) || 0);
+            });
+            ordered.forEach((n) => {
+                n.x = 0;
+                n.y = y;
+                n.w = 1;
+                writeNode(n);
+                y += n.h || 1;
+            });
+            heroOffset = 0;
+            grid._updateContainerHeight();
+            return;
+        }
+        let offset = 0;
+        plan.forEach((slot) => {
+            const node = heroEl(slot.id)?.gridstackNode;
+            if (!node) return;
+            node.x = slot.x;
+            node.y = slot.y;
+            node.w = slot.w;
+            node.h = slot.h;
+            lockHeroNode(node);
+            writeNode(node);
+            offset = Math.max(offset, slot.y + slot.h);
+        });
+        heroOffset = offset;
+        layoutNodes().forEach((n) => {
+            const base = n._ldY !== undefined ? n._ldY : n.y;
+            n.y = base + offset;
+            writeNode(n);
+        });
+        grid._updateContainerHeight();
+    }
+
+    function measureHeroCells(el) {
+        const node = el.gridstackNode;
+        if (!node || !el.clientHeight) return 0;
+        const cell = grid.getCellHeight(true);
+        if (!cell) return 0;
+        const box = el.querySelector('.grid-stack-item-content');
+        const inner = el.querySelector('.ld-hero-fit');
+        if (!box || !inner) return 0;
+        const measured = inner.getBoundingClientRect().height;
+        if (measured < 8) return 0;
+        const pad = el.clientHeight - box.clientHeight;
+        const currentInner = node.h ? node.h * cell - pad : box.clientHeight;
+        const px = (node.h ? node.h * cell : el.clientHeight) + (measured - currentInner);
+        let cells = Math.ceil(px / cell);
+        if (!Number.isFinite(cells) || cells < 1) return 0;
+        return cells;
+    }
+
+    let measuringHero = false;
+    function measureHero() {
+        if (measuringHero) return;
+        let changed = false;
+        HERO_ORDER.forEach((id) => {
+            const el = heroEl(id);
+            if (!el) return;
+            const cells = measureHeroCells(el);
+            if (!cells || cells === heroH[id]) return;
+            heroH[id] = cells;
+            changed = true;
+        });
+        if (!changed) return;
+        measuringHero = true;
+        try {
+            seatHero(grid.getColumn());
+        } finally {
+            measuringHero = false;
+        }
+    }
+
     function applyGridCap(cols) {
         applyCap(gridEl, cols);
+        if (boardEl && boardEl !== gridEl) {
+            boardEl.dataset.gridCap = gridEl.dataset.gridCap || '0';
+            applyCap(boardEl, cols);
+        }
     }
 
     function applyColumns(cols, animate) {
         if (grid.engine) grid.engine._layouts = [];
         grid.setAnimation(!!animate);
         if (cols === 1) {
-            if (grid.getColumn() !== 1) grid.column(1, 'list');
+            if (grid.getColumn() !== 1) {
+                grid.column(1, (_newCols, _oldCols, placed, remaining) => {
+                    const all = placed.concat(remaining);
+                    placed.length = 0;
+                    remaining.length = 0;
+                    all.forEach((n) => {
+                        n.x = 0;
+                        n.w = 1;
+                        placed.push(n);
+                    });
+                });
+            }
+            seatHero(1);
         } else if (grid.getColumn() !== cols) {
             grid.column(cols, projectLayout);
         } else {
@@ -1573,6 +1813,7 @@
         if (cols !== 1) commitPositions();
         applyGridCap(grid.getColumn());
         projectedCols = grid.getColumn();
+        syncPhoneEdit();
         // Content is already on screen, so fit in this turn. One paint, one move.
         if (animate) runFit();
         else requestAnimationFrame(() => grid.setAnimation(true));
@@ -1584,12 +1825,24 @@
         const next = columnsForWidth(window.innerWidth, grid.getColumn());
         if (next === grid.getColumn()) {
             applyGridCap(next);
+            measureHero();
             return;
         }
         applyColumns(next, true);
     }, 220));
 
-    requestAnimationFrame(() => scheduleFit());
+    if ('ResizeObserver' in window) {
+        const heroRo = new ResizeObserver(debounce(() => measureHero(), 40));
+        HERO_ORDER.forEach((id) => {
+            const fit = heroEl(id)?.querySelector('.ld-hero-fit');
+            if (fit) heroRo.observe(fit);
+        });
+    }
+
+    requestAnimationFrame(() => {
+        measureHero();
+        scheduleFit();
+    });
 
     window.LD.grid = { handleEvent, refreshAll, refreshForMetric, get editing() { return editing; } };
 })();

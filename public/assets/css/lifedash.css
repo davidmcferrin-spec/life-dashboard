@@ -40,9 +40,11 @@
 
 /* Centering only. The px cap is the inline max-width applyCap() sets on
    #ld-grid and every other .ld-grid[data-grid-cap], from the same column count. */
-.ld-grid.ld-cols-capped {
+.ld-grid.ld-cols-capped,
+.ld-board.ld-cols-capped {
     margin-left: auto;
     margin-right: auto;
+    width: 100%;
 }
 
 /* -------------------------------------------------------
@@ -2485,7 +2487,7 @@ body.cloudpad-page .app-content {
     }
 }
 
-/* Overview hero, vitals, agenda, and quick actions. The widget grid stays below. */
+/* Overview blocks are cells in the widget grid, so they use its columns and cap. */
 .ov-sr {
     border: 0;
     clip: rect(0 0 0 0);
@@ -2498,9 +2500,13 @@ body.cloudpad-page .app-content {
     width: 1px;
 }
 
-.ov-layout {
-    display: grid;
-    gap: 24px;
+.ld-hero-item > .grid-stack-item-content {
+    background: transparent;
+    overflow: hidden;
+}
+
+.ld-hero-fit {
+    min-width: 0;
 }
 
 .ov-card {
@@ -2572,12 +2578,6 @@ body.cloudpad-page .app-content {
 
 .ov-results {
     margin-top: 12px;
-}
-
-.ov-rail {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
 }
 
 .ov-vitals {
@@ -2671,16 +2671,11 @@ body.cloudpad-page .app-content {
     color: var(--accent);
 }
 
-.ov-actions {
-    display: grid;
-    gap: 16px;
-    margin-top: 24px;
-}
-
 .ov-action {
     background: var(--bg-elev);
     border: 1px solid var(--line);
     border-radius: var(--radius);
+    box-sizing: border-box;
     color: inherit;
     display: flex;
     flex-direction: column;
@@ -2701,19 +2696,6 @@ body.cloudpad-page .app-content {
 
 .ov-action-line {
     color: var(--text-dim);
-}
-
-@media (min-width: 700px) {
-    .ov-actions {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media (min-width: 1280px) {
-    .ov-layout {
-        align-items: start;
-        grid-template-columns: minmax(0, 1fr) 320px;
-    }
 }
 
 /* Group spacing only. Link color and the active state stay in dashboard.css. */
