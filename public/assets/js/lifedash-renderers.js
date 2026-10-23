@@ -706,28 +706,47 @@
             : emptyPanel('No life metrics', 'Add one to start a chart.', 'Open life', '/settings/life');
     }
 
+    // Last 4 only. The stored name, including "Creator subscription", is not rewritten.
+    function moneyAccountLabel(name, last4) {
+        const raw = String(last4 ?? '').trim();
+        const masked = raw.match(/^[*xX•·.\-\s]*(\d{4})$/);
+        const digits = masked && !/\d{5,}/.test(raw) ? masked[1] : '';
+        const mask = digits ? '•••• ' + digits : '';
+        const title = name == null ? '' : String(name);
+        return [title, mask].filter((part) => part !== '').join(' ');
+    }
+
+    function barWidth(part, whole) {
+        const top = Number(whole) || 0;
+        if (top <= 0) return 0;
+        return Math.max(0, Math.min(100, ((Number(part) || 0) / top) * 100));
+    }
+
     function spending(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const cats = (d.categories || []).map((c) =>
-            `<div class="ld-life-row"><span>${esc(c.category)}</span><strong>${esc(fmt.money(c.total))}</strong></div>`
+        const cats = d.categories || [];
+        let peak = 0;
+        cats.forEach((c) => {
+            peak = Math.max(peak, Math.abs(Number(c.total) || 0));
+        });
+        const bars = cats.map((c) =>
+            `<span class="ld-money-bar"><small><b>${esc(c.category)}</b><em>${esc(fmt.money(c.total))}</em></small><span class="ld-money-track"><i style="width:${barWidth(Math.abs(Number(c.total) || 0), peak).toFixed(1)}%"></i></span></span>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.spent))}</div><div class="ld-meta">spent · ${esc(PERIOD_LABEL[d.period] || d.period || '')}</div>${cats}`;
+        ctx.body.innerHTML = `<div class="ld-money ld-money-spend"><div class="ld-money-hero"><strong>${esc(fmt.money(d.spent))}</strong><span>spent · ${esc(PERIOD_LABEL[d.period] || d.period || '')}</span></div>${bars}</div>`;
     }
 
     function networth(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const accounts = (d.accounts || []).map((a) =>
-            `<div class="ld-life-row"><span>${esc(a.name)}</span><strong>${esc(fmt.money(a.kind === 'credit' ? -a.balance : a.balance))}</strong></div>`
-        ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.net_worth))}</div><div class="ld-meta">net worth trend</div>${accounts}`;
-        const el = document.createElement('div');
-        el.style.height = '7rem';
-        ctx.body.appendChild(el);
+        const accounts = (d.accounts || []).map((a) => {
+            const signed = a.kind === 'credit' ? -a.balance : a.balance;
+            return `<span class="ld-money-account"><em>${esc(moneyAccountLabel(a.name, a.last4))}</em><strong>${esc(fmt.money(signed))}</strong></span>`;
+        }).join('');
+        ctx.body.innerHTML = `<div class="ld-money ld-money-worth"><div class="ld-money-hero"><strong>${esc(fmt.money(d.net_worth))}</strong><span>net worth trend</span></div><div class="ld-money-line"></div>${accounts ? `<footer>${accounts}</footer>` : ''}</div>`;
         const snaps = d.snapshots || [];
         if (snaps.length > 1) {
-            drawLineChart(el, snaps.map((s) => s.date), [{ name: 'Net worth', color: PALETTE[0], values: snaps.map((s) => s.net) }], { compact: true, format: fmt.money });
+            drawLineChart(ctx.body.querySelector('.ld-money-line'), snaps.map((s) => s.date), [{ name: 'Net worth', color: PALETTE[0], values: snaps.map((s) => s.net) }], { compact: true, format: fmt.money });
         }
     }
 
@@ -759,21 +778,17 @@
             return;
         }
         const step = Number(d.step) || 0;
-        ctx.body.innerHTML = arcMeter((step / 7) * 100, {
-            label: 'Baby Step ' + step,
-            value: 'Step ' + step,
-            sub: d.name || '',
-            note: d.note || '',
-        });
+        const note = d.note ? `<p>${esc(d.note)}</p>` : '';
+        ctx.body.innerHTML = `<div class="ld-money ld-money-step" role="img" aria-label="Baby Step ${esc(String(step))}"><span>Step</span><strong>${esc(String(step))}</strong><div><p>${esc(d.name || '')}</p>${note}</div></div>`;
     }
 
     function debtSnowball(ctx) {
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const rows = (ctx.data.debts || []).map((d) => {
+        const rows = (ctx.data.debts || []).map((d, index) => {
             const dates = [d.target_payoff_on ? 'target ' + d.target_payoff_on : '', d.estimated_payoff_on ? 'estimate ' + d.estimated_payoff_on : 'estimate unavailable'].filter(Boolean).join(' · ');
-            return `<div class="ld-life-row"><span>${esc(d.name)}${d.last4 ? ' · ' + esc(d.last4) : ''}<span class="ld-meta">${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</span></span><strong>${esc(fmt.money(d.balance))}</strong></div>`;
+            return `<div class="ld-money-debt"><span>${index + 1}</span><p><strong>${esc(moneyAccountLabel(d.name, d.last4))}</strong><small>${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</small></p><b>${esc(fmt.money(d.balance))}</b></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || emptyPanel('No debts recorded', 'Add a balance to build the snowball.', 'Open money', '/settings/money');
+        ctx.body.innerHTML = rows ? `<div class="ld-money ld-money-debts">${rows}</div>` : emptyPanel('No debts recorded', 'Add a balance to build the snowball.', 'Open money', '/settings/money');
     }
 
     function foodWeek(ctx) {
@@ -781,38 +796,38 @@
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const cap = Number(d.cap) || 0;
         const spent = Number(d.spent) || 0;
-        ctx.body.innerHTML = arcMeter(cap > 0 ? (spent / cap) * 100 : 0, {
-            warn: !!d.over,
-            label: 'Food this week',
-            value: fmt.money(d.spent),
-            sub: 'of ' + fmt.money(d.cap) + ' this week',
-        });
+        const warn = d.over ? ' is-warn' : '';
+        ctx.body.innerHTML = `<div class="ld-money ld-money-cap${warn}" role="img" aria-label="Food this week"><strong>${esc(fmt.money(d.spent))}</strong><span>of ${esc(fmt.money(d.cap))} this week</span><div class="ld-money-track"><i style="width:${barWidth(spent, cap).toFixed(1)}%"></i></div></div>`;
     }
 
     function budgetActual(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
-        const rows = (d.lines || []).map((line) =>
-            `<div class="ld-life-row"><span>${esc(line.category)}<span class="ld-meta">planned ${esc(fmt.money(line.planned))}</span></span><strong class="${line.actual > line.planned ? 'text-danger' : ''}">${esc(fmt.money(line.actual))}</strong></div>`
-        ).join('');
-        ctx.body.innerHTML = `<div class="ld-meta">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || emptyPanel('No budget lines', 'This month has no lines yet.', 'Open money', '/settings/money')}`;
+        const rows = (d.lines || []).map((line) => {
+            const over = line.actual > line.planned;
+            const planned = Number(line.planned) || 0;
+            const width = planned > 0 ? barWidth(line.actual, line.planned) : ((Number(line.actual) || 0) > 0 ? 100 : 0);
+            return `<span class="ld-money-bar${over ? ' is-over' : ''}"><small><b>${esc(line.category)}</b><em>planned ${esc(fmt.money(line.planned))}</em><em class="${over ? 'text-danger' : ''}">${esc(fmt.money(line.actual))}</em></small><span class="ld-money-track"><i style="width:${width.toFixed(1)}%"></i></span></span>`;
+        }).join('');
+        ctx.body.innerHTML = `<div class="ld-money ld-money-budget"><div class="ld-money-kicker">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || emptyPanel('No budget lines', 'This month has no lines yet.', 'Open money', '/settings/money')}</div>`;
     }
 
     function sinkingFunds(ctx) {
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const rows = (ctx.data.funds || []).map((f) => {
             const pct = Number(f.percent) || 0;
-            return `<div class="ld-fund">${arcMeter(pct, { small: true, label: f.name, value: Math.round(pct) + '%' })}<div class="ld-fund-copy"><span>${esc(f.name)}</span><span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></div></div>`;
+            const due = f.due_on ? ' · due ' + esc(f.due_on) : '';
+            return `<div class="ld-money-fund"><span><b>${esc(f.name)}</b><strong>${esc(String(Math.round(pct)))}%</strong></span><div class="ld-money-track"><i style="width:${Math.max(0, Math.min(100, pct)).toFixed(1)}%"></i></div><small>${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${due}</small></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || emptyPanel('No sinking funds', 'Add a fund to track it here.', 'Open money', '/settings/money');
+        ctx.body.innerHTML = rows ? `<div class="ld-money ld-money-funds">${rows}</div>` : emptyPanel('No sinking funds', 'Add a fund to track it here.', 'Open money', '/settings/money');
     }
 
     function billsDue(ctx) {
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const rows = (ctx.data.bills || []).map((b) =>
-            `<div class="ld-life-row"><span>${esc(b.name)}<span class="ld-meta">${esc(b.due_on)}</span></span><strong>${esc(fmt.money(b.amount))}</strong></div>`
+            `<div class="ld-money-bill"><time datetime="${esc(b.due_on)}">${esc(b.due_on)}</time><strong>${esc(b.name)}</strong><span>${esc(fmt.money(b.amount))}</span></div>`
         ).join('');
-        ctx.body.innerHTML = rows || emptyPanel('Nothing due soon', 'No bills land in the next 10 days.');
+        ctx.body.innerHTML = rows ? `<div class="ld-money ld-money-bills">${rows}</div>` : emptyPanel('Nothing due soon', 'No bills land in the next 10 days.');
     }
 
     function retirement(ctx) {
@@ -820,28 +835,26 @@
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const rate = d.contribution_rate == null ? null : Number(d.contribution_rate);
         const shown = rate == null ? '—' : Math.round(rate * 1000) / 10 + '%';
-        ctx.body.innerHTML = arcMeter(rate == null ? 0 : (rate / 0.15) * 100, {
-            warn: !d.on_track,
-            label: 'Retirement contribution',
-            value: shown,
-            sub: 'of a 15% target',
-        });
+        const width = rate == null ? 0 : barWidth(rate, 0.15);
+        const warn = d.on_track ? '' : ' is-warn';
+        ctx.body.innerHTML = `<div class="ld-money ld-money-retire${warn}" role="img" aria-label="Retirement contribution"><strong>${esc(shown)}</strong><span>of a 15% target</span><div class="ld-money-track"><i style="width:${width.toFixed(1)}%"></i></div></div>`;
     }
 
     function credit(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const util = d.utilization_percent == null ? '—' : d.utilization_percent + '%';
-        ctx.body.innerHTML = `<div class="ld-stat-value">${d.score == null ? '—' : esc(String(d.score))}</div><div class="ld-meta">utilization ${esc(String(util))}${d.as_of ? ' · ' + esc(d.as_of) : ''}</div>`;
+        ctx.body.innerHTML = `<div class="ld-money ld-money-credit"><span><strong>${d.score == null ? '—' : esc(String(d.score))}</strong>score</span><span><strong>${esc(String(util))}</strong>utilization${d.as_of ? ' · ' + esc(d.as_of) : ''}</span></div>`;
     }
 
     function portfolio(ctx) {
         const d = ctx.data;
         tools(ctx, '<a href="/settings/investing" class="nav-link">Investing</a>');
+        const tone = (n) => (n < 0 ? 'ld-money-down' : 'ld-money-up');
         const rows = (d.positions || []).map((p) =>
-            `<div class="ld-life-row"><span>${esc(p.symbol)} <span class="ld-meta">${esc(p.venue)}</span></span><strong class="${p.unrealized < 0 ? 'ld-down' : 'ld-up'}">${esc(fmt.money(p.unrealized))}</strong></div>`
+            `<div class="ld-money-pos"><span>${esc(p.symbol)} <span class="ld-money-meta">${esc(p.venue)}</span></span><strong class="${tone(p.unrealized)}">${esc(fmt.money(p.unrealized))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.market_value))}</div><div class="ld-meta">market value · unrealized ${esc(fmt.money(d.unrealized))}</div>${rows || emptyPanel('No positions', 'Import holdings to see them here.', 'Open investing', '/settings/investing')}`;
+        ctx.body.innerHTML = `<div class="ld-money ld-money-port"><div class="ld-money-hero"><strong>${esc(fmt.money(d.market_value))}</strong><span>market value · unrealized <b class="${tone(d.unrealized)}">${esc(fmt.money(d.unrealized))}</b></span></div>${rows || emptyPanel('No positions', 'Import holdings to see them here.', 'Open investing', '/settings/investing')}</div>`;
     }
 
     const MEDIA_ICONS = ['music-2', 'file-text', 'chevron-right', 'terminal', 'message-square', 'command', 'play', 'pause', 'skip-back', 'skip-forward', 'external-link'];

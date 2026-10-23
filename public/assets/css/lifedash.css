@@ -7000,3 +7000,357 @@ html[data-theme="light"] .fin-card {
     100% { background-position: -100% 0; }
 }
 
+/* -------------------------------------------------------
+   Money, investing, and stocks widgets.
+   IBM Plex, 11–32px, teal via --accent in every theme.
+   ------------------------------------------------------- */
+@font-face {
+    font-family: 'IBM Plex Mono';
+    src: url('/assets/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'IBM Plex Mono';
+    src: url('/assets/fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+.ld-money {
+    color: var(--text-primary);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+}
+.ld-money-hero {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.ld-money-hero strong,
+.ld-money-cap > strong,
+.ld-money-retire > strong,
+.ld-money-credit strong,
+.ld-money-account strong,
+.ld-money-debt b,
+.ld-money-fund strong,
+.ld-money-bill > span,
+.ld-money-pos strong,
+.ld-money-bar em {
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+}
+.ld-money-hero strong {
+    color: var(--text-primary);
+    font-size: 20px;
+    letter-spacing: -0.03em;
+}
+.ld-money-hero span,
+.ld-money-cap > span,
+.ld-money-retire > span,
+.ld-money-kicker {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+.ld-money-kicker {
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+.ld-money-hero b { font-weight: 600; }
+.ld-money-up { color: var(--ok); }
+.ld-money-down { color: var(--danger); }
+
+.ld-money-line { height: 52px; margin: 8px 0; }
+.ld-money-line:empty { display: none; }
+.ld-money-worth .ld-svg { min-height: 0; }
+.ld-money-worth .ld-svg path { stroke: var(--accent); }
+
+.ld-money-worth footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    justify-content: space-between;
+}
+.ld-money-account {
+    display: flex;
+    flex: 1 1 8rem;
+    gap: 8px;
+    justify-content: space-between;
+    min-width: 0;
+}
+.ld-money-account em {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ld-money-account strong { font-size: 13px; }
+
+.ld-money-step {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: auto auto minmax(0, 1fr);
+    min-height: 100%;
+}
+.ld-money-step > span {
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.ld-money-step > strong {
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 32px;
+    font-weight: 600;
+    line-height: 1;
+}
+.ld-money-step p {
+    font-size: 13px;
+    line-height: 1.4;
+    margin: 0;
+}
+.ld-money-step p + p {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.ld-money-debt {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
+    min-height: 44px;
+}
+.ld-money-debt > span {
+    background: var(--accent-soft);
+    border-radius: 50%;
+    color: var(--accent);
+    display: grid;
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    height: 22px;
+    place-items: center;
+    width: 22px;
+}
+.ld-money-debt p { margin: 0; min-width: 0; }
+.ld-money-debt strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ld-money-debt small {
+    color: var(--text-muted);
+    display: block;
+    font-size: 11px;
+    margin-top: 2px;
+}
+.ld-money-debt b { font-size: 13px; }
+
+.ld-money-cap,
+.ld-money-retire {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    justify-content: center;
+    min-height: 100%;
+}
+.ld-money-cap > strong,
+.ld-money-retire > strong { font-size: 22px; }
+
+.ld-money-track {
+    background: var(--surface-hover);
+    border-radius: 99px;
+    height: 8px;
+    overflow: hidden;
+}
+.ld-money-track i {
+    background: var(--accent);
+    border-radius: inherit;
+    box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+    display: block;
+    height: 100%;
+}
+.ld-money.is-warn .ld-money-track i,
+.ld-money-cap.is-warn .ld-money-track i,
+.ld-money-retire.is-warn .ld-money-track i {
+    background: var(--warn);
+    box-shadow: none;
+}
+
+.ld-money-bar { display: block; margin-top: 8px; }
+.ld-money-bar small {
+    align-items: baseline;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}
+.ld-money-bar b {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+.ld-money-bar em {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-style: normal;
+}
+.ld-money-bar em.text-danger { color: var(--danger); }
+.ld-money-cap.is-warn > strong,
+.ld-money-retire.is-warn > strong { color: var(--warn); }
+.ld-money-bar.is-over .ld-money-track i {
+    background: var(--danger);
+    box-shadow: none;
+}
+.ld-money-budget .ld-money-bar:first-of-type { margin-top: 0; }
+
+.ld-money-funds { display: flex; flex-direction: column; gap: 12px; }
+.ld-money-fund { display: flex; flex-direction: column; gap: 6px; }
+.ld-money-fund > span {
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+}
+.ld-money-fund b {
+    font-size: 13px;
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ld-money-fund strong { color: var(--accent); font-size: 12px; }
+.ld-money-fund small { color: var(--text-muted); font-size: 11px; }
+
+.ld-money-bill {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    font-size: 13px;
+    gap: 8px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 40px;
+}
+.ld-money-bill time {
+    color: var(--text-muted);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 12px;
+}
+.ld-money-bill strong {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ld-money-bill > span { font-size: 13px; }
+
+.ld-money-credit {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr 1fr;
+    min-height: 100%;
+}
+.ld-money-credit span { color: var(--text-muted); font-size: 12px; }
+.ld-money-credit strong {
+    color: var(--text-primary);
+    display: block;
+    font-size: 20px;
+    margin-bottom: 4px;
+}
+
+.ld-money-pos {
+    align-items: baseline;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    font-size: 13px;
+    gap: 8px;
+    justify-content: space-between;
+    padding: 8px 0;
+}
+.ld-money-meta { color: var(--text-muted); font-size: 11px; }
+.ld-money-port .empty-panel { margin-top: 8px; }
+
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-head {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-head .section-title {
+    align-items: center;
+    display: flex;
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    gap: 8px;
+    letter-spacing: 0.04em;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-mark {
+    color: var(--accent);
+    display: inline-flex;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-mark svg {
+    height: 16px;
+    width: 16px;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-head .nav-link {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .ld-money-stocks {
+    color: var(--text-muted);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12px;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .stock-line {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 12px;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    margin-top: 0 !important;
+    min-height: 40px;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .stock-line > :first-child,
+.grid-stack-item[data-widget-type="legacy.stocks"] .stock-line > :last-child {
+    max-width: none;
+}
+.grid-stack-item[data-widget-type="legacy.stocks"] .widget-mono-sm {
+    font-size: 12px;
+}
+
+@container (max-width: 240px) {
+    .ld-money-step { grid-template-columns: auto minmax(0, 1fr); }
+    .ld-money-step > span { grid-column: 1 / -1; }
+    .ld-money-credit { grid-template-columns: 1fr; }
+    .ld-money-hero strong,
+    .ld-money-credit strong { font-size: 20px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .ld-money-track i { transition: width 0.25s ease; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .ld-money-track i { transition: none; }
+}
+
