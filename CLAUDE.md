@@ -92,6 +92,11 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - MCP: `list_digest_items`, `mark_digest_read`, `digest_sources`, `digest_check_now`, `digest_compare` (`digest:read` / `digest:write`). Bearer writes need **Allow MCP updates**. `digest_compare` takes a product plus either `from_date`/`to_date` or `from_version`/`to_version`.
 - Compare on `/digest`: a date range grouped by product, a version range in version order, and a redline of one source between two snapshot dates (`Knowledge\Redline`). Snapshots keep the normalized entry text. Retention is the preference `digest_snapshot_days`, default 180, set on the page.
 
+**Playlists (mixtape)**
+- `/spotify` stores per-track notes: BPM, musical key, Camelot code, energy 1–10, mood tags, season tags, and source `manual` or `estimated` (migration `0039`). Spotify audio-features is unavailable, so an estimate is labeled. MCP: `set_track_metadata`, `get_track_metadata`.
+- Season windows are edited on the Playlists page. `christmas` and `holiday` default to Thanksgiving through January 6. Adding or pushing a track tagged for a closed season is refused unless that playlist's prompt lists the season in `season_tags` or `allow_seasons`. MCP: `list_active_seasons`.
+- Prompts store a theme and an energy arc (`opener`, `build`, `peak`, `breather`, `closer`). `plan_mixtape` orders candidate URIs along that arc using stored energy, BPM steps, and Camelot neighbors. It does not stage or push. Spotify search sends `limit=10`.
+
 ## Conventions (life-dashboard)
 
 - **New schema changes go in `database/pgsql/NNNN_snake_case.sql`** (next free number, one transaction per file). Never edit an applied file. The legacy `Schema::migrations()` array is frozen (SQLite path only).

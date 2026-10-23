@@ -309,6 +309,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
         "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
         "delete_spotify_playlist", "set_player_enabled",
+        "set_track_metadata", "get_track_metadata", "list_active_seasons", "plan_mixtape",
     ):
         assert name in names
 
@@ -863,8 +864,9 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
         "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
         "delete_spotify_playlist", "set_player_enabled",
+        "set_track_metadata", "get_track_metadata", "list_active_seasons", "plan_mixtape",
     ]
-    assert len(spotify) == 45
+    assert len(spotify) == 49
     assert len(names) == len(set(names))
     for name in spotify:
         assert names.count(name) == 1
@@ -876,6 +878,11 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
 
     method, path, body = resolve("search_spotify", {"q": "north", "type": "track"})
     assert method == "GET" and path.startswith("/api/v1/spotify/search?")
+    method, path, body = resolve("plan_mixtape", {"uris": ["spotify:track:abc"], "prompt_id": 4})
+    assert method == "POST" and path == "/api/v1/spotify/mixtape/plan"
+    assert body["uris"] == ["spotify:track:abc"] and body["prompt_id"] == 4
+    method, path, body = resolve("list_active_seasons", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/seasons/active", None)
     method, path, body = resolve("discard_playlist_changes", {})
     assert (method, path, body) == ("POST", "/api/v1/spotify/discard", {})
     method, path, body = resolve("discard_playlist_changes", {"playlist_id": 3})

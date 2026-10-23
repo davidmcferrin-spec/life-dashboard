@@ -1700,8 +1700,11 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
 .sp-row.is-on { color: var(--hud-accent, var(--accent)); }
 .sp-create, .sp-rename, .sp-search { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
 .sp-diff { margin: 0.5rem 0; padding-left: 1rem; color: var(--text-muted); font-size: 0.85rem; }
-.sp-track-actions { display: flex; gap: 0.35rem; }
-.sp-track-actions button, .sp-prompt button, .sp-controls button { color: var(--text-primary); }
+.sp-track > span:first-child { min-width: 0; }
+.sp-meta { display: block; color: var(--text-muted); font-size: 0.75rem; }
+.sp-track-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
+.sp-track-actions button, .sp-prompt button, .sp-controls button, .sp-season { color: var(--text-primary); }
+.sp-season { margin: 0 0.35rem 0.35rem 0; }
 .sp-prompt { display: block; }
 .sp-prompt p { margin: 0.25rem 0; color: var(--text-muted); }
 
