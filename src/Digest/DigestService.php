@@ -50,13 +50,19 @@ final class DigestService
         $since = $this->sinceFilter($filter['since'] ?? null);
         $unread = !empty($filter['unread']);
         $query = $this->search($filter['q'] ?? null);
+        $topic = $this->topicFilter($filter['topic'] ?? null);
         $limit = $this->limit($filter['limit'] ?? 50);
         $offset = $this->offset($filter['offset'] ?? 0);
         $cursor = $this->cursor($userId);
         $rows = [];
         $found = $this->db->fetchAll(
             'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
-                    s.product, s.label AS source_label, s.id AS source_id
+                    s.product, s.label AS source_label, s.id AS source_id,
+                    (SELECT COUNT(DISTINCT e2.source_id) FROM digest_entries e2 WHERE e2.user_id = e.user_id AND e2.url = e.url) AS source_count,
+                    (SELECT COALESCE(json_agg(json_build_object(\'id\', t.id, \'label\', t.label, \'slug\', t.slug) ORDER BY t.label), \'[]\'::json)
+                     FROM digest_entry_topics et
+                     JOIN digest_topics t ON t.id = et.topic_id
+                     WHERE et.entry_id = e.id) AS topics
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id
              WHERE e.user_id = ?
@@ -64,6 +70,11 @@ final class DigestService
                AND (? = 0 OR (e.published_on IS NOT NULL AND e.published_on >= ?) OR (e.published_on IS NULL AND e.first_seen_at >= ?))
                AND (? = 0 OR e.title ILIKE ? OR e.summary ILIKE ? OR e.brief ILIKE ?)
                AND (? = 0 OR e.first_seen_at > ? OR (e.edited_at IS NOT NULL AND e.edited_at > ?))
+               AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM digest_entry_topics etf
+                    JOIN digest_topics tpf ON tpf.id = etf.topic_id
+                    WHERE etf.entry_id = e.id AND tpf.slug = ?
+               ))
              ORDER BY COALESCE(e.published_on, CAST(e.first_seen_at AS date)) DESC, e.first_seen_at DESC, e.id DESC
              LIMIT ? OFFSET ?',
             [
@@ -72,6 +83,7 @@ final class DigestService
                 $since === null ? 0 : 1, $since ?? '1970-01-01', ($since ?? '1970-01-01') . ' 00:00:00',
                 $query === null ? 0 : 1, $query ?? '%', $query ?? '%', $query ?? '%',
                 ($unread && $cursor !== null) ? 1 : 0, $cursor ?? '1970-01-01 00:00:00', $cursor ?? '1970-01-01 00:00:00',
+                $topic === null ? 0 : 1, $topic ?? '',
                 $limit + 1,
                 $offset,
             ]
@@ -85,9 +97,10 @@ final class DigestService
         }
         return [
             'items'           => $rows,
-            'new_count'       => $this->newCount($userId, $product),
+            'new_count'       => $this->newCount($userId, $product, $topic),
             'read_through_at' => $this->stamp($cursor),
             'products'        => $this->products(),
+            'topics'          => $this->topicChips($userId),
             'has_more'        => $hasMore,
             'today'           => $this->clock()->today(),
         ];
@@ -183,6 +196,56 @@ final class DigestService
     {
         $this->owned($userId, $id);
         $this->db->execute('DELETE FROM digest_sources WHERE user_id = ? AND id = ?', [$userId, $id]);
+        $this->dropUnusedTopics($userId);
+    }
+
+    /**
+     * @return array{topic: array{id: int, label: string, slug: string}, topics: list<array{id: int, label: string, slug: string}>}
+     */
+    public function tag(int $userId, int $entryId, string $name): array
+    {
+        $this->ownedEntry($userId, $entryId);
+        $named = DigestTopics::name($name);
+        $this->db->execute(
+            'INSERT INTO digest_topics (user_id, slug, label) VALUES (?, ?, ?)
+             ON CONFLICT (user_id, slug) DO NOTHING',
+            [$userId, $named['slug'], $named['label']]
+        );
+        $topic = $this->db->fetchOne(
+            'SELECT id, label, slug FROM digest_topics WHERE user_id = ? AND slug = ?',
+            [$userId, $named['slug']]
+        );
+        if ($topic === null) {
+            throw new NotFoundException('Topic not found.');
+        }
+        $topicId = (int) $topic['id'];
+        $this->db->execute(
+            'INSERT INTO digest_entry_topics (user_id, entry_id, topic_id) VALUES (?, ?, ?)
+             ON CONFLICT (entry_id, topic_id) DO NOTHING',
+            [$userId, $entryId, $topicId]
+        );
+        return [
+            'topic' => [
+                'id' => $topicId,
+                'label' => (string) $topic['label'],
+                'slug' => (string) $topic['slug'],
+            ],
+            'topics' => $this->entryTopics($userId, $entryId),
+        ];
+    }
+
+    /**
+     * @return array{topics: list<array{id: int, label: string, slug: string}>}
+     */
+    public function untag(int $userId, int $entryId, int $topicId): array
+    {
+        $this->ownedEntry($userId, $entryId);
+        $this->db->execute(
+            'DELETE FROM digest_entry_topics WHERE user_id = ? AND entry_id = ? AND topic_id = ?',
+            [$userId, $entryId, $topicId]
+        );
+        $this->dropUnusedTopics($userId);
+        return ['topics' => $this->entryTopics($userId, $entryId)];
     }
 
     /**
@@ -271,7 +334,7 @@ final class DigestService
         }
     }
 
-    private function newCount(int $userId, ?string $product = null): int
+    private function newCount(int $userId, ?string $product = null, ?string $topic = null): int
     {
         $cursor = $this->cursor($userId);
         return (int) $this->db->fetchScalar(
@@ -279,11 +342,17 @@ final class DigestService
              JOIN digest_sources s ON s.id = e.source_id
              WHERE e.user_id = ?
                AND (? = 0 OR s.product = ?)
-               AND (? = 0 OR e.first_seen_at > ? OR (e.edited_at IS NOT NULL AND e.edited_at > ?))',
+               AND (? = 0 OR e.first_seen_at > ? OR (e.edited_at IS NOT NULL AND e.edited_at > ?))
+               AND (? = 0 OR EXISTS (
+                    SELECT 1 FROM digest_entry_topics etf
+                    JOIN digest_topics tpf ON tpf.id = etf.topic_id
+                    WHERE etf.entry_id = e.id AND tpf.slug = ?
+               ))',
             [
                 $userId,
                 $product === null ? 0 : 1, $product ?? '',
                 $cursor === null ? 0 : 1, $cursor ?? '1970-01-01 00:00:00', $cursor ?? '1970-01-01 00:00:00',
+                $topic === null ? 0 : 1, $topic ?? '',
             ]
         );
     }
@@ -332,6 +401,9 @@ final class DigestService
             'version'       => isset($row['version_text']) && $row['version_text'] !== null && $row['version_text'] !== ''
                 ? (string) $row['version_text']
                 : null,
+            // Same changelog URL on two sources is one story, so the badge counts sources.
+            'source_count'  => max(1, (int) ($row['source_count'] ?? 1)),
+            'topics'        => $this->decodeTopics($row['topics'] ?? []),
         ];
     }
 
@@ -599,7 +671,12 @@ final class DigestService
         );
         $found = $this->db->fetchAll(
             'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
-                    s.product, s.label AS source_label, s.id AS source_id
+                    s.product, s.label AS source_label, s.id AS source_id,
+                    (SELECT COUNT(DISTINCT e2.source_id) FROM digest_entries e2 WHERE e2.user_id = e.user_id AND e2.url = e.url) AS source_count,
+                    (SELECT COALESCE(json_agg(json_build_object(\'id\', t.id, \'label\', t.label, \'slug\', t.slug) ORDER BY t.label), \'[]\'::json)
+                     FROM digest_entry_topics et
+                     JOIN digest_topics t ON t.id = et.topic_id
+                     WHERE et.entry_id = e.id) AS topics
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id
              WHERE e.user_id = ?
@@ -674,7 +751,12 @@ final class DigestService
         );
         $found = $this->db->fetchAll(
             'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
-                    s.product, s.label AS source_label, s.id AS source_id
+                    s.product, s.label AS source_label, s.id AS source_id,
+                    (SELECT COUNT(DISTINCT e2.source_id) FROM digest_entries e2 WHERE e2.user_id = e.user_id AND e2.url = e.url) AS source_count,
+                    (SELECT COALESCE(json_agg(json_build_object(\'id\', t.id, \'label\', t.label, \'slug\', t.slug) ORDER BY t.label), \'[]\'::json)
+                     FROM digest_entry_topics et
+                     JOIN digest_topics t ON t.id = et.topic_id
+                     WHERE et.entry_id = e.id) AS topics
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id
              WHERE e.user_id = ? AND s.product = ? AND e.version_sort IS NOT NULL
@@ -749,5 +831,107 @@ final class DigestService
     private function filled(mixed $value): bool
     {
         return $value !== null && trim((string) $value) !== '';
+    }
+
+    private function topicFilter(mixed $value): ?string
+    {
+        if ($value === null || trim((string) $value) === '') {
+            return null;
+        }
+
+        return DigestTopics::name((string) $value)['slug'];
+    }
+
+    /**
+     * @return list<array{id: int, label: string, slug: string}>
+     */
+    private function topicChips(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT t.id, t.label, t.slug
+             FROM digest_topics t
+             WHERE t.user_id = ?
+               AND EXISTS (SELECT 1 FROM digest_entry_topics et WHERE et.topic_id = t.id)
+             ORDER BY t.label, t.id',
+            [$userId]
+        );
+        return $this->topicRows($rows);
+    }
+
+    /**
+     * @return list<array{id: int, label: string, slug: string}>
+     */
+    private function entryTopics(int $userId, int $entryId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT t.id, t.label, t.slug
+             FROM digest_entry_topics et
+             JOIN digest_topics t ON t.id = et.topic_id
+             WHERE et.user_id = ? AND et.entry_id = ?
+             ORDER BY t.label, t.id',
+            [$userId, $entryId]
+        );
+        return $this->topicRows($rows);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $rows
+     * @return list<array{id: int, label: string, slug: string}>
+     */
+    private function topicRows(array $rows): array
+    {
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'id' => (int) $row['id'],
+                'label' => (string) $row['label'],
+                'slug' => (string) $row['slug'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * @return list<array{id: int, label: string, slug: string}>
+     */
+    private function decodeTopics(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+        } else {
+            $decoded = $value;
+        }
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $rows = [];
+        foreach ($decoded as $topic) {
+            if (!is_array($topic) || !isset($topic['id'], $topic['label'], $topic['slug'])) {
+                continue;
+            }
+            $rows[] = $topic;
+        }
+        return $this->topicRows($rows);
+    }
+
+    private function dropUnusedTopics(int $userId): void
+    {
+        $this->db->execute(
+            'DELETE FROM digest_topics t
+             WHERE t.user_id = ?
+               AND NOT EXISTS (SELECT 1 FROM digest_entry_topics et WHERE et.topic_id = t.id)',
+            [$userId]
+        );
+    }
+
+    private function ownedEntry(int $userId, int $entryId): void
+    {
+        $row = $this->db->fetchOne(
+            'SELECT id FROM digest_entries WHERE user_id = ? AND id = ?',
+            [$userId, $entryId]
+        );
+        if ($row === null) {
+            throw new NotFoundException('Entry not found.');
+        }
     }
 }
