@@ -15,6 +15,46 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function openModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) closeModal(modal);
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+const addModal = document.getElementById('package-add-modal');
+if (addModal) bindModal(addModal);
+
 function carrierLabel(carrier, resolved) {
     const c = resolved || carrier;
     return ({ ups: 'UPS', fedex: 'FedEx', dhl: 'DHL', usps: 'USPS', amazon: 'Amazon', ontrac: 'OnTrac', lasership: 'LaserShip', auto: 'Auto' }[c] || c);
@@ -71,12 +111,29 @@ async function loadList() {
 
     el.querySelectorAll('.package-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this watch?')) return;
-            await api(`/api/packages/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
-            loadList();
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete watch',
+                    message: 'Delete this watch?',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) return;
+                await api(`/api/packages/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
+                loadList();
+            } finally {
+                if (btn.isConnected) btn.dataset.confirming = '';
+            }
         });
     });
 }
+
+document.getElementById('package-add-open')?.addEventListener('click', () => {
+    clearFieldError('package-add-error');
+    openModal(addModal);
+});
 
 document.getElementById('package-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -87,12 +144,14 @@ document.getElementById('package-add-form')?.addEventListener('submit', async e 
         label: fd.get('label') || null,
         external_url: fd.get('external_url') || null,
     };
+    clearFieldError('package-add-error');
     const { res, data } = await api('/api/packages/create', { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
-        alert(data.error || 'Could not add package.');
+        showFieldError('package-add-error', data.error || 'Could not add package.');
         return;
     }
     e.target.reset();
+    closeModal(addModal);
     loadList();
 });
 
