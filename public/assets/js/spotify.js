@@ -32,6 +32,9 @@
     let dragFrom = null;
     let timer = null;
     let drawerArtists = '';
+    let drawerUri = '';
+    let librarySelected = new Set();
+    let libraryTrackOpened = false;
 
     function icon(name) {
         const node = document.getElementById('music-icon-' + name);
@@ -567,6 +570,44 @@
         });
     }
 
+    function genreLabels(meta) {
+        return ((meta && meta.genre_tags) || []).map((tag) => (typeof tag === 'string' ? tag : (tag && tag.name) || '')).filter(Boolean);
+    }
+
+    function needsReview(row) {
+        const meta = row.meta || {};
+        // Review means stored BPM, energy, and genre are all missing.
+        return !meta.bpm && !meta.energy && !genreLabels(meta).length;
+    }
+
+    function sourceLabel(source) {
+        if (source === 'manual') return 'Manual';
+        if (source === 'estimated') return 'Estimated';
+        return '—';
+    }
+
+    function selectedLibrary() {
+        return libraryRows.filter((row) => row.uri && librarySelected.has(row.uri));
+    }
+
+    function syncLibraryAll() {
+        const boxes = panel.querySelectorAll('[data-library-check]');
+        const all = panel.querySelector('[data-library-all]');
+        if (!all || !boxes.length) return;
+        const on = Array.from(boxes).filter((box) => box.checked).length;
+        all.checked = on === boxes.length;
+        all.indeterminate = on > 0 && on < boxes.length;
+    }
+
+    async function libraryPack(rows) {
+        const uris = rows.map((row) => row.uri).filter(Boolean);
+        const res = await api.get('/spotify/library/notes?uris=' + encodeURIComponent(uris.join(',')));
+        const byUri = {};
+        (res.tracks || []).forEach((meta) => { byUri[meta.uri] = meta; });
+        rows.forEach((row) => { row.meta = byUri[row.uri] || null; });
+        return res;
+    }
+
     async function renderLibrary() {
         let rows = [];
         if (libraryMode === 'top') {
@@ -579,8 +620,12 @@
             rows = (res.saved || []).map((row) => row.track || {}).filter((track) => track.uri);
         }
         if (libraryMode !== 'search') libraryRows = rows;
-        await attachMeta(libraryMode === 'search' ? libraryRows : rows);
         const shown = libraryMode === 'search' ? libraryRows : rows;
+        const pack = await libraryPack(shown);
+        const review = shown.filter(needsReview).length;
+        const kicker = shown.length + ' shown' + (review ? ' · ' + review + ' need review' : '');
+        const seasonOptions = (pack.seasons || []).map((season) => '<option value="' + esc(season) + '">' + esc(season) + '</option>').join('');
+        const playlistOptions = (pack.playlists || []).map((row) => '<option value="' + esc(row.id) + '">' + esc(row.name) + '</option>').join('');
         panel.innerHTML = `
             <form id="music-library-search" class="music-tools">
                 <label class="music-search">${icon('search')}<input name="q" class="input" maxlength="200" placeholder="Search Spotify" value="${esc(libraryMode === 'search' ? libraryQuery : '')}"></label>
@@ -588,10 +633,24 @@
                 <button type="button" class="btn${libraryMode === 'saved' ? ' is-on' : ''}" data-library="saved">Saved</button>
                 <button type="button" class="btn${libraryMode === 'top' ? ' is-on' : ''}" data-library="top">Top</button>
             </form>
+            <div class="music-tools">
+                <button type="button" class="btn" data-library-analyze>${icon('refresh-cw')} Re-analyze</button>
+                ${seasonOptions ? '<label class="music-field">Season <select id="music-library-season" class="input">' + seasonOptions + '</select></label>' : ''}
+                <button type="button" class="btn" data-library-season>${icon('cloud-sun')} Set season</button>
+                ${playlistOptions ? '<label class="music-field">Playlist <select id="music-library-playlist" class="input">' + playlistOptions + '</select></label>' : ''}
+                <button type="button" class="btn" data-library-add>${icon('plus')} Add to playlist</button>
+            </div>
             <section class="music-card">
-                <header class="music-card-head"><div><p class="music-kicker">${shown.length} shown</p><h2 class="music-card-title">Track metadata</h2></div></header>
+                <header class="music-card-head"><div><p class="music-kicker">${esc(kicker)}</p><h2 class="music-card-title">Track metadata</h2></div></header>
                 ${libraryTable(shown)}
             </section>`;
+        syncLibraryAll();
+        const wanted = new URLSearchParams(window.location.search).get('track') || '';
+        if (!libraryTrackOpened && wanted) {
+            const row = shown.find((item) => item.uri === wanted);
+            await openDrawer(wanted, row ? (row.name || '') : '', row ? artistsOf(row) : '');
+            libraryTrackOpened = true;
+        }
     }
 
     function fromTop(row) {
@@ -609,15 +668,6 @@
         };
     }
 
-    async function attachMeta(rows) {
-        const uris = rows.map((row) => row.uri).filter(Boolean);
-        if (!uris.length) return;
-        const res = await api.get('/spotify/tracks/meta?uris=' + encodeURIComponent(uris.join(',')));
-        const byUri = {};
-        (res.tracks || []).forEach((meta) => { byUri[meta.uri] = meta; });
-        rows.forEach((row) => { row.meta = byUri[row.uri] || null; });
-    }
-
     function libraryTable(rows) {
         if (!rows.length) {
             const title = libraryMode === 'search' ? 'No matches' : (libraryMode === 'top' ? 'No top tracks' : 'No saved tracks');
@@ -627,19 +677,26 @@
         const body = rows.map((row) => {
             const meta = row.meta || {};
             const artists = artistsOf(row);
-            return `<tr>
+            const genres = genreLabels(meta);
+            const genreCell = '<div class="music-genres">' + (genres.length ? genres.map((name) => '<span class="music-chip">' + esc(name) + '</span>').join('') : '<span class="music-muted">—</span>') + '<button type="button" class="music-icon-btn" data-meta="' + esc(row.uri) + '" data-meta-name="' + esc(row.name || '') + '" data-meta-artists="' + esc(artists) + '" data-focus-genre="1" aria-label="Add genre">' + icon('plus') + '</button></div>';
+            const mood = meta.mood_tags && meta.mood_tags.length ? esc(meta.mood_tags.join(', ')) : '—';
+            const season = meta.season_tags && meta.season_tags.length ? meta.season_tags.map((tag) => '<span class="music-chip">' + esc(tag) + '</span>').join(' ') : '—';
+            const checked = librarySelected.has(row.uri) ? ' checked' : '';
+            const selected = row.uri === drawerUri ? ' is-selected' : '';
+            return `<tr class="${selected.trim()}" data-library-row data-uri="${esc(row.uri)}" data-name="${esc(row.name || '')}" data-artists="${esc(artists)}">
+                <td><input type="checkbox" data-library-check value="${esc(row.uri)}"${checked} aria-label="Select ${esc(row.name || 'track')}"></td>
                 <td><strong>${esc(row.name || row.uri)}</strong></td>
                 <td>${esc(artists)}</td>
                 <td>${meta.bpm ? esc(meta.bpm) : '—'}</td>
                 <td>${esc(meta.camelot || meta.musical_key || '—')}</td>
                 <td class="music-energy-cell">${energyCell(meta.energy)}</td>
-                <td>${meta.mood_tags && meta.mood_tags.length ? esc(meta.mood_tags.join(', ')) : '—'}</td>
-                <td>${meta.season_tags && meta.season_tags.length ? esc(meta.season_tags.join(', ')) : '—'}</td>
-                <td>${esc(meta.source || 'no notes')}</td>
-                <td><button type="button" class="music-linkish" data-meta="${esc(row.uri)}" data-meta-name="${esc(row.name || '')}" data-meta-artists="${esc(artists)}">Notes</button></td>
+                <td><button type="button" class="music-linkish" data-meta="${esc(row.uri)}" data-meta-name="${esc(row.name || '')}" data-meta-artists="${esc(artists)}">${mood} ${icon('pencil')}</button></td>
+                <td>${season}</td>
+                <td>${genreCell}</td>
+                <td>${esc(sourceLabel(meta.source))}</td>
             </tr>`;
         }).join('');
-        return `<div class="music-table-wrap"><table class="music-table"><thead><tr><th>Track</th><th>Artist</th><th>BPM</th><th>Key</th><th>Energy</th><th>Mood</th><th>Season</th><th>Source</th><th></th></tr></thead><tbody>${body}</tbody></table></div>`;
+        return `<div class="music-table-wrap"><table class="music-table"><thead><tr><th><input type="checkbox" data-library-all aria-label="Select all tracks"></th><th>Track</th><th>Artist</th><th>BPM</th><th>Key</th><th>Energy</th><th>Mood</th><th>Season</th><th>Genre</th><th>Source</th></tr></thead><tbody>${body}</tbody></table></div>`;
     }
 
     function monthOn(month) {
@@ -692,56 +749,38 @@
     }
 
     async function renderActivity() {
-        const [listRes, historyRes] = await Promise.all([
-            api.get('/spotify/playlists'),
-            api.get('/spotify/history?limit=40'),
-        ]);
-        playlists = listRes.playlists || [];
-        const items = [];
-        (historyRes.plays || []).forEach((play) => {
-            const track = play.track || {};
-            items.push({
-                at: play.played_at,
-                title: 'Played ' + (track.name || 'a track'),
-                body: artistsOf(track),
-                href: '',
-                iconName: 'history',
-            });
-        });
-        const dirty = playlists.filter((row) => row.open_changes > 0);
-        const bundles = await Promise.all(dirty.map((row) => api.get('/spotify/playlists/' + row.id + '/changes').then((res) => ({ row: row, changes: res.changes || [] })).catch((err) => {
-            fail(err);
-            return { row: row, changes: [] };
-        })));
-        bundles.forEach((bundle) => {
-            bundle.changes.forEach((change) => {
-                items.push({
-                    at: change.created_at,
-                    title: 'Staged ' + change.op + ' on ' + bundle.row.name,
-                    body: changeSummary(change) + (change.status === 'failed' && change.error ? ' — ' + change.error : ''),
-                    href: '?tab=playlists&id=' + bundle.row.id,
-                    iconName: change.created_by && change.created_by !== 'david' ? 'sparkles' : 'music-2',
-                });
-            });
-        });
-        items.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
-        const rows = items.slice(0, 40).map((item) => `
-            <article>
-                <span class="music-timeline-mark">${icon(item.iconName)}</span>
+        const res = await api.get('/spotify/library/activity');
+        const monitor = res.monitoring || { state: 'idle', label: 'No sync recorded' };
+        const badge = monitor.state === 'ok' ? ' is-on' : (monitor.state === 'error' ? ' is-down' : '');
+        const rows = (res.entries || []).map((item) => {
+            const undo = item.can_undo && item.id
+                ? '<button type="button" class="btn" data-undo="' + esc(item.id) + '">' + icon('undo-2') + ' Undo</button>'
+                : '';
+            const view = item.href
+                ? '<a class="btn" href="' + esc(item.href) + '">' + icon('eye') + ' View</a>'
+                : '';
+            return `<article>
+                <span class="music-timeline-mark">${icon(item.icon || 'music-2')}</span>
                 <time datetime="${esc(item.at || '')}">${esc(when(item.at))}</time>
                 <div>
-                    <h3>${esc(item.title)}</h3>
-                    <p>${esc(item.body)}</p>
-                    ${item.href ? '<a href="' + esc(item.href) + '">View</a>' : ''}
+                    <h3>${esc(item.title || '')}</h3>
+                    <p>${esc(item.summary || '')}</p>
+                    ${item.undone ? '<p>Undone.</p>' : ''}
                 </div>
-            </article>`).join('');
+                <div class="music-log-actions">${undo}${view}</div>
+            </article>`;
+        }).join('');
         panel.innerHTML = `
-            <div class="music-activity">
-                <div class="music-activity-intro">
-                    <span class="music-season-symbol">${icon('history')}</span>
-                    <div><h2>Activity</h2><p>Staged playlist edits and recent plays. This list is read-only.</p></div>
-                </div>
-                ${rows ? '<div class="music-timeline">' + rows + '</div>' : emptyBlock('No activity yet', 'Sync playlists or play something, then come back.', 'Sync', 'type="button" data-sync')}
+            <div class="music-log">
+                <header class="music-log-head">
+                    <span class="music-season-symbol">${icon('bot')}</span>
+                    <div>
+                        <h2>Music Director activity</h2>
+                        <p>A transparent history of automated playlist and metadata changes.</p>
+                    </div>
+                    <p class="music-badge${badge}">${esc(monitor.label || '')}</p>
+                </header>
+                ${rows ? '<div class="music-log-list">' + rows + '</div>' : emptyBlock('No automation yet', 'Re-analyze tracks, set a season, or add tracks to a playlist.', 'Sync', 'type="button" data-sync')}
             </div>`;
     }
 
@@ -765,15 +804,70 @@
     }
 
     function closeDrawer() {
+        drawerUri = '';
         if (drawer) drawer.hidden = true;
         if (stage) stage.classList.remove('is-split');
+        panel.querySelectorAll('[data-library-row].is-selected').forEach((row) => row.classList.remove('is-selected'));
     }
 
-    async function openDrawer(uri, name, artists) {
+    function paintGenres(tags) {
+        const box = document.getElementById('music-genre-tags');
+        if (!box) return;
+        const names = genreLabels({ genre_tags: tags || [] });
+        box.innerHTML = names.length ? names.map((name) => '<span class="music-chip">' + esc(name) + '</span>').join('') : '<span class="music-muted">No genre stored.</span>';
+    }
+
+    function paintWaveform(bars) {
+        const wave = document.getElementById('music-waveform');
+        const empty = document.getElementById('music-waveform-empty');
+        if (!wave || !empty) return;
+        // Bar heights come from stored loudness. An empty list stays an empty state.
+        if (!bars || !bars.length) {
+            wave.hidden = true;
+            wave.innerHTML = '';
+            empty.hidden = false;
+            return;
+        }
+        empty.hidden = true;
+        wave.hidden = false;
+        wave.innerHTML = bars.map((height) => '<i style="height:' + Math.max(0, Math.min(100, Number(height) || 0)) + '%"></i>').join('');
+    }
+
+    function paintAppears(rows) {
+        const section = document.getElementById('music-appears');
+        const list = document.getElementById('music-appears-list');
+        if (!section || !list) return;
+        section.hidden = false;
+        if (!rows || !rows.length) {
+            list.innerHTML = '<p class="music-muted">This track is not on a playlist yet.</p>';
+            return;
+        }
+        list.innerHTML = rows.map((row) => '<a href="' + esc(row.href) + '">' + icon('music-2') + '<span>' + esc(row.name) + '</span>' + icon('chevron-right') + '</a>').join('');
+    }
+
+    async function addDrawerGenre() {
+        const form = document.getElementById('music-meta-form');
+        const input = document.getElementById('music-genre-input');
+        const uri = form && form.elements.uri ? String(form.elements.uri.value || '') : '';
+        const genre = input ? String(input.value || '').trim() : '';
+        if (!uri || !genre) {
+            say('Enter a genre.');
+            return;
+        }
+        await api.post('/spotify/library/genres', { uri: uri, genre: genre });
+        if (input) input.value = '';
+        const title = document.getElementById('music-drawer-title');
+        const artist = document.getElementById('music-drawer-artist');
+        await openDrawer(uri, title ? title.textContent : '', artist ? artist.textContent : '', true);
+        if (tab === 'library') await renderLibrary();
+        ok('Genre saved.');
+    }
+
+    async function openDrawer(uri, name, artists, focusGenre) {
         const form = document.getElementById('music-meta-form');
         if (!form || !drawer) return;
-        const res = await api.get('/spotify/tracks/meta?uris=' + encodeURIComponent(uri));
-        const meta = (res.tracks && res.tracks[0]) || {};
+        const res = await api.get('/spotify/library/drawer?uri=' + encodeURIComponent(uri));
+        const meta = res.track || {};
         form.elements.uri.value = uri;
         form.elements.bpm.value = meta.bpm ?? '';
         form.elements.musical_key.value = meta.musical_key || '';
@@ -782,11 +876,23 @@
         form.elements.mood_tags.value = (meta.mood_tags || []).join(', ');
         form.elements.season_tags.value = (meta.season_tags || []).join(', ');
         form.elements.source.value = meta.source === 'manual' ? 'manual' : 'estimated';
+        paintGenres(meta.genre_tags);
+        paintWaveform(meta.waveform);
+        paintAppears(res.appears_in);
         const title = document.getElementById('music-drawer-title');
         const artist = document.getElementById('music-drawer-artist');
         if (title) title.textContent = name || uri;
         if (artist) artist.textContent = artists || '';
         drawerArtists = artists || '';
+        drawerUri = uri;
+        panel.querySelectorAll('[data-library-row]').forEach((row) => {
+            row.classList.toggle('is-selected', row.dataset.uri === uri);
+        });
+        const play = document.getElementById('music-drawer-play');
+        if (play) {
+            play.hidden = false;
+            play.dataset.uri = uri;
+        }
         const add = document.getElementById('music-drawer-add');
         if (!playlists.length) {
             try {
@@ -807,7 +913,12 @@
         }
         drawer.hidden = false;
         if (stage) stage.classList.add('is-split');
-        form.elements.bpm.focus();
+        if (focusGenre) {
+            const genre = document.getElementById('music-genre-input');
+            if (genre) genre.focus();
+        } else {
+            form.elements.bpm.focus();
+        }
     }
 
     function fillSeason(name) {
@@ -957,6 +1068,8 @@
                 await api.post('/spotify/seasons', body);
                 await renderSeasons();
                 ok('Season window saved.');
+            } else if (form.id === 'music-genre-form') {
+                await addDrawerGenre();
             } else if (form.id === 'music-meta-form') {
                 const data = new FormData(form);
                 await api.post('/spotify/tracks/meta', {
@@ -1013,6 +1126,15 @@
         }
         if (event.target.closest('[data-close-drawer]')) {
             closeDrawer();
+            return;
+        }
+        const libraryRow = event.target.closest('[data-library-row]');
+        if (libraryRow && !event.target.closest('input, button, a, select')) {
+            try {
+                await openDrawer(libraryRow.dataset.uri || '', libraryRow.dataset.name || '', libraryRow.dataset.artists || '');
+            } catch (err) {
+                fail(err);
+            }
             return;
         }
         if (event.target.closest('[data-dismiss-banner]')) {
@@ -1079,8 +1201,68 @@
                     length: 1,
                 });
                 await reloadDetail();
+            } else if (target.id === 'music-drawer-play') {
+                const uri = target.dataset.uri || '';
+                if (!uri) return;
+                await api.post('/spotify/playback/play', { uris: [uri] });
+                ok('Playing.');
+            } else if (target.dataset.libraryAnalyze !== undefined) {
+                const picked = selectedLibrary();
+                if (!picked.length) {
+                    say('Select at least one track.');
+                    return;
+                }
+                say('Re-analyzing…');
+                const result = await api.post('/spotify/library/reanalyze', { uris: picked.map((row) => row.uri) });
+                await renderLibrary();
+                ok(result.summary || 'Re-analyze finished.');
+            } else if (target.dataset.librarySeason !== undefined) {
+                const picked = selectedLibrary();
+                const select = document.getElementById('music-library-season');
+                if (!picked.length) {
+                    say('Select at least one track.');
+                    return;
+                }
+                if (!select || !select.value) {
+                    say('Save a season window first.');
+                    return;
+                }
+                const result = await api.post('/spotify/library/season', {
+                    uris: picked.map((row) => row.uri),
+                    season: select.value,
+                });
+                await renderLibrary();
+                ok(result.summary || 'Season saved.');
+            } else if (target.dataset.libraryAdd !== undefined) {
+                const picked = selectedLibrary();
+                const select = document.getElementById('music-library-playlist');
+                if (!picked.length) {
+                    say('Select at least one track.');
+                    return;
+                }
+                if (!select || !select.value) {
+                    say('Choose a playlist you own.');
+                    return;
+                }
+                const result = await api.post('/spotify/library/playlist', {
+                    playlist_id: Number(select.value),
+                    uris: picked.map((row) => row.uri),
+                    tracks: picked.map((row) => ({
+                        uri: row.uri,
+                        name: row.name || '',
+                        artists: Array.isArray(row.artists) ? row.artists : [],
+                        album: row.album || null,
+                        duration_ms: row.duration_ms || 0,
+                    })),
+                });
+                await renderLibrary();
+                ok(result.summary || 'Tracks staged.');
+            } else if (target.dataset.undo) {
+                await api.post('/spotify/library/undo', { id: Number(target.dataset.undo) });
+                await renderActivity();
+                ok('Undone.');
             } else if (target.dataset.meta) {
-                await openDrawer(target.dataset.meta, target.dataset.metaName || '', target.dataset.metaArtists || '');
+                await openDrawer(target.dataset.meta, target.dataset.metaName || '', target.dataset.metaArtists || '', target.dataset.focusGenre !== undefined);
             } else if (target.dataset.promptEdit) {
                 const row = prompts.find((item) => String(item.id) === target.dataset.promptEdit);
                 const form = document.getElementById('music-prompt-form');
@@ -1126,6 +1308,22 @@
 
     root.addEventListener('change', (event) => {
         const input = event.target;
+        if (input instanceof HTMLInputElement && input.dataset.libraryAll !== undefined) {
+            const on = input.checked;
+            panel.querySelectorAll('[data-library-check]').forEach((box) => {
+                box.checked = on;
+                if (on) librarySelected.add(box.value);
+                else librarySelected.delete(box.value);
+            });
+            input.indeterminate = false;
+            return;
+        }
+        if (input instanceof HTMLInputElement && input.dataset.libraryCheck !== undefined) {
+            if (input.checked) librarySelected.add(input.value);
+            else librarySelected.delete(input.value);
+            syncLibraryAll();
+            return;
+        }
         if (input && input.id === 'music-playlist-owner') {
             playlistOwner = input.value;
             paintPlaylists();
