@@ -52,6 +52,19 @@ final class WidgetService
     public const CELL_HEIGHT = 32;
     public const PREV_CELL_HEIGHT = 64;
     private const SEEDED_PREF = 'dashboard_grid_seeded';
+    /** One-time: close a hero-sized hole at the top, then add the overview widgets. */
+    public const OVERVIEW_PREF = 'overview_widgets_v1';
+    /**
+     * Default spots in one full-width row under the search box.
+     * The block is 4 rows tall, so existing cards shift down once and sit against it.
+     *
+     * @var array<string, array{x: int, y: int, w: int, h: int}>
+     */
+    public const OVERVIEW_SPOTS = [
+        'quick_actions' => ['x' => 0, 'y' => 0, 'w' => 6, 'h' => 4],
+        'vitals'        => ['x' => 6, 'y' => 0, 'w' => 3, 'h' => 4],
+        'agenda'        => ['x' => 9, 'y' => 0, 'w' => 3, 'h' => 4],
+    ];
     /** Catalog and seed widths from before the 3-column top row. A hand resize sets height_locked and is left alone. */
     private const COMPACT_OLD_WIDTHS = [
         'legacy.weather' => [4, 6],
@@ -711,7 +724,7 @@ final class WidgetService
                 <=> [(int) ($b['y'] ?? 0), (int) ($b['x'] ?? 0), (int) ($b['id'] ?? 0)];
         });
         if ($columns === $from) {
-            return self::centerOccupied($nodes, $columns);
+            return self::fillWidth($nodes, $columns);
         }
         $cursorX = 0;
         $cursorY = 0;
@@ -733,6 +746,86 @@ final class WidgetService
             $rowH = max($rowH, $h);
         }
         return self::centerOccupied($nodes, $columns);
+    }
+
+    /**
+     * On the 12-column grid, a row starts at the left edge and grows to the
+     * right edge when that does not cover another card. A wider grid still
+     * centers a short row.
+     *
+     * @param list<array<string, mixed>> $nodes
+     * @return list<array<string, mixed>>
+     */
+    public static function fillWidth(array $nodes, int $columns): array
+    {
+        $columns = max(1, $columns);
+        $groups = [];
+        foreach ($nodes as $i => $it) {
+            $groups[(int) ($it['y'] ?? 0)][] = $i;
+        }
+        foreach ($groups as $idxs) {
+            usort($idxs, static function (int $a, int $b) use ($nodes): int {
+                return [(int) $nodes[$a]['x'], (int) ($nodes[$a]['id'] ?? 0)]
+                    <=> [(int) $nodes[$b]['x'], (int) ($nodes[$b]['id'] ?? 0)];
+            });
+            $min = min(array_map(static fn (int $i): int => (int) $nodes[$i]['x'], $idxs));
+            $max = max(array_map(static fn (int $i): int => (int) $nodes[$i]['x'] + (int) $nodes[$i]['w'], $idxs));
+            $span = $max - $min;
+            if ($span <= 0 || $span >= $columns) {
+                continue;
+            }
+            $extra = $columns - $span;
+            $count = count($idxs);
+            $add = intdiv($extra, $count);
+            $rem = $extra % $count;
+            $x = 0;
+            $moved = [];
+            foreach ($idxs as $n => $i) {
+                $trial = $nodes[$i];
+                $trial['w'] = (int) $trial['w'] + $add + ($n < $rem ? 1 : 0);
+                $trial['x'] = $x;
+                $moved[$i] = $trial;
+                $x += (int) $trial['w'];
+            }
+            if (self::moveHits($nodes, $moved)) {
+                if ($min === 0) {
+                    continue;
+                }
+                $moved = [];
+                foreach ($idxs as $i) {
+                    $trial = $nodes[$i];
+                    $trial['x'] = (int) $trial['x'] - $min;
+                    $moved[$i] = $trial;
+                }
+                if (self::moveHits($nodes, $moved)) {
+                    continue;
+                }
+            }
+            foreach ($moved as $i => $trial) {
+                $nodes[$i] = $trial;
+            }
+        }
+
+        return $nodes;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $nodes
+     * @param array<int, array<string, mixed>> $moved
+     */
+    private static function moveHits(array $nodes, array $moved): bool
+    {
+        foreach ($nodes as $j => $other) {
+            if (isset($moved[$j])) {
+                continue;
+            }
+            foreach ($moved as $trial) {
+                if (self::rectsOverlap($trial, $other)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -1002,6 +1095,80 @@ final class WidgetService
                 }
             }
             $prefs->set($userId, self::SEEDED_PREF, '1');
+        });
+    }
+
+    /**
+     * Once per user: drop a hole that the old locked hero left at the top of
+     * the stored layout, then add vitals, agenda, and quick actions if they
+     * are missing. A second run does not move anything.
+     */
+    public function ensureOverviewWidgets(int $userId): void
+    {
+        $prefs = new PreferenceService($this->db);
+        if ($prefs->get($userId, self::OVERVIEW_PREF) === '1') {
+            return;
+        }
+
+        $this->db->transaction(function (Database $db) use ($userId, $prefs): void {
+            $db->fetchScalar('SELECT pg_advisory_xact_lock(?, ?)', [0x4c46, $userId]);
+            if ($prefs->get($userId, self::OVERVIEW_PREF) === '1') {
+                return;
+            }
+
+            $items = $this->list($userId);
+            $minY = null;
+            foreach ($items as $it) {
+                $y = (int) $it['y'];
+                $minY = $minY === null ? $y : min($minY, $y);
+            }
+            if ($minY !== null && $minY > 0) {
+                $db->execute(
+                    "UPDATE dashboard_widgets
+                     SET grid_y = grid_y - ?, updated_at = (now() AT TIME ZONE 'UTC')
+                     WHERE user_id = ? AND board = ?",
+                    [$minY, $userId, self::BOARD]
+                );
+                self::clearWideLayouts($db, $userId);
+                $items = $this->list($userId);
+            }
+
+            $have = array_fill_keys(array_column($items, 'type'), true);
+            $missing = [];
+            foreach (self::OVERVIEW_SPOTS as $type => $spot) {
+                if (!isset($have[$type])) {
+                    $missing[$type] = $spot;
+                }
+            }
+            if ($missing !== []) {
+                $block = 0;
+                foreach (self::OVERVIEW_SPOTS as $spot) {
+                    $block = max($block, $spot['y'] + $spot['h']);
+                }
+                $overlaps = false;
+                foreach ($items as $it) {
+                    foreach ($missing as $spot) {
+                        if (self::rectHits((int) $it['x'], (int) $it['y'], (int) $it['w'], (int) $it['h'], [$spot])) {
+                            $overlaps = true;
+                            break 2;
+                        }
+                    }
+                }
+                if ($overlaps) {
+                    $db->execute(
+                        "UPDATE dashboard_widgets
+                         SET grid_y = grid_y + ?, updated_at = (now() AT TIME ZONE 'UTC')
+                         WHERE user_id = ? AND board = ?",
+                        [$block, $userId, self::BOARD]
+                    );
+                    self::clearWideLayouts($db, $userId);
+                }
+                foreach ($missing as $type => $spot) {
+                    $this->create($userId, $type, null, [], $spot, 'system');
+                }
+            }
+
+            $prefs->set($userId, self::OVERVIEW_PREF, '1');
         });
     }
 

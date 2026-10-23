@@ -1212,6 +1212,58 @@
             </div>`;
     }
 
+    function meter(item) {
+        const m = item.meter;
+        if (!m) return '';
+        const pct = Math.max(0, Math.min(100, Number(m.pct) || 0));
+        return `<div class="ov-bar" role="meter" aria-valuemin="${esc(m.min)}" aria-valuemax="${esc(m.max)}" aria-valuenow="${esc(m.now)}" aria-label="${esc(item.label)}"><span style="width:${pct}%"></span></div>`;
+    }
+
+    function vitals(ctx) {
+        const data = ctx.data || {};
+        if (data.note) {
+            ctx.body.innerHTML = `<p class="ov-empty">${esc(data.note)}</p>`;
+            return;
+        }
+        const items = data.items || [];
+        if (!items.length) {
+            ctx.body.innerHTML = '<p class="ov-empty">Nothing logged yet.</p>';
+            return;
+        }
+        ctx.body.innerHTML = `<ul class="ov-vitals">${items.map((item) => `
+            <li class="ov-vital">
+                <div class="ov-vital-row">
+                    <span class="ov-vital-label">${esc(item.label)}</span>
+                    <span class="ov-vital-detail">${esc(item.detail)}</span>
+                </div>
+                ${meter(item)}
+            </li>`).join('')}</ul>`;
+    }
+
+    function agenda(ctx) {
+        const data = ctx.data || {};
+        if (data.note) {
+            ctx.body.innerHTML = `<p class="ov-empty">${esc(data.note)}</p>`;
+            return;
+        }
+        const items = data.items || [];
+        if (!items.length) {
+            ctx.body.innerHTML = '<p class="ov-empty">Nothing due today.</p>';
+            return;
+        }
+        ctx.body.innerHTML = `<ol class="ov-agenda">${items.map((item) => `
+            <li><time datetime="${esc(item.datetime)}">${esc(item.time)}</time><a href="${esc(item.href)}">${esc(item.title)}</a></li>`).join('')}</ol>`;
+    }
+
+    function quickActions(ctx) {
+        const actions = (ctx.data && ctx.data.actions) || [];
+        ctx.body.innerHTML = `<div class="ov-actions">${actions.map((action) => `
+            <a class="ov-action" href="${esc(action.href)}">
+                <span class="ov-action-title">${esc(action.title)}</span>
+                <span class="ov-action-line">${esc(action.line)}</span>
+            </a>`).join('')}</div>`;
+    }
+
     function digest(ctx) {
         tools(ctx, '<a href="/digest" class="nav-link">Digest</a>');
         const data = ctx.data || {};
@@ -1247,6 +1299,6 @@
             </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, custom };
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, vitals, agenda, quick_actions: quickActions, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

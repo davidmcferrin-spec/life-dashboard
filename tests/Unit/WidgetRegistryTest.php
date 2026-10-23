@@ -29,7 +29,9 @@ final class WidgetRegistryTest extends TestCase
             self::assertLessThanOrEqual(12, $def['size']['w'], $type);
             self::assertGreaterThanOrEqual($def['min']['w'], $def['size']['w'], $type);
             self::assertGreaterThanOrEqual($def['min']['h'], $def['size']['h'], $type);
-            self::assertSame(WidgetTypeRegistry::isLegacy($type), $def['singleton'], "{$type}: legacy types are singletons");
+            if (WidgetTypeRegistry::isLegacy($type)) {
+                self::assertTrue($def['singleton'], "{$type}: legacy types are singletons");
+            }
             // Every type must accept its own defaults when required fields are satisfied.
             $cfg = [];
             foreach ($def['fields'] as $name => $f) {
@@ -256,6 +258,30 @@ final class WidgetRegistryTest extends TestCase
         self::assertCount(365, WidgetDataService::bucketKeys('day', '2025-09-26', '2026-09-25'));
     }
 
+    public function testOverviewTypesAreOrdinaryWidgets(): void
+    {
+        foreach (['vitals' => 'System vitals', 'agenda' => "Today's agenda", 'quick_actions' => 'Quick actions'] as $type => $label) {
+            $def = WidgetTypeRegistry::types()[$type];
+            self::assertSame($label, $def['label']);
+            self::assertTrue($def['singleton']);
+            self::assertArrayNotHasKey('floating', $def);
+            self::assertSame('life', $def['category']);
+            self::assertSame([], $def['fields']);
+            self::assertSame([], WidgetTypeRegistry::validateConfig($type, [], self::finder()));
+        }
+        self::assertCount(3, \Dashboard\Widgets\OverviewCards::actions());
+        self::assertSame(
+            ['Brief my day', 'Analyze systems', 'Optimize energy'],
+            array_column(\Dashboard\Widgets\OverviewCards::actions(), 'title')
+        );
+        $span = 0;
+        foreach (WidgetService::OVERVIEW_SPOTS as $spot) {
+            self::assertSame(0, $spot['y']);
+            $span = max($span, $spot['x'] + $spot['w']);
+        }
+        self::assertSame(12, $span, 'the seeded row starts at the left edge and fills the width');
+    }
+
     public function testProjectColumnsKeepsWidthsAndCentersAShortRow(): void
     {
         $items = [
@@ -275,7 +301,7 @@ final class WidgetRegistryTest extends TestCase
         self::assertSame([0, 0, 3], [$same[1]['x'], $same[1]['y'], $same[1]['w']]);
         self::assertSame(6, $same[6]['y'], 'a card stays on its row');
         self::assertSame(8, $same[6]['w']);
-        self::assertSame([3, 30, 6], [$same[8]['x'], $same[8]['y'], $same[8]['w']], 'a short row is centered');
+        self::assertSame([0, 30, 12], [$same[8]['x'], $same[8]['y'], $same[8]['w']], 'a short row starts at the left edge and fills the width');
 
         $wide = [];
         foreach (WidgetService::projectColumns($items, 18) as $row) {

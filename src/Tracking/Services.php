@@ -91,6 +91,7 @@ final class Services
             $this->shopping,
             $this->calls,
             $this->pantry,
+            $db,
         );
     }
 

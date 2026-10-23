@@ -142,6 +142,24 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
                 'fields' => [],
             ],
+            'vitals' => [
+                'label' => 'System vitals', 'category' => 'life', 'singleton' => true,
+                'description' => 'Habits, pings, and today\'s goals.',
+                'size' => ['w' => 3, 'h' => 4], 'min' => ['w' => 2, 'h' => 3],
+                'fields' => [],
+            ],
+            'agenda' => [
+                'label' => 'Today\'s agenda', 'category' => 'life', 'singleton' => true,
+                'description' => 'What is due today: tasks, flights, and packages.',
+                'size' => ['w' => 3, 'h' => 4], 'min' => ['w' => 2, 'h' => 3],
+                'fields' => [],
+            ],
+            'quick_actions' => [
+                'label' => 'Quick actions', 'category' => 'life', 'singleton' => true,
+                'description' => 'Brief my day, analyze systems, and optimize energy.',
+                'size' => ['w' => 6, 'h' => 4], 'min' => ['w' => 3, 'h' => 2],
+                'fields' => [],
+            ],
             'pantry' => [
                 'label' => 'Pantry', 'category' => 'life', 'singleton' => false,
                 'description' => 'Counts by fridge, freezer, and pantry, plus items to use soon and anything below its par level.',

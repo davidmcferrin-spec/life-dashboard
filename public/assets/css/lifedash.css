@@ -2487,7 +2487,19 @@ body.cloudpad-page .app-content {
     }
 }
 
-/* Overview blocks are cells in the widget grid, so they use its columns and cap. */
+/* The search row is the same width as the widget grid (the board cap).
+   The box itself is centered and is not a widget. */
+.ld-search-row {
+    margin: 0 auto 0.75rem;
+    width: 100%;
+}
+
+.ld-search-row .ov-engines,
+.ld-search-row .ov-results {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 42rem;
+}
 .ov-sr {
     border: 0;
     clip: rect(0 0 0 0);
@@ -2534,9 +2546,16 @@ body.cloudpad-page .app-content {
     position: relative;
 }
 
-#search-form.ov-composer,
+#search-form.ov-composer.ld-search-box {
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 42rem;
+}
+
 #local-search.ov-results {
-    max-width: none;
+    margin-left: auto;
+    margin-right: auto;
+    max-width: 42rem;
     width: 100%;
 }
 
@@ -2671,6 +2690,12 @@ body.cloudpad-page .app-content {
     color: var(--accent);
 }
 
+.ov-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .ov-action {
     background: var(--bg-elev);
     border: 1px solid var(--line);
@@ -2687,6 +2712,12 @@ body.cloudpad-page .app-content {
 
 .ov-action:hover {
     border-color: var(--accent-border);
+}
+
+@media (max-width: 700px) {
+    .ov-actions {
+        grid-template-columns: 1fr;
+    }
 }
 
 .ov-action-title {

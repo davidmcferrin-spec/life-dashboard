@@ -225,4 +225,70 @@ final class WidgetsTest extends PgsqlTestCase
             ['id' => $a['id'], 'x' => 12, 'y' => 0, 'w' => 8, 'h' => 4],
         ]);
     }
+
+    public function testOverviewWidgetsSeedOnceMoveAndDoNotGrowAGap(): void
+    {
+        $weather = $this->svc->widgets->create($this->user, 'legacy.weather', null, [], ['x' => 0, 'y' => 8, 'w' => 4, 'h' => 4]);
+        $todos = $this->svc->widgets->create($this->user, 'legacy.todos', null, [], ['x' => 4, 'y' => 8, 'w' => 4, 'h' => 4]);
+
+        $this->svc->widgets->ensureOverviewWidgets($this->user);
+        $this->svc->widgets->ensureOverviewWidgets($this->user);
+
+        $byType = [];
+        foreach ($this->svc->widgets->list($this->user) as $w) {
+            self::assertArrayNotHasKey($w['type'], $byType, $w['type'] . ' is not duplicated');
+            $byType[$w['type']] = $w;
+        }
+        foreach (['vitals', 'agenda', 'quick_actions'] as $type) {
+            self::assertArrayHasKey($type, $byType);
+            self::assertSame(0, $byType[$type]['placement_locked'], $type . ' can move');
+            $spot = \Dashboard\Widgets\WidgetService::OVERVIEW_SPOTS[$type];
+            self::assertSame(
+                [$spot['x'], $spot['y'], $spot['w'], $spot['h']],
+                [$byType[$type]['x'], $byType[$type]['y'], $byType[$type]['w'], $byType[$type]['h']],
+                $type
+            );
+        }
+        self::assertSame([0, 4, 4], [$byType['legacy.weather']['x'], $byType['legacy.weather']['y'], $byType['legacy.weather']['w']]);
+        self::assertSame([4, 4], [$byType['legacy.todos']['x'], $byType['legacy.todos']['y']]);
+
+        $actions = $this->svc->widgetData->forWidget($this->user, $byType['quick_actions']['id']);
+        self::assertSame(
+            ['Brief my day', 'Analyze systems', 'Optimize energy'],
+            array_column($actions['actions'], 'title')
+        );
+        self::assertArrayHasKey('items', $this->svc->widgetData->forWidget($this->user, $byType['vitals']['id']));
+        self::assertArrayHasKey('items', $this->svc->widgetData->forWidget($this->user, $byType['agenda']['id']));
+
+        $this->svc->widgets->saveLayout($this->user, [
+            ['id' => $byType['vitals']['id'], 'x' => 0, 'y' => 16, 'w' => 3, 'h' => 4],
+            ['id' => $byType['agenda']['id'], 'x' => 3, 'y' => 16, 'w' => 3, 'h' => 4],
+            ['id' => $byType['quick_actions']['id'], 'x' => 6, 'y' => 16, 'w' => 6, 'h' => 4],
+            ['id' => $weather['id'], 'x' => 0, 'y' => 9, 'w' => 4, 'h' => 4],
+        ]);
+        self::assertSame([0, 16], [
+            $this->svc->widgets->get($this->user, $byType['vitals']['id'])['x'],
+            $this->svc->widgets->get($this->user, $byType['vitals']['id'])['y'],
+        ]);
+        self::assertSame(16, $this->svc->widgets->get($this->user, $byType['agenda']['id'])['y']);
+        self::assertSame(16, $this->svc->widgets->get($this->user, $byType['quick_actions']['id'])['y']);
+
+        foreach (['vitals', 'agenda', 'quick_actions'] as $type) {
+            $this->svc->widgets->delete($this->user, $byType[$type]['id']);
+            $again = $this->svc->widgets->create($this->user, $type, null, []);
+            self::assertSame($type, $again['type']);
+            try {
+                $this->svc->widgets->create($this->user, $type, null, []);
+                self::fail($type . ' was added twice');
+            } catch (ValidationException) {
+                // already on the board
+            }
+        }
+
+        $this->svc->widgets->ensureOverviewWidgets($this->user);
+        $weatherAfter = $this->svc->widgets->get($this->user, $weather['id']);
+        $todosAfter = $this->svc->widgets->get($this->user, $todos['id']);
+        self::assertSame([0, 9, 4], [$weatherAfter['x'], $weatherAfter['y'], $weatherAfter['w']], 'a later reload does not grow the gap');
+        self::assertSame([4, 4], [$todosAfter['x'], $todosAfter['y']]);
+    }
 }
