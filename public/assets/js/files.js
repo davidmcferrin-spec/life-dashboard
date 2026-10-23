@@ -29,9 +29,74 @@
         shareLinkForm:      $('#files-share-link-form'),
         shareUserForm:      $('#files-share-user-form'),
         sharingClose:       $('#files-sharing-close'),
+        copyModal:          $('#files-share-copy-modal'),
         tabPanel:           $('#files-tab-panel'),
         dropZone:           $('#files-drop-zone'),
     };
+
+    let copyOnClose = null;
+
+    function openModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function bindModal(modal, onClose) {
+        if (!modal) return;
+        modal.addEventListener('click', (event) => {
+            if (event.target.closest('[data-close]')) {
+                if (onClose) onClose();
+                else closeModal(modal);
+            }
+        });
+    }
+
+    function clearFieldError(id) {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.textContent = '';
+        node.classList.add('hidden');
+    }
+
+    function showFieldError(id, message) {
+        const node = document.getElementById(id);
+        if (!node) {
+            alert(message);
+            return;
+        }
+        node.textContent = message;
+        node.classList.remove('hidden');
+    }
+
+    function closeCopyLink() {
+        closeModal(el.copyModal);
+        const done = copyOnClose;
+        copyOnClose = null;
+        if (done) done();
+    }
+
+    function openCopyLink(url, onClose) {
+        const input = document.getElementById('files-share-copy-url');
+        if (input) input.value = url;
+        copyOnClose = onClose || null;
+        openModal(el.copyModal);
+        requestAnimationFrame(() => {
+            input?.focus();
+            input?.select();
+        });
+    }
+
+    bindModal(el.sharingPanel, () => closeSharing());
+    bindModal(el.copyModal, closeCopyLink);
 
     function escHtml(str) {
         return String(str)
@@ -227,7 +292,15 @@
         });
 
         el.list.querySelectorAll('.files-delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteFile(parseInt(btn.dataset.id, 10)));
+            btn.addEventListener('click', async () => {
+                if (btn.dataset.confirming === '1') return;
+                btn.dataset.confirming = '1';
+                try {
+                    await deleteFile(parseInt(btn.dataset.id, 10));
+                } finally {
+                    if (btn.isConnected) btn.dataset.confirming = '';
+                }
+            });
         });
     }
 
@@ -313,7 +386,13 @@
     async function deleteFile(id) {
         const file = myFiles.find(f => f.id === id);
         if (!file) return;
-        if (!confirm(`Delete "${file.original_name}"? This cannot be undone.`)) return;
+        const ok = await globalThis.AppModal.confirm({
+            title: 'Delete file',
+            message: `Delete "${file.original_name}"? This cannot be undone.`,
+            confirmLabel: 'Delete',
+            danger: true,
+        });
+        if (!ok) return;
 
         const { res, data } = await apiJson(`/api/files/${id}/delete`, {
             method: 'POST',
@@ -332,10 +411,11 @@
     function openSharing(fileId, name, source = 'local') {
         sharingFileId = fileId;
         sharingSource = source;
-        el.sharingPanel?.classList.remove('hidden');
+        clearFieldError('files-share-link-error');
+        clearFieldError('files-share-user-error');
         if (el.sharingName) el.sharingName.textContent = name;
+        openModal(el.sharingPanel);
         loadShares(fileId);
-        el.sharingPanel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
     window.filesOpenSharing = openSharing;
@@ -344,7 +424,7 @@
 
     function closeSharing() {
         sharingFileId = null;
-        el.sharingPanel?.classList.add('hidden');
+        closeModal(el.sharingPanel);
     }
 
     async function loadShares(fileId) {
@@ -396,12 +476,24 @@
 
         el.shareLinks.querySelectorAll('.files-revoke-link').forEach(btn => {
             btn.addEventListener('click', async () => {
-                if (!confirm('Revoke this link?')) return;
-                await apiJson(`${apiBase}/${fileId}/shares/link/${btn.dataset.id}/revoke`, {
-                    method: 'POST',
-                    body: JSON.stringify({}),
-                });
-                loadShares(fileId);
+                if (btn.dataset.confirming === '1') return;
+                btn.dataset.confirming = '1';
+                try {
+                    const ok = await globalThis.AppModal.confirm({
+                        title: 'Revoke link',
+                        message: 'Revoke this link?',
+                        confirmLabel: 'Revoke',
+                        danger: true,
+                    });
+                    if (!ok) return;
+                    await apiJson(`${apiBase}/${fileId}/shares/link/${btn.dataset.id}/revoke`, {
+                        method: 'POST',
+                        body: JSON.stringify({}),
+                    });
+                    loadShares(fileId);
+                } finally {
+                    if (btn.isConnected) btn.dataset.confirming = '';
+                }
             });
         });
 
@@ -467,6 +559,7 @@
     el.shareLinkForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (sharingFileId === null) return;
+        clearFieldError('files-share-link-error');
 
         const apiBase = sharingSource === 'cloud' ? '/api/storage' : '/api/files';
 
@@ -479,12 +572,15 @@
         });
 
         if (!res.ok) {
-            alert(data.error || 'Could not create link.');
+            showFieldError('files-share-link-error', data.error || 'Could not create link.');
             return;
         }
 
         if (data.link?.url) {
-            prompt('Copy this share link:', data.link.url);
+            openCopyLink(data.link.url, () => {
+                if (sharingFileId !== null) loadShares(sharingFileId);
+            });
+            return;
         }
         loadShares(sharingFileId);
     });
@@ -492,6 +588,7 @@
     el.shareUserForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
         if (sharingFileId === null) return;
+        clearFieldError('files-share-user-error');
 
         const apiBase = sharingSource === 'cloud' ? '/api/storage' : '/api/files';
 
@@ -503,7 +600,7 @@
         });
 
         if (!res.ok) {
-            alert(data.error || 'Could not share.');
+            showFieldError('files-share-user-error', data.error || 'Could not share.');
             return;
         }
 

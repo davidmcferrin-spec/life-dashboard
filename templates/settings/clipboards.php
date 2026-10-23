@@ -145,8 +145,13 @@ require __DIR__ . '/_shell-top.php';
                         <div id="cloud-connect-actions" class="flex flex-wrap gap-2"></div>
                     </div>
 
-                    <div id="cloud-dropbox-form-wrap" class="hidden border border-chrome rounded p-4 mb-4">
-                        <h3 class="text-muted text-xs mono uppercase tracking-wider mb-2">Dropbox</h3>
+                    <div id="cloud-dropbox-form-wrap" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-dropbox-title">
+                        <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                        <div class="app-modal-panel surface ld-modal-wide">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="cloud-dropbox-title" class="section-title text-sm">Dropbox</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
                         <p class="text-muted text-sm mb-3">
                             Create a <strong>Scoped access</strong> app at
                             <a href="https://www.dropbox.com/developers/apps" class="text-accent hover:underline" target="_blank" rel="noopener">dropbox.com/developers/apps</a>.
@@ -181,14 +186,20 @@ require __DIR__ . '/_shell-top.php';
                                 <button type="button" id="cloud-dropbox-test" class="btn text-sm">Test credentials</button>
                                 <button type="submit" class="btn-primary text-sm">Save app credentials</button>
                                 <a id="cloud-dropbox-authorize" href="/api/storage/connect/dropbox" class="btn text-sm hidden">Authorize with Dropbox</a>
-                                <button type="button" id="cloud-dropbox-cancel" class="btn text-sm">Cancel</button>
+                                <button type="button" id="cloud-dropbox-cancel" class="btn text-sm" data-close>Cancel</button>
                             </div>
                             <p id="cloud-dropbox-form-msg" class="sm:col-span-2 text-xs mono"></p>
                         </form>
+                        </div>
                     </div>
 
-                    <div id="cloud-s3-form-wrap" class="hidden border border-chrome rounded p-4 mb-4">
-                        <h3 class="text-muted text-xs mono uppercase tracking-wider mb-3">S3-compatible storage</h3>
+                    <div id="cloud-s3-form-wrap" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-s3-title">
+                        <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                        <div class="app-modal-panel surface ld-modal-wide">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="cloud-s3-title" class="section-title text-sm">S3-compatible storage</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
                         <form id="cloud-s3-form" class="grid sm:grid-cols-2 gap-3 text-sm">
                             <label class="block sm:col-span-2">
                                 <span class="text-faint mono text-xs">Access key</span>
@@ -218,11 +229,13 @@ require __DIR__ . '/_shell-top.php';
                                 <input type="checkbox" name="path_style" value="1" class="rounded">
                                 <span class="text-faint mono text-xs">Path-style URLs (MinIO / some S3)</span>
                             </label>
+                            <p id="cloud-s3-error" class="ld-field-error hidden sm:col-span-2" role="alert"></p>
                             <div class="sm:col-span-2 flex flex-wrap gap-2 pt-1">
                                 <button type="submit" class="btn-primary text-sm">Connect S3</button>
-                                <button type="button" id="cloud-s3-cancel" class="btn text-sm">Cancel</button>
+                                <button type="button" id="cloud-s3-cancel" class="btn text-sm" data-close>Cancel</button>
                             </div>
                         </form>
+                        </div>
                     </div>
 
                     <div id="cloud-migrate-banner" class="hidden border border-chrome rounded p-4 mb-4 bg-surface-alt">
@@ -291,42 +304,83 @@ require __DIR__ . '/_shell-top.php';
                     <ul id="files-shared-list" class="space-y-2 text-sm">
                         <li class="text-faint mono text-xs py-2">Loading…</li>
                     </ul>
-                </section>
 
-                <section id="files-sharing-panel" class="hidden surface p-4 scroll-mt-6">
-                    <h3 class="section-title mb-1">Sharing — <span id="files-sharing-name" class="text-muted font-normal"></span></h3>
-                    <p id="files-sharing-unavailable" class="hidden text-warn text-xs mono mb-4"></p>
-                    <p id="files-sharing-help" class="text-faint text-xs mono mb-4">
-                        Public links allow download without signing in. In-app shares appear under Shared with me for that user.
-                    </p>
+                <div id="files-sharing-panel" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="files-sharing-title">
+                    <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                    <div class="app-modal-panel surface ld-modal-wide">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="files-sharing-title" class="section-title text-sm">Sharing — <span id="files-sharing-name" class="text-muted font-normal"></span></h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
+                        <p id="files-sharing-unavailable" class="hidden text-warn text-xs mono mb-4"></p>
+                        <p id="files-sharing-help" class="text-faint text-xs mono mb-4">
+                            Public links allow download without signing in. In-app shares appear under Shared with me for that user.
+                        </p>
 
-                    <div class="grid lg:grid-cols-2 gap-6">
-                        <div>
-                            <h4 class="text-muted text-xs mono uppercase tracking-wider mb-2">Public link</h4>
-                            <form id="files-share-link-form" class="space-y-2 mb-3">
-                                <select id="files-link-expiry" class="input mono text-sm w-full">
-                                    <option value="">No expiry</option>
-                                    <option value="P1D">1 day</option>
-                                    <option value="P7D">7 days</option>
-                                    <option value="P30D">30 days</option>
-                                    <option value="P90D">90 days</option>
-                                </select>
-                                <input type="text" id="files-link-label" class="input mono text-sm w-full" placeholder="Label (optional)">
-                                <button type="submit" class="btn-primary text-sm">Create share link</button>
-                            </form>
-                            <ul id="files-share-links" class="space-y-2 text-xs mono"></ul>
+                        <div class="grid lg:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="text-muted text-xs mono uppercase tracking-wider mb-2">Public link</h4>
+                                <form id="files-share-link-form" class="space-y-2 mb-3">
+                                    <select id="files-link-expiry" class="input mono text-sm w-full">
+                                        <option value="">No expiry</option>
+                                        <option value="P1D">1 day</option>
+                                        <option value="P7D">7 days</option>
+                                        <option value="P30D">30 days</option>
+                                        <option value="P90D">90 days</option>
+                                    </select>
+                                    <input type="text" id="files-link-label" class="input mono text-sm w-full" placeholder="Label (optional)">
+                                    <p id="files-share-link-error" class="ld-field-error hidden" role="alert"></p>
+                                    <button type="submit" class="btn-primary text-sm">Create share link</button>
+                                </form>
+                                <ul id="files-share-links" class="space-y-2 text-xs mono"></ul>
+                            </div>
+                            <div>
+                                <h4 class="text-muted text-xs mono uppercase tracking-wider mb-2">Share with user</h4>
+                                <form id="files-share-user-form" class="flex flex-wrap gap-2 mb-3">
+                                    <input type="text" id="files-share-identifier" class="input mono text-sm flex-1 min-w-[10rem]"
+                                        placeholder="Username or email" required>
+                                    <button type="submit" class="btn text-sm">Add</button>
+                                    <p id="files-share-user-error" class="ld-field-error hidden w-full" role="alert"></p>
+                                </form>
+                                <ul id="files-share-users" class="space-y-2 text-xs mono"></ul>
+                            </div>
                         </div>
-                        <div>
-                            <h4 class="text-muted text-xs mono uppercase tracking-wider mb-2">Share with user</h4>
-                            <form id="files-share-user-form" class="flex flex-wrap gap-2 mb-3">
-                                <input type="text" id="files-share-identifier" class="input mono text-sm flex-1 min-w-[10rem]"
-                                    placeholder="Username or email" required>
-                                <button type="submit" class="btn text-sm">Add</button>
-                            </form>
-                            <ul id="files-share-users" class="space-y-2 text-xs mono"></ul>
-                        </div>
+                        <button type="button" id="files-sharing-close" class="btn mt-4 text-sm" data-close>Close</button>
                     </div>
-                    <button type="button" id="files-sharing-close" class="btn mt-4 text-sm">Close</button>
+                </div>
+
+                <div id="cloud-folder-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloud-folder-title">
+                    <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                    <div class="app-modal-panel surface">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="cloud-folder-title" class="section-title text-sm">New folder</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
+                        <form id="cloud-folder-form" class="space-y-3">
+                            <label class="block">
+                                <span class="mono text-xs text-faint">New folder name</span>
+                                <input type="text" id="cloud-folder-name" class="input mono text-sm w-full mt-1" autocomplete="off">
+                            </label>
+                            <p id="cloud-folder-error" class="ld-field-error hidden" role="alert"></p>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="submit" class="btn-primary text-sm">Create</button>
+                                <button type="button" class="btn text-sm" data-close>Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="files-share-copy-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="files-share-copy-title">
+                    <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                    <div class="app-modal-panel surface">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="files-share-copy-title" class="section-title text-sm">Copy this share link</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
+                        <input type="text" id="files-share-copy-url" readonly class="input mono text-xs w-full" onclick="this.select()">
+                        <button type="button" class="btn text-sm mt-3" data-close>Close</button>
+                    </div>
+                </div>
                 </section>
             </div>
 
