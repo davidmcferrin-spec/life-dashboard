@@ -1,6 +1,7 @@
 /**
- * Holographic vault map. Pages stay in topic clusters. Agent reads and
- * writes arrive over the same realtime socket as the dashboard.
+ * Vault map. Pages stay in topic clusters drawn as clouds.
+ * Free roam pans. Attach keeps one cloud in frame and orbits it.
+ * Read and write pulses come from /api/v1/audit/presence.
  */
 'use strict';
 
@@ -14,12 +15,31 @@
     const openEl = document.getElementById('brain-panel-open');
     const legendEl = document.getElementById('brain-legend');
     const liveEl = document.getElementById('brain-live');
+    const signalEl = document.getElementById('brain-graph-signal');
+    const readoutEl = document.getElementById('brain-graph-readout');
+    const modeNameEl = document.getElementById('brain-graph-mode-name');
+    const modeHintEl = document.getElementById('brain-graph-mode-hint');
+    const freeBtn = document.getElementById('brain-camera-free');
+    const clusterHost = document.getElementById('brain-camera-clusters');
 
-    const READ_MS = 4200;
-    const WRITE_MS = 7600;
     const POLL_MS = 60000;
+    const PRESENCE_MS = 4000;
+    const PULSE_MS = 2400;
+    const FRESH_MS = 30000;
     const SPACING_KEY = 'ld_brain_spacing';
     const LABEL_KEY = 'ld_brain_labels';
+
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let reduceMotion = motionQuery.matches;
+    let pulses = [];
+
+    function onMotion() {
+        reduceMotion = motionQuery.matches;
+        if (reduceMotion) pulses = [];
+        updateModeUi();
+    }
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotion);
+    else if (motionQuery.addListener) motionQuery.addListener(onMotion);
 
     function readSpacing() {
         try {
@@ -49,11 +69,11 @@
         }
     }
 
+    function clamp(value, min, max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
     let graph = { nodes: [], edges: [], clusters: [], tokens: [], activity: [] };
-    let traces = [];
-    const seen = new Set();
-    let firstLoad = true;
-    let angle = 0;
     let raf = 0;
     let view = window.BrainCamera.reset();
     let suppressClick = false;
@@ -71,6 +91,20 @@
     let reconnectTimer = null;
     let pollTimer = null;
     let refreshTimer = null;
+    let presenceTimer = null;
+    let presenceAfter = 0;
+    const seenPresence = new Set();
+    let presenceLog = [];
+    let latestSignal = { verb: '', at: 0 };
+    let mode = 'free';
+    let attachedKey = null;
+    let orbitAngle = 0;
+    let orbitRadius = 28;
+    let manual = { x: 0, y: 0 };
+    const colorProbe = document.createElement('span');
+    colorProbe.setAttribute('aria-hidden', 'true');
+    colorProbe.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;';
+    canvas.parentElement.appendChild(colorProbe);
 
     function resize() {
         const wrap = canvas.parentElement;
@@ -84,28 +118,60 @@
 
     function parseUtc(value) {
         if (!value) return Date.now();
-        const norm = value.includes('T') ? value : value.replace(' ', 'T');
+        const norm = String(value).includes('T') ? String(value) : String(value).replace(' ', 'T');
         const stamped = /Z|[+-]\d\d:?\d\d$/.test(norm) ? norm : norm + 'Z';
         const parsed = Date.parse(stamped);
         return Number.isFinite(parsed) ? parsed : Date.now();
     }
 
+    let palette = null;
+
+    function colors() {
+        if (palette) return palette;
+        palette = {
+            accent: cssColor('--accent', '#44d7d0'),
+            warn: cssColor('--warn', '#e3b45f'),
+            ok: cssColor('--ok', '#62c99a'),
+            faint: cssColor('--text-secondary', '#8b979e'),
+            text: cssColor('--text-primary', '#e7ebeb'),
+            bg: cssColor('--bg', '#101314'),
+        };
+        return palette;
+    }
+
     function tokenColor(id) {
-        if (!id) {
-            const style = getComputedStyle(document.documentElement);
-            return style.getPropertyValue('--accent').trim()
-                || style.getPropertyValue('--hud-accent').trim()
-                || '#1aa6a6';
-        }
+        if (!id) return colors().accent;
         const hue = ((id * 47) % 360 + 360) % 360;
         return 'hsl(' + hue + ' 80% 64%)';
+    }
+
+    new MutationObserver(() => {
+        palette = null;
+        if (legendEl) renderLegend();
+    }).observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme', 'style', 'class'],
+    });
+
+    function cssColor(name, fallback) {
+        colorProbe.style.color = 'var(' + name + ')';
+        const value = getComputedStyle(colorProbe).color;
+        return value && value !== 'rgba(0, 0, 0, 0)' ? value : fallback;
+    }
+
+    function paintAlpha(color, alpha) {
+        const rgb = String(color).match(/^rgba?\(([^)]+)\)$/);
+        if (!rgb) return color;
+        const parts = rgb[1].split(',').slice(0, 3).map((part) => part.trim());
+        return 'rgba(' + parts.join(',') + ',' + alpha + ')';
     }
 
     function layout() {
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
         const panel = document.querySelector('.brain-panel');
-        const reserved = panel ? Math.min(w * 0.46, panel.offsetWidth + 40) : 0;
+        const side = panel && w >= 720;
+        const reserved = side ? Math.min(w * 0.46, panel.offsetWidth + 40) : 0;
         const usableW = Math.max(220, w - reserved);
         return {
             x: usableW * 0.5,
@@ -153,13 +219,61 @@
         return (graph.nodes || []).find((node) => node.id === id) || null;
     }
 
-    function satellite(id) {
-        const box = layout();
-        const spin = angle + id * 0.9;
-        return {
-            sx: box.x + Math.cos(spin) * box.scale * 1.35,
-            sy: box.y + Math.sin(spin) * box.scale * 1.05,
-        };
+    function clusterByKey(key) {
+        if (key == null) return null;
+        return (graph.clusters || []).find((item) => String(item.key) === String(key)) || null;
+    }
+
+    function clusterLabel(cluster) {
+        const label = String((cluster && cluster.label) || '').trim();
+        return label || 'Cloud';
+    }
+
+    function clusterMembers(key) {
+        const cluster = clusterByKey(key);
+        if (!cluster) return [];
+        return (graph.nodes || []).filter((node) => String(node.cluster) === String(cluster.key));
+    }
+
+    function clusterCenter(key) {
+        const members = clusterMembers(key);
+        if (!members.length) return null;
+        let sx = 0;
+        let sy = 0;
+        members.forEach((node) => {
+            const point = screenOf(node);
+            sx += point.sx;
+            sy += point.sy;
+        });
+        return { sx: sx / members.length, sy: sy / members.length, count: members.length };
+    }
+
+    function presenceVerb(event) {
+        const hay = (String(event && event.tool || '') + ' ' + String(event && event.label || '')).toLowerCase();
+        if (/(write|create|update|delete|remove|rename|move|post|put|patch|insert|archive|restore)/.test(hay)) return 'write';
+        return 'read';
+    }
+
+    function pulsePageId(event) {
+        const nodes = graph.nodes || [];
+        if (!nodes.length || !event || event.area !== 'Vault') return null;
+        const id = Math.abs(Number(event.id) || 0);
+        return nodes[id % nodes.length].id;
+    }
+
+    function kindColor(kind, accent, ok, warn) {
+        if (kind === 'daily') return ok;
+        if (kind === 'project') return warn;
+        if (kind === 'reference') return '#b894ff';
+        return accent;
+    }
+
+    function linkCount(id) {
+        let count = 0;
+        (graph.edges || []).forEach((edge) => {
+            if (edge.from === id || edge.to === id) count += 1;
+        });
+        return count;
     }
 
     function ingest(data) {
@@ -167,51 +281,128 @@
         const nodes = next.nodes || [];
         const keep = sameIds(nodes);
         graph = next;
-        if (!keep) beginSim(nodes, true);
+        if (!keep) beginSim(nodes, mode !== 'attach');
         else seedNodes.forEach((seed) => {
             const node = nodes.find((item) => item.id === seed.id);
             if (node) seed.title = node.title;
         });
-        const now = Date.now();
-        (graph.activity || []).forEach((item) => {
-            if (seen.has(item.id)) return;
-            seen.add(item.id);
-            const age = now - parseUtc(item.at);
-            const windowMs = firstLoad ? 45000 : 120000;
-            if (age <= windowMs) {
-                traces.push({
-                    id: item.id,
-                    token_id: item.token_id,
-                    token: item.token,
-                    verb: item.verb,
-                    page_id: item.page_id,
-                    label: item.label,
-                    color: tokenColor(item.token_id),
-                    born: now,
-                });
-            }
-        });
-        firstLoad = false;
+        if (mode === 'attach' && !clusterByKey(attachedKey)) {
+            mode = 'free';
+            attachedKey = null;
+        }
         renderLegend();
-        renderTicker();
+        renderReadout();
+        updateModeUi();
     }
 
     function renderLegend() {
         const rows = [{ id: 0, name: 'You' }].concat(graph.tokens || []);
         legendEl.innerHTML = rows.map((token) =>
             `<div class="brain-token"><i style="background:${tokenColor(token.id)}"></i><span>${esc(token.name)}</span></div>`
-        ).join('') + '<div class="brain-key"><i class="is-read"></i><span>read</span><i class="is-write"></i><span>write</span></div>';
+        ).join('') + '<div class="brain-key"><i class="is-read"></i><span>Read</span><i class="is-write"></i><span>Write</span></div>';
     }
 
-    function renderTicker() {
-        ticker.innerHTML = (graph.activity || []).slice(0, 8).map((item) => {
-            const color = tokenColor(item.token_id);
-            return `<span style="color:${color}">${esc(item.token)} ${esc(item.verb)} ${esc(item.label || '')}</span>`;
+    function renderReadout() {
+        if (!readoutEl) return;
+        const nodes = (graph.nodes || []).length;
+        const edges = (graph.edges || []).length;
+        const clouds = (graph.clusters || []).length;
+        readoutEl.textContent = nodes + ' nodes · ' + edges + ' links · ' + clouds + ' clouds';
+    }
+
+    function renderPresenceTicker() {
+        if (!ticker) return;
+        ticker.innerHTML = presenceLog.slice(0, 8).map((item) => {
+            const color = item.verb === 'write' ? 'var(--warn)' : 'var(--accent)';
+            const label = item.label ? item.label : item.verb;
+            return `<span style="color:${color}">${esc(item.agent)} · ${esc(label)}</span>`;
         }).join('');
+    }
+
+    function renderSignal() {
+        if (!signalEl) return;
+        const fresh = latestSignal.verb && (Date.now() - latestSignal.at) < FRESH_MS;
+        const verb = fresh ? latestSignal.verb : '';
+        signalEl.classList.toggle('is-read', verb === 'read');
+        signalEl.classList.toggle('is-write', verb === 'write');
+        const text = signalEl.querySelector('span');
+        const label = verb === 'write' ? 'Write' : verb === 'read' ? 'Read' : 'Live';
+        if (text) text.textContent = label;
+        else signalEl.textContent = label;
+    }
+
+    function renderClusterButtons() {
+        if (!clusterHost) return;
+        const clusters = graph.clusters || [];
+        clusterHost.innerHTML = clusters.map((cluster) => {
+            const on = mode === 'attach' && String(attachedKey) === String(cluster.key);
+            return `<button type="button" class="brain-graph-attach${on ? ' is-active' : ''}" data-cluster="${esc(cluster.key)}" aria-pressed="${on ? 'true' : 'false'}">${esc(clusterLabel(cluster))}</button>`;
+        }).join('');
+    }
+
+    function updateModeUi() {
+        const cluster = mode === 'attach' ? clusterByKey(attachedKey) : null;
+        const attached = !!cluster;
+        if (freeBtn) {
+            freeBtn.setAttribute('aria-pressed', attached ? 'false' : 'true');
+            freeBtn.classList.toggle('is-active', !attached);
+        }
+        if (modeNameEl) modeNameEl.textContent = attached ? 'Attached · ' + clusterLabel(cluster) : 'Free roam';
+        if (modeHintEl) {
+            if (!attached) modeHintEl.textContent = 'Drag to travel. Scroll to zoom.';
+            else if (reduceMotion) modeHintEl.textContent = 'Drag to turn. This view stays still on its own.';
+            else modeHintEl.textContent = 'Drag to orbit. Arrow keys still pan.';
+        }
+        canvas.classList.toggle('is-attached', attached);
+        renderClusterButtons();
+    }
+
+    function freeRoam() {
+        mode = 'free';
+        attachedKey = null;
+        updateModeUi();
+    }
+
+    function attachTo(key) {
+        const cluster = clusterByKey(key);
+        if (!cluster) return;
+        mode = 'attach';
+        attachedKey = cluster.key;
+        manual = { x: 0, y: 0 };
+        orbitAngle = 0;
+        orbitRadius = 28;
+        userMovedCamera = true;
+        updateModeUi();
     }
 
     function setLive(text) {
         liveEl.textContent = text;
+    }
+
+    function screenFont(px) {
+        return (px / view.k) + 'px "IBM Plex Sans", sans-serif';
+    }
+
+    function holdCluster(w, h) {
+        const center = clusterCenter(attachedKey);
+        if (!center) {
+            mode = 'free';
+            attachedKey = null;
+            updateModeUi();
+            return;
+        }
+        if (!drag && pointers.size < 2 && !reduceMotion) orbitAngle += 0.004;
+        const rect = usableRect();
+        const destX = rect.left + rect.width / 2;
+        const destY = rect.top + rect.height / 2;
+        const radius = reduceMotion ? 0 : orbitRadius;
+        let next = window.BrainCamera.focus(view, center.sx, center.sy, w, h, destX, destY);
+        next = window.BrainCamera.panBy(
+            next,
+            Math.cos(orbitAngle) * radius + manual.x,
+            Math.sin(orbitAngle) * radius + manual.y
+        );
+        view = next;
     }
 
     function frame() {
@@ -221,44 +412,9 @@
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, w, h);
-        const cam = window.BrainCamera.matrix(view, w, h, dpr);
-        ctx.setTransform(cam.a, cam.b, cam.c, cam.d, cam.e, cam.f);
-        const style = getComputedStyle(document.documentElement);
-        const accent = style.getPropertyValue('--accent').trim()
-            || style.getPropertyValue('--hud-accent').trim()
-            || '#1aa6a6';
-        const faint = style.getPropertyValue('--text-faint').trim() || '#8aa';
-        const text = style.getPropertyValue('--text-secondary').trim() || '#d5e7ea';
-        const box = layout();
-        const o = { x: box.x, y: box.y };
-
-        const wash = ctx.createRadialGradient(o.x, o.y, 20, o.x, o.y, Math.max(w, h) * 0.55);
-        wash.addColorStop(0, 'rgba(26, 166, 166, 0.05)');
-        wash.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = wash;
-        ctx.fillRect(0, 0, w, h);
-
-        ctx.save();
-        ctx.strokeStyle = accent;
-        ctx.globalAlpha = 0.08;
-        ctx.lineWidth = 1;
-        for (let ring = 1; ring <= 4; ring++) {
-            ctx.beginPath();
-            ctx.ellipse(o.x, o.y, box.scale * 0.42 * ring, box.scale * 0.32 * ring, 0, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-        ctx.globalAlpha = 0.12;
-        ctx.beginPath();
-        ctx.arc(o.x, o.y, box.scale * 1.45, angle, angle + 0.7);
-        ctx.stroke();
-        const scan = (now / 18) % h;
-        ctx.globalAlpha = 0.05;
-        ctx.fillStyle = accent;
-        ctx.fillRect(0, scan, w, 2);
-        ctx.restore();
 
         if (sim && !sim.settled) sim.tick(8);
-        if (sim && canvas.clientWidth > 40) {
+        if (sim && canvas.clientWidth > 40 && mode !== 'attach') {
             if (!fittedInitial) {
                 fitView();
                 fittedInitial = true;
@@ -268,6 +424,43 @@
                 fittedSettle = true;
             }
         }
+        if (mode === 'attach') holdCluster(w, h);
+
+        const tone = colors();
+        const accent = tone.accent;
+        const warn = tone.warn;
+        const ok = tone.ok;
+        const faint = tone.faint;
+        const text = tone.text;
+        const bg = tone.bg;
+        const box = layout();
+        const origin = { x: box.x, y: box.y };
+
+        ctx.save();
+        const wash = ctx.createRadialGradient(w * 0.5, h * 0.42, 20, w * 0.5, h * 0.42, Math.max(w, h) * 0.62);
+        wash.addColorStop(0, paintAlpha(accent, 0.09));
+        wash.addColorStop(1, paintAlpha(accent, 0));
+        ctx.fillStyle = wash;
+        ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = paintAlpha(accent, 0.06);
+        ctx.lineWidth = 1;
+        const gap = 64;
+        for (let x = gap; x < w; x += gap) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+        for (let y = gap; y < h; y += gap) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        const cam = window.BrainCamera.matrix(view, w, h, dpr);
+        ctx.setTransform(cam.a, cam.b, cam.c, cam.d, cam.e, cam.f);
 
         const placed = new Map();
         (graph.nodes || []).forEach((node) => {
@@ -281,131 +474,138 @@
         }));
 
         (graph.clusters || []).forEach((cluster) => {
-            const members = (graph.nodes || []).filter((node) => node.cluster === cluster.key);
-            if (members.length === 0) return;
-            let radius = 36;
+            const members = clusterMembers(cluster.key);
+            if (!members.length) return;
+            let radius = 48;
             let sx = 0;
             let sy = 0;
             members.forEach((node) => {
                 const point = placed.get(node.id);
+                if (!point) return;
                 sx += point.sx;
                 sy += point.sy;
             });
             const center = { sx: sx / members.length, sy: sy / members.length };
             members.forEach((node) => {
                 const point = placed.get(node.id);
+                if (!point) return;
                 const dx = point.sx - center.sx;
                 const dy = point.sy - center.sy;
-                radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy) + 28);
+                radius = Math.max(radius, Math.sqrt(dx * dx + dy * dy) + 36);
             });
+            const attached = mode === 'attach' && String(attachedKey) === String(cluster.key);
             ctx.save();
-            ctx.strokeStyle = accent;
-            ctx.globalAlpha = 0.28;
-            ctx.setLineDash([2, 7]);
+            ctx.fillStyle = paintAlpha(accent, attached ? 0.16 : 0.08);
             ctx.beginPath();
             ctx.arc(center.sx, center.sy, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = accent;
+            ctx.globalAlpha = attached ? 0.55 : 0.28;
+            ctx.lineWidth = (attached ? 1.5 : 1) / view.k;
+            ctx.setLineDash([4 / view.k, 7 / view.k]);
             ctx.stroke();
             ctx.setLineDash([]);
-            ctx.globalAlpha = 0.7;
-            ctx.fillStyle = faint;
-            ctx.font = '11px JetBrains Mono, monospace';
-            ctx.fillText(cluster.label, center.sx - radius, center.sy - radius + 12);
+            ctx.globalAlpha = 0.9;
+            ctx.fillStyle = accent;
+            ctx.beginPath();
+            ctx.arc(center.sx, center.sy, 4.5 / Math.min(view.k, 1), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = text;
+            ctx.font = screenFont(12);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.lineJoin = 'round';
+            ctx.lineWidth = 4 / view.k;
+            ctx.strokeStyle = bg;
+            const labelY = center.sy - radius - (6 / view.k);
+            ctx.strokeText(clusterLabel(cluster), center.sx, labelY);
+            ctx.fillText(clusterLabel(cluster), center.sx, labelY);
             ctx.restore();
         });
 
         ctx.save();
-        ctx.lineWidth = 1;
+        ctx.lineWidth = 1 / view.k;
         ctx.strokeStyle = accent;
-        ctx.globalAlpha = 0.35;
         (graph.edges || []).forEach((edge) => {
             const a = placed.get(edge.from);
             const b = placed.get(edge.to);
             if (!a || !b) return;
+            const hot = selectedId != null && (edge.from === selectedId || edge.to === selectedId);
+            ctx.globalAlpha = hot ? 0.72 : 0.28;
             ctx.beginPath();
             ctx.moveTo(a.sx, a.sy);
-            ctx.quadraticCurveTo((a.sx + b.sx) / 2, (a.sy + b.sy) / 2 - 10, b.sx, b.sy);
+            ctx.quadraticCurveTo((a.sx + b.sx) / 2, (a.sy + b.sy) / 2 - (10 / view.k), b.sx, b.sy);
             ctx.stroke();
         });
         ctx.restore();
 
-        ctx.beginPath();
-        ctx.strokeStyle = accent;
-        ctx.globalAlpha = 0.45;
-        ctx.arc(o.x, o.y, 7, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-
-        const bg = style.getPropertyValue('--bg').trim() || '#061018';
         placed.forEach((point) => {
             const hot = point.node.hot;
             const picked = point.node.id === hoverId || point.node.id === selectedId;
+            const tone = kindColor(point.node.kind, accent, ok, warn);
+            const radius = (picked ? 7 : 5) / Math.min(view.k, 1);
             ctx.beginPath();
-            ctx.fillStyle = hot ? accent : 'rgba(8, 18, 24, 0.85)';
-            ctx.strokeStyle = picked ? accent : (hot ? accent : faint);
-            ctx.globalAlpha = hot || picked ? 0.95 : 0.8;
-            ctx.lineWidth = picked ? 2 : 1;
-            ctx.arc(point.sx, point.sy, hot || picked ? 6 : 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = hot ? tone : paintAlpha(bg, 0.88);
+            ctx.strokeStyle = picked || hot ? tone : faint;
+            ctx.globalAlpha = hot || picked ? 1 : 0.9;
+            ctx.lineWidth = (picked ? 2 : 1) / view.k;
+            ctx.arc(point.sx, point.sy, radius, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
             if (!shown.has(point.node.id)) return;
-            const full = point.node.id === hoverId;
+            const full = point.node.id === hoverId || point.node.id === selectedId;
             const label = full ? String(point.node.title || '') : window.BrainForces.truncateTitle(point.node.title);
-            ctx.globalAlpha = 0.94;
-            ctx.font = '12px IBM Plex Sans, sans-serif';
+            ctx.globalAlpha = 1;
+            ctx.font = screenFont(12);
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
             ctx.lineJoin = 'round';
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 4 / view.k;
             ctx.strokeStyle = bg;
-            ctx.strokeText(label, point.sx + 10, point.sy + 4);
+            const lx = point.sx + radius + (6 / view.k);
+            ctx.strokeText(label, lx, point.sy);
             ctx.fillStyle = text;
-            ctx.fillText(label, point.sx + 10, point.sy + 4);
+            ctx.fillText(label, lx, point.sy);
         });
         ctx.globalAlpha = 1;
 
-        const alive = [];
-        traces.forEach((trace) => {
-            const life = trace.verb === 'write' ? WRITE_MS : READ_MS;
-            const age = now - trace.born;
-            if (age >= life) return;
-            alive.push(trace);
-            const progress = Math.min(1, age / (life * 0.45));
-            const fade = 1 - Math.max(0, (age - life * 0.55) / (life * 0.45));
-            const from = satellite(trace.token_id || 0);
-            const targetNode = trace.page_id ? placed.get(trace.page_id) : null;
-            const target = targetNode ? { sx: targetNode.sx, sy: targetNode.sy } : o;
-            const head = {
-                sx: from.sx + (target.sx - from.sx) * progress,
-                sy: from.sy + (target.sy - from.sy) * progress,
-            };
-            ctx.save();
-            ctx.globalAlpha = Math.max(0, fade);
-            ctx.strokeStyle = trace.color;
-            ctx.fillStyle = trace.color;
-            ctx.lineWidth = trace.verb === 'write' ? 2.4 : 1;
-            if (trace.verb === 'write') {
-                ctx.shadowColor = trace.color;
-                ctx.shadowBlur = 14;
-                ctx.setLineDash([]);
-            } else {
-                ctx.setLineDash([4, 6]);
-            }
-            ctx.beginPath();
-            ctx.moveTo(from.sx, from.sy);
-            ctx.lineTo(head.sx, head.sy);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.beginPath();
-            ctx.arc(head.sx, head.sy, trace.verb === 'write' ? 4 : 2.5, 0, Math.PI * 2);
-            ctx.fill();
-            if (trace.verb === 'write' && targetNode) {
-                ctx.globalAlpha = Math.max(0, fade) * 0.8;
+        if (!reduceMotion) {
+            const alive = [];
+            pulses.forEach((pulse) => {
+                const age = now - pulse.born;
+                if (age >= PULSE_MS) return;
+                alive.push(pulse);
+                const t = age / PULSE_MS;
+                const point = pulse.pageId ? placed.get(pulse.pageId) : null;
+                const target = point ? { sx: point.sx, sy: point.sy } : origin;
+                const color = pulse.verb === 'write' ? warn : accent;
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.globalAlpha = 1 - t;
+                ctx.lineWidth = (pulse.verb === 'write' ? 2 : 1.25) / view.k;
+                if (pulse.verb === 'write') {
+                    ctx.shadowColor = color;
+                    ctx.shadowBlur = 12 / view.k;
+                } else {
+                    ctx.setLineDash([3 / view.k, 5 / view.k]);
+                }
                 ctx.beginPath();
-                ctx.arc(target.sx, target.sy, 8 + progress * 16, 0, Math.PI * 2);
+                ctx.arc(target.sx, target.sy, (8 + t * 36) / view.k, 0, Math.PI * 2);
                 ctx.stroke();
-            }
-            ctx.restore();
-        });
-        traces = alive;
-        angle += 0.004;
+                ctx.setLineDash([]);
+                ctx.globalAlpha = (1 - t) * 0.9;
+                ctx.beginPath();
+                ctx.arc(target.sx, target.sy, (3.5 / view.k), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            });
+            pulses = alive;
+        } else {
+            pulses = [];
+        }
+
         raf = requestAnimationFrame(frame);
     }
 
@@ -448,13 +648,30 @@
         }).flat();
     }
 
+    function clusterPoints(key) {
+        return clusterMembers(key).map((node) => {
+            const point = screenOf(node);
+            const extra = window.BrainForces.labelWidth(node.title);
+            return [
+                { x: point.sx - 12, y: point.sy },
+                { x: point.sx + 10 + extra, y: point.sy },
+            ];
+        }).flat();
+    }
+
     function zoomBy(factor) {
         userMovedCamera = true;
         view = window.BrainCamera.zoomAt(view, canvas.clientWidth / 2, canvas.clientHeight / 2, canvas.clientWidth / 2, canvas.clientHeight / 2, factor);
     }
 
     function fitView() {
-        view = window.BrainCamera.fit(nodePoints(), canvas.clientWidth, canvas.clientHeight, usableRect());
+        const points = mode === 'attach' ? clusterPoints(attachedKey) : nodePoints();
+        view = window.BrainCamera.fit(points.length ? points : nodePoints(), canvas.clientWidth, canvas.clientHeight, usableRect());
+        manual = { x: 0, y: 0 };
+    }
+
+    function focusMap() {
+        canvas.focus();
     }
 
     const pointers = new Map();
@@ -467,7 +684,15 @@
         pointers.set(ev.pointerId, canvasPoint(ev));
         pinch = null;
         if (pointers.size === 1) {
-            drag = { x: ev.clientX, y: ev.clientY, moved: false, panX: view.x, panY: view.y };
+            drag = {
+                x: ev.clientX,
+                y: ev.clientY,
+                moved: false,
+                panX: view.x,
+                panY: view.y,
+                orbit: orbitAngle,
+                radius: orbitRadius,
+            };
         }
     });
     canvas.addEventListener('pointermove', (ev) => {
@@ -489,9 +714,14 @@
         const dx = ev.clientX - drag.x;
         const dy = ev.clientY - drag.y;
         if (dx * dx + dy * dy > 16) drag.moved = true;
-            if (drag.moved) {
+        if (drag.moved) {
             userMovedCamera = true;
-            view = { k: view.k, x: drag.panX + dx, y: drag.panY + dy };
+            if (mode === 'attach') {
+                orbitAngle = drag.orbit + dx * 0.008;
+                orbitRadius = clamp(drag.radius + dy * 0.12, 0, 96);
+            } else {
+                view = { k: view.k, x: drag.panX + dx, y: drag.panY + dy };
+            }
             canvas.classList.add('is-panning');
             suppressClick = true;
         }
@@ -522,35 +752,60 @@
         else if (ev.key === '-' || ev.key === '_') zoomBy(1 / 1.18);
         else if (ev.key === '0') {
             userMovedCamera = true;
+            manual = { x: 0, y: 0 };
+            orbitAngle = 0;
+            orbitRadius = 28;
             view = window.BrainCamera.reset();
         }
         else if (ev.key === 'f' || ev.key === 'F') fitView();
-        else if (ev.key === 'ArrowLeft') {
-            userMovedCamera = true;
-            view = window.BrainCamera.panBy(view, 28, 0);
-        }
-        else if (ev.key === 'ArrowRight') {
-            userMovedCamera = true;
-            view = window.BrainCamera.panBy(view, -28, 0);
-        }
-        else if (ev.key === 'ArrowUp') {
-            userMovedCamera = true;
-            view = window.BrainCamera.panBy(view, 0, 28);
-        }
-        else if (ev.key === 'ArrowDown') {
-            userMovedCamera = true;
-            view = window.BrainCamera.panBy(view, 0, -28);
-        }
+        else if (ev.key === 'ArrowLeft') nudge(28, 0);
+        else if (ev.key === 'ArrowRight') nudge(-28, 0);
+        else if (ev.key === 'ArrowUp') nudge(0, 28);
+        else if (ev.key === 'ArrowDown') nudge(0, -28);
         else return;
         ev.preventDefault();
     });
-    document.getElementById('brain-zoom-in').addEventListener('click', () => zoomBy(1.2));
-    document.getElementById('brain-zoom-out').addEventListener('click', () => zoomBy(1 / 1.2));
-    document.getElementById('brain-zoom-fit').addEventListener('click', fitView);
+
+    function nudge(dx, dy) {
+        userMovedCamera = true;
+        if (mode === 'attach') manual = { x: manual.x + dx, y: manual.y + dy };
+        else view = window.BrainCamera.panBy(view, dx, dy);
+    }
+
+    document.getElementById('brain-zoom-in').addEventListener('click', () => {
+        zoomBy(1.2);
+        focusMap();
+    });
+    document.getElementById('brain-zoom-out').addEventListener('click', () => {
+        zoomBy(1 / 1.2);
+        focusMap();
+    });
+    document.getElementById('brain-zoom-fit').addEventListener('click', () => {
+        fitView();
+        focusMap();
+    });
     document.getElementById('brain-zoom-reset').addEventListener('click', () => {
         userMovedCamera = true;
+        manual = { x: 0, y: 0 };
+        orbitAngle = 0;
+        orbitRadius = 28;
         view = window.BrainCamera.reset();
+        focusMap();
     });
+    if (freeBtn) {
+        freeBtn.addEventListener('click', () => {
+            freeRoam();
+            focusMap();
+        });
+    }
+    if (clusterHost) {
+        clusterHost.addEventListener('click', (ev) => {
+            const btn = ev.target.closest('[data-cluster]');
+            if (!btn) return;
+            attachTo(btn.getAttribute('data-cluster'));
+            focusMap();
+        });
+    }
     const spacingEl = document.getElementById('brain-spacing');
     const labelsEl = document.getElementById('brain-labels');
     if (spacingEl) {
@@ -561,7 +816,7 @@
             storePref(SPACING_KEY, spacing);
             clearTimeout(spacingTimer);
             spacingTimer = setTimeout(() => {
-                if (seedNodes.length) beginSim(seedNodes, true);
+                if (seedNodes.length) beginSim(seedNodes, mode !== 'attach');
             }, 120);
         });
     }
@@ -585,12 +840,17 @@
         }
         const hit = hitNode(ev);
         if (!hit) return;
-        const cluster = (graph.clusters || []).find((item) => item.key === hit.cluster);
+        const cluster = (graph.clusters || []).find((item) => String(item.key) === String(hit.cluster));
         selectedId = hit.id;
         titleEl.textContent = hit.title;
-        copyEl.textContent = (cluster ? cluster.label + ' · ' : '') + (hit.hot ? 'Touched in the last 7 days.' : hit.kind);
-        openEl.href = '/brain?page=' + hit.id;
-        openEl.textContent = 'Open ' + hit.title;
+        const bits = [];
+        if (cluster) bits.push(clusterLabel(cluster));
+        if (hit.kind) bits.push(hit.kind);
+        bits.push(linkCount(hit.id) + ' links');
+        if (hit.hot) bits.push('Touched in the last 7 days.');
+        copyEl.textContent = bits.join(' · ');
+        openEl.href = '/brain?page=' + encodeURIComponent(hit.id);
+        openEl.textContent = 'Open in Vault';
     });
 
     function scheduleRefresh() {
@@ -660,6 +920,7 @@
                 if (catchUp) scheduleRefresh();
             } else if (evt.type === 'event' && (evt.table === 'pages' || evt.table === 'audit_events')) {
                 scheduleRefresh();
+                if (evt.table === 'audit_events') pullPresence();
             } else if (evt.type === 'resync') {
                 scheduleRefresh();
             }
@@ -672,19 +933,72 @@
         });
     }
 
+    function ingestPresence(events) {
+        const now = Date.now();
+        (events || []).forEach((event) => {
+            const id = Number(event.id) || 0;
+            if (id > presenceAfter) presenceAfter = id;
+            if (id && seenPresence.has(id)) return;
+            if (id) seenPresence.add(id);
+            const at = parseUtc(event.at);
+            if (now - at > FRESH_MS) return;
+            const verb = presenceVerb(event);
+            latestSignal = { verb, at };
+            presenceLog.unshift({
+                id,
+                verb,
+                agent: event.agent || 'Agent',
+                label: event.label || '',
+            });
+            if (!reduceMotion) {
+                pulses.push({
+                    id,
+                    verb,
+                    pageId: pulsePageId(event),
+                    born: now,
+                });
+            }
+        });
+        if (presenceLog.length > 8) presenceLog = presenceLog.slice(0, 8);
+        if (seenPresence.size > 400) seenPresence.clear();
+        renderPresenceTicker();
+        renderSignal();
+    }
+
+    async function pullPresence() {
+        if (document.hidden) return;
+        try {
+            const res = await api.get('/audit/presence?after=' + presenceAfter + '&limit=20');
+            ingestPresence(res.events || []);
+        } catch (e) {
+            /* the map keeps drawing if presence is quiet */
+        }
+    }
+
+    function startPresence() {
+        if (presenceTimer) return;
+        presenceTimer = setInterval(() => {
+            if (!document.hidden) pullPresence();
+        }, PRESENCE_MS);
+    }
+
     async function load() {
         ingest(await api.get('/pages/graph'));
     }
 
     window.addEventListener('resize', () => {
         resize();
-        if (!userMovedCamera && canvas.clientWidth > 40) fitView();
+        if (!userMovedCamera && mode !== 'attach' && canvas.clientWidth > 40) fitView();
     });
     resize();
+    updateModeUi();
     requestAnimationFrame(frame);
     setLive('Connecting');
     load().then(connect).catch((err) => {
         copyEl.textContent = err.message;
         setLive('Offline');
+    }).then(() => {
+        pullPresence();
+        startPresence();
     });
 })();

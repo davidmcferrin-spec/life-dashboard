@@ -36,6 +36,15 @@ test('fit centers the graph in the viewport', () => {
     assert.ok(state.k >= cam.MIN_K && state.k <= cam.MAX_K);
 });
 
+test('focus parks a world point without changing zoom', () => {
+    const state = { k: 2, x: 10, y: -4 };
+    const next = cam.focus(state, 80, 40, 400, 300, 100, 120);
+    assert.equal(next.k, 2);
+    const screen = cam.toScreen(next, 80, 40, 200, 150);
+    assert.ok(Math.abs(screen.x - 100) < 0.001);
+    assert.ok(Math.abs(screen.y - 120) < 0.001);
+});
+
 test('pan and reset', () => {
     const moved = cam.panBy(cam.reset(), 12, -3);
     assert.deepEqual(moved, { k: 1, x: 12, y: -3 });
