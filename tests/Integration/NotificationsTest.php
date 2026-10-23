@@ -17,6 +17,8 @@ final class NotificationsTest extends PgsqlTestCase
 
     private int $other;
 
+    private string $sessionDir = '';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -33,6 +35,13 @@ final class NotificationsTest extends PgsqlTestCase
         $this->other = (int) $this->db->lastInsertId();
         $this->notifications = new NotificationService($this->db);
         $this->httpHelpers();
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        // Another test leaves session.save_path on a directory it then deletes.
+        $this->sessionDir = sys_get_temp_dir() . '/lifedash-notify-' . bin2hex(random_bytes(4));
+        mkdir($this->sessionDir);
+        ini_set('session.save_path', $this->sessionDir);
         ini_set('session.use_cookies', '0');
         ini_set('session.use_only_cookies', '1');
         ini_set('session.cache_limiter', '');
@@ -48,6 +57,11 @@ final class NotificationsTest extends PgsqlTestCase
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_write_close();
         }
+        if ($this->sessionDir !== '' && is_dir($this->sessionDir)) {
+            array_map('unlink', glob($this->sessionDir . '/*') ?: []);
+            rmdir($this->sessionDir);
+        }
+        ini_set('session.save_path', sys_get_temp_dir());
         unset($_SERVER['HTTP_X_CSRF_TOKEN'], $_SERVER['HTTP_ORIGIN'], $_SERVER['HTTP_HOST'], $_SERVER['REQUEST_URI'], $_SERVER['HTTP_ACCEPT'], $_POST);
         parent::tearDown();
     }
