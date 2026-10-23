@@ -1849,278 +1849,421 @@ html[data-theme="jarvis"] .ld-shop-tab.is-on {
 }
 .ld-call-status.is-on, .ld-call-status:hover { border-color: var(--accent); color: var(--text-primary); }
 .ld-call-detail p { margin: 0.15rem 0; }
-.ld-pantry-nav, .ld-pantry-filters, .ld-pantry-locs, .ld-pantry-actions {
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+}
+@font-face {
+    font-family: 'IBM Plex Mono';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/assets/fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+}
+
+/* Pantry and meal prep. Type stays at 11px or larger. Accent follows the theme teal. */
+#pantry-app {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    max-width: min(1180px, 100%);
+}
+#pantry-app .ld-meta,
+.ld-pantry-dialog .ld-meta,
+.ld-meal-drawer .ld-meta {
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 12px;
+}
+#pantry-app .ld-error {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+}
+.ld-pantry-head {
+    align-items: flex-end;
+    display: flex;
+    gap: 24px;
+    justify-content: space-between;
+}
+.ld-pantry-head-copy { min-width: 0; }
+.ld-pantry-lede {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 8px 0 0;
+}
+.ld-pantry-head .btn-primary { flex: none; }
+.ld-pantry-nav, .ld-pantry-filters, .ld-pantry-locs, .ld-pantry-actions, .ld-meal-chips, .ld-meal-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 8px;
 }
-.ld-pantry-nav a, .ld-pantry-filters button, .ld-pantry-actions button {
+.ld-pantry-nav a, .ld-pantry-filters button, .ld-pantry-locs button, .ld-meal-chip {
     align-items: center;
-    border: 1px solid var(--surface-border);
+    background: transparent;
+    border: 1px solid var(--border-soft);
     border-radius: var(--radius-full, 999px);
     color: var(--text-secondary);
+    cursor: pointer;
     display: inline-flex;
-    font-size: 0.875rem;
-    min-height: 2.5rem;
-    padding: 0.35rem 0.7rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    gap: 8px;
+    min-height: 40px;
+    padding: 6px 12px;
+    text-decoration: none;
 }
-.ld-pantry-actions button[data-tip] {
-    position: relative;
+.ld-pantry-nav a.is-on, .ld-pantry-filters button.is-on, .ld-pantry-locs button.is-on, .ld-meal-chip.is-on, .ld-meal-mode.is-on {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
 }
+.ld-pantry-nav svg, .ld-pantry-mark svg, .ld-meal-x svg, .ld-pantry-dialog .app-modal-close svg, .ld-pantry-scan-btn svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+.ld-pantry-filters { margin: 16px 0; }
+.ld-pantry-filters .input { flex: 1 1 10rem; min-width: 0; }
+.ld-pantry-card {
+    background: linear-gradient(145deg, color-mix(in srgb, var(--surface-raised) 92%, transparent), color-mix(in srgb, var(--bg) 88%, transparent));
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius, 10px);
+    box-shadow: var(--shadow);
+    min-width: 0;
+    padding: 18px;
+}
+html[data-theme="light"] .ld-pantry-card {
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 248, 0.94));
+    box-shadow: 0 10px 28px rgba(42, 67, 70, 0.07);
+}
+.ld-pantry-card-head {
+    align-items: flex-start;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+}
+.ld-pantry-card-title {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    min-width: 0;
+}
+.ld-pantry-card-title h2, .ld-pantry-dialog-title {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 0;
+}
+.ld-pantry-mark {
+    align-items: center;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: var(--radius-sm, 6px);
+    color: var(--accent);
+    display: grid;
+    flex: none;
+    height: 32px;
+    place-items: center;
+    width: 32px;
+}
+.ld-pantry-kicker, .ld-pantry-label, .ld-meal-split-label, .ld-meal-day-head, .ld-pantry-dialog label, .ld-pantry-sheet label, .ld-pantry-card > label, .ld-pantry-field {
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+    text-transform: uppercase;
+}
+.ld-pantry-kicker, .ld-pantry-label { margin: 0 0 4px; }
+.ld-pantry-group { margin-top: 16px; }
+.ld-pantry-table-wrap, #pantry-lots { min-width: 0; }
+.ld-pantry-table {
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: left;
+    width: 100%;
+}
+.ld-pantry-table th {
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    padding: 10px 12px;
+    text-transform: uppercase;
+}
+.ld-pantry-table td {
+    border-top: 1px solid var(--border-soft);
+    color: var(--text-secondary);
+    padding: 13px 12px;
+    vertical-align: middle;
+}
+.ld-pantry-table td:first-child { color: var(--text-primary); }
+.ld-pantry-item strong, .ld-pantry-name {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.ld-pantry-meta, .ld-meal-uses, .ld-meal-protein {
+    color: var(--text-secondary);
+    display: block;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 12px;
+    letter-spacing: 0;
+    line-height: 1.4;
+    margin-top: 2px;
+    text-transform: none;
+}
+.ld-pantry-badge, .ld-pantry-chip {
+    background: var(--surface-hover);
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    padding: 4px 8px;
+    text-transform: uppercase;
+}
+.ld-pantry-chip.ld-pantry-fresh { color: var(--ok); }
+.ld-pantry-chip.ld-pantry-soon, .ld-pantry-soon { color: var(--warn); }
+.ld-pantry-chip.ld-pantry-expired, .ld-pantry-expired { color: var(--danger); }
+.ld-pantry-chip.ld-pantry-unknown, .ld-pantry-unknown { color: var(--text-secondary); }
+.ld-pantry-fresh { color: var(--text-primary); }
+.ld-pantry-actions { align-items: center; max-width: 18rem; }
+.ld-pantry-actions button {
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm, 6px);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 12px;
+    min-height: 40px;
+    padding: 4px 8px;
+}
+.ld-pantry-actions button:hover { border-color: var(--accent); color: var(--accent); }
+.ld-pantry-actions button[data-tip] { position: relative; }
 .ld-pantry-actions button[data-tip]::after {
-    background: #101820;
-    border: 1px solid var(--surface-border);
-    border-radius: 0.45rem;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-    color: #f3fbff;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm, 6px);
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
     content: attr(data-tip);
-    font-size: 0.7rem;
-    left: 0;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 11px;
+    left: auto;
+    letter-spacing: 0;
     line-height: 1.35;
     max-width: min(16rem, 70vw);
     opacity: 0;
-    top: calc(100% + 0.35rem);
-    padding: 0.4rem 0.55rem;
+    padding: 8px 10px;
     pointer-events: none;
     position: absolute;
+    right: 0;
     text-align: left;
+    text-transform: none;
+    top: calc(100% + 6px);
     white-space: normal;
     width: max-content;
     z-index: 30;
 }
 .ld-pantry-actions button[data-tip]:hover::after,
-.ld-pantry-actions button[data-tip]:focus-visible::after {
-    opacity: 1;
-}
-html[data-theme="light"] .ld-pantry-actions button[data-tip]::after {
-    background: #ffffff;
-    color: #18181b;
-}
-html[data-theme="dark"] .ld-pantry-actions button[data-tip]::after {
-    background: #18181b;
-    color: #fafafa;
-}
-.ld-pantry-date { border: 0; margin: 0; min-width: 0; padding: 0; }
-.ld-pantry-date input { width: 4.2rem; }
-.ld-pantry-date input[name$="_y"] { width: 5.4rem; }
-.ld-pantry-nav a.is-on, .ld-pantry-filters button.is-on {
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-.ld-pantry-group { margin-top: 1rem; }
-.ld-pantry-label {
-    color: var(--text-faint, var(--text-muted));
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    margin: 0.6rem 0 0.25rem;
-    text-transform: uppercase;
-}
+.ld-pantry-actions button[data-tip]:focus-visible::after { opacity: 1; }
 .ld-pantry-lot, .ld-pantry-list { list-style: none; margin: 0; padding: 0; }
 .ld-pantry-lot {
-    border-top: 1px solid var(--surface-border);
-    padding: 0.55rem 0;
-}
-#pantry-app { max-width: 54rem; }
-#pantry-app.is-meals { max-width: min(100rem, 100%); }
-.ld-pantry-lot-main {
-    align-items: baseline;
+    align-items: flex-start;
+    border-top: 1px solid var(--border-soft);
     display: flex;
-    gap: 0.6rem;
-    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
 }
-.ld-pantry-name {
-    font-size: 0.8125rem;
-    line-height: 1.3;
-    min-width: 0;
-}
-.ld-pantry-qty {
-    flex: none;
-    font-size: 0.75rem;
-    text-align: right;
-}
-.ld-pantry-fresh { color: var(--text-primary); }
-.ld-pantry-soon { color: var(--warn); }
-.ld-pantry-expired { color: var(--danger); }
-.ld-pantry-unknown { color: var(--text-secondary); }
-.ld-pantry-locs button {
-    border: 1px solid var(--surface-border);
-    border-radius: 0.6rem;
-    flex: 1 1 30%;
-    font-size: 1rem;
-    min-height: 3rem;
-    padding: 0.6rem;
-}
-.ld-pantry-locs button.is-on {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-.ld-pantry-sheet {
-    background: var(--surface);
-    border: 1px solid var(--surface-border);
-    border-radius: 0.8rem;
-    margin-top: 0.8rem;
-    padding: 0.8rem;
-}
-.ld-pantry-card .ld-pantry-list li { font-size: 0.8rem; margin: 0.15rem 0; }
-.ld-pantry-video {
-    background: #000;
-    border-radius: 0.6rem;
-    max-height: 240px;
-    width: 100%;
-}
-.ld-meal-chips, .ld-meal-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-}
-.ld-meal-chip {
-    align-items: center;
-    background: transparent;
-    border: 1px solid var(--surface-border);
-    border-radius: var(--radius-full, 999px);
-    color: var(--text-secondary);
-    display: inline-flex;
-    font-size: 0.875rem;
-    min-height: 2.5rem;
-    padding: 0.5rem 0.75rem;
-}
-.ld-meal-chip.is-on, .ld-meal-mode.is-on {
-    background: var(--accent-soft);
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-.ld-meal-chip.is-off,
-.ld-meal-uses .is-off {
-    color: var(--text-muted);
-    font-style: italic;
-}
-.ld-meal-made { margin-top: 0.35rem; }
-.ld-meal-uses {
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    margin-top: 0.15rem;
-}
-.ld-meal-prep { margin-top: 0.85rem; min-width: 0; }
-.ld-meal-prep,
-.ld-meal-steps,
-.ld-meal-scale,
-.ld-meal-uses { overflow-wrap: anywhere; }
-.ld-meal-steps,
-.ld-meal-scale {
-    font-size: 0.8125rem;
-    margin: 0.45rem 0 0;
-    padding-left: 1.15rem;
-}
-.ld-meal-swaps {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    margin: 0.15rem 0 0.35rem;
-}
-.ld-meal-protein {
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-}
-.ld-meal-scale .is-off { color: var(--text-muted); font-style: italic; }
-.ld-meal-actions { margin-top: 0.8rem; }
-.ld-meal-board {
-    align-items: start;
-    display: grid;
-    gap: 0.75rem 1rem;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(9.5rem, 13rem);
-    margin-top: 0.85rem;
-}
-.ld-meal-col, .ld-meal-rail { min-width: 0; }
-.ld-meal-rail {
-    border-left: 1px solid var(--surface-border);
-    padding-left: 0.85rem;
-}
-.ld-meal-flavor { display: none; }
-.ld-meal-line {
-    align-items: center;
-    display: flex;
-    gap: 0.15rem;
-}
-.ld-meal-row {
+.ld-pantry-lot > div { flex: 1; min-width: 0; }
+.ld-pantry-list button:not(.btn) {
     background: transparent;
     border: 0;
-    border-radius: 0.35rem;
-    color: var(--text-primary);
-    display: block;
-    font-size: 0.8125rem;
-    line-height: 1.35;
-    padding: 0.28rem 0.35rem;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    padding: 0;
     text-align: left;
     width: 100%;
 }
-.ld-meal-line .ld-meal-row { flex: 1; min-width: 0; }
-.ld-meal-row:hover { background: var(--row-hover); }
-.ld-meal-row.is-on { background: var(--accent-soft); }
-.ld-meal-row.is-off {
-    color: var(--text-muted);
+.ld-pantry-list li { border-top: 1px solid var(--border-soft); padding: 12px 0; }
+.ld-pantry-locs button { flex: 1 1 30%; justify-content: center; min-height: 44px; }
+.ld-pantry-sheet, .ld-pantry-dialog .app-modal-panel {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+}
+.ld-pantry-sheet {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius, 10px);
+    margin-top: 16px;
+    padding: 16px;
+}
+.ld-pantry-dialog label, .ld-pantry-sheet label, .ld-pantry-card > label, .ld-pantry-field {
+    display: block;
+    margin-top: 12px;
+}
+.ld-pantry-dialog .input, .ld-pantry-sheet .input, .ld-pantry-card .input, .ld-pantry-field .input,
+.ld-pantry-dialog input, .ld-pantry-sheet input, .ld-pantry-card input, .ld-pantry-dialog textarea, .ld-pantry-sheet textarea {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.ld-pantry-dialog label:has(input[type="checkbox"]),
+.ld-pantry-sheet label:has(input[type="checkbox"]) {
+    align-items: center;
+    display: flex;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    gap: 8px;
+    letter-spacing: 0;
+    text-transform: none;
+}
+.ld-pantry-date { border: 0; margin: 12px 0 0; min-width: 0; padding: 0; }
+.ld-pantry-date legend {
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.ld-pantry-date .flex { flex-wrap: wrap; }
+.ld-pantry-date input { width: 4.5rem; }
+.ld-pantry-date input[name$="_y"] { width: 5.4rem; }
+.ld-pantry-video {
+    background: #000;
+    border-radius: var(--radius-sm, 6px);
+    display: block;
+    max-height: 240px;
+    max-width: 100%;
+    width: 100%;
+}
+.ld-pantry-video.hidden { display: none; }
+.ld-pantry-scan-actions, #manual-upc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ld-meal-chip.is-off, .ld-meal-uses .is-off, .ld-meal-scale .is-off {
+    color: var(--text-secondary);
     font-style: italic;
 }
-.ld-meal-row.is-apart { color: var(--text-faint); }
-.ld-meal-row.is-apart.is-off {
-    color: var(--text-faint);
-    font-style: italic;
+.ld-meal-made { margin-top: 0; }
+.ld-meal-uses { margin-top: 4px; }
+.ld-meal-prep { margin-top: 16px; min-width: 0; }
+.ld-meal-prep, .ld-meal-steps, .ld-meal-scale, .ld-meal-uses, .ld-meal-row { overflow-wrap: anywhere; }
+.ld-meal-steps, .ld-meal-scale {
+    font-size: 13px;
+    margin: 8px 0 0;
+    padding-left: 1.15rem;
 }
-.ld-meal-x {
+.ld-meal-swaps { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.ld-meal-actions { margin-top: 12px; }
+.ld-meal-actions .input, .ld-meal-actions .btn, .ld-meal-actions .btn-primary { flex: 1 1 12rem; }
+.ld-meal-board {
+    align-items: stretch;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 16px;
+}
+.ld-meal-support { margin-top: 16px; }
+.ld-meal-rail {
+    border: 0;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: 0;
+}
+.ld-meal-made-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    margin-top: 8px;
+}
+.ld-meal-col, .ld-meal-made {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius, 10px);
+    min-width: 0;
+    padding: 16px;
+}
+.ld-meal-col { min-height: 220px; }
+.ld-meal-day-head {
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    justify-content: space-between;
+    margin: 0 0 12px;
+    padding-bottom: 12px;
+}
+.ld-meal-line { align-items: center; display: flex; gap: 4px; }
+.ld-meal-row {
     background: transparent;
     border: 0;
-    border-radius: 0.3rem;
-    color: var(--text-muted);
-    flex: none;
-    font-size: 0.9rem;
-    line-height: 1;
-    padding: 0.2rem 0.35rem;
-}
-.ld-meal-x:hover { color: var(--text-primary); }
-.ld-meal-row:focus-visible,
-.ld-meal-x:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-}
-.ld-meal-split {
-    border: 0;
-    border-top: 1px solid var(--surface-border);
-    margin: 0.45rem 0 0.2rem;
-}
-.ld-meal-split-label {
-    color: var(--text-faint);
-    font-size: 0.65rem;
-    letter-spacing: 0.03em;
-    margin: 0.15rem 0 0.2rem;
-}
-html[data-theme="jarvis"] .ld-meal-row.is-on {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
-}
-@media (max-width: 700px) {
-    .ld-meal-actions .btn,
-    .ld-meal-actions .btn-primary,
-    .ld-meal-actions .input { flex: 1 1 100%; }
-    .ld-meal-prep .ld-meal-actions label,
-    .ld-meal-prep .input,
-    .ld-meal-prep .btn,
-    .ld-meal-prep .btn-primary { flex: 1 1 100%; max-width: 100%; width: 100%; }
-}
-@media (max-width: 959px) {
-    .ld-meal-board { grid-template-columns: 1fr; }
-    .ld-meal-rail {
-        border-left: 0;
-        border-top: 1px solid var(--surface-border);
-        padding-left: 0;
-        padding-top: 0.75rem;
-    }
-    .ld-meal-flavor { display: block; }
-}
-.ld-meal-drawer {
-    background: var(--surface-bg, var(--surface));
-    border-top: 1px solid var(--surface-border);
-    bottom: 0;
+    border-radius: var(--radius-sm, 6px);
     color: var(--text-primary);
+    display: block;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.4;
+    padding: 8px;
+    text-align: left;
+    width: 100%;
+}
+button.ld-meal-row { cursor: pointer; }
+.ld-meal-line .ld-meal-row { flex: 1; min-width: 0; }
+.ld-meal-row:hover { background: var(--surface-hover); }
+.ld-meal-line:has(.ld-meal-row.is-on) {
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 8px 8px 8px 12px;
+}
+.ld-meal-row.is-on { background: transparent; color: var(--text-primary); font-weight: 500; }
+.ld-meal-row.is-on:hover { background: transparent; }
+.ld-meal-row.is-off, .ld-meal-row.is-apart { color: var(--text-secondary); font-style: italic; }
+.ld-meal-x {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm, 6px);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    flex: none;
+    height: 40px;
+    justify-content: center;
+    min-width: 40px;
+    padding: 0;
+}
+.ld-meal-x:hover { background: var(--accent-soft); color: var(--accent); }
+.ld-meal-split { border: 0; border-top: 1px solid var(--border-soft); margin: 12px 0 8px; }
+.ld-meal-split-label { margin: 8px 0; }
+.ld-meal-plan {
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px;
+}
+.ld-meal-plan-title { color: var(--text-primary); font-size: 14px; font-weight: 500; margin: 0; }
+.ld-meal-empty { color: var(--text-secondary); font-size: 13px; margin: 8px 0 0; }
+.ld-meal-drawer {
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-soft);
+    bottom: 0;
+    box-shadow: var(--shadow);
+    color: var(--text-primary);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     left: 0;
     position: fixed;
     right: 0;
@@ -2132,61 +2275,75 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     color: var(--text-primary);
     cursor: pointer;
     display: block;
-    font-size: 0.8125rem;
-    min-height: 2.75rem;
-    padding: 0.65rem 1rem;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    min-height: 44px;
+    padding: 12px 16px;
     text-align: left;
     width: 100%;
 }
-.ld-meal-drawer-handle:focus-visible,
-.ld-meal-drawer-panel a:focus-visible,
-.ld-meal-drawer-panel button:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-}
-.ld-meal-drawer-panel {
-    height: 0;
-    overflow: hidden;
-    transition: height 180ms ease;
-}
-.ld-meal-drawer.is-open .ld-meal-drawer-panel {
-    height: clamp(25vh, 30vh, 33vh);
-    overflow: auto;
-}
+.ld-meal-drawer-panel { height: 0; overflow: hidden; transition: height 180ms ease; }
+.ld-meal-drawer.is-open .ld-meal-drawer-panel { height: clamp(25vh, 30vh, 33vh); overflow: auto; }
 .ld-meal-drawer-list { list-style: none; margin: 0; padding: 0; }
-.ld-meal-drawer-row {
-    border-top: 1px solid var(--surface-border);
-    padding: 0.55rem 1rem 0.7rem;
-}
-.ld-meal-drawer-empty {
-    color: var(--text-muted);
-    list-style: none;
-    padding: 0.6rem 1rem;
-}
+.ld-meal-drawer-row { border-top: 1px solid var(--border-soft); font-size: 14px; padding: 12px 16px; }
+.ld-meal-drawer-row a { color: var(--accent); }
+.ld-meal-drawer-empty { color: var(--text-secondary); font-size: 13px; list-style: none; padding: 12px 16px; }
 .ld-meal-exact {
     color: var(--accent);
-    font-size: 0.7rem;
-    margin-left: 0.4rem;
+    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    margin-left: 8px;
+    text-transform: uppercase;
 }
-.ld-meal-drawer .ld-meal-uses .is-off {
-    color: var(--text-muted);
-    font-style: italic;
+.ld-meal-drawer-row .ld-meal-chip { margin-top: 8px; }
+#pantry-app.is-meals { padding-bottom: 3rem; transition: padding-bottom 180ms ease; }
+#pantry-app.is-meals.is-drawer-open { padding-bottom: calc(3rem + clamp(25vh, 30vh, 33vh)); }
+@media (max-width: 1200px) {
+    .ld-meal-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-.ld-meal-drawer-row .ld-meal-chip { margin-top: 0.4rem; }
-#pantry-app.is-meals {
-    padding-bottom: 3rem;
-    transition: padding-bottom 180ms ease;
-}
-#pantry-app.is-meals.is-drawer-open {
-    padding-bottom: calc(3rem + clamp(25vh, 30vh, 33vh));
+@media (max-width: 700px) {
+    .ld-pantry-head { align-items: stretch; flex-direction: column; }
+    .ld-pantry-head .btn-primary { width: 100%; }
+    .ld-pantry-filters .input { flex-basis: 100%; }
+    .ld-pantry-actions { max-width: none; }
+    .ld-pantry-table thead {
+        clip: rect(0 0 0 0);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        width: 1px;
+    }
+    .ld-pantry-table, .ld-pantry-table tbody, .ld-pantry-table tr, .ld-pantry-table td { display: block; width: 100%; }
+    .ld-pantry-table tr { border-top: 1px solid var(--border-soft); padding: 12px 0; }
+    .ld-pantry-table td { border: 0; padding: 6px 0; }
+    .ld-pantry-table td[data-label]::before {
+        color: var(--text-secondary);
+        content: attr(data-label);
+        display: block;
+        font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+    }
+    .ld-meal-actions .btn, .ld-meal-actions .btn-primary, .ld-meal-actions .input,
+    .ld-meal-prep .ld-meal-actions label, .ld-meal-prep .input, .ld-meal-prep .btn, .ld-meal-prep .btn-primary {
+        flex: 1 1 100%;
+        max-width: 100%;
+        width: 100%;
+    }
+    .ld-meal-board, .ld-meal-rail, .ld-meal-made-grid { grid-template-columns: 1fr; }
+    .ld-pantry-sheet .grid-cols-2, .ld-pantry-dialog .grid-cols-2 { grid-template-columns: 1fr; }
+    .ld-pantry-scan-actions, #manual-upc { flex-direction: column; }
+    .ld-pantry-scan-actions .btn, .ld-pantry-scan-actions .btn-primary, #manual-upc .btn, #manual-upc .input { width: 100%; }
 }
 @media (max-width: 959px) {
     .ld-meal-drawer.is-open .ld-meal-drawer-panel { height: 33vh; }
     #pantry-app.is-meals.is-drawer-open { padding-bottom: calc(3rem + 33vh); }
 }
 @media (prefers-reduced-motion: reduce) {
-    .ld-meal-drawer-panel,
-    #pantry-app.is-meals { transition: none; }
+    .ld-meal-drawer-panel, #pantry-app.is-meals { transition: none; }
 }
 
 .sp-layout { display: grid; gap: 1rem; }
