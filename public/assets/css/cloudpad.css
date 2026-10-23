@@ -16,11 +16,11 @@
 }
 
 .cloudpad-control-banner.is-warn {
-    background: color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent);
+    background: var(--warn-soft);
 }
 
 .cloudpad-control-banner.is-ok {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    background: var(--accent-soft);
 }
 
 .cloudpad-root {
@@ -68,11 +68,11 @@
 }
 
 .cloudpad-embed-control-banner.is-warn {
-    background: color-mix(in srgb, var(--warn, #f59e0b) 12%, transparent);
+    background: var(--warn-soft);
 }
 
 .cloudpad-embed-control-banner.is-ok {
-    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    background: var(--accent-soft);
 }
 
 #cloudpad-tab-panel.cloudpad-embed-sharing-open .cloudpad-root-embedded {

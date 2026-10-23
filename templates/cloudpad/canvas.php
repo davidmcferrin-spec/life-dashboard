@@ -13,15 +13,16 @@ $prefService   = new PreferenceService(Database::getInstance());
 $themePref     = $prefService->getTheme((int) $user['id']);
 $starfieldPref = $prefService->getStarfield((int) $user['id']);
 $pageTitle     = 'CloudPad canvas';
+$extraStyles   = ['/assets/css/remaining-pages.css'];
 $canvasId      = (int) ($canvasId ?? 0);
 ?>
 <?php require __DIR__ . '/../partials/head.php'; ?>
 <link rel="stylesheet" href="/assets/css/cloudpad.css?v=<?= e($assetVer) ?>">
-<body class="page cloudpad-page min-h-screen">
+<body class="page ld-shell-page cloudpad-page min-h-screen">
 
 <?php require __DIR__ . '/../partials/app-shell-open.php'; ?>
 
-<?php $pageEyebrow = 'Dashboard'; $pageHeading = 'CloudPad'; require __DIR__ . '/../partials/page-heading.php'; ?>
+<?php $pageEyebrow = 'Life Dashboard'; $pageHeading = 'CloudPad'; require __DIR__ . '/../partials/page-heading.php'; ?>
 
 <div id="cloudpad-mobile-warn" class="hidden flash-warn mono text-xs px-4 py-2 text-center">
     CloudPad editing works best on desktop. Viewing is supported on smaller screens.

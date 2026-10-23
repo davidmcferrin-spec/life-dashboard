@@ -12,12 +12,14 @@ $initialCanvasId = ($initialTab === 'cloudpad') ? max(0, (int) ($_GET['canvas'] 
 
 $pageTitle            = 'Cloud clipboards';
 $active               = 'clipboards';
+$extraStyles          = ['/assets/css/remaining-pages.css'];
 $settingsMainClass    = 'max-w-screen-2xl mx-auto px-4 py-6';
 $settingsContentClass = 'flex-1 min-w-0';
 
 require __DIR__ . '/_shell-top.php';
 ?>
-            <?php $pageEyebrow = 'Settings'; $pageHeading = 'Cloud clipboards'; require __DIR__ . '/../partials/page-heading.php'; ?>
+            <div class="ld-shell-page">
+            <?php $pageEyebrow = 'Connections'; $pageHeading = 'Cloud clipboards'; require __DIR__ . '/../partials/page-heading.php'; ?>
 <?php if ($initialTab === 'cloudpad'): ?>
 <link rel="stylesheet" href="/assets/css/cloudpad.css?v=<?= e($assetVer) ?>">
 <?php endif; ?>
@@ -36,7 +38,7 @@ require __DIR__ . '/_shell-top.php';
                 <aside class="lg:w-56 flex-shrink-0 settings-block">
                     <div class="flex items-center justify-between mb-3">
                         <h2 class="section-title">Boards</h2>
-                        <button type="button" id="clip-new-board" class="text-accent hover:text-accent mono text-lg leading-none" title="New board">+</button>
+                        <button type="button" id="clip-new-board" class="btn" title="New board">New</button>
                     </div>
                     <ul id="clip-board-list" class="space-y-1 text-sm">
                         <li class="text-faint mono text-xs py-2">Loading…</li>
@@ -420,7 +422,7 @@ require __DIR__ . '/_shell-top.php';
                             <h2 class="section-title">Canvases</h2>
                             <span id="cloudpad-canvas-count" class="mono text-xs text-faint">…</span>
                         </div>
-                        <button type="button" id="cloudpad-new-canvas" class="text-accent hover:text-accent mono text-lg leading-none mb-3" title="New canvas">+</button>
+                        <button type="button" id="cloudpad-new-canvas" class="btn mb-3" title="New canvas">New</button>
                         <ul id="cloudpad-canvas-list" class="space-y-1 text-sm">
                             <li class="text-faint mono text-xs py-2">Loading…</li>
                         </ul>
@@ -523,6 +525,7 @@ require __DIR__ . '/_shell-top.php';
                 window.CLIPBOARDS_INITIAL_CANVAS_ID = <?= json_encode($initialCanvasId, JSON_THROW_ON_ERROR) ?>;
                 window.CLOUDPAD_BUNDLE_VER = <?= json_encode($assetVer ?? '1', JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
             </script>
+            </div>
 
 <?php
 $settingsScripts = [

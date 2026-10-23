@@ -12,18 +12,19 @@ $prefService   = new PreferenceService(Database::getInstance());
 $themePref     = $prefService->getTheme((int) $user['id']);
 $starfieldPref = $prefService->getStarfield((int) $user['id']);
 $pageTitle     = 'News Reader';
+$extraStyles   = ['/assets/css/remaining-pages.css'];
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
-<body class="page min-h-screen">
+<body class="page ld-shell-page min-h-screen">
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="max-w-4xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'News reader'; require __DIR__ . '/partials/page-heading.php'; ?>
-        <p class="text-muted text-sm mt-1">
+        <?php $pageEyebrow = 'Intelligence'; $pageHeading = 'News reader'; require __DIR__ . '/partials/page-heading.php'; ?>
+        <p class="ld-page-lead">
             All built-in and custom RSS sources. Filter by category or provider, or pin sources to the
-            <a href="/settings/feeds" class="text-accent hover:underline">dashboard news widget</a>.
+            <a href="/settings/feeds" class="link">dashboard news widget</a>.
         </p>
     </header>
 
@@ -36,7 +37,11 @@ $pageTitle     = 'News Reader';
         <?php require __DIR__ . '/partials/news-feed-filters.php'; ?>
 
         <div id="news-feed" class="space-y-0.5">
-            <div class="empty-state mono py-4 text-center">Loading feed...</div>
+            <?php
+            $emptyTitle = 'Loading articles';
+            $emptyBody = 'They show up here after the feed responds.';
+            require __DIR__ . '/partials/empty-panel.php';
+            ?>
         </div>
 
         <div class="mt-4 text-center">

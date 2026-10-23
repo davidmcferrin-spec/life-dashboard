@@ -70,7 +70,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    color: #ef4444;
+    color: var(--danger);
     line-height: 0;
     flex-shrink: 0;
     opacity: 0.95;
@@ -94,8 +94,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: calc(100vh - 3.5rem);
-    padding: 2rem 1.5rem 3rem;
+    min-height: calc(100vh - 72px);
+    padding: var(--sp-8) var(--sp-6);
     box-sizing: border-box;
 }
 
@@ -104,12 +104,12 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1.5rem;
+    gap: var(--sp-6);
     text-align: center;
     width: 100%;
     max-width: 100%;
-    --fc-time-color: #39ff14;
-    --fc-date-color: #64748b;
+    --fc-time-color: var(--accent);
+    --fc-date-color: var(--text-secondary);
     --focus-clock-scale: 1;
 }
 
@@ -134,7 +134,8 @@
 }
 
 .focus-clock-meta {
-    font-size: calc(0.95rem * var(--focus-clock-scale));
+    font-family: var(--font-sans);
+    font-size: max(11px, calc(15px * var(--focus-clock-scale)));
     line-height: 1.4;
     color: var(--fc-date-color);
     font-weight: 400;
@@ -146,9 +147,9 @@
 }
 
 .focus-clock-week {
-    font-size: 0.85em;
+    font-size: max(11px, 0.85em);
     opacity: 0.85;
-    margin-top: 0.25rem;
+    margin-top: var(--sp-1);
 }
 
 .focus-clock-time-wrap {
@@ -157,6 +158,7 @@
     transform-origin: center center;
 }
 
+/* Saved face and scale stay. UI type around the face is 11–32px. */
 .focus-clock-time {
     color: var(--fc-time-color);
     font-size: clamp(3rem, 14vw, 9rem);
@@ -167,29 +169,29 @@
 }
 
 .focus-clock-time.font-dseg7 {
-    font-family: 'DSEG7-Classic', 'JetBrains Mono', monospace;
+    font-family: 'DSEG7-Classic', 'IBM Plex Mono', monospace;
     letter-spacing: 0.08em;
     font-weight: normal;
 }
 
 .focus-clock-time.font-inconsolata {
-    font-family: 'Inconsolata', 'JetBrains Mono', monospace;
+    font-family: 'Inconsolata', 'IBM Plex Mono', monospace;
 }
 
 .focus-clock-time.font-space_mono {
-    font-family: 'Space Mono', 'JetBrains Mono', monospace;
+    font-family: 'Space Mono', 'IBM Plex Mono', monospace;
 }
 
 .focus-clock-time.font-ibm_plex_mono {
-    font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+    font-family: 'IBM Plex Mono', monospace;
 }
 
 .focus-clock-time.font-source_code_pro {
-    font-family: 'Source Code Pro', 'JetBrains Mono', monospace;
+    font-family: 'Source Code Pro', 'IBM Plex Mono', monospace;
 }
 
 .focus-clock-time .fc-ampm {
-    font-size: 0.35em;
+    font-size: clamp(11px, 0.35em, 32px);
     letter-spacing: 0.05em;
     margin-left: 0.15em;
     vertical-align: baseline;
@@ -208,6 +210,12 @@
     50%, 100% { opacity: 0.15; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+    .focus-clock-time.font-dseg7[data-colon-blink="1"] .fc-colon {
+        animation: none;
+    }
+}
+
 .focus-clock-alarm-banner {
     position: fixed;
     inset: 0;
@@ -215,8 +223,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.72);
-    padding: 1.5rem;
+    background: rgba(4, 7, 12, 0.72);
+    padding: var(--sp-6);
 }
 
 .focus-clock-alarm-banner.hidden {
@@ -224,24 +232,26 @@
 }
 
 .focus-clock-alarm-panel {
-    background: var(--surface-elevated, #1e293b);
-    border: 1px solid var(--border-chrome, #334155);
-    border-radius: 0.5rem;
-    padding: 1.5rem 2rem;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    padding: var(--sp-6) var(--sp-8);
     text-align: center;
     max-width: 20rem;
 }
 
 .focus-clock-alarm-panel h2 {
-    color: var(--text-primary, #f1f5f9);
-    font-size: 1.125rem;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--fs-lg);
     font-weight: 500;
-    margin: 0 0 1rem;
+    margin: 0 0 var(--sp-4);
 }
 
 .focus-clock-alarm-actions {
     display: flex;
-    gap: 0.75rem;
+    gap: var(--sp-3);
     justify-content: center;
     flex-wrap: wrap;
 }
@@ -253,12 +263,14 @@
     transform: translateX(-50%);
     z-index: 90;
     max-width: 24rem;
-    padding: 0.75rem 1rem;
-    background: var(--surface-elevated, #1e293b);
-    border: 1px solid var(--border-chrome, #334155);
-    border-radius: 0.375rem;
-    font-size: 0.8125rem;
-    color: var(--text-muted, #94a3b8);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    color: var(--text-secondary);
     text-align: center;
 }
 
