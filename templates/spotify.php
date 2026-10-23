@@ -22,7 +22,7 @@ $musicIconNames = [
     'music-2', 'list-music', 'disc-3', 'wand-sparkles', 'sprout', 'history',
     'shuffle', 'repeat', 'arrow-left-right', 'speaker', 'smartphone', 'monitor',
     'chevron-right', 'chevron-down', 'search', 'x', 'sparkles', 'bot',
-    'layout-dashboard', 'settings',
+    'layout-dashboard', 'settings', 'refresh-cw', 'lock-keyhole', 'archive', 'activity',
 ];
 $musicIcon = static function (string $name) use ($musicIconNames): void {
     if (!in_array($name, $musicIconNames, true)) {
