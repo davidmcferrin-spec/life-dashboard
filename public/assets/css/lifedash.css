@@ -9434,7 +9434,7 @@ html[data-theme="light"] .flight-card {
     align-items: center;
     color: var(--accent);
     display: inline-flex;
-    font-family: 'IBM Plex Sans', sans-serif;
+    font-family: var(--font-sans);
     font-size: 13px;
     font-weight: 500;
     gap: var(--sp-1);
