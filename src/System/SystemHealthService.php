@@ -74,6 +74,12 @@ class SystemHealthService
             'staleMinutes'  => 1560,
             'scheduleHint'  => 'Daily',
         ],
+        'routines' => [
+            'label'         => 'JARVIS routines',
+            'log'           => 'routines.log',
+            'staleMinutes'  => 45,
+            'scheduleHint'  => 'Every ~15 min',
+        ],
     ];
 
     private const TAIL_CHUNK_BYTES = 65536;
