@@ -440,20 +440,18 @@
 }
 
 .ld-mk-news #news-feed {
-    display: grid;
-    gap: var(--sp-3, 12px);
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+    display: block;
+    width: 100%;
 }
 
 .ld-mk-news .feed-row {
-    align-items: flex-start;
+    align-items: baseline;
     background: transparent;
-    border-left: 1px solid var(--input-border);
-    border-radius: 0;
+    border-radius: var(--radius-sm, 6px);
     display: flex;
-    flex-direction: column;
-    gap: var(--sp-2, 8px);
-    padding: var(--sp-3, 12px) var(--sp-3, 12px) var(--sp-3, 12px) var(--sp-4, 16px);
+    flex-direction: row;
+    gap: var(--sp-3, 12px);
+    padding: var(--sp-2, 8px) var(--sp-3, 12px);
 }
 
 .ld-mk-news .feed-row:hover {
@@ -467,21 +465,24 @@
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
     font-size: var(--fs-2xs, 11px);
     letter-spacing: 0.08em;
-    max-width: 100%;
+    max-width: 6rem;
+    overflow: hidden;
     padding: 0;
-    text-align: left;
+    text-align: center;
+    text-overflow: ellipsis;
     text-transform: uppercase;
-    width: auto;
+    width: 6rem;
 }
 
 .ld-mk-news .feed-title {
     color: var(--text);
-    flex: none;
+    flex: 1 1 auto;
     font-family: 'IBM Plex Sans', var(--font-sans), sans-serif;
     font-size: var(--fs-md, 14px);
     font-weight: 500;
     line-height: 1.4;
-    white-space: normal;
+    min-width: 0;
+    white-space: nowrap;
 }
 
 .ld-mk-news .feed-row:hover .feed-title {
@@ -490,8 +491,10 @@
 
 .ld-mk-news .feed-time {
     color: var(--text-muted);
+    flex: 0 0 auto;
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
     font-size: var(--fs-xs, 12px);
+    white-space: nowrap;
 }
 
 .ld-mk-more {
@@ -500,27 +503,54 @@
 }
 
 /* Cloud clipboards */
-#clipboard-widget.ld-mk-clip {
-    align-items: stretch;
-    column-gap: var(--sp-4, 16px);
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+.grid-stack-item[data-widget-type="legacy.clipboards"] > .grid-stack-item-content > .ld-fit {
     height: 100%;
-    row-gap: var(--sp-3, 12px);
+    min-height: 0;
 }
 
-#clipboard-widget .ld-mk-clip-main {
-    grid-column: 1;
-    grid-row: 1;
+.grid-stack-item[data-widget-type="legacy.clipboards"] .ld-w-scroll {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#clipboard-widget.ld-mk-clip {
+    align-items: stretch;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--sp-2, 8px);
+    height: 100%;
+    min-height: 0;
     min-width: 0;
 }
 
-#clipboard-widget.ld-mk-clip:has(#clip-widget-editor.hidden):has(#clip-widget-preview.hidden) .ld-mk-clip-main {
-    grid-column: 1 / -1;
+#clipboard-widget .ld-mk-clip-main {
+    align-items: center;
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    gap: var(--sp-2, 8px);
+    min-width: 0;
+    width: 100%;
+}
+
+#clipboard-widget .ld-mk-head {
+    flex: 0 1 auto;
+    justify-content: flex-start;
+    margin-bottom: 0;
+    width: auto;
+}
+
+#clipboard-widget #clip-widget-empty:not(.hidden),
+#clipboard-widget #clip-widget-remote:not(.hidden) {
+    flex: 1 0 100%;
 }
 
 #clipboard-widget #clip-widget-tabs {
     display: flex;
+    flex: 0 1 auto;
     flex-wrap: wrap;
     gap: var(--sp-2, 8px);
     min-height: 0;
@@ -538,9 +568,10 @@
 #clipboard-widget #clip-widget-view-toggle:not(.hidden) {
     align-items: center;
     display: flex;
+    flex: 0 1 auto;
     flex-wrap: wrap;
     gap: var(--sp-2, 8px);
-    margin: var(--sp-3, 12px) 0;
+    margin: 0;
 }
 
 #clipboard-widget .ld-mk-view-label,
@@ -561,13 +592,14 @@
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm, 6px);
     color: var(--text);
+    flex: 1 1 auto;
     font-family: 'IBM Plex Mono', ui-monospace, monospace;
     font-size: var(--fs-sm, 13px);
-    grid-column: 2;
-    grid-row: 1;
-    height: 100%;
     line-height: 1.6;
-    min-height: 8rem;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    width: 100%;
 }
 
 #clipboard-widget #clip-widget-remote {
@@ -576,8 +608,11 @@
 }
 
 #clipboard-widget #clip-widget-copy {
-    font-size: var(--fs-sm, 13px);
+    flex: 0 0 auto;
+    font-size: var(--fs-xs, 12px);
     min-height: 32px;
+    padding: var(--sp-1, 4px) var(--sp-2, 8px);
+    white-space: nowrap;
 }
 
 @media (max-width: 700px) {
@@ -601,16 +636,6 @@
     .ld-mk-transport {
         grid-column: 2;
         justify-self: start;
-    }
-
-    #clipboard-widget.ld-mk-clip {
-        display: block;
-    }
-
-    #clipboard-widget #clip-widget-editor:not(.hidden),
-    #clipboard-widget #clip-widget-preview:not(.hidden) {
-        height: auto;
-        margin-top: var(--sp-3, 12px);
     }
 }
 
