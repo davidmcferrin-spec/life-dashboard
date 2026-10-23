@@ -1209,7 +1209,8 @@
         const count = Number(data.new_count || 0);
         const rows = (data.items || []).slice(0, 3).map((item) => {
             const badge = item.is_new ? '<span class="ld-digest-badge">New</span> ' : '';
-            return `<p class="ld-card-title">${badge}<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></p><p class="ld-meta">${esc(item.product_label || '')}</p>`;
+            const line = item.summary ? `<p class="ld-digest-blurb">${esc(item.summary)}</p>` : '';
+            return `<p class="ld-card-title">${badge}<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></p><p class="ld-meta">${esc(item.product_label || '')}</p>${line}`;
         }).join('');
         ctx.body.innerHTML = `
             <p class="ld-card-title">${count} new</p>

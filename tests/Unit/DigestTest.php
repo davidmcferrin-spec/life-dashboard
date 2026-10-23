@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Tests\Unit;
 
 use Dashboard\Api\V1\Scope;
+use Dashboard\Digest\DigestBrief;
 use Dashboard\Digest\DigestCatalog;
 use Dashboard\Digest\DigestUrl;
 use Dashboard\Settings\ServiceControl;
@@ -57,6 +58,27 @@ final class DigestTest extends TestCase
             @rmdir($spool . '/incoming');
             @rmdir($spool);
         }
+    }
+
+    public function testExcerptKeepsTwoShortSentences(): void
+    {
+        $note = 'Sample Ensemble kept the bridge quiet. The lights stayed low. A third sentence belongs in the full note and not in the card line that people scan first while deciding whether to open it.';
+        self::assertSame(
+            'Sample Ensemble kept the bridge quiet. The lights stayed low.',
+            DigestBrief::excerpt($note)
+        );
+        self::assertSame('', DigestBrief::excerpt('   '));
+    }
+
+    public function testDigestPageUsesTheDashboardMain(): void
+    {
+        $html = file_get_contents(VIEWS_DIR . '/digest.php');
+        self::assertIsString($html);
+        self::assertStringContainsString('class="dash-main mx-auto py-6 space-y-6"', $html);
+        self::assertStringContainsString('One feed of Cursor, Grok Bot, Grok, and Grok Build release notes.', $html);
+        self::assertStringContainsString('id="digest-group"', $html);
+        self::assertStringContainsString('id="digest-more"', $html);
+        self::assertDoesNotMatchRegularExpression('/max-width\s*:/', $html);
     }
 
     public function testDashboardLinksDigestWithTheOtherModules(): void

@@ -84,6 +84,43 @@ final class DigestTest extends PgsqlTestCase
         (new DeployService($this->db))->setMcpUpdates(true, $userId);
         $digest->assertAgentWrite(9);
 
+        $long = 'Sample Ensemble kept the bridge quiet. The lights stayed low. A third sentence belongs in the full note and not in the card line that people scan first while deciding whether to open it.';
+        $this->db->execute(
+            'UPDATE digest_entries SET summary = ? WHERE user_id = ? AND entry_key = ?',
+            [$long, $userId, 'harbor']
+        );
+        $shown = $digest->items($userId, ['q' => 'Harbor', 'limit' => 12]);
+        self::assertSame('Sample Ensemble kept the bridge quiet. The lights stayed low.', $shown['items'][0]['summary']);
+        self::assertSame($long, $shown['items'][0]['body']);
+        self::assertSame('2026-10-02', $shown['items'][0]['day']);
+        self::assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2}$/', $shown['today']);
+        $this->db->execute(
+            "UPDATE digest_entries SET brief = ?, brief_kind = 'ollama' WHERE user_id = ? AND entry_key = ?",
+            ['A stored line about the harbor.', $userId, 'harbor']
+        );
+        $stored = $digest->items($userId, ['q' => 'lantern']);
+        self::assertSame([], $stored['items']);
+        $this->db->execute(
+            'UPDATE digest_entries SET brief = ? WHERE user_id = ? AND entry_key = ?',
+            ['A stored line about the lantern.', $userId, 'harbor']
+        );
+        $foundBrief = $digest->items($userId, ['q' => 'lantern']);
+        self::assertSame('A stored line about the lantern.', $foundBrief['items'][0]['summary']);
+
+        for ($i = 0; $i < 12; $i++) {
+            $this->db->execute(
+                'INSERT INTO digest_entries (user_id, source_id, entry_key, title, published_on, url, summary, content_hash)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                [$userId, $sourceId, 'extra-' . $i, 'Extra ' . $i, '2026-10-03', 'https://example.com/extra-' . $i, 'Line', hash('sha256', 'extra-' . $i)]
+            );
+        }
+        $page = $digest->items($userId, ['limit' => 12]);
+        self::assertCount(12, $page['items']);
+        self::assertTrue($page['has_more']);
+        $rest = $digest->items($userId, ['limit' => 12, 'offset' => 12]);
+        self::assertCount(1, $rest['items']);
+        self::assertFalse($rest['has_more']);
+
         try {
             $digest->add($userId, 'grok', 'Local', 'https://127.0.0.1/notes');
             self::fail('A loopback URL must be rejected.');

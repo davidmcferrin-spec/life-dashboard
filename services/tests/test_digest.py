@@ -169,6 +169,61 @@ def test_versions_sort_numerically_and_prefer_parentheses():
     assert snapshot_text([]) is None
 
 
+def test_brief_uses_the_model_once_and_excerpts_when_it_is_down():
+    from lifedash.digest_brief import OllamaAsk, accept, compose, excerpt, loopback_base, plan_briefs
+
+    note = (
+        "Sample Ensemble kept the bridge quiet. The lights stayed low. "
+        "A third sentence belongs in the full note and not in the card line."
+    )
+    assert excerpt(note) == "Sample Ensemble kept the bridge quiet. The lights stayed low."
+    assert excerpt("   ") == ""
+    assert accept("Summary: The bridge stayed quiet tonight.") == "The bridge stayed quiet tonight."
+
+    class Ask:
+        down = False
+
+        def __call__(self, prompt):
+            assert "Harbor" in prompt
+            return "The harbor lights stayed on for the late set."
+
+    text, kind = compose("Harbor Notes", note, Ask())
+    assert kind == "ollama"
+    assert text == "The harbor lights stayed on for the late set."
+
+    class Down:
+        down = False
+
+        def __call__(self, prompt):
+            self.down = True
+            return None
+
+    down = Down()
+    text, kind = compose("Harbor Notes", note, down)
+    assert kind == "excerpt"
+    assert text.startswith("Sample Ensemble")
+    rows = [(1, "Harbor", note), (2, "Lights", note), (3, "Extra", note)]
+    updates, left = plan_briefs(rows, Down(), 20)
+    assert [row[2] for row in updates] == ["excerpt", "excerpt", "excerpt"]
+    assert left == 19
+
+    class Live:
+        down = False
+
+        def __call__(self, prompt):
+            return "A short stored line for this note."
+
+    updates, left = plan_briefs(rows, Live(), 2)
+    assert len(updates) == 2
+    assert left == 0
+    assert updates[0][2] == "ollama"
+    assert loopback_base("http://example.com:11434") == "http://127.0.0.1:11434"
+    assert loopback_base("http://127.0.0.1:11434") == "http://127.0.0.1:11434"
+    ask = OllamaAsk("http://127.0.0.1:1", "llama3.2:3b", timeout=0.2)
+    assert ask("hello") is None
+    assert ask.down is True
+
+
 def test_seed_list_uses_the_resolved_docs_url():
     urls = {row["url"] for row in load_seeds()}
     assert "https://docs.x.ai/developers/release-notes" in urls

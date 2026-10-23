@@ -7,11 +7,12 @@
 
 $pageTitle = 'Grok Digest';
 $extraStyles = ['/assets/css/lifedash.css'];
+$digestTz = \Dashboard\Config::get('APP_TIMEZONE', 'America/Chicago');
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-4 py-3">
+<nav class="chrome flex items-center justify-between px-6 py-3">
     <a href="/" class="brand hover:text-accent">← Dashboard</a>
     <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
         <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
@@ -19,30 +20,39 @@ $extraStyles = ['/assets/css/lifedash.css'];
     </div>
 </nav>
 
-<main class="mx-auto px-4 py-6 space-y-4" id="digest-app">
+<main class="dash-main mx-auto py-6 space-y-6" id="digest-app" data-tz="<?= e($digestTz) ?>">
     <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
             <h1 class="text-primary text-xl font-medium">Grok Digest</h1>
-            <p class="text-muted text-sm mt-1" id="digest-count">Changelog notes in one list.</p>
+            <p class="text-muted text-sm mt-1" id="digest-intro">One feed of Cursor, Grok Bot, Grok, and Grok Build release notes.</p>
+            <p class="text-muted text-sm" id="digest-checked">Not checked yet.</p>
         </div>
         <div class="flex flex-wrap gap-2">
             <button type="button" class="btn" id="digest-read">Mark all read</button>
             <button type="button" class="btn-primary" id="digest-check">Check now</button>
         </div>
     </header>
+    <div class="ld-digest-filters">
+        <div class="ld-digest-chips" id="digest-products" aria-label="Source"></div>
+        <div class="ld-digest-chips" id="digest-group" aria-label="Grouping">
+            <button type="button" class="ld-digest-chip is-on" data-group="date">By date</button>
+            <button type="button" class="ld-digest-chip" data-group="source">By source</button>
+        </div>
+        <form id="digest-search" class="flex flex-wrap gap-2 items-center">
+            <input type="search" id="digest-q" class="input" placeholder="Search" autocomplete="off">
+            <label class="flex items-center gap-2 text-sm text-muted">
+                <input type="checkbox" id="digest-unread">
+                Unread only
+            </label>
+        </form>
+    </div>
     <p id="digest-status" class="text-sm text-muted" role="status"></p>
-    <div class="ld-digest-chips" id="digest-products"></div>
-    <form id="digest-search" class="flex flex-wrap gap-2">
-        <input type="search" id="digest-q" class="input" placeholder="Search" autocomplete="off">
-        <label class="flex items-center gap-2 text-sm text-muted">
-            <input type="checkbox" id="digest-unread">
-            Unread only
-        </label>
-    </form>
+    <p id="digest-count" class="text-sm text-muted"></p>
     <p id="digest-error" class="ld-error hidden"></p>
-    <div id="digest-feed" class="space-y-3"></div>
-    <section class="surface p-4 space-y-3" id="digest-compare">
-        <h2 class="text-primary text-base font-medium">Compare</h2>
+    <div id="digest-feed" class="ld-digest-feed"></div>
+    <button type="button" class="btn hidden" id="digest-more">Load more</button>
+    <details class="surface ld-digest-fold" id="digest-compare">
+        <summary>Compare and snapshots</summary>
         <div class="ld-digest-chips" id="digest-compare-modes">
             <button type="button" class="ld-digest-chip is-on" data-mode="date">Dates</button>
             <button type="button" class="ld-digest-chip" data-mode="version">Versions</button>
@@ -76,7 +86,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
             <button type="submit" class="btn">Show</button>
         </form>
         <p id="digest-compare-count" class="text-sm text-muted"></p>
-        <div id="digest-compare-out" class="space-y-3"></div>
+        <div id="digest-compare-out" class="ld-digest-feed"></div>
         <form id="digest-retain-form" class="flex flex-wrap gap-2 items-end hidden" data-for="snapshot">
             <label class="text-sm text-muted">Keep snapshots
                 <input id="digest-retain" class="input" type="number" min="1" max="3650" value="180">
@@ -84,17 +94,17 @@ $extraStyles = ['/assets/css/lifedash.css'];
             <span class="text-sm text-muted">days</span>
             <button type="submit" class="btn">Save</button>
         </form>
-    </section>
-    <section class="surface p-4 space-y-3">
-        <h2 class="text-primary text-base font-medium">Sources</h2>
+    </details>
+    <details class="surface ld-digest-fold" id="digest-sources-fold">
+        <summary>Sources</summary>
         <div id="digest-sources" class="space-y-4"></div>
-        <form id="digest-add" class="grid gap-2 md:grid-cols-4">
+        <form id="digest-add" class="ld-digest-add">
             <select id="digest-product" class="input" required></select>
             <input id="digest-label" class="input" maxlength="80" placeholder="Label" required>
             <input id="digest-url" class="input" type="url" placeholder="https://" required>
             <button type="submit" class="btn">Add source</button>
         </form>
-    </section>
+    </details>
 </main>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
