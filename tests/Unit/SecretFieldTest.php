@@ -2,17 +2,22 @@
 
 declare(strict_types=1);
 
-namespace Dashboard\Tests\Unit;
+namespace {
+    if (!function_exists('e')) {
+        /**
+         * The app helper from bootstrap.php. Templates call the global function.
+         */
+        function e(string $value): string
+        {
+            return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        }
+    }
+}
+
+namespace Dashboard\Tests\Unit {
 
 use Dashboard\Settings\SecretMask;
 use PHPUnit\Framework\TestCase;
-
-if (!function_exists('e')) {
-    function e(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-}
 
 final class SecretFieldTest extends TestCase
 {
@@ -174,10 +179,18 @@ final class SecretFieldTest extends TestCase
         $secretHidden = $vars['secretHidden'];
         $assetVer = '20261023bb';
         ob_start();
-        require VIEWS_DIR . '/partials/secret-field.php';
-        $html = ob_get_clean();
+        try {
+            require VIEWS_DIR . '/partials/secret-field.php';
+            $html = ob_get_clean();
+        } catch (\Throwable $error) {
+            if (ob_get_level() > 0) {
+                ob_end_clean();
+            }
+            throw $error;
+        }
         self::assertIsString($html);
 
         return $html;
     }
+}
 }
