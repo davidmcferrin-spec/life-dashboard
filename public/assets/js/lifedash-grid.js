@@ -255,6 +255,7 @@
         widgets.set(widget.id, entry);
         applyPin(entry);
         if (entry.body) {
+            paintSkeleton(entry.body);
             observeResize(entry);
             loadData(widget.id);
         }
@@ -272,7 +273,8 @@
             entry.queued = true; // coalesce bursts of realtime events
             return;
         }
-        entry.loading = true;
+            entry.loading = true;
+        if (!entry.data) paintSkeleton(entry.body);
         try {
             const res = await api.get(`/widgets/${id}/data`);
             entry.data = res.data;
@@ -282,7 +284,13 @@
                 removeLocal(id);
                 return;
             }
-            entry.body.innerHTML = `<p class="ld-error">${esc(e.message)}</p>`;
+            entry.data = null;
+            paintState(entry.body, {
+                kind: 'error',
+                title: 'Could not load this widget',
+                body: e.message || 'Something went wrong.',
+                id: id,
+            });
         } finally {
             entry.loading = false;
             if (entry.queued) {
@@ -294,9 +302,17 @@
 
     function render(entry, opts) {
         const renderer = window.LD.renderers[entry.widget.type];
-        if (!renderer || !entry.data) return;
+        if (!entry.data) return;
         const title = entry.el.querySelector('.ld-w-title');
         if (title) title.textContent = entry.widget.title || entry.widget.label;
+        const forced = forcedState(entry);
+        if (forced) {
+            if (entry.tools) entry.tools.innerHTML = '';
+            paintState(entry.body, forced);
+            if (!opts || opts.fit !== false) scheduleFit();
+            return;
+        }
+        if (!renderer) return;
         try {
             renderer({
                 body: entry.body,
@@ -305,9 +321,16 @@
                 data: entry.data,
                 refresh: () => loadData(entry.widget.id),
             });
+            const adopted = readState(entry);
+            if (adopted) paintState(entry.body, adopted);
         } catch (e) {
             console.error('[lifedash] render failed', entry.widget, e);
-            entry.body.innerHTML = '<p class="ld-error">This widget could not be displayed.</p>';
+            paintState(entry.body, {
+                kind: 'error',
+                title: 'Could not load this widget',
+                body: 'This widget could not be displayed.',
+                id: entry.widget.id,
+            });
         }
         // A chart redraws when its box changes size. That is not new content,
         // and refitting here would move rows during a window resize.
@@ -368,7 +391,7 @@
                     <span class="ld-lock-badge" hidden aria-label="Locked">${ldIcon('lock-keyhole')}</span>
                     <div class="ld-w-tools"></div>
                 </div>
-                <div class="ld-w-body"><div class="empty-state mono text-xs">Loading…</div></div>
+                <div class="ld-w-body">${skeletonHtml()}</div>
                 </div>
             </div>`;
     }
@@ -1034,6 +1057,24 @@
     }
 
     gridEl.addEventListener('click', (e) => {
+        const retry = e.target.closest('[data-ld-retry]');
+        if (retry) {
+            const id = Number(retry.dataset.ldRetry);
+            const entry = widgets.get(id);
+            if (entry && entry.body) {
+                entry.data = null;
+                paintSkeleton(entry.body);
+                loadData(id);
+            }
+            return;
+        }
+        const setupBtn = e.target.closest('[data-ld-setup]');
+        if (setupBtn) {
+            const id = Number(setupBtn.dataset.ldSetup);
+            const entry = widgets.get(id);
+            if (entry) openConfig(entry.widget);
+            return;
+        }
         const btn = e.target.closest('[data-action]');
         if (!btn || !editing) return;
         const id = Number(btn.closest('.grid-stack-item')?.dataset.widgetId);
@@ -1116,34 +1157,194 @@
             (f.type === 'metric' && f.required) || (f.type === 'metrics' && (f.min_items || 0) > 0) || f.setup);
     }
 
+    function skeletonHtml() {
+        const states = window.LD && window.LD.states;
+        if (states && typeof states.skeleton === 'function') return states.skeleton();
+        return '<div class="ld-skeleton" role="status" aria-label="Loading"><i></i><i></i><i></i><i></i></div>';
+    }
+
+    function paintSkeleton(body) {
+        if (body) body.innerHTML = skeletonHtml();
+    }
+
+    function stateHtml(kind, opts) {
+        const states = window.LD && window.LD.states;
+        if (states && typeof states.html === 'function') return states.html(kind, opts || {});
+        const o = opts || {};
+        return '<div class="ld-state ld-state-' + kind + '"><strong>' + esc(o.title || '') + '</strong></div>';
+    }
+
+    function fillStateIcon(root, kind) {
+        const slot = root && root.querySelector('.ld-state-icon');
+        const catalog = window.LD && window.LD.catalog;
+        if (!slot || !catalog) return;
+        const name = kind === 'error' ? 'activity' : (kind === 'setup' ? 'settings' : 'inbox');
+        catalog.iconMarkup(name).then((svg) => {
+            if (svg && slot.isConnected) slot.innerHTML = svg;
+        });
+    }
+
+    function paintState(body, spec) {
+        if (!body || !spec) return;
+        body.innerHTML = stateHtml(spec.kind, spec);
+        fillStateIcon(body, spec.kind);
+    }
+
+    // Needs-setup is decided here so a missing source never renders as live data.
+    function forcedState(entry) {
+        const catalog = window.LD && window.LD.catalog;
+        if (!catalog) return null;
+        const setup = catalog.setupFor(entry.widget.type);
+        if (!setup) return null;
+        const data = entry.data || {};
+        if (entry.widget.type === 'spotify' && data.connected === false) {
+            return {
+                kind: 'setup',
+                title: 'Setup required',
+                body: 'Connect a data source in Settings.',
+                href: setup.href,
+                label: setup.label,
+                id: entry.widget.id,
+            };
+        }
+        if (setup.sources && !String((entry.widget.config || {}).sources || '').trim()) {
+            return {
+                kind: 'setup',
+                title: 'Setup required',
+                body: 'Connect a data source in Settings.',
+                configure: true,
+                label: setup.label,
+                id: entry.widget.id,
+            };
+        }
+        return null;
+    }
+
+    // A renderer that produced only an empty panel or an error becomes a standard state.
+    function readState(entry) {
+        const body = entry.body;
+        if (!body) return null;
+        const kids = [...body.children];
+        if (kids.length !== 1) return null;
+        const only = kids[0];
+        if (only.classList.contains('ld-error')) {
+            return {
+                kind: 'error',
+                title: 'Could not load this widget',
+                body: only.textContent.trim() || 'Something went wrong.',
+                id: entry.widget.id,
+            };
+        }
+        if (!only.classList.contains('empty-panel')) return null;
+        const title = only.querySelector('.empty-panel-title');
+        const text = only.querySelector('.empty-panel-body');
+        const link = only.querySelector('a[href]');
+        const href = link ? (link.getAttribute('href') || '') : '';
+        const setup = href.indexOf('/settings/') !== -1;
+        return {
+            kind: setup ? 'setup' : 'empty',
+            title: setup ? 'Setup required' : (title ? title.textContent.trim() : 'Nothing here yet'),
+            body: text ? text.textContent.trim() : 'New data will appear here.',
+            href: href,
+            label: link ? link.textContent.trim() : 'Open Settings',
+            id: entry.widget.id,
+        };
+    }
+
     // ---- Add widget --------------------------------------------------
-    document.getElementById('ld-add')?.addEventListener('click', async () => {
+    let catalogIcons = null;
+    let catalogGen = 0;
+
+    function sizeLabel(t) {
+        const w = t.size && t.size.w;
+        const h = t.size && t.size.h;
+        if (!w || !h) return '';
+        return 'Default size ' + w + ' × ' + h;
+    }
+
+    async function paintCatalog(query) {
         const list = document.getElementById('ld-add-list');
-        list.innerHTML = '<p class="empty-state mono text-xs">Loading…</p>';
-        openModal('ld-add-modal');
+        const catalog = window.LD && window.LD.catalog;
+        if (!list) return;
+        const gen = ++catalogGen;
+        const q = String(query || '').trim().toLowerCase();
+        if (!catalog) {
+            list.innerHTML = stateHtml('error', { title: 'Could not load widgets', body: 'The catalog is unavailable.', retry: 'catalog' });
+            fillStateIcon(list, 'error');
+            return;
+        }
         try {
             const all = await types();
+            if (gen !== catalogGen) return;
+            if (!catalogIcons) {
+                const names = [...new Set(all.map((t) => catalog.iconOf(t.type)))];
+                const pack = {};
+                await Promise.all(names.map(async (name) => { pack[name] = await catalog.iconMarkup(name); }));
+                if (gen !== catalogGen) return;
+                catalogIcons = pack;
+            }
             const present = new Set([...widgets.values()].map((e) => e.widget.type));
-            const groups = {
-                tracking: 'Tracking', data: 'Data', life: 'Life', money: 'Money',
-                knowledge: 'Knowledge', media: 'Media', custom: 'Custom', dashboard: 'Dashboard',
-            };
-            list.innerHTML = Object.entries(groups).map(([cat, label]) => {
-                const items = all.filter((t) => t.category === cat);
-                if (!items.length) return '';
-                return `<div class="ld-type-group">${esc(label)}</div>` + items.map((t) => {
-                    const taken = t.singleton && present.has(t.type);
-                    return `<button type="button" class="ld-type" data-type="${esc(t.type)}" ${taken ? 'disabled' : ''}>
-                        <strong>${esc(t.label)}</strong><span>${esc(taken ? 'Already on the dashboard' : t.description)}</span></button>`;
+            const groups = catalog.group(all).map((group) => ({
+                name: group.name,
+                items: group.items.filter((t) => {
+                    if (!q) return true;
+                    return (String(t.label || '') + ' ' + String(t.description || '') + ' ' + group.name).toLowerCase().includes(q);
+                }),
+            })).filter((group) => group.items.length);
+            if (!groups.length) {
+                list.innerHTML = stateHtml('empty', { title: 'No matching widgets', body: 'Try another name.' });
+                fillStateIcon(list, 'empty');
+                return;
+            }
+            list.innerHTML = groups.map((group) => {
+                const items = group.items.map((t) => {
+                    const taken = !!(t.singleton && present.has(t.type));
+                    const icon = catalogIcons[catalog.iconOf(t.type)] || '';
+                    const desc = taken ? 'Already on the dashboard' : (t.description || '');
+                    return `<button type="button" class="ld-catalog-item" data-type="${esc(t.type)}" ${taken ? 'disabled' : ''}>
+                        <span class="ld-catalog-icon" aria-hidden="true">${icon}</span>
+                        <span class="ld-catalog-copy">
+                            <strong>${esc(t.label)}</strong>
+                            <span class="ld-catalog-desc">${esc(desc)}</span>
+                            <span class="ld-catalog-size">${esc(sizeLabel(t))}</span>
+                        </span>
+                    </button>`;
                 }).join('');
+                return `<section class="ld-catalog-group"><h4 class="ld-catalog-label">${esc(group.name)}</h4><div class="ld-catalog-grid">${items}</div></section>`;
             }).join('');
         } catch (e) {
-            list.innerHTML = `<p class="ld-error">${esc(e.message)}</p>`;
+            if (gen !== catalogGen) return;
+            list.innerHTML = stateHtml('error', {
+                title: 'Could not load widgets',
+                body: e.message || 'Something went wrong.',
+                retry: 'catalog',
+            });
+            fillStateIcon(list, 'error');
         }
+    }
+
+    document.getElementById('ld-add')?.addEventListener('click', () => {
+        const list = document.getElementById('ld-add-list');
+        const query = document.getElementById('ld-catalog-query');
+        if (list) paintSkeleton(list);
+        openModal('ld-add-modal');
+        if (query) query.focus();
+        paintCatalog(query ? query.value : '');
+    });
+
+    document.getElementById('ld-catalog-query')?.addEventListener('input', (e) => {
+        paintCatalog(e.target.value);
     });
 
     document.getElementById('ld-add-list')?.addEventListener('click', async (e) => {
-        const btn = e.target.closest('.ld-type');
+        if (e.target.closest('[data-ld-retry="catalog"]')) {
+            const list = document.getElementById('ld-add-list');
+            const query = document.getElementById('ld-catalog-query');
+            if (list) paintSkeleton(list);
+            paintCatalog(query ? query.value : '');
+            return;
+        }
+        const btn = e.target.closest('.ld-catalog-item');
         if (!btn || btn.disabled) return;
         const t = (await types()).find((x) => x.type === btn.dataset.type);
         if (!t) return;
