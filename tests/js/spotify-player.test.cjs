@@ -32,6 +32,8 @@ vm.runInNewContext(
         extract(js, 'spotifyClip'),
         extract(js, 'spotifyDeviceLabel'),
         extract(js, 'spotifyDeviceIcon'),
+        extract(js, 'spotifyHoldId'),
+        extract(js, 'spotifySyncSelect'),
     ].join('\n'),
     sandbox
 );
@@ -169,4 +171,66 @@ test('a phone can open the queue from the player it actually shows', () => {
     assert.match(phone, /#sp-queue-modal \.sp-queue-list \{[^}]*min-height:\s*0/);
     assert.match(phone, /#sp-queue-modal \.app-modal-close \{[^}]*width:\s*2\.75rem/);
     assert.match(phone, /#sp-queue-modal \.app-modal-close \{[^}]*height:\s*2\.75rem/);
+});
+
+test('a playlist choice is held for 30 seconds and then dropped', () => {
+    assert.match(js, /SPOTIFY_PICK_HOLD_MS = 30000/);
+    assert.equal(sandbox.spotifyHoldId('8', 1000, 31000, 30000, ['8', '9']), '8');
+    assert.equal(sandbox.spotifyHoldId('8', 1000, 31001, 30000, ['8']), '');
+    assert.equal(sandbox.spotifyHoldId('8', 1000, 2000, 30000, ['9']), '');
+    assert.equal(sandbox.spotifyHoldId('', 0, 2000, 30000, ['8']), '');
+});
+
+test('an unchanged picker is not rebuilt and an open picker is left alone', () => {
+    const select = {
+        dataset: { options: 'same' },
+        innerHTML: '<option value="8">Night</option>',
+        value: '8',
+    };
+    sandbox.spotifySyncSelect(select, false, 'same', '<option value="">Choose</option>', '8');
+    assert.equal(select.value, '8');
+    assert.equal(select.innerHTML, '<option value="8">Night</option>');
+    sandbox.spotifySyncSelect(select, true, 'next', '<option value="">Choose</option>', '');
+    assert.equal(select.value, '8');
+    assert.equal(select.innerHTML, '<option value="8">Night</option>');
+    sandbox.spotifySyncSelect(select, false, 'same', 'ignored', '');
+    assert.equal(select.innerHTML, '<option value="8">Night</option>');
+    assert.equal(select.value, '');
+    sandbox.spotifySyncSelect(select, false, 'next', '<option value="8" selected>Night</option>', '8');
+    assert.equal(select.dataset.options, 'next');
+    assert.equal(select.value, '8');
+    assert.match(select.innerHTML, /value="8"/);
+});
+
+test('choosing a playlist does not schedule the refresh that clears it', () => {
+    const changeAt = js.indexOf("el.addEventListener('change'");
+    const playlistAt = js.indexOf("matches('[data-playlist]')", changeAt);
+    const deviceAt = js.indexOf("matches('[data-device]')", playlistAt);
+    const refreshAt = js.indexOf('refresh(config, true)', playlistAt);
+    const returnAt = js.indexOf('return;', playlistAt);
+    assert.ok(changeAt > 0 && playlistAt > changeAt && deviceAt > playlistAt);
+    assert.ok(returnAt > playlistAt && returnAt < deviceAt && returnAt < refreshAt);
+    assert.match(js, /notePick\('playlist', event\.target\.value\)/);
+    assert.match(js, /notePick\('device', event\.target\.value\)/);
+    const transferAt = js.indexOf("command('transfer', { device_id: event.target.value })", deviceAt);
+    assert.ok(transferAt > deviceAt);
+    assert.match(js, /playlist_id: Number\(select\.value\), device_id: deviceId \|\| undefined/);
+    const playAt = js.indexOf('playlist_id: Number(select.value)', js.indexOf('button.dataset.playList'));
+    const clearAt = js.indexOf("notePick('playlist', '')", playAt);
+    assert.ok(playAt > 0 && clearAt > playAt);
+});
+
+test('a device choice stays until play instead of snapping back to the active device', () => {
+    const holdStart = js.indexOf('function heldDeviceId');
+    const holdEnd = js.indexOf('function playlistOptionKey', holdStart);
+    const hold = js.slice(holdStart, holdEnd);
+    assert.ok(holdStart > 0 && holdEnd > holdStart);
+    assert.equal(hold.includes('activeDevice'), false);
+    assert.equal(hold.includes('is_active'), false);
+    const transport = js.indexOf("button.dataset.cmd === 'play'");
+    const list = js.indexOf('button.dataset.playList');
+    assert.ok(js.indexOf("notePick('device', '')", transport) > transport);
+    assert.ok(js.indexOf("notePick('device', '')", list) > list);
+    assert.match(js, /pickerOpen\(deviceSelect\)/);
+    assert.match(js, /spotifySyncSelect\(select, false, deviceKey, options, chosenId\)/);
 });
