@@ -194,7 +194,8 @@ final class DashboardNavTest extends TestCase
         self::assertStringNotContainsString('function storedY', $js);
         self::assertStringNotContainsString('heroOffset', $js);
         self::assertStringContainsString('function fillWidth', $js);
-        self::assertStringContainsString('editBtn.disabled = phone', $js);
+        self::assertStringNotContainsString('editBtn.disabled = phone', $js);
+        self::assertStringContainsString('function saveMobileOrder', $js);
         self::assertStringContainsString('The search box sits above this grid. It is not a widget.', $js);
     }
 }
