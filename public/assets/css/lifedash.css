@@ -3463,28 +3463,57 @@ html.app-sidebar-rail .app-nav-group {
     line-height: 20px;
 }
 
-.settings-main {
-    margin: 0 auto;
-    max-width: 1120px;
-    padding: 24px 24px 48px;
+.settings-shell {
+    --settings-accent: #44d7d0;
+    --settings-accent-ink: #06201f;
+    --settings-accent-soft: rgba(68, 215, 208, 0.11);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
 
-.settings-page-head {
-    margin-bottom: 24px;
+html[data-theme="light"] .settings-shell {
+    --settings-accent: #168c88;
+    --settings-accent-ink: #ffffff;
+    --settings-accent-soft: rgba(22, 140, 136, 0.10);
+}
+
+.settings-main {
+    margin: 0 auto;
+    max-width: 1180px;
+    padding: 24px 32px 32px;
+    width: 100%;
 }
 
 .settings-layout {
-    align-items: start;
+    align-items: stretch;
     display: grid;
-    gap: 32px;
-    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 0;
+    grid-template-columns: 240px minmax(0, 1fr);
+}
+
+.settings-layout.has-preview {
+    grid-template-columns: 240px minmax(0, 1fr) 260px;
 }
 
 .settings-rail {
-    max-height: calc(100vh - 8rem);
+    border-right: 1px solid var(--line);
+    max-height: calc(100vh - 72px - 32px);
     overflow: auto;
+    padding: 8px 24px 24px 0;
     position: sticky;
     top: 16px;
+}
+
+.settings-rail-head {
+    margin: 0 0 20px;
+}
+
+.settings-rail-title {
+    color: var(--text);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 22px;
+    margin: 0;
 }
 
 .settings-steps {
@@ -3506,8 +3535,9 @@ html.app-sidebar-rail .app-nav-group {
 
 .settings-rail-label {
     color: var(--text-label);
-    font-family: var(--font-mono);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 11px;
+    font-weight: 500;
     letter-spacing: 0.14em;
     list-style: none;
     margin: 16px 0 8px;
@@ -3537,8 +3567,9 @@ html.app-sidebar-rail .app-nav-group {
     border-radius: 999px;
     color: var(--text-dim);
     display: flex;
-    font-family: var(--font-mono);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 11px;
+    font-weight: 500;
     height: 28px;
     justify-content: center;
     position: relative;
@@ -3546,20 +3577,51 @@ html.app-sidebar-rail .app-nav-group {
     z-index: 1;
 }
 
+.settings-step-index.is-clipped {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.settings-step-icon,
+.settings-step-icon svg,
+.settings-back-icon,
+.settings-back-icon svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
 .settings-step-name {
-    font-size: 14px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
     line-height: 20px;
 }
 
-.settings-step-link.is-active .settings-step-num {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
+.settings-step-link.is-visited .settings-step-num {
+    background: var(--bg);
+    border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 35%, transparent);
+    color: var(--settings-accent, var(--accent));
 }
 
-.settings-step-link.is-active .settings-step-name,
+.settings-step-link.is-active .settings-step-num {
+    background: var(--settings-accent, var(--accent));
+    border-color: var(--settings-accent, var(--accent));
+    color: var(--settings-accent-ink, var(--accent-ink));
+}
+
+.settings-step-link.is-active .settings-step-name {
+    color: var(--text);
+}
+
 .settings-step-link:hover .settings-step-name {
-    color: var(--accent);
+    color: var(--settings-accent, var(--accent));
 }
 
 .settings-page-links {
@@ -3571,6 +3633,9 @@ html.app-sidebar-rail .app-nav-group {
 .settings-page-links a {
     color: var(--text-dim);
     display: block;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 20px;
     min-height: 36px;
     padding: 8px 0 8px 40px;
     text-decoration: none;
@@ -3588,7 +3653,7 @@ html.app-sidebar-rail .app-nav-group {
     color: var(--text);
     cursor: pointer;
     display: none;
-    font-family: var(--font-sans);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 14px;
     min-height: 40px;
     padding: 0 12px;
@@ -3599,15 +3664,30 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 .settings-panel.is-narrow {
+    justify-self: center;
     margin-inline: auto;
     max-width: 40rem;
     width: 100%;
 }
 
+.settings-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 72px - 48px);
+    min-width: 0;
+    padding: 8px 0 0 32px;
+}
+
+.settings-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .settings-kicker {
-    color: var(--accent);
-    font-family: var(--font-mono);
+    color: var(--settings-accent, var(--accent));
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 11px;
+    font-weight: 500;
     letter-spacing: 0.14em;
     margin: 0 0 8px;
     text-transform: uppercase;
@@ -3615,7 +3695,7 @@ html.app-sidebar-rail .app-nav-group {
 
 .settings-section {
     color: var(--text-label);
-    font-family: var(--font-mono);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.14em;
@@ -3630,8 +3710,9 @@ html.app-sidebar-rail .app-nav-group {
 .settings-label {
     color: var(--text-label);
     display: block;
-    font-family: var(--font-mono);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 11px;
+    font-weight: 500;
     letter-spacing: 0.14em;
     margin-bottom: 8px;
     text-transform: uppercase;
@@ -3706,9 +3787,9 @@ html.app-sidebar-rail .app-nav-group {
 }
 
 .settings-seg-btn:has(.settings-seg-input:checked) {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-ink);
+    background: var(--settings-accent, var(--accent));
+    border-color: var(--settings-accent, var(--accent));
+    color: var(--settings-accent-ink, var(--accent-ink));
 }
 
 .settings-block {
@@ -3732,8 +3813,7 @@ html.app-sidebar-rail .app-nav-group {
     bottom: 0;
     display: flex;
     gap: 16px;
-    justify-content: space-between;
-    margin-top: 32px;
+    margin-top: auto;
     padding: 16px 0;
     position: sticky;
     z-index: 5;
@@ -3741,15 +3821,85 @@ html.app-sidebar-rail .app-nav-group {
 
 .settings-footer-note {
     color: var(--text-dim);
-    flex: 1 1 auto;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-size: 13px;
-    margin: 0;
-    text-align: center;
+    line-height: 20px;
+    margin: 0 0 0 auto;
 }
 
 .settings-footer .btn,
 .settings-footer .btn-primary {
     flex: 0 0 auto;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 14px;
+}
+
+.settings-back.is-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.settings-footer .btn-primary {
+    background: var(--settings-accent, var(--accent));
+    border-color: var(--settings-accent, var(--accent));
+    color: var(--settings-accent-ink, var(--accent-ink));
+}
+
+.settings-footer .btn-primary:hover {
+    background: color-mix(in srgb, var(--settings-accent, var(--accent)) 86%, white);
+    border-color: color-mix(in srgb, var(--settings-accent, var(--accent)) 86%, white);
+    color: var(--settings-accent-ink, var(--accent-ink));
+}
+
+.settings-preview {
+    border-left: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 8px 0 16px 24px;
+}
+
+.settings-preview-text {
+    color: var(--text-dim);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 20px;
+    margin: 12px 0 0;
+}
+
+.settings-progress {
+    margin-top: auto;
+    padding-top: 24px;
+}
+
+.settings-progress-label {
+    color: var(--text-dim);
+    display: flex;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    justify-content: space-between;
+    letter-spacing: 0.08em;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+}
+
+.settings-progress-label strong {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.settings-progress-track {
+    background: var(--line);
+    border-radius: 999px;
+    height: 4px;
+    overflow: hidden;
+}
+
+.settings-progress-track > span {
+    background: var(--settings-accent, var(--accent));
+    display: block;
+    height: 100%;
 }
 
 .flight-provider-form:has(input[name="provider"][value="opensky"]:checked) [data-provider="flightaware"],
@@ -3795,9 +3945,29 @@ html.app-sidebar-rail .app-nav-group {
     }
 }
 
+@media (max-width: 1099px) {
+    .settings-layout.has-preview {
+        grid-template-columns: 240px minmax(0, 1fr);
+    }
+
+    .settings-preview {
+        display: none;
+    }
+}
+
 @media (max-width: 699px) {
-    .settings-layout {
+    .settings-main {
+        padding: 16px 16px 24px;
+    }
+
+    .settings-layout,
+    .settings-layout.has-preview {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .settings-panel {
+        min-height: 0;
+        padding-left: 0;
     }
 
     .settings-rail-toggle {
@@ -3817,6 +3987,20 @@ html.app-sidebar-rail .app-nav-group {
         transform: translateX(-100%);
         width: min(280px, calc(100vw - 48px));
         z-index: 30;
+    }
+
+    .settings-footer {
+        flex-wrap: wrap;
+    }
+
+    .settings-footer-note {
+        flex-basis: 100%;
+        margin-left: 0;
+        order: 3;
+    }
+
+    .settings-primary {
+        margin-left: auto;
     }
 
     .settings-rail.is-open {

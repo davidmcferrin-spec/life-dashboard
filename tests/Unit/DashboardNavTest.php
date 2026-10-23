@@ -96,14 +96,34 @@ final class DashboardNavTest extends TestCase
         self::assertStringContainsString('app-shell-close.php', $settingsBottom);
         self::assertStringContainsString('settings-kicker', $settingsTop);
         self::assertStringContainsString('settings-footer', $settingsBottom);
-        self::assertStringContainsString('Changes saved automatically', $settingsBottom);
+        self::assertStringContainsString('Saved automatically', $settingsBottom);
+        self::assertStringContainsString('Unsaved changes', $settingsBottom);
+        self::assertStringNotContainsString('Changes saved automatically', $settingsBottom);
+        self::assertStringContainsString("settings_shell_icon('chevron-left')", $settingsBottom);
 
         $nav = file_get_contents(VIEWS_DIR . '/settings/_nav.php');
         self::assertIsString($nav);
         self::assertStringContainsString('settings-rail', $nav);
         self::assertStringContainsString('settings-step-num', $nav);
+        self::assertStringContainsString("settings_shell_icon('circle-dot')", $nav);
         self::assertStringContainsString("'Money'", $nav);
         self::assertStringContainsString("'Investing'", $nav);
+        self::assertStringNotContainsString("'Identity'", $nav);
+        self::assertStringNotContainsString("'Initialize'", $nav);
+
+        $chevron = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/chevron-left.svg');
+        self::assertIsString($chevron);
+        self::assertStringContainsString('class="lucide lucide-chevron-left"', $chevron);
+        self::assertStringContainsString('d="m15 18-6-6 6-6"', $chevron);
+        self::assertStringContainsString('stroke="currentColor"', $chevron);
+        self::assertStringContainsString('lucide-static v1.61.0 - ISC', $chevron);
+
+        $dot = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/circle-dot.svg');
+        self::assertIsString($dot);
+        self::assertStringContainsString('class="lucide lucide-circle-dot"', $dot);
+        self::assertStringContainsString('r="10"', $dot);
+        self::assertStringContainsString('stroke="currentColor"', $dot);
+        self::assertStringContainsString('lucide-static v1.61.0 - ISC', $dot);
 
         $flights = file_get_contents(VIEWS_DIR . '/flights.php');
         self::assertIsString($flights);
