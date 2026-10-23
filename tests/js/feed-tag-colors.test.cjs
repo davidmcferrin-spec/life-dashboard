@@ -35,16 +35,16 @@ test('dark mode source badges stay on the original palette', () => {
     assert.equal(css.match(/html\[data-theme="dark"\] \.feed-tag-\d+/g).length, 11);
 });
 
-test('jarvis source badges use every dark hue and the user accent', () => {
+test('jarvis source badges use the dark palette without a glow', () => {
     assert.equal(css.match(/html\[data-theme="jarvis"\] \.feed-tag-\d+/g).length, 11);
+    assert.equal(/html\[data-theme="jarvis"\] \.feed-tag \{[^}]*box-shadow/.test(css), false);
     for (let i = 0; i <= 10; i++) {
-        const block = css.match(new RegExp(`html\\[data-theme="jarvis"\\] \\.feed-tag-${i} \\{[^}]+\\}`));
-        assert.ok(block, `missing jarvis feed-tag-${i}`);
-        assert.match(block[0], /var\(--hud-accent, var\(--accent\)\)/);
-        assert.match(block[0], /color:/);
-        assert.match(block[0], /border-color:/);
+        const dark = css.match(new RegExp(`html\\[data-theme="dark"\\] \\.feed-tag-${i} \\{([^}]+)\\}`));
+        const jarvis = css.match(new RegExp(`html\\[data-theme="jarvis"\\] \\.feed-tag-${i} \\{([^}]+)\\}`));
+        assert.ok(dark, `missing dark feed-tag-${i}`);
+        assert.ok(jarvis, `missing jarvis feed-tag-${i}`);
+        assert.equal(jarvis[1], dark[1]);
     }
-    assert.match(css, /html\[data-theme="jarvis"\] \.feed-tag \{[^}]*currentColor/);
 });
 
 test('source slugs hash into the eleven badge classes', () => {

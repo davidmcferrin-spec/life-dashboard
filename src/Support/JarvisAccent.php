@@ -5,12 +5,16 @@ declare(strict_types=1);
 namespace Dashboard\Support;
 
 /**
- * JARVIS HUD accent. One stored #rrggbb drives every glow, edge, and gauge
- * through CSS variables (brighter, dimmer, ink, and rgb channels).
+ * Saved JARVIS accent. The calm default is the shared teal. A stored value
+ * still tints JARVIS links and gauges. Ink is whichever of the two faces
+ * clears more contrast on that fill.
  */
 final class JarvisAccent
 {
-    public const DEFAULT = '#00e5ff';
+    public const DEFAULT = '#1aa6a6';
+
+    /** Previous HUD default. Read back as the calm teal so old rows match the token. */
+    public const LEGACY_CYAN = '#00e5ff';
 
     public static function isValid(string $raw): bool
     {
@@ -80,6 +84,31 @@ final class JarvisAccent
         return 0.2126 * $lin($rgb['r']) + 0.7152 * $lin($rgb['g']) + 0.0722 * $lin($rgb['b']);
     }
 
+    public static function contrast(string $a, string $b): float
+    {
+        $hi = max(self::luminance($a), self::luminance($b));
+        $lo = min(self::luminance($a), self::luminance($b));
+
+        return ($hi + 0.05) / ($lo + 0.05);
+    }
+
+    /** Dark ink on the teal, light ink on a dark custom accent. */
+    public static function ink(string $hex): string
+    {
+        $hex = self::normalize($hex);
+        $dark = '#06201f';
+        $light = '#f4f7f8';
+
+        return self::contrast($hex, $dark) >= self::contrast($hex, $light) ? $dark : $light;
+    }
+
+    public static function calm(string $hex): string
+    {
+        $hex = self::normalize($hex);
+
+        return $hex === self::LEGACY_CYAN ? self::DEFAULT : $hex;
+    }
+
     /**
      * @return array{accent: string, rgb: string, bright: string, dim: string, ink: string}
      */
@@ -89,7 +118,7 @@ final class JarvisAccent
         $rgb = self::rgb($accent);
         $bright = self::mix($rgb, ['r' => 255, 'g' => 255, 'b' => 255], 0.32);
         $dim = self::mix($rgb, ['r' => 4, 'g' => 12, 'b' => 24], 0.45);
-        $ink = self::luminance($accent) > 0.55 ? '#061018' : '#f4fbff';
+        $ink = self::ink($accent);
 
         return [
             'accent' => $accent,

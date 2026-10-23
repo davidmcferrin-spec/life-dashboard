@@ -93,9 +93,9 @@
     function tokenColor(id) {
         if (!id) {
             const style = getComputedStyle(document.documentElement);
-            return style.getPropertyValue('--hud-accent').trim()
-                || style.getPropertyValue('--accent').trim()
-                || '#00e5ff';
+            return style.getPropertyValue('--accent').trim()
+                || style.getPropertyValue('--hud-accent').trim()
+                || '#1aa6a6';
         }
         const hue = ((id * 47) % 360 + 360) % 360;
         return 'hsl(' + hue + ' 80% 64%)';
@@ -224,16 +224,16 @@
         const cam = window.BrainCamera.matrix(view, w, h, dpr);
         ctx.setTransform(cam.a, cam.b, cam.c, cam.d, cam.e, cam.f);
         const style = getComputedStyle(document.documentElement);
-        const accent = style.getPropertyValue('--hud-accent').trim()
-            || style.getPropertyValue('--accent').trim()
-            || '#00e5ff';
+        const accent = style.getPropertyValue('--accent').trim()
+            || style.getPropertyValue('--hud-accent').trim()
+            || '#1aa6a6';
         const faint = style.getPropertyValue('--text-faint').trim() || '#8aa';
         const text = style.getPropertyValue('--text-secondary').trim() || '#d5e7ea';
         const box = layout();
         const o = { x: box.x, y: box.y };
 
         const wash = ctx.createRadialGradient(o.x, o.y, 20, o.x, o.y, Math.max(w, h) * 0.55);
-        wash.addColorStop(0, 'rgba(0, 229, 255, 0.05)');
+        wash.addColorStop(0, 'rgba(26, 166, 166, 0.05)');
         wash.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = wash;
         ctx.fillRect(0, 0, w, h);

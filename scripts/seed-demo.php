@@ -54,7 +54,7 @@ $prefs = new PreferenceService($db);
 $today = $clock->today();
 
 $prefs->setTheme($userId, 'jarvis');
-$prefs->setJarvisAccent($userId, '#00e5ff');
+$prefs->setJarvisAccent($userId, '#1aa6a6');
 $prefs->setAiPresence($userId, false);
 $prefs->set($userId, WidgetService::COMPACT_PREF, '1');
 $prefs->set($userId, 'dashboard_grid_seeded', '1');
