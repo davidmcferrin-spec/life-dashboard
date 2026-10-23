@@ -31,7 +31,7 @@ $jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
 $jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261023bq';
+$assetVer = '20261023br';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>
