@@ -353,6 +353,32 @@ def test_push_reloads_tracks_after_a_successful_add():
     assert reloaded == [(1, 52)]
 
 
+def test_replace_push_puts_the_first_hundred_then_posts_the_rest():
+    uris = [f"spotify:track:t{i}" for i in range(120)]
+    calls = []
+
+    class Conn(_Conn):
+        def execute(self, sql, params=None):
+            text = " ".join(sql.split())
+            if "SELECT id, op, payload" in text:
+                return _Result([{"id": 8, "op": "replace", "payload": {"uris": uris}}])
+            return super().execute(sql, params)
+
+    def api(user_id, method, path, body=None):
+        calls.append((method, path, body))
+        return {"snapshot_id": "snap", "id": "pl"}
+
+    worker = _worker(Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap"}), api)
+    worker._reload_tracks = lambda user_id, playlist_id: None
+    assert worker._push_playlist(1, 52) == {"pushed": 1, "failed": 0}
+    writes = [call for call in calls if call[0] != "GET"]
+    assert [call[0] for call in writes] == ["PUT", "POST"]
+    assert writes[0][1] == "/playlists/pl/items"
+    assert writes[1][1] == "/playlists/pl/items"
+    assert len(writes[0][2]["uris"]) == 100
+    assert writes[1][2]["uris"] == uris[100:]
+
+
 def test_items_follow_a_nested_playlist_page():
     pages = {
         "/playlists/pl/items?limit=50": {

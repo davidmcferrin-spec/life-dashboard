@@ -62,6 +62,24 @@ final class SpotifyCatalogTest extends PgsqlTestCase
         self::assertSame('Mine', $this->library->playlist($this->user, $owned)['playlist']['name']);
     }
 
+    public function testReplaceStagesTheFullListIncludingMoreThanOneHundredTracks(): void
+    {
+        $id = (int) $this->db->fetchScalar(
+            "INSERT INTO spotify_playlists (user_id, spotify_id, name, is_owned, origin)
+             VALUES (?, 'remote52', 'Night', 1, 'synced') RETURNING id",
+            [$this->user]
+        );
+        $uris = [];
+        for ($i = 0; $i < 101; $i++) {
+            $uris[] = 'spotify:track:t' . $i;
+        }
+        $detail = $this->library->replaceTracks($this->user, $id, $uris, 'mcp');
+        $changes = $this->library->changes($this->user, $id);
+        self::assertSame(['replace'], array_column($changes, 'op'));
+        self::assertSame($uris, $changes[0]['payload']['uris']);
+        self::assertSame($uris, array_column($detail['preview'], 'uri'));
+    }
+
     public function testSavedTracksRoundTripInTheLocalList(): void
     {
         $this->library->rememberSaved($this->user, [[
