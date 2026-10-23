@@ -28,7 +28,6 @@
     let lastCode = '';
     let lastAt = 0;
     let sheetOpen = false;
-    let onEditKey = null;
 
     function fail(err) {
         errorEl.textContent = (err && err.fields && Object.values(err.fields)[0]) || (err && err.message) || 'Something went wrong.';
@@ -314,56 +313,55 @@
         form.querySelector('[name="' + name + '_y"]').value = parts.y;
     }
 
+    function mountDialog(html) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        const modal = wrap.firstElementChild;
+        document.body.appendChild(modal);
+        document.body.classList.add('app-modal-open');
+        return modal;
+    }
+
+    function unmountDialog(id) {
+        const modal = document.getElementById(id);
+        if (!modal) return;
+        modal.remove();
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    // Focus, Escape, and the inert page belong to app-modal.js. Escape clicks [data-close].
+    function bindDismiss(modal, close) {
+        modal.addEventListener('click', (event) => {
+            if (event.target.closest('[data-close]')) close();
+        });
+    }
+
     function openMove(lot) {
         closeEdit();
         closeMove();
         closeConsume();
-        const wrap = document.createElement('div');
-        wrap.innerHTML = moveSheet(lot);
-        const modal = wrap.firstElementChild;
-        document.body.appendChild(modal);
-        document.body.classList.add('app-modal-open');
+        const modal = mountDialog(moveSheet(lot));
+        bindDismiss(modal, closeMove);
         bindMove(lot, modal);
-        modal.querySelector('[name="fridge"]')?.focus();
     }
 
     function closeMove() {
-        if (onEditKey) {
-            document.removeEventListener('keydown', onEditKey);
-            onEditKey = null;
-        }
-        const modal = document.getElementById('pantry-move-modal');
-        if (!modal) return;
-        modal.remove();
-        if (!document.querySelector('.app-modal')) {
-            document.body.classList.remove('app-modal-open');
-        }
+        unmountDialog('pantry-move-modal');
     }
 
     function openEdit(lot) {
         closeMove();
         closeEdit();
         closeConsume();
-        const wrap = document.createElement('div');
-        wrap.innerHTML = editSheet(lot);
-        const modal = wrap.firstElementChild;
-        document.body.appendChild(modal);
-        document.body.classList.add('app-modal-open');
+        const modal = mountDialog(editSheet(lot));
+        bindDismiss(modal, closeEdit);
         bindEdit(lot, modal);
-        modal.querySelector('[name="quantity"]')?.focus();
     }
 
     function closeEdit() {
-        if (onEditKey) {
-            document.removeEventListener('keydown', onEditKey);
-            onEditKey = null;
-        }
-        const modal = document.getElementById('pantry-edit-modal');
-        if (!modal) return;
-        modal.remove();
-        if (!document.querySelector('.app-modal')) {
-            document.body.classList.remove('app-modal-open');
-        }
+        unmountDialog('pantry-edit-modal');
     }
 
     function moveSheet(lot) {
@@ -397,13 +395,6 @@
 
     function bindMove(lot, modal) {
         const form = modal.querySelector('#move-form');
-        modal.querySelectorAll('[data-close]').forEach((el) => {
-            el.addEventListener('click', () => closeMove());
-        });
-        onEditKey = (event) => {
-            if (event.key === 'Escape') closeMove();
-        };
-        document.addEventListener('keydown', onEditKey);
         form.addEventListener('submit', (event) => {
             event.preventDefault();
             const data = new FormData(form);
@@ -464,13 +455,6 @@
     function bindEdit(lot, modal) {
         const form = modal.querySelector('#edit-form');
         let place = lot.location;
-        modal.querySelectorAll('[data-close]').forEach((el) => {
-            el.addEventListener('click', () => closeEdit());
-        });
-        onEditKey = (event) => {
-            if (event.key === 'Escape') closeEdit();
-        };
-        document.addEventListener('keydown', onEditKey);
         form.querySelectorAll('[data-location]').forEach((btn) => {
             if (btn.dataset.location === place) btn.classList.add('is-on');
             btn.addEventListener('click', () => {
@@ -503,8 +487,7 @@
         closeMove();
         closeEdit();
         closeConsume();
-        const wrap = document.createElement('div');
-        wrap.innerHTML = `<div id="pantry-consume-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-consume-title">
+        const modal = mountDialog(`<div id="pantry-consume-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-consume-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="consume-form">
@@ -522,18 +505,9 @@
                     </div>
                 </form>
             </div>
-        </div>`;
-        const modal = wrap.firstElementChild;
-        document.body.appendChild(modal);
-        document.body.classList.add('app-modal-open');
+        </div>`);
+        bindDismiss(modal, closeConsume);
         const form = modal.querySelector('#consume-form');
-        modal.querySelectorAll('[data-close]').forEach((el) => {
-            el.addEventListener('click', () => closeConsume());
-        });
-        onEditKey = (event) => {
-            if (event.key === 'Escape') closeConsume();
-        };
-        document.addEventListener('keydown', onEditKey);
         form.addEventListener('submit', (event) => {
             event.preventDefault();
             const quantity = Number(new FormData(form).get('quantity'));
@@ -546,20 +520,10 @@
                 return inventory();
             }).catch(fail);
         });
-        form.querySelector('[name="quantity"]').focus();
     }
 
     function closeConsume() {
-        if (onEditKey) {
-            document.removeEventListener('keydown', onEditKey);
-            onEditKey = null;
-        }
-        const modal = document.getElementById('pantry-consume-modal');
-        if (!modal) return;
-        modal.remove();
-        if (!document.querySelector('.app-modal')) {
-            document.body.classList.remove('app-modal-open');
-        }
+        unmountDialog('pantry-consume-modal');
     }
 
     let purgeBound = false;
@@ -1050,23 +1014,13 @@
     }
 
     function closeRecipe() {
-        if (onEditKey) {
-            document.removeEventListener('keydown', onEditKey);
-            onEditKey = null;
-        }
-        const modal = document.getElementById('pantry-recipe-modal');
-        if (!modal) return;
-        modal.remove();
-        if (!document.querySelector('.app-modal')) {
-            document.body.classList.remove('app-modal-open');
-        }
+        unmountDialog('pantry-recipe-modal');
     }
 
     function openRecipe(recipe) {
         closeRecipe();
         const lines = (recipe.ingredients || []).map(ingredientLine).join('\n');
-        const wrap = document.createElement('div');
-        wrap.innerHTML = `<div id="pantry-recipe-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-recipe-title">
+        const modal = mountDialog(`<div id="pantry-recipe-modal" class="app-modal" role="dialog" aria-modal="true" aria-labelledby="pantry-recipe-title">
             <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
             <div class="app-modal-panel surface">
                 <form id="recipe-edit-form">
@@ -1090,17 +1044,8 @@
                     </div>
                 </form>
             </div>
-        </div>`;
-        const modal = wrap.firstElementChild;
-        document.body.appendChild(modal);
-        document.body.classList.add('app-modal-open');
-        modal.querySelectorAll('[data-close]').forEach((el) => {
-            el.addEventListener('click', () => closeRecipe());
-        });
-        onEditKey = (event) => {
-            if (event.key === 'Escape') closeRecipe();
-        };
-        document.addEventListener('keydown', onEditKey);
+        </div>`);
+        bindDismiss(modal, closeRecipe);
         modal.querySelector('#recipe-edit-form').addEventListener('submit', (event) => {
             event.preventDefault();
             const form = new FormData(event.target);
@@ -1118,7 +1063,6 @@
                 return recipes();
             }).catch(fail);
         });
-        modal.querySelector('[name="name"]').focus();
     }
 
     let recipeCache = [];
