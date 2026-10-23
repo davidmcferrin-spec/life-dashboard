@@ -19,7 +19,7 @@ $extraStyles   = ['/assets/css/lifedash.css'];
         <span class="brand">Brain</span>
         <a href="/brain" class="nav-link mono text-xs">← Vault</a>
     </div>
-    <div class="nav-meta flex items-center gap-3">
+    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0">
         <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
         <a href="/" class="nav-link">Dashboard</a>
     </div>

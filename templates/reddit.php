@@ -25,7 +25,7 @@ foreach ($posts as $post) {
 
 <nav class="chrome flex items-center justify-between px-6 py-3">
     <a href="/" class="brand hover:text-accent">← Dashboard</a>
-    <div class="nav-meta flex items-center gap-3">
+    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0">
         <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
         <a href="/settings/reddit" class="nav-link mono text-xs">Subreddits</a>
         <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
