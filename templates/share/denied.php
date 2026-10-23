@@ -11,7 +11,8 @@
 <body class="page min-h-screen flex items-center justify-center">
 
 <main class="text-center px-4">
-    <p class="text-muted mono text-sm">Access denied.</p>
+    <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Access denied'; $pageHeadingCenter = true; require __DIR__ . '/../partials/page-heading.php'; ?>
+    <p class="text-muted text-sm mt-4">This link cannot be opened.</p>
 </main>
 
 </body>

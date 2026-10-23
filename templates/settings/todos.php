@@ -12,7 +12,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Todo lists</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Todo lists'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Manage list tabs, choose up to 4 for the dashboard widget, and share lists with other dashboard users.
                     Up to 10 lists per account.

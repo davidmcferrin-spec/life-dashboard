@@ -12,7 +12,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">System status</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'System status'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     TCP and HTTP checks polled by cron every 30 minutes. Up to 10 targets per account.
                 </p>

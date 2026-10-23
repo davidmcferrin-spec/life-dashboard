@@ -12,7 +12,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Flight watches</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Flight watches'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     ADS-B via OpenSky. Polling starts 24 hours before departure (cron every 30 min).
                     Airline delay/gate data requires FlightAware (<code class="mono text-xs">FLIGHT_PROVIDER=flightaware</code>).

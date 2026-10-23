@@ -15,7 +15,7 @@ require __DIR__ . '/_shell-top.php';
 
             <section class="surface p-5">
                 <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-                    <h1 class="text-primary text-xl font-medium">Stock symbols</h1>
+                    <?php $pageEyebrow = 'Settings'; $pageHeading = 'Stock symbols'; require __DIR__ . '/../partials/page-heading.php'; ?>
                     <div class="flex flex-wrap gap-3 mono text-xs text-faint">
                         <span id="stocks-manage-count">…</span>
                         <span id="stocks-pin-count">…</span>

@@ -33,7 +33,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">Focus Clock</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Focus Clock'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Style and alarm for the large clock at
                     <a href="/clock" class="text-accent hover:underline">/clock</a>.

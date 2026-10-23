@@ -10,9 +10,8 @@ $themeLocalOnly = true;
 <body class="page min-h-screen flex items-center justify-center px-4">
 
     <div class="w-full max-w-sm">
-        <div class="mb-8 text-center">
-            <div class="brand mb-2">Personal Dashboard</div>
-            <div class="text-primary text-2xl font-light tracking-tight">Sign In</div>
+        <div class="mb-8">
+            <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Sign in'; $pageHeadingCenter = true; require __DIR__ . '/partials/page-heading.php'; ?>
         </div>
 
         <div class="flex justify-center mb-6">

@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Shelf life</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Shelf life'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Reasonable defaults in the style of USDA FoodKeeper. Verify them and edit.
                     A product uses its own days when those are set, and these when they are empty.

@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Bookmarks</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Bookmarks'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Folders and links shown on the dashboard widget. Icons are fetched from each site and stored on the server.
                 </p>

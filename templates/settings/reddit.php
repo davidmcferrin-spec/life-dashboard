@@ -15,7 +15,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Reddit</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Reddit'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Subreddits saved here are fetched about every half hour and shown on the
                     <a href="/reddit" class="text-accent hover:underline">reader</a>

@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Investing</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Investing'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Positions come from a Robinhood activity CSV and the public Polymarket data API.
                     This dashboard does not place trades.

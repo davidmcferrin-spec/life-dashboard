@@ -15,7 +15,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Spotify</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Spotify'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Connect a Premium account. Playlists and listening history sync on a timer.
                     Edits wait here until you push them.

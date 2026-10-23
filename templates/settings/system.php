@@ -63,6 +63,8 @@ if (!isset($cronJobs[$selectedLog])) {
 require __DIR__ . '/_shell-top.php';
 ?>
 
+            <?php $pageEyebrow = 'Settings'; $pageHeading = 'System health'; require __DIR__ . '/../partials/page-heading.php'; ?>
+
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <p class="text-muted text-sm">
                     Application diagnostics and cron job monitoring. Log files live under

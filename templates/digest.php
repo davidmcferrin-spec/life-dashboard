@@ -40,7 +40,7 @@ $bandLayouts = $digestWidgets->breakpointLayouts((int) $user['id']);
 <div id="digest-band">
     <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
-            <h1 class="text-primary text-xl font-medium">Grok Digest</h1>
+            <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Grok Digest'; require __DIR__ . '/partials/page-heading.php'; ?>
             <p class="text-muted text-sm mt-1" id="digest-intro">One feed of Cursor, Grok Bot, Grok, and Grok Build release notes.</p>
             <p class="text-muted text-sm" id="digest-checked">Not checked yet.</p>
         </div>

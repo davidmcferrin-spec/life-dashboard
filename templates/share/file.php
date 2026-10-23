@@ -16,7 +16,7 @@ $shareToken = $shareToken ?? '';
 
 <main class="max-w-screen-md mx-auto px-4 py-6">
     <section id="share-file-wrap" class="hidden surface p-6 text-center">
-        <h1 id="share-file-name" class="text-primary font-medium mb-2 break-all"></h1>
+        <?php $pageEyebrow = 'Shared file'; $pageHeading = ''; $pageHeadingId = 'share-file-name'; require __DIR__ . '/../partials/page-heading.php'; ?>
         <p id="share-file-meta" class="text-faint mono text-xs mb-6"></p>
         <a id="share-file-download" href="#" class="btn-primary inline-block" download>Download</a>
     </section>

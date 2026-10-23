@@ -30,7 +30,7 @@ require __DIR__ . '/settings/_shell-top.php';
 ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">Dashboard</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Dashboard'; require __DIR__ . '/partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">Appearance, search engine, and which dashboard sections to show.</p>
 
                 <p class="text-faint mono text-xs mb-4">

@@ -29,8 +29,16 @@
     position: relative;
 }
 
+.cloudpad-share-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
 .cloudpad-root-share {
-    height: calc(100vh - 5.5rem);
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
 }
 
 .cloudpad-root .excalidraw {

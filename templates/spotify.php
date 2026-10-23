@@ -23,7 +23,7 @@ require __DIR__ . '/partials/head.php';
 <main class="mx-auto px-4 py-6" id="spotify-app">
     <header class="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-            <h1 class="text-primary text-xl font-medium">Playlists</h1>
+            <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Playlists'; require __DIR__ . '/partials/page-heading.php'; ?>
             <p class="text-muted text-sm mt-1">Edits stay on this server until you push them.</p>
         </div>
         <div class="flex flex-wrap gap-2">

@@ -13,7 +13,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <h1 class="text-primary text-xl font-medium">Habits &amp; trackers</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Habits & trackers'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
                     Everything you track is a <span class="text-secondary">metric</span>: habits (done / not done per day),
                     scales like mood, numbers (weight, steps) and durations (sleep). Widgets on the dashboard show them;

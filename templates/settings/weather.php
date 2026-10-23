@@ -12,7 +12,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <section class="surface p-5 space-y-4">
-                <h1 class="text-primary text-xl font-medium mb-1">Weather</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Weather'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm">
                     The dashboard weather widget uses your browser&apos;s geolocation to fetch current conditions
                     from OpenWeatherMap. If location access is denied or unavailable, it falls back to Huntsville, AL.

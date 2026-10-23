@@ -34,7 +34,7 @@ foreach ($posts as $post) {
 
 <main class="max-w-3xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <h1 class="text-primary text-xl font-medium">Reddit</h1>
+        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Reddit'; require __DIR__ . '/partials/page-heading.php'; ?>
         <p class="text-muted text-sm mt-1">
             Posts saved from the subreddits you track.
             <a href="/settings/reddit" class="text-accent hover:underline">Add or remove one</a>.

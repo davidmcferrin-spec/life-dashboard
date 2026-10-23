@@ -17,6 +17,7 @@ $settingsContentClass = 'flex-1 min-w-0';
 
 require __DIR__ . '/_shell-top.php';
 ?>
+            <?php $pageEyebrow = 'Settings'; $pageHeading = 'Cloud clipboards'; require __DIR__ . '/../partials/page-heading.php'; ?>
 <?php if ($initialTab === 'cloudpad'): ?>
 <link rel="stylesheet" href="/assets/css/cloudpad.css?v=<?= e($assetVer) ?>">
 <?php endif; ?>

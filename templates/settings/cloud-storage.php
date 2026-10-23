@@ -18,7 +18,7 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <section class="surface p-5">
-                <h1 class="text-primary text-xl font-medium mb-1">Cloud storage setup</h1>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Cloud storage setup'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     System-wide defaults for cloud file storage. Each user connects their own
                     <strong>Dropbox</strong> or <strong>S3</strong> account on
