@@ -380,7 +380,7 @@
     }
 
     function screenFont(px) {
-        return (px / view.k) + 'px "IBM Plex Sans", sans-serif';
+        return (px / view.k) + 'px "Inter", sans-serif';
     }
 
     function holdCluster(w, h) {
