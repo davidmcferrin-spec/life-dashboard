@@ -11961,7 +11961,7 @@ html.app-sidebar-rail .app-nav-badge {
 }
 .ld-meal-day > header strong {
     color: var(--text-secondary);
-    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 500;
     letter-spacing: 0.04em;
@@ -11973,7 +11973,7 @@ html.app-sidebar-rail .app-nav-badge {
     color: var(--text-primary);
     cursor: pointer;
     display: block;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     margin-top: 13px;
     padding: 12px;
     text-align: left;
@@ -11986,7 +11986,7 @@ html.app-sidebar-rail .app-nav-badge {
 }
 .ld-meal-slot span {
     color: var(--accent);
-    font-family: 'IBM Plex Mono', 'IBM Plex Sans', monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.06em;
 }
@@ -12021,7 +12021,7 @@ html.app-sidebar-rail .app-nav-badge {
     color: var(--text-secondary);
     cursor: pointer;
     display: flex;
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     font-size: 13px;
     gap: 6px;
     margin-top: auto;
