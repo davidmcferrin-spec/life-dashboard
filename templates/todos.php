@@ -12,16 +12,17 @@ $prefService   = new PreferenceService(Database::getInstance());
 $themePref     = $prefService->getTheme((int) $user['id']);
 $starfieldPref = $prefService->getStarfield((int) $user['id']);
 $pageTitle     = 'Todo Lists';
+$extraStyles   = ['/assets/css/remaining-pages.css'];
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
-<body class="page min-h-screen">
+<body class="page ld-shell-page min-h-screen">
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="max-w-3xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Todo lists'; require __DIR__ . '/partials/page-heading.php'; ?>
-        <p class="text-muted text-sm mt-1">
+        <?php $pageEyebrow = 'Schedule'; $pageHeading = 'Todo lists'; require __DIR__ . '/partials/page-heading.php'; ?>
+        <p class="ld-page-lead">
             Tasks grouped by list. Completed items stay until you archive them.
             Share a list or assign tasks from the full editor below.
         </p>
@@ -44,7 +45,11 @@ $pageTitle     = 'Todo Lists';
         <div id="todo-page-meta" class="flex flex-wrap items-center justify-between gap-2 text-faint mono text-xs"></div>
 
         <div id="todo-page-items" class="space-y-1">
-            <p class="empty-state mono text-xs py-4 text-center">Loading…</p>
+            <?php
+            $emptyTitle = 'Loading tasks';
+            $emptyBody = 'They show up here after the list responds.';
+            require __DIR__ . '/partials/empty-panel.php';
+            ?>
         </div>
 
         <form id="todo-page-add" class="flex flex-wrap gap-2 pt-2 border-t border-chrome items-end">

@@ -16,18 +16,19 @@ $starfieldPref = $prefService->getStarfield($userId);
 $focusClock    = $prefService->getFocusClock($userId);
 $fcAlarm       = $focusClock['alarm'] ?? [];
 $pageTitle     = 'Clock';
+$extraStyles   = ['/assets/css/remaining-pages.css'];
 $focusClockJson = json_encode($focusClock, JSON_THROW_ON_ERROR | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $datePos       = (string) ($focusClock['date_position'] ?? 'below');
 $alarmOn       = !empty($fcAlarm['enabled']);
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <link rel="stylesheet" href="/assets/css/clock.css?v=<?= e($assetVer) ?>">
-<body class="page min-h-screen" data-page="clock">
+<body class="page ld-shell-page min-h-screen" data-page="clock">
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="focus-clock-main">
-    <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Clock'; require __DIR__ . '/partials/page-heading.php'; ?>
+    <?php $pageEyebrow = 'Schedule'; $pageHeading = 'Clock'; require __DIR__ . '/partials/page-heading.php'; ?>
     <div
         id="focus-clock-stack"
         class="focus-clock-stack"

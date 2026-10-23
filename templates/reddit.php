@@ -14,6 +14,7 @@ $prefService   = new PreferenceService(Database::getInstance());
 $themePref     = $prefService->getTheme((int) $user['id']);
 $starfieldPref = $prefService->getStarfield((int) $user['id']);
 $pageTitle     = 'Reddit';
+$extraStyles   = ['/assets/css/remaining-pages.css'];
 
 $grouped = [];
 foreach ($posts as $post) {
@@ -21,16 +22,16 @@ foreach ($posts as $post) {
 }
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
-<body class="page min-h-screen">
+<body class="page ld-shell-page min-h-screen">
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="max-w-3xl mx-auto px-4 py-8 space-y-4">
     <header>
-        <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Reddit'; require __DIR__ . '/partials/page-heading.php'; ?>
-        <p class="text-muted text-sm mt-1">
+        <?php $pageEyebrow = 'Intelligence'; $pageHeading = 'Reddit'; require __DIR__ . '/partials/page-heading.php'; ?>
+        <p class="ld-page-lead">
             Posts saved from the subreddits you track.
-            <a href="/settings/reddit" class="text-accent hover:underline">Add or remove one</a>.
+            <a href="/settings/reddit" class="link">Add or remove one</a>.
         </p>
     </header>
 
@@ -53,7 +54,7 @@ foreach ($posts as $post) {
             <span class="mono text-xs text-faint"><?= e($sub['sort']) ?><?= $sub['include'] !== '' ? ' · ' . e($sub['include']) : '' ?></span>
         </div>
         <?php if (!empty($sub['last_error'])): ?>
-        <p class="text-sm mb-2" style="color: var(--danger, #e07070)"><?= e($sub['last_error']) ?></p>
+        <p class="text-danger mb-2"><?= e($sub['last_error']) ?></p>
         <?php endif; ?>
         <?php $rows = $grouped[$sub['name']] ?? []; ?>
         <?php if ($rows === []): ?>
