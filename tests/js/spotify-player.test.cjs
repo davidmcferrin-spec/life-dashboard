@@ -34,6 +34,9 @@ vm.runInNewContext(
         extract(js, 'spotifyDeviceIcon'),
         extract(js, 'spotifyHoldId'),
         extract(js, 'spotifySyncSelect'),
+        extract(js, 'spotifyRecordHtml'),
+        extract(js, 'spotifyEqualizerHtml'),
+        extract(js, 'spotifyChangeDevice'),
     ].join('\n'),
     sandbox
 );
@@ -239,4 +242,39 @@ test('a device choice stays until play instead of snapping back to the active de
     assert.ok(js.indexOf("notePick('device', '')", list) > list);
     assert.match(js, /pickerOpen\(deviceSelect\)/);
     assert.match(js, /spotifySyncSelect\(select, false, deviceKey, options, chosenId\)/);
+});
+
+test('the expanded player draws a record, an equalizer, and Change device', async () => {
+    const art = '<img class="sp-art" alt="" data-url="https://i.scdn.co/image/real">';
+    const record = sandbox.spotifyRecordHtml(art, true);
+    assert.match(record, /class="sp-record is-playing"/);
+    assert.match(record, /https:\/\/i\.scdn\.co\/image\/real/);
+    assert.match(record, /sp-record-spindle/);
+    assert.equal(sandbox.spotifyRecordHtml(art, false).includes('is-playing'), false);
+    const bars = sandbox.spotifyEqualizerHtml(true);
+    assert.equal((bars.match(/<i /g) || []).length, 12);
+    assert.match(bars, /class="sp-equalizer is-playing"/);
+    assert.match(js, /data-change-device>Change device</);
+    assert.match(js, /spotifyRecordHtml\(art, playing\)/);
+    assert.match(js, /spotifyEqualizerHtml\(playing\)/);
+    assert.match(js, /button\.dataset\.changeDevice !== undefined/);
+    assert.match(css, /\.sp-player \.sp-record \{/);
+    assert.match(css, /@keyframes sp-record-spin/);
+    assert.match(css, /\.sp-player \.sp-equalizer i \{/);
+    assert.match(css, /\.sp-player \.sp-record\.is-playing \{[^}]*sp-record-spin/);
+    const calls = [];
+    const select = {
+        focus() { calls.push('focus'); },
+        showPicker() { calls.push('picker'); },
+    };
+    const root = { querySelector(sel) { return sel === '[data-device]' ? select : null; } };
+    let refreshed = 0;
+    sandbox.spotifyChangeDevice(root, () => {
+        refreshed += 1;
+        return Promise.resolve();
+    });
+    assert.deepEqual(calls, ['focus', 'picker']);
+    assert.equal(refreshed, 1);
+    await Promise.resolve();
+    assert.deepEqual(calls, ['focus', 'picker', 'focus', 'picker']);
 });

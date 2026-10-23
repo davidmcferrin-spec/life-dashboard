@@ -28,7 +28,7 @@ require __DIR__ . '/_shell-top.php';
                 <div class="app-modal-panel surface">
                     <div class="flex items-center justify-between gap-2 mb-3">
                         <h2 id="todo-list-add-title" class="section-title text-sm">Add list</h2>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <button type="button" class="app-modal-close" data-lucide-x data-close aria-label="Close"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/x.svg'); ?></button>
                     </div>
                     <form id="todo-list-add-form" class="space-y-3">
                         <label class="block">
@@ -49,7 +49,7 @@ require __DIR__ . '/_shell-top.php';
                 <div class="app-modal-panel surface">
                     <div class="flex items-center justify-between gap-2 mb-3">
                         <h2 id="todo-rename-title" class="section-title text-sm">Rename list</h2>
-                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        <button type="button" class="app-modal-close" data-lucide-x data-close aria-label="Close"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/x.svg'); ?></button>
                     </div>
                     <form id="todo-rename-form" class="space-y-3">
                         <input type="hidden" id="todo-rename-id" name="list_id" value="">
