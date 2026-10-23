@@ -35,7 +35,7 @@ final class Scope
 
     public const CALL_ENTITIES = ['call', 'contact', 'vetted_agency'];
 
-    public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component'];
+    public const PANTRY_ENTITIES = ['pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component', 'meal_plan_day'];
 
     public const SPOTIFY_ENTITIES = ['spotify'];
 
@@ -50,7 +50,7 @@ final class Scope
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
-        'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component',
+        'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component', 'meal_plan_day',
         'spotify',
         'digest',
         'deploy',

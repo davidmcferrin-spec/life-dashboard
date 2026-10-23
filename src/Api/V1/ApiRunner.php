@@ -357,6 +357,7 @@ final class ApiRunner
             '/pantry/recipes'       => 'recipe',
             '/pantry/meals/recipe'  => 'recipe',
             '/pantry/meals/prep'    => 'pantry_lot',
+            '/pantry/meals/days'    => 'meal_plan_day',
             '/pantry/categories'    => 'pantry_category',
             '/pantry/meals'         => 'meal_component',
             '/pantry'               => 'pantry_lot',
@@ -376,7 +377,7 @@ final class ApiRunner
      */
     public static function entityIdFromPayload(array $payload): ?int
     {
-        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'playlist', 'prompt'] as $key) {
+        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt'] as $key) {
             $row = $payload[$key] ?? null;
             if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
                 return (int) $row['id'];
