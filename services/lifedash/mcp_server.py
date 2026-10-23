@@ -1453,12 +1453,16 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_recipes",
-        "description": "Recipes and their ingredients (a product or a category, with an optional quantity).",
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "description": "Recipes and their ingredients (a product or a category, with an optional quantity). Each recipe includes servings, keeps_days, meal_prep, and protein_g (grams per serving, or null). meal_prep true returns only meal-prep recipes; false returns the rest; omit it for both.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"meal_prep": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
     },
     {
         "name": "upsert_recipe",
-        "description": "Create a recipe, or replace it when recipe_id is set. ingredients is a list of {product_id or category, quantity, unit}.",
+        "description": "Create a recipe, or replace it when recipe_id is set. ingredients is a list of {product_id or category, quantity, unit}. servings is 1 to 30 or null. keeps_days is 1 to 30 (default 3). meal_prep marks a make-ahead recipe. protein_g is grams per serving, or null.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1466,6 +1470,10 @@ TOOLS: list[dict[str, Any]] = [
                 "name": {"type": "string"},
                 "notes": {"type": "string"},
                 "ingredients": {"type": "array", "items": {"type": "object"}},
+                "servings": {"type": ["integer", "null"]},
+                "keeps_days": {"type": "integer"},
+                "meal_prep": {"type": "boolean"},
+                "protein_g": {"type": ["number", "null"]},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -1473,7 +1481,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "update_recipe",
-        "description": "Replace a recipe's name, notes, and ingredients. ingredients is a list of {product_id or category, quantity, unit}.",
+        "description": "Replace a recipe's name, notes, and ingredients. ingredients is a list of {product_id or category, quantity, unit}. servings, keeps_days, meal_prep, and protein_g follow upsert_recipe. Omit a field to leave it. null clears servings or protein_g.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1481,6 +1489,10 @@ TOOLS: list[dict[str, Any]] = [
                 "name": {"type": "string"},
                 "notes": {"type": ["string", "null"]},
                 "ingredients": {"type": "array", "items": {"type": "object"}},
+                "servings": {"type": ["integer", "null"]},
+                "keeps_days": {"type": "integer"},
+                "meal_prep": {"type": "boolean"},
+                "protein_g": {"type": ["number", "null"]},
             },
             "required": ["recipe_id", "name"],
             "additionalProperties": False,
@@ -1656,6 +1668,8 @@ TOOLS: list[dict[str, Any]] = [
             "on hand, then the name. An empty pick list returns every recipe, sorted by ingredients on hand. "
             "Each matching_recipes item has exact, picks (the filter-category component ids), and ingredients "
             "with name, category or null, component_id or null, and on_hand. made_before is unchanged. "
+            "Recipe rows include protein_g, meal_prep, keeps_days, and servings. "
+            "An off-hand pick or ingredient includes swaps: on-hand components in the same category that pair with the other picks. "
             "An empty pick list returns every component. on_hand_only hides components that are not on hand. "
             "There is no meal log. Requires pantry:read."
         ),
@@ -1665,6 +1679,50 @@ TOOLS: list[dict[str, Any]] = [
                 "picks": {"type": "array", "items": {"type": "integer"}},
                 "on_hand_only": {"type": "boolean"},
             },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "plan_meal_prep",
+        "description": (
+            "Read-only preview of a make-ahead prep. Pass servings (1 to 30) and either recipe_id or picks "
+            "(component ids). name overrides the lot title. Scales quantities and returns ordered steps: "
+            "what to cook ahead, what to pack raw, layering from sauce on the bottom through base, fibre/side, "
+            "vegetables, protein on top, and garnish, then the hot-water or microwave finish. "
+            "Also returns use_by from keeps_days (default 3), shortages, and swaps for anything not on hand. "
+            "Does not change the pantry. Requires pantry:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "servings": {"type": "integer"},
+                "recipe_id": {"type": "integer"},
+                "picks": {"type": "array", "items": {"type": "integer"}},
+                "name": {"type": "string"},
+            },
+            "required": ["servings"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "log_meal_prep",
+        "description": (
+            "Log a make-ahead prep. Same arguments as plan_meal_prep. Creates a fridge lot named with the "
+            "serving count (for example a recipe called Spicy chicken noodle jar logged for 3 becomes "
+            "Spicy chicken noodle jar x3), unit serving, and use_by from keeps_days (default 3). "
+            "Deducts each linked ingredient from its pantry lots, soonest use-by first. "
+            "Refuses when a product is not linked or there is not enough on hand, and does not leave a negative quantity. "
+            "Requires pantry:write. A token write is refused until Allow MCP updates is on."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "servings": {"type": "integer"},
+                "recipe_id": {"type": "integer"},
+                "picks": {"type": "array", "items": {"type": "integer"}},
+                "name": {"type": "string"},
+            },
+            "required": ["servings"],
             "additionalProperties": False,
         },
     },
@@ -1804,6 +1862,53 @@ def _meal_score(value: Any) -> Any:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > 5:
         raise ValueError("Score must be a whole number from 1 to 5, or empty.")
     return value
+
+
+def _recipe_body(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
+    body = {key: args[key] for key in keys if key in args}
+    if "meal_prep" in body and body["meal_prep"] is not None and not isinstance(body["meal_prep"], bool):
+        raise ValueError("meal_prep must be true or false.")
+    for key, label, lo, hi in (
+        ("servings", "Servings", 1, 30),
+        ("keeps_days", "Keeps days", 1, 30),
+    ):
+        if key not in body or body[key] is None:
+            continue
+        value = body[key]
+        if isinstance(value, bool) or not isinstance(value, int) or value < lo or value > hi:
+            raise ValueError(f"{label} must be a whole number from {lo} to {hi}.")
+    if "protein_g" in body and body["protein_g"] is not None:
+        value = body["protein_g"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0 or value > 999.9:
+            raise ValueError("protein_g must be from 0 to 999.9, or empty.")
+    return body
+
+
+def _prep_body(args: dict[str, Any]) -> dict[str, Any]:
+    unknown = set(args) - {"servings", "recipe_id", "picks", "name"}
+    if unknown:
+        raise ValueError("Meal prep accepts servings, recipe_id, picks, and name.")
+    servings = args.get("servings")
+    if isinstance(servings, bool) or not isinstance(servings, int) or servings < 1 or servings > 30:
+        raise ValueError("Servings must be a whole number from 1 to 30.")
+    body: dict[str, Any] = {"servings": servings}
+    if args.get("recipe_id") not in (None, ""):
+        recipe_id = args["recipe_id"]
+        if isinstance(recipe_id, bool) or not isinstance(recipe_id, int) or recipe_id < 1:
+            raise ValueError("recipe_id must be a recipe id.")
+        body["recipe_id"] = recipe_id
+    picks = args.get("picks") or []
+    if picks:
+        if not isinstance(picks, list) or any(isinstance(pick, bool) or not isinstance(pick, int) or pick < 1 for pick in picks):
+            raise ValueError("picks must be a list of component ids.")
+        body["picks"] = picks
+    if not body.get("recipe_id") and not body.get("picks"):
+        raise ValueError("Pass a recipe_id or picks.")
+    if args.get("name") not in (None, ""):
+        if not isinstance(args["name"], str):
+            raise ValueError("name must be text.")
+        body["name"] = args["name"]
+    return body
 
 
 def _meal_kept(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
@@ -2190,13 +2295,20 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "import_order":
         return "POST", "/api/v1/pantry/import-order", _pick(args, ("store", "order_ref", "purchased_at", "items"))
     if name == "list_recipes":
-        if args:
-            raise ValueError("list_recipes takes no arguments.")
-        return "GET", "/api/v1/pantry/recipes", None
+        unknown = set(args) - {"meal_prep"}
+        if unknown:
+            raise ValueError("list_recipes accepts only meal_prep.")
+        query = {}
+        if "meal_prep" in args and args["meal_prep"] is not None:
+            if not isinstance(args["meal_prep"], bool):
+                raise ValueError("meal_prep must be true or false.")
+            query["meal_prep"] = "1" if args["meal_prep"] else "0"
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/pantry/recipes" + suffix, None
     if name == "upsert_recipe":
-        return "POST", "/api/v1/pantry/recipes", _pick(args, ("recipe_id", "name", "notes", "ingredients"))
+        return "POST", "/api/v1/pantry/recipes", _recipe_body(args, ("recipe_id", "name", "notes", "ingredients", "servings", "keeps_days", "meal_prep", "protein_g"))
     if name == "update_recipe":
-        body = {key: args[key] for key in ("name", "notes", "ingredients") if key in args}
+        body = _recipe_body(args, ("name", "notes", "ingredients", "servings", "keeps_days", "meal_prep", "protein_g"))
         return "POST", f"/api/v1/pantry/recipes/{int(args['recipe_id'])}", body
     if name == "update_pantry_category":
         body = {key: args[key] for key in ("category", "pantry_days", "fridge_days", "freezer_days", "opened_days") if key in args}
@@ -2252,6 +2364,19 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
             query["on_hand_only"] = "1" if args["on_hand_only"] else "0"
         suffix = ("?" + urlencode(query)) if query else ""
         return "GET", "/api/v1/pantry/meals" + suffix, None
+    if name in ("plan_meal_prep", "log_meal_prep"):
+        body = _prep_body(args)
+        if name == "plan_meal_prep":
+            query = {}
+            query["servings"] = body["servings"]
+            if body.get("recipe_id"):
+                query["recipe_id"] = body["recipe_id"]
+            if body.get("picks"):
+                query["picks"] = ",".join(str(pick) for pick in body["picks"])
+            if body.get("name"):
+                query["name"] = body["name"]
+            return "GET", "/api/v1/pantry/meals/prep?" + urlencode(query), None
+        return "POST", "/api/v1/pantry/meals/prep", body
     if name == "deploy_status":
         if args:
             raise ValueError("deploy_status takes no arguments.")

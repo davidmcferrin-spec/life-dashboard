@@ -692,6 +692,13 @@ final class ExtendedApi
             }
             return $this->svc->meals->addMissing($u, $picks, $this->addedBy());
         }, 200, true));
+        $r->get('/api/v1/pantry/meals/prep', fn () => $this->run(
+            fn (int $u) => $this->svc->meals->planPrep($u, $this->prepInput(false))
+        ));
+        $r->post('/api/v1/pantry/meals/prep', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->logPrep($u, $this->prepInput(true), $this->actorLabel());
+        }, 201, true));
         $r->get('/api/v1/pantry/meals', fn () => $this->run(function (int $u): array {
             $picks = self::csv($_GET['picks'] ?? null) ?? [];
             $only = null;
@@ -760,7 +767,17 @@ final class ExtendedApi
             $body = $this->runner->body();
             return ['category' => $this->svc->pantry->updateCategory($u, (string) ($body['category'] ?? ''), $body)];
         }, 200, true));
-        $r->get('/api/v1/pantry/recipes', fn () => $this->run(fn (int $u) => ['recipes' => $this->svc->pantry->listRecipes($u)]));
+        $r->get('/api/v1/pantry/recipes', fn () => $this->run(function (int $u): array {
+            $prep = null;
+            if (array_key_exists('meal_prep', $_GET) && $_GET['meal_prep'] !== '') {
+                $parsed = filter_var($_GET['meal_prep'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($parsed === null) {
+                    throw ValidationException::withFields(['meal_prep' => 'meal_prep must be true or false.']);
+                }
+                $prep = $parsed;
+            }
+            return ['recipes' => $this->svc->pantry->listRecipes($u, $prep)];
+        }));
         $r->post('/api/v1/pantry/recipes', fn () => $this->run(fn (int $u) => [
             'recipe' => $this->svc->pantry->upsertRecipe($u, $this->runner->body()),
         ], 200, true));
@@ -794,6 +811,32 @@ final class ExtendedApi
     private function addedBy(): string
     {
         return $this->runner->actor()->kind === 'ai' ? 'agent' : 'user';
+    }
+
+    /**
+     * @return array{servings: mixed, recipe_id: mixed, picks: list<mixed>, name: mixed}
+     */
+    private function prepInput(bool $fromBody): array
+    {
+        if ($fromBody) {
+            $body = $this->runner->body();
+            $picks = $body['picks'] ?? [];
+            if (!is_array($picks)) {
+                throw ValidationException::withFields(['picks' => 'picks must be a list of component ids.']);
+            }
+            return [
+                'servings' => $body['servings'] ?? null,
+                'recipe_id' => $body['recipe_id'] ?? null,
+                'picks' => array_values($picks),
+                'name' => $body['name'] ?? null,
+            ];
+        }
+        return [
+            'servings' => $_GET['servings'] ?? null,
+            'recipe_id' => $_GET['recipe_id'] ?? null,
+            'picks' => self::csv($_GET['picks'] ?? null) ?? [],
+            'name' => isset($_GET['name']) ? (string) $_GET['name'] : null,
+        ];
     }
 
     /**

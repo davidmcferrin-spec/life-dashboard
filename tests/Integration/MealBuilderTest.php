@@ -277,12 +277,14 @@ final class MealBuilderTest extends PgsqlTestCase
                 'category' => 'aromatic',
                 'component_id' => $onion['id'],
                 'on_hand' => true,
+                'swaps' => [],
             ],
             [
                 'name' => 'Red bell pepper',
                 'category' => 'vegetable',
                 'component_id' => $pepper['id'],
                 'on_hand' => false,
+                'swaps' => [],
             ],
         ], $byId[$italian['id']]['also_uses']);
         self::assertSame([
@@ -291,6 +293,7 @@ final class MealBuilderTest extends PgsqlTestCase
                 'category' => null,
                 'component_id' => null,
                 'on_hand' => false,
+                'swaps' => [],
             ],
         ], $byId[$withSalt['id']]['also_uses']);
 
@@ -381,10 +384,16 @@ final class MealBuilderTest extends PgsqlTestCase
             array_column($board['made_before'], 'name')
         );
         foreach ($board['made_before'] as $row) {
-            self::assertSame(['kind', 'id', 'name', 'url', 'also_uses'], array_keys($row));
+            self::assertSame(
+                ['kind', 'id', 'name', 'url', 'also_uses', 'picks', 'protein_g', 'meal_prep', 'keeps_days'],
+                array_keys($row)
+            );
         }
         $bare = $matching[1];
-        self::assertSame(['kind', 'id', 'name', 'url', 'exact', 'picks', 'ingredients'], array_keys($bare));
+        self::assertSame(
+            ['kind', 'id', 'name', 'url', 'exact', 'picks', 'ingredients', 'protein_g', 'meal_prep', 'keeps_days', 'servings'],
+            array_keys($bare)
+        );
         self::assertSame([$beef['id'], $rice['id']], $bare['picks']);
         self::assertSame('/pantry?view=recipes&recipe=' . $exactBare['id'], $bare['url']);
         self::assertSame('Rice', $bare['ingredients'][1]['name']);
@@ -464,7 +473,263 @@ final class MealBuilderTest extends PgsqlTestCase
         self::assertTrue(MealBuilder::mcpWriteAllowed(true, 9));
         self::assertSame('meal_component', ApiRunner::entityFromPath('/api/v1/pantry/meals/components/4'));
         self::assertSame('recipe', ApiRunner::entityFromPath('/api/v1/pantry/meals/recipe'));
+        self::assertSame('pantry_lot', ApiRunner::entityFromPath('/api/v1/pantry/meals/prep'));
         self::assertSame(4, ApiRunner::entityIdFromPath('/api/v1/pantry/meals/components/4/remove'));
+    }
+
+    public function testPrepScalesARecipeAndOrdersTheJar(): void
+    {
+        $jar = $this->jarKitchen(false);
+        $recipe = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Spicy chicken noodle jar',
+            'meal_prep' => true,
+            'protein_g' => 28.5,
+            'servings' => 1,
+            'ingredients' => [
+                ['product_id' => $jar['chicken_product'], 'quantity' => 4, 'unit' => 'oz'],
+                ['product_id' => $jar['noodle_product'], 'quantity' => 80, 'unit' => 'g'],
+                ['product_id' => $jar['chili_product'], 'quantity' => 2, 'unit' => 'oz'],
+                ['product_id' => $jar['cabbage_product'], 'quantity' => 1, 'unit' => 'each'],
+                ['product_id' => $jar['scallion_product'], 'quantity' => 1, 'unit' => 'each'],
+            ],
+        ]);
+        self::assertSame(3, $recipe['keeps_days']);
+        self::assertTrue($recipe['meal_prep']);
+        self::assertEquals(28.5, $recipe['protein_g']);
+
+        $plan = $this->svc->meals->planPrep($this->user, [
+            'servings' => 3,
+            'recipe_id' => $recipe['id'],
+        ]);
+        self::assertSame('Spicy chicken noodle jar x3', $plan['label']);
+        self::assertSame('2026-09-28', $plan['use_by']);
+        self::assertEquals(28.5, $plan['protein_g']);
+        $byName = [];
+        foreach ($plan['lines'] as $line) {
+            $byName[$line['name']] = $line;
+        }
+        self::assertSame('12', $byName['Chicken']['quantity']);
+        self::assertSame('oz', $byName['Chicken']['unit']);
+        self::assertSame('240', $byName['Noodles']['quantity']);
+        self::assertSame('6', $byName['Chili sauce']['quantity']);
+        self::assertSame('3', $byName['Cabbage']['quantity']);
+        self::assertFalse($byName['Chili sauce']['on_hand']);
+        self::assertContains('Soy sauce', array_column($byName['Chili sauce']['swaps'], 'name'));
+
+        $steps = $plan['steps'];
+        $at = function (string $prefix) use ($steps): int {
+            foreach ($steps as $i => $step) {
+                if (str_starts_with($step, $prefix)) {
+                    return $i;
+                }
+            }
+            self::fail('Missing step ' . $prefix);
+        };
+        self::assertLessThan($at('Pack raw'), $at('Cook ahead'));
+        self::assertStringContainsString('Chicken', $steps[$at('Cook ahead')]);
+        self::assertStringContainsString('Noodles', $steps[$at('Cook ahead')]);
+        self::assertStringContainsString('Chili sauce', $steps[$at('Pack raw')]);
+        self::assertStringContainsString('Cabbage', $steps[$at('Pack raw')]);
+        self::assertLessThan($at('Base'), $at('Sauce on the bottom'));
+        self::assertLessThan($at('Vegetables'), $at('Base'));
+        self::assertLessThan($at('Protein on top'), $at('Vegetables'));
+        self::assertLessThan($at('Garnish'), $at('Protein on top'));
+        self::assertStringContainsString('hot water', $steps[array_key_last($steps)]);
+        self::assertStringContainsString('microwave', $steps[array_key_last($steps)]);
+
+        $combo = $this->svc->meals->planPrep($this->user, [
+            'servings' => 3,
+            'picks' => [$jar['chicken'], $jar['noodles']],
+            'name' => 'Week jars',
+        ]);
+        self::assertSame('Week jars x3', $combo['label']);
+        self::assertSame(3, $combo['keeps_days']);
+        $comboQty = [];
+        foreach ($combo['lines'] as $line) {
+            $comboQty[$line['name']] = $line['quantity'];
+        }
+        self::assertSame('3', $comboQty['Chicken']);
+        self::assertSame('3', $comboQty['Noodles']);
+    }
+
+    public function testLogPrepDeductsSoonestLotsAndShowsUpAsExpiring(): void
+    {
+        $jar = $this->jarKitchen(true);
+        $recipe = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Spicy chicken noodle jar',
+            'meal_prep' => true,
+            'keeps_days' => 3,
+            'ingredients' => [
+                ['product_id' => $jar['chicken_product'], 'quantity' => 4, 'unit' => 'oz'],
+                ['product_id' => $jar['noodle_product'], 'quantity' => 80, 'unit' => 'g'],
+                ['product_id' => $jar['chili_product'], 'quantity' => 2, 'unit' => 'oz'],
+            ],
+        ]);
+        $logged = $this->svc->meals->logPrep($this->user, [
+            'servings' => 3,
+            'recipe_id' => $recipe['id'],
+        ], 'david');
+        $lot = $logged['lot'];
+        self::assertSame('Spicy chicken noodle jar x3', $lot['name']);
+        self::assertSame('fridge', $lot['location']);
+        self::assertSame('serving', $lot['unit']);
+        self::assertEquals(3, $lot['quantity']);
+        self::assertSame('on_hand', $lot['status']);
+        self::assertSame('2026-09-28', $lot['use_by']);
+        self::assertTrue($lot['use_by_overridden']);
+
+        $lots = [];
+        foreach ($this->svc->pantry->listLots($this->user, ['status' => 'any'])['lots'] as $row) {
+            $lots[(int) $row['id']] = $row;
+        }
+        self::assertSame('used', $lots[$jar['chicken_soon']]['status']);
+        self::assertEquals(0, $lots[$jar['chicken_soon']]['quantity']);
+        self::assertSame('on_hand', $lots[$jar['chicken_later']]['status']);
+        self::assertEquals(10, $lots[$jar['chicken_later']]['quantity']);
+        $noodle = null;
+        foreach ($lots as $row) {
+            if ($row['name'] === 'Noodles') {
+                $noodle = $row;
+            }
+        }
+        self::assertNotNull($noodle);
+        self::assertSame('used', $noodle['status']);
+        self::assertEquals(0, $noodle['quantity']);
+
+        $names = array_column($this->svc->pantry->expiring($this->user, 3)['lots'], 'name');
+        self::assertContains('Spicy chicken noodle jar x3', $names);
+        $widget = array_column($this->svc->pantry->summary($this->user, 3)['expiring'], 'name');
+        self::assertContains('Spicy chicken noodle jar x3', $widget);
+    }
+
+    public function testLogPrepRefusesAShortPantryWithoutGoingNegative(): void
+    {
+        $jar = $this->jarKitchen(false);
+        $this->stock($jar['chicken_product'], 1, 'oz', '2026-10-01');
+        $recipe = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Spicy chicken noodle jar',
+            'ingredients' => [
+                ['product_id' => $jar['chicken_product'], 'quantity' => 4, 'unit' => 'oz'],
+                ['product_id' => $jar['noodle_product'], 'quantity' => 1, 'unit' => 'g'],
+            ],
+        ]);
+        try {
+            $this->svc->meals->logPrep($this->user, [
+                'servings' => 3,
+                'recipe_id' => $recipe['id'],
+            ], 'david');
+            self::fail('A short pantry was logged.');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('Not enough Chicken', $e->fields()['quantity']);
+            self::assertStringContainsString('have 1', $e->fields()['quantity']);
+            self::assertStringContainsString('asked 12', $e->fields()['quantity']);
+        }
+        $left = $this->svc->pantry->onHandAmount($this->user, $jar['chicken_product']);
+        self::assertEquals(1, $left['have']);
+        $names = array_column($this->svc->pantry->listLots($this->user, ['status' => 'any'])['lots'], 'name');
+        self::assertNotContains('Spicy chicken noodle jar x3', $names);
+
+        $bare = $this->component('Loose herb', 'aromatic');
+        $open = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Herb jar',
+            'ingredients' => [
+                ['product_id' => $jar['noodle_product'], 'quantity' => 1, 'unit' => 'g'],
+                ['category' => 'Produce'],
+            ],
+        ]);
+        $preview = $this->svc->meals->planPrep($this->user, ['servings' => 1, 'recipe_id' => $open['id']]);
+        self::assertContains('Produce', $preview['unlinked']);
+        try {
+            $this->svc->meals->logPrep($this->user, ['servings' => 1, 'recipe_id' => $open['id']], 'david');
+            self::fail('An unlinked ingredient was logged.');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('Link a pantry product for Produce', $e->fields()['product_id']);
+        }
+        self::assertSame($bare['name'], 'Loose herb');
+    }
+
+    public function testOffHandPickOffersAnOnHandSwapThatPairsWithTheOthers(): void
+    {
+        $jar = $this->jarKitchen(false);
+        $board = $this->svc->meals->suggest($this->user, [$jar['chicken'], $jar['noodles']], false, false);
+        $chicken = null;
+        foreach ($board['picks'] as $pick) {
+            if ($pick['id'] === $jar['chicken']) {
+                $chicken = $pick;
+            }
+        }
+        self::assertNotNull($chicken);
+        self::assertFalse($chicken['on_hand']);
+        self::assertContains('Turkey', array_column($chicken['swaps'], 'name'));
+        self::assertNotContains('Chicken', array_column($chicken['swaps'], 'name'));
+        $sauceNames = $this->names($board['categories']['sauce']);
+        self::assertNotContains('Turkey', $sauceNames);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function jarKitchen(bool $stocked): array
+    {
+        $chicken = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Chicken', 'category' => 'Meat', 'default_unit' => 'oz']);
+        $noodles = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Noodles', 'category' => 'Other', 'default_unit' => 'g']);
+        $chili = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Chili sauce', 'category' => 'Other', 'default_unit' => 'oz']);
+        $soy = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Soy sauce', 'category' => 'Other', 'default_unit' => 'oz']);
+        $cabbage = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Cabbage', 'category' => 'Produce', 'default_unit' => 'each']);
+        $scallion = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Scallion', 'category' => 'Produce', 'default_unit' => 'each']);
+        $turkey = $this->svc->pantry->upsertProduct($this->user, ['name' => 'Turkey', 'category' => 'Meat', 'default_unit' => 'oz']);
+        $ids = [
+            'chicken_product' => (int) $chicken['id'],
+            'noodle_product' => (int) $noodles['id'],
+            'chili_product' => (int) $chili['id'],
+            'soy_product' => (int) $soy['id'],
+            'cabbage_product' => (int) $cabbage['id'],
+            'scallion_product' => (int) $scallion['id'],
+            'turkey_product' => (int) $turkey['id'],
+        ];
+        $ids['chicken'] = $this->component('Chicken', 'protein', $ids['chicken_product'])['id'];
+        $ids['noodles'] = $this->component('Noodles', 'base', $ids['noodle_product'])['id'];
+        $ids['chili'] = $this->component('Chili sauce', 'sauce', $ids['chili_product'])['id'];
+        $ids['soy'] = $this->component('Soy sauce', 'sauce', $ids['soy_product'])['id'];
+        $ids['cabbage'] = $this->component('Cabbage', 'vegetable', $ids['cabbage_product'])['id'];
+        $ids['scallion'] = $this->component('Scallion', 'aromatic', $ids['scallion_product'])['id'];
+        $ids['turkey'] = $this->component('Turkey', 'protein', $ids['turkey_product'])['id'];
+        foreach ([
+            ['chicken', 'noodles'],
+            ['chicken', 'chili'],
+            ['chicken', 'soy'],
+            ['noodles', 'chili'],
+            ['noodles', 'soy'],
+            ['turkey', 'noodles'],
+            ['turkey', 'soy'],
+        ] as [$a, $b]) {
+            $this->pair($ids[$a], $ids[$b], 4);
+        }
+        $this->stock($ids['soy_product'], 8, 'oz', '2026-10-20');
+        $this->stock($ids['turkey_product'], 20, 'oz', '2026-10-20');
+        $this->stock($ids['cabbage_product'], 6, 'each', '2026-10-20');
+        $this->stock($ids['scallion_product'], 6, 'each', '2026-10-20');
+        if ($stocked) {
+            $ids['chicken_soon'] = $this->stock($ids['chicken_product'], 2, 'oz', '2026-09-26');
+            $ids['chicken_later'] = $this->stock($ids['chicken_product'], 20, 'oz', '2026-10-01');
+            $this->stock($ids['noodle_product'], 240, 'g', '2026-10-15');
+            $this->stock($ids['chili_product'], 6, 'oz', '2026-10-15');
+        } else {
+            $this->stock($ids['noodle_product'], 300, 'g', '2026-10-15');
+        }
+        return $ids;
+    }
+
+    private function stock(int $productId, float $quantity, string $unit, string $useBy): int
+    {
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $productId,
+            'quantity' => $quantity,
+            'unit' => $unit,
+            'location' => 'fridge',
+            'use_by' => $useBy,
+        ]], 'david')['lots'][0];
+        return (int) $lot['id'];
     }
 
     /**

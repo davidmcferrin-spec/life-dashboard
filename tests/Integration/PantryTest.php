@@ -619,6 +619,65 @@ final class PantryTest extends PgsqlTestCase
         self::assertSame('lb', $updated['ingredients'][0]['unit']);
         self::assertSame('Produce', $updated['ingredients'][1]['category']);
         self::assertNull($updated['ingredients'][1]['product_id']);
+        self::assertNull($updated['servings']);
+        self::assertSame(3, $updated['keeps_days']);
+        self::assertFalse($updated['meal_prep']);
+        self::assertNull($updated['protein_g']);
+    }
+
+    public function testRecipePrepFieldsFilterAndStayWhenOmitted(): void
+    {
+        $created = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Soup',
+            'meal_prep' => true,
+            'servings' => 2,
+            'keeps_days' => 4,
+            'protein_g' => 18.2,
+            'ingredients' => [],
+        ]);
+        self::assertSame(2, $created['servings']);
+        self::assertSame(4, $created['keeps_days']);
+        self::assertTrue($created['meal_prep']);
+        self::assertEquals(18.2, $created['protein_g']);
+
+        $kept = $this->svc->pantry->upsertRecipe($this->user, [
+            'recipe_id' => $created['id'],
+            'name' => 'Soup',
+            'ingredients' => [],
+        ]);
+        self::assertSame(2, $kept['servings']);
+        self::assertSame(4, $kept['keeps_days']);
+        self::assertTrue($kept['meal_prep']);
+        self::assertEquals(18.2, $kept['protein_g']);
+
+        $cleared = $this->svc->pantry->upsertRecipe($this->user, [
+            'recipe_id' => $created['id'],
+            'name' => 'Soup',
+            'servings' => null,
+            'protein_g' => null,
+            'meal_prep' => false,
+            'ingredients' => [],
+        ]);
+        self::assertNull($cleared['servings']);
+        self::assertNull($cleared['protein_g']);
+        self::assertFalse($cleared['meal_prep']);
+        self::assertSame(4, $cleared['keeps_days']);
+
+        $other = $this->svc->pantry->upsertRecipe($this->user, ['name' => 'Snack', 'ingredients' => []]);
+        $only = $this->svc->pantry->listRecipes($this->user, true);
+        self::assertSame([], array_column($only, 'name'));
+        $this->svc->pantry->upsertRecipe($this->user, [
+            'recipe_id' => $created['id'],
+            'name' => 'Soup',
+            'meal_prep' => true,
+            'ingredients' => [],
+        ]);
+        $prep = array_column($this->svc->pantry->listRecipes($this->user, true), 'name');
+        $rest = array_column($this->svc->pantry->listRecipes($this->user, false), 'name');
+        self::assertSame(['Soup'], $prep);
+        self::assertContains('Snack', $rest);
+        self::assertNotContains('Soup', $rest);
+        self::assertSame($other['name'], 'Snack');
     }
 
     public function testOpenAndResetUseTheEarlierOfOpenedAndLocationLife(): void

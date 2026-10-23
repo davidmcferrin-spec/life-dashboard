@@ -1492,6 +1492,28 @@ html[data-theme="jarvis"] .ld-pantry-nav a.is-on {
     font-size: 0.75rem;
     margin-top: 0.15rem;
 }
+.ld-meal-prep { margin-top: 0.85rem; min-width: 0; }
+.ld-meal-prep,
+.ld-meal-steps,
+.ld-meal-scale,
+.ld-meal-uses { overflow-wrap: anywhere; }
+.ld-meal-steps,
+.ld-meal-scale {
+    font-size: 0.8125rem;
+    margin: 0.45rem 0 0;
+    padding-left: 1.15rem;
+}
+.ld-meal-swaps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin: 0.15rem 0 0.35rem;
+}
+.ld-meal-protein {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+.ld-meal-scale .is-off { color: var(--text-muted); font-style: italic; }
 html[data-theme="jarvis"] .ld-meal-chip.is-on,
 html[data-theme="jarvis"] .ld-meal-mode.is-on {
     box-shadow: 0 0 12px color-mix(in srgb, var(--hud-accent, var(--accent)) 35%, transparent);
@@ -1573,6 +1595,10 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     .ld-meal-actions .btn,
     .ld-meal-actions .btn-primary,
     .ld-meal-actions .input { flex: 1 1 100%; }
+    .ld-meal-prep .ld-meal-actions label,
+    .ld-meal-prep .input,
+    .ld-meal-prep .btn,
+    .ld-meal-prep .btn-primary { flex: 1 1 100%; max-width: 100%; width: 100%; }
 }
 @media (max-width: 959px) {
     .ld-meal-board { grid-template-columns: 1fr; }

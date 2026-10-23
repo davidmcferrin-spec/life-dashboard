@@ -27,6 +27,17 @@ final class MealBuilder
 
     private const MAX_PER_CATEGORY = 2;
 
+    /** Bottom to top. Cook protein and base; pack the rest raw. */
+    private const LAYER = [
+        'sauce' => 'Sauce on the bottom',
+        'base' => 'Base',
+        'side' => 'Fibre and side',
+        'vegetable' => 'Vegetables',
+        'protein' => 'Protein on top',
+        'aromatic' => 'Garnish',
+        'spice' => 'Garnish',
+    ];
+
     public function __construct(
         private readonly Database $db,
         private readonly ShoppingService $shopping,
@@ -308,6 +319,14 @@ SQL;
         foreach ($rows as $row) {
             $public = $this->publicComponent($row);
             $selected = isset($pickSet[$public['id']]);
+            $public['swaps'] = [];
+            if ($selected && !$public['on_hand']) {
+                $others = array_values(array_filter(
+                    $pickIds,
+                    static fn (int $id): bool => $id !== $public['id']
+                ));
+                $public['swaps'] = $this->swapChoices($userId, $public['category'], $public['id'], $pickIds, $others);
+            }
             if ($only && !$public['on_hand'] && !$selected) {
                 continue;
             }
@@ -372,6 +391,463 @@ SQL;
         $listId = $this->groceriesId($userId);
         $addedBy = $by === 'agent' ? 'agent' : 'user';
         return ['added' => $this->shopping->addItems($userId, $listId, $names, $addedBy)];
+    }
+
+    /**
+     * Read-only. Scales a recipe or the current picks and orders the jar steps.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function planPrep(int $userId, array $input): array
+    {
+        $servings = $this->servingCount($input['servings'] ?? null);
+        $recipeId = isset($input['recipe_id']) && $input['recipe_id'] !== '' && $input['recipe_id'] !== null
+            ? $this->intId($input['recipe_id'], 'recipe_id')
+            : 0;
+        $picks = isset($input['picks']) && is_array($input['picks']) ? $this->cleanIds($input['picks']) : [];
+        if ($recipeId === 0 && $picks === []) {
+            throw ValidationException::withFields(['picks' => 'Pick a combo or choose a recipe.']);
+        }
+        if ($recipeId > 0) {
+            $built = $this->linesFromRecipe($userId, $recipeId, $servings);
+        } else {
+            $built = $this->linesFromPicks($userId, $picks, $servings);
+        }
+        $title = isset($input['name']) && trim((string) $input['name']) !== ''
+            ? $this->componentName((string) $input['name'])
+            : $built['title'];
+        $label = $title . ' x' . $servings;
+        if (mb_strlen($label) > 200) {
+            throw ValidationException::withFields(['name' => 'Name must be 200 characters or fewer.']);
+        }
+        $keeps = $built['keeps_days'];
+        [$lines, $shortages, $unlinked] = $this->finishLines($userId, $built['lines'], $built['pick_ids']);
+        return [
+            'title' => $title,
+            'label' => $label,
+            'servings' => $servings,
+            'keeps_days' => $keeps,
+            'use_by' => PantryDates::addDays($this->pantry->localToday(), $keeps),
+            'protein_g' => $built['protein_g'],
+            'meal_prep' => $built['meal_prep'],
+            'recipe_id' => $recipeId > 0 ? $recipeId : null,
+            'lines' => $lines,
+            'steps' => $this->prepSteps($lines),
+            'shortages' => $shortages,
+            'unlinked' => $unlinked,
+        ];
+    }
+
+    /**
+     * Writes one fridge lot and deducts ingredients. A short pantry rolls the whole prep back.
+     *
+     * @param array<string, mixed> $input
+     * @return array{plan: array<string, mixed>, lot: array<string, mixed>}
+     */
+    public function logPrep(int $userId, array $input, string $by): array
+    {
+        $plan = $this->planPrep($userId, $input);
+        if ($plan['unlinked'] !== []) {
+            throw ValidationException::withFields([
+                'product_id' => 'Link a pantry product for ' . $plan['unlinked'][0] . ' before logging this prep.',
+            ]);
+        }
+        if ($plan['shortages'] !== []) {
+            $short = $plan['shortages'][0];
+            throw ValidationException::withFields([
+                'quantity' => 'Not enough ' . $short['name'] . ' on hand (have ' . $short['have'] . ', asked ' . $short['need'] . ').',
+            ]);
+        }
+        return $this->db->transaction(function () use ($userId, $plan, $by): array {
+            foreach ($plan['lines'] as $line) {
+                $this->pantry->consume($userId, [
+                    'product_id' => (int) $line['product_id'],
+                    'quantity' => $line['quantity'],
+                ], $by);
+            }
+            $added = $this->pantry->addItems($userId, [[
+                'name' => $plan['label'],
+                'quantity' => $plan['servings'],
+                'unit' => 'serving',
+                'location' => 'fridge',
+                'category' => 'Other',
+                'use_by' => $plan['use_by'],
+            ]], $by);
+            return ['plan' => $plan, 'lot' => $added['lots'][0]];
+        });
+    }
+
+    /**
+     * @param list<int> $pickIds
+     * @return array{title: string, keeps_days: int, protein_g: ?float, meal_prep: bool, lines: list<array<string, mixed>>, pick_ids: list<int>}
+     */
+    private function linesFromPicks(int $userId, array $pickIds, int $servings): array
+    {
+        $picks = $this->pickedRows($userId, $pickIds);
+        $units = $this->productUnits($userId, array_column($picks, 'product_id'));
+        $lines = [];
+        $names = [];
+        foreach ($picks as $pick) {
+            $productId = $pick['product_id'] !== null ? (int) $pick['product_id'] : null;
+            $unit = $productId !== null ? ($units[$productId] ?? 'each') : 'each';
+            $names[] = (string) $pick['name'];
+            $lines[] = [
+                'name' => (string) $pick['name'],
+                'product_id' => $productId,
+                'component_id' => (int) $pick['id'],
+                'category' => (string) $pick['category'],
+                'quantity' => (float) $servings,
+                'unit' => $unit !== '' ? $unit : 'each',
+            ];
+        }
+        return [
+            'title' => implode(', ', $names),
+            'keeps_days' => 3,
+            'protein_g' => null,
+            'meal_prep' => false,
+            'lines' => $lines,
+            'pick_ids' => $pickIds,
+        ];
+    }
+
+    /**
+     * @return array{title: string, keeps_days: int, protein_g: ?float, meal_prep: bool, lines: list<array<string, mixed>>, pick_ids: list<int>}
+     */
+    private function linesFromRecipe(int $userId, int $recipeId, int $servings): array
+    {
+        $recipe = $this->pantry->recipe($userId, $recipeId);
+        $yield = $recipe['servings'] !== null ? (int) $recipe['servings'] : 1;
+        $factor = $servings / $yield;
+        $components = $this->db->fetchAll(
+            'SELECT id, name, category, product_id FROM meal_components WHERE user_id = ? ORDER BY id',
+            [$userId]
+        );
+        $productIds = [];
+        foreach ($recipe['ingredients'] as $ingredient) {
+            if ($ingredient['product_id'] !== null) {
+                $productIds[] = (int) $ingredient['product_id'];
+            }
+        }
+        $units = $this->productUnits($userId, $productIds);
+        $lines = [];
+        $pickIds = [];
+        foreach ($recipe['ingredients'] as $ingredient) {
+            $matched = $this->componentForIngredient($components, $ingredient);
+            $productId = $ingredient['product_id'] !== null ? (int) $ingredient['product_id'] : null;
+            $base = $ingredient['quantity'] !== null ? (float) $ingredient['quantity'] : 1.0;
+            $qty = round($base * $factor, 3);
+            if ($qty <= 0) {
+                throw ValidationException::withFields([
+                    'quantity' => 'Scaled quantity for ' . $ingredient['label'] . ' must be greater than 0.',
+                ]);
+            }
+            $unit = $ingredient['unit'];
+            if ($unit === null || $unit === '') {
+                $unit = $productId !== null ? ($units[$productId] ?? 'each') : 'each';
+            }
+            if ($matched !== null && in_array((string) $matched['category'], self::FILTER, true)) {
+                $pickIds[] = (int) $matched['id'];
+            }
+            $lines[] = [
+                'name' => (string) $ingredient['label'],
+                'product_id' => $productId,
+                'component_id' => $matched !== null ? (int) $matched['id'] : null,
+                'category' => $matched !== null ? (string) $matched['category'] : null,
+                'quantity' => $qty,
+                'unit' => $unit !== '' ? $unit : 'each',
+            ];
+        }
+        return [
+            'title' => (string) $recipe['name'],
+            'keeps_days' => (int) $recipe['keeps_days'],
+            'protein_g' => $recipe['protein_g'],
+            'meal_prep' => (bool) $recipe['meal_prep'],
+            'lines' => $lines,
+            'pick_ids' => array_values(array_unique($pickIds)),
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $components
+     * @param array<string, mixed> $ingredient
+     * @return array<string, mixed>|null
+     */
+    private function componentForIngredient(array $components, array $ingredient): ?array
+    {
+        $productId = $ingredient['product_id'];
+        $label = $this->nameKey((string) $ingredient['label']);
+        $named = null;
+        foreach ($components as $component) {
+            if ($productId !== null && $component['product_id'] !== null && (int) $component['product_id'] === (int) $productId) {
+                return $component;
+            }
+            if ($named === null && $label !== '' && $this->nameKey((string) $component['name']) === $label) {
+                $named = $component;
+            }
+        }
+        return $named;
+    }
+
+    /**
+     * @param list<mixed> $productIds
+     * @return array<int, string>
+     */
+    private function productUnits(int $userId, array $productIds): array
+    {
+        $ids = [];
+        foreach ($productIds as $id) {
+            if ($id !== null && $id !== '' && (int) $id > 0) {
+                $ids[(int) $id] = (int) $id;
+            }
+        }
+        if ($ids === []) {
+            return [];
+        }
+        $rows = $this->db->fetchAll(
+            'SELECT id, default_unit FROM pantry_products
+             WHERE user_id = ? AND id::text IN (
+                SELECT trim(x) FROM unnest(string_to_array(?, \',\')) AS t(x) WHERE trim(x) <> \'\'
+             )',
+            [$userId, implode(',', $ids)]
+        );
+        $units = [];
+        foreach ($rows as $row) {
+            $unit = $row['default_unit'] !== null ? (string) $row['default_unit'] : '';
+            $units[(int) $row['id']] = $unit !== '' ? $unit : 'each';
+        }
+        return $units;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $lines
+     * @param list<int> $pickIds
+     * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>, 2: list<string>}
+     */
+    private function finishLines(int $userId, array $lines, array $pickIds): array
+    {
+        $need = [];
+        foreach ($lines as $line) {
+            if ($line['product_id'] === null) {
+                continue;
+            }
+            $id = (int) $line['product_id'];
+            $need[$id] = ($need[$id] ?? 0) + (float) $line['quantity'];
+        }
+        $have = [];
+        $names = [];
+        foreach ($need as $id => $ignored) {
+            $amount = $this->pantry->onHandAmount($userId, $id);
+            $have[$id] = $amount['have'];
+            $names[$id] = $amount['name'];
+        }
+        $shortages = [];
+        foreach ($need as $id => $asked) {
+            if ($have[$id] + 0.0005 < $asked) {
+                $shortages[] = [
+                    'product_id' => $id,
+                    'name' => $names[$id],
+                    'have' => $this->trimQty($have[$id]),
+                    'need' => $this->trimQty($asked),
+                ];
+            }
+        }
+        $shortIds = [];
+        foreach ($shortages as $short) {
+            $shortIds[(int) $short['product_id']] = true;
+        }
+        $unlinked = [];
+        foreach ($lines as $i => $line) {
+            $id = $line['product_id'] !== null ? (int) $line['product_id'] : null;
+            $qty = (float) $line['quantity'];
+            $onHand = $id !== null && ($have[$id] ?? 0) > 0.0005;
+            $lines[$i]['quantity'] = $this->trimQty($qty);
+            $lines[$i]['on_hand'] = $onHand;
+            $lines[$i]['have'] = $id !== null ? $this->trimQty($have[$id] ?? 0) : '0';
+            $lines[$i]['need'] = $this->trimQty($qty);
+            $lines[$i]['short'] = $id === null || isset($shortIds[$id]);
+            $lines[$i]['swaps'] = [];
+            if ($id === null) {
+                $unlinked[] = (string) $line['name'];
+            }
+            if (!$onHand && $line['component_id'] !== null && $line['category'] !== null) {
+                $componentId = (int) $line['component_id'];
+                $others = array_values(array_filter(
+                    $pickIds,
+                    static fn (int $pick): bool => $pick !== $componentId
+                ));
+                $lines[$i]['swaps'] = $this->swapChoices($userId, (string) $line['category'], $componentId, $pickIds, $others);
+            }
+        }
+        return [$lines, $shortages, $unlinked];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $lines
+     * @return list<string>
+     */
+    private function prepSteps(array $lines): array
+    {
+        $by = [];
+        $unknown = [];
+        foreach ($lines as $line) {
+            $category = $line['category'];
+            if (!is_string($category) || !isset(self::LAYER[$category])) {
+                $unknown[] = $line;
+                continue;
+            }
+            $by[$category][] = $line;
+        }
+        $steps = [];
+        $cook = [];
+        foreach (['protein', 'base'] as $category) {
+            foreach ($by[$category] ?? [] as $line) {
+                $cook[] = $this->prepBit($line);
+            }
+        }
+        if ($cook !== []) {
+            $steps[] = 'Cook ahead: ' . implode(', ', $cook) . '.';
+        }
+        $raw = [];
+        foreach (['sauce', 'side', 'vegetable', 'aromatic', 'spice'] as $category) {
+            foreach ($by[$category] ?? [] as $line) {
+                $raw[] = $this->prepBit($line);
+            }
+        }
+        if ($raw !== []) {
+            $steps[] = 'Pack raw: ' . implode(', ', $raw) . '.';
+        }
+        foreach (self::LAYER as $category => $label) {
+            if (($by[$category] ?? []) === []) {
+                continue;
+            }
+            $bits = array_map(fn (array $line): string => $this->prepBit($line), $by[$category]);
+            $steps[] = $label . ': ' . implode(', ', $bits) . '.';
+        }
+        if ($unknown !== []) {
+            $bits = array_map(fn (array $line): string => $this->prepBit($line), $unknown);
+            $steps[] = 'Pack last: ' . implode(', ', $bits) . '.';
+        }
+        $steps[] = 'On the day, add hot water or microwave until hot, then stir from the bottom so the sauce coats the jar.';
+        return $steps;
+    }
+
+    /**
+     * @param array<string, mixed> $line
+     */
+    private function prepBit(array $line): string
+    {
+        $unit = trim((string) ($line['unit'] ?? ''));
+        $amount = $unit !== '' ? $line['quantity'] . ' ' . $unit : (string) $line['quantity'];
+        return $line['name'] . ' (' . $amount . ')';
+    }
+
+    /**
+     * On-hand components in the same category that pair with every other pick.
+     *
+     * @param list<int> $excludeIds
+     * @param list<int> $mustPair
+     * @return list<array<string, mixed>>
+     */
+    private function swapChoices(int $userId, string $category, int $excludeId, array $excludeIds, array $mustPair): array
+    {
+        if (!in_array($category, array_merge(self::FILTER, self::SUPPORT), true)) {
+            return [];
+        }
+        $skip = $excludeIds;
+        $skip[] = $excludeId;
+        $rows = $this->db->fetchAll(
+            'SELECT c.id, c.name, c.category, c.product_id
+             FROM meal_components c
+             WHERE c.user_id = ?
+               AND c.category = ?
+               AND c.id <> ?
+               AND NOT (c.id::text IN (
+                   SELECT trim(x) FROM unnest(string_to_array(?, \',\')) AS t(x) WHERE trim(x) <> \'\'
+               ))
+               AND c.product_id IS NOT NULL AND EXISTS (
+                   SELECT 1 FROM pantry_lots l
+                   WHERE l.user_id = c.user_id AND l.product_id = c.product_id AND l.status = \'on_hand\'
+                     AND (l.quantity > 0 OR (l.qty_level IS NOT NULL AND l.qty_level <> \'empty\'))
+               )
+               AND (
+                   SELECT COUNT(*) FROM meal_components pk
+                   WHERE pk.user_id = c.user_id
+                     AND pk.id::text IN (
+                         SELECT trim(x) FROM unnest(string_to_array(?, \',\')) AS u(x) WHERE trim(x) <> \'\'
+                     )
+                     AND NOT EXISTS (
+                         SELECT 1 FROM meal_pairings mp
+                         WHERE mp.user_id = c.user_id
+                           AND mp.component_a = LEAST(c.id, pk.id)
+                           AND mp.component_b = GREATEST(c.id, pk.id)
+                     )
+               ) = 0
+             ORDER BY c.name, c.id',
+            [$userId, $category, $excludeId, implode(',', $skip), implode(',', $mustPair)]
+        );
+        $swaps = [];
+        foreach ($rows as $row) {
+            $swaps[] = [
+                'id' => (int) $row['id'],
+                'name' => (string) $row['name'],
+                'category' => (string) $row['category'],
+                'product_id' => (int) $row['product_id'],
+                'on_hand' => true,
+            ];
+        }
+        return $swaps;
+    }
+
+    /**
+     * @param list<array{name: string, category: ?string, component_id: ?int, on_hand: bool}> $ingredients
+     * @return list<array<string, mixed>>
+     */
+    private function attachSwaps(int $userId, array $ingredients): array
+    {
+        $filterIds = [];
+        foreach ($ingredients as $item) {
+            if ($item['component_id'] !== null && in_array($item['category'], self::FILTER, true)) {
+                $filterIds[$item['component_id']] = $item['component_id'];
+            }
+        }
+        $ids = array_values($filterIds);
+        foreach ($ingredients as $i => $item) {
+            $ingredients[$i]['swaps'] = [];
+            if ($item['on_hand'] || $item['component_id'] === null || $item['category'] === null) {
+                continue;
+            }
+            $others = array_values(array_filter(
+                $ids,
+                static fn (int $id): bool => $id !== $item['component_id']
+            ));
+            $ingredients[$i]['swaps'] = $this->swapChoices(
+                $userId,
+                $item['category'],
+                $item['component_id'],
+                $ids,
+                $others
+            );
+        }
+        return $ingredients;
+    }
+
+    private function servingCount(mixed $value): int
+    {
+        $whole = is_int($value)
+            || (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1)
+            || (is_float($value) && floor($value) === $value);
+        $n = $whole ? (int) $value : 0;
+        if (!$whole || $n < 1 || $n > 30) {
+            throw ValidationException::withFields(['servings' => 'Servings must be a whole number from 1 to 30.']);
+        }
+        return $n;
+    }
+
+    private function trimQty(float $value): string
+    {
+        $text = number_format(round($value, 3), 3, '.', '');
+        return rtrim(rtrim($text, '0'), '.') ?: '0';
     }
 
     /**
@@ -445,7 +921,7 @@ filter_parts AS (
     WHERE c.category IN ('protein', 'base', 'sauce', 'side')
 ),
 hits AS (
-    SELECT r.id, r.name
+    SELECT r.id, r.name, r.servings, r.keeps_days, r.meal_prep, r.protein_g
     FROM pantry_recipes r
     WHERE r.user_id = ?
       AND (
@@ -459,7 +935,7 @@ hits AS (
           )
       )
 )
-SELECT h.id, h.name, ing.ingredients
+SELECT h.id, h.name, h.servings, h.keeps_days, h.meal_prep, h.protein_g, ing.ingredients
 FROM hits h
 LEFT JOIN LATERAL (
     SELECT json_agg(
@@ -490,7 +966,7 @@ SQL,
         $ranked = [];
         foreach ($rows as $row) {
             $id = (int) $row['id'];
-            $ingredients = $this->alsoUses($row['ingredients'] ?? null);
+            $ingredients = $this->attachSwaps($userId, $this->alsoUses($row['ingredients'] ?? null));
             $filterIds = [];
             $seen = [];
             $onHand = 0;
@@ -528,6 +1004,10 @@ SQL,
                 'also_uses' => $uses,
                 'extra' => $extra,
                 'on_hand_count' => $onHand,
+                'servings' => $row['servings'] !== null && $row['servings'] !== '' ? (int) $row['servings'] : null,
+                'keeps_days' => (int) $row['keeps_days'],
+                'meal_prep' => $this->flag($row['meal_prep']),
+                'protein_g' => $row['protein_g'] !== null && $row['protein_g'] !== '' ? (float) $row['protein_g'] : null,
             ];
         }
         $hasPicks = $pickIds !== [];
@@ -559,6 +1039,10 @@ SQL,
                     'name' => $row['name'],
                     'url' => $row['url'],
                     'also_uses' => $row['also_uses'],
+                    'picks' => $row['picks'],
+                    'protein_g' => $row['protein_g'],
+                    'meal_prep' => $row['meal_prep'],
+                    'keeps_days' => $row['keeps_days'],
                 ];
             }
             $matching[] = [
@@ -569,6 +1053,10 @@ SQL,
                 'exact' => $row['exact'],
                 'picks' => $row['picks'],
                 'ingredients' => $row['ingredients'],
+                'protein_g' => $row['protein_g'],
+                'meal_prep' => $row['meal_prep'],
+                'keeps_days' => $row['keeps_days'],
+                'servings' => $row['servings'],
             ];
         }
         usort($made, static function (array $a, array $b): int {
