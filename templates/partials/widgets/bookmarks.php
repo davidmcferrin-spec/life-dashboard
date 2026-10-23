@@ -1,7 +1,44 @@
 <div class="flex items-center justify-between mb-2 dashboard-widget-head">
-    <h2 class="section-title">Bookmarks</h2>
+    <h2 class="section-title ld-legacy-title">
+        <span class="ld-legacy-ico" aria-hidden="true"><?php readfile(__DIR__ . '/../../../public/assets/vendor/lucide/bookmark.svg'); ?></span>
+        Bookmarks
+    </h2>
     <a href="/settings/bookmarks" class="nav-link mono text-xs">Manage</a>
 </div>
+
+<?php
+$showIcons = $showBookmarkIcons ?? true;
+$bmCard = static function (array $bm) use ($showIcons): void {
+    $bmIcon = null;
+    if ($showIcons) {
+        if (!empty($bm['favicon_ext'])) {
+            $bmIcon = '/api/bookmarks/' . (int) $bm['id'] . '/favicon';
+        } elseif (!empty($bm['favicon_url'])) {
+            $bmIcon = (string) $bm['favicon_url'];
+        }
+    }
+    $host = parse_url((string) ($bm['url'] ?? ''), PHP_URL_HOST);
+    ?>
+    <a
+        href="<?= e($bm['url']) ?>"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="ld-bookmark-card"
+        title="<?= e($bm['title']) ?>"
+    >
+        <?php if ($bmIcon !== null): ?>
+            <img src="<?= e($bmIcon) ?>" alt="" loading="lazy">
+        <?php else: ?>
+            <span class="ld-legacy-ico" aria-hidden="true"><?php readfile(__DIR__ . '/../../../public/assets/vendor/lucide/bookmark.svg'); ?></span>
+        <?php endif; ?>
+        <span>
+            <strong><?= e($bm['title']) ?></strong>
+            <?php if (is_string($host) && $host !== ''): ?><small><?= e($host) ?></small><?php endif; ?>
+        </span>
+    </a>
+    <?php
+};
+?>
 
 <?php if (empty($folders) && empty($unfiledBookmarks)): ?>
     <?php
@@ -12,76 +49,32 @@
     require __DIR__ . '/../empty-panel.php';
     ?>
 <?php else: ?>
-
+<div class="ld-bookmark-board ld-card-wipe">
     <?php foreach ($folders as $folder): ?>
-    <div class="mb-2">
+    <div>
         <button
-            class="folder-toggle flex items-center gap-1.5 text-secondary hover:text-primary text-sm font-medium transition-colors w-full text-left"
+            class="folder-toggle"
+            type="button"
             data-folder="folder-<?= (int) $folder['id'] ?>"
         >
-            <span class="folder-arrow text-slate-600 mono text-xs transition-transform">▶</span>
+            <span class="folder-arrow" aria-hidden="true"><?php readfile(__DIR__ . '/../../../public/assets/vendor/lucide/folder-open.svg'); ?></span>
             <span class="truncate"><?= e($folder['name']) ?></span>
-            <span class="text-faint text-xs ml-auto flex-shrink-0"><?= count($folder['bookmarks']) ?></span>
+            <span class="ld-bookmark-count"><?= count($folder['bookmarks']) ?></span>
         </button>
-        <div id="folder-<?= (int) $folder['id'] ?>" class="folder-contents mt-1.5 ml-4 space-y-1 hidden">
+        <div id="folder-<?= (int) $folder['id'] ?>" class="folder-contents ld-bookmark-grid hidden">
             <?php foreach ($folder['bookmarks'] as $bm): ?>
-            <?php
-                $bmIcon = null;
-                if ($showBookmarkIcons ?? true) {
-                    if (!empty($bm['favicon_ext'])) {
-                        $bmIcon = '/api/bookmarks/' . (int) $bm['id'] . '/favicon';
-                    } elseif (!empty($bm['favicon_url'])) {
-                        $bmIcon = (string) $bm['favicon_url'];
-                    }
-                }
-            ?>
-            <a
-                href="<?= e($bm['url']) ?>"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="flex items-center gap-2 text-sm text-muted link truncate"
-                title="<?= e($bm['title']) ?>"
-            >
-                <?php if ($bmIcon !== null): ?>
-                    <img src="<?= e($bmIcon) ?>" alt="" class="w-3.5 h-3.5 flex-shrink-0" loading="lazy">
-                <?php else: ?>
-                    <span class="text-faint flex-shrink-0">›</span>
-                <?php endif; ?>
-                <span class="truncate"><?= e($bm['title']) ?></span>
-            </a>
+                <?php $bmCard($bm); ?>
             <?php endforeach; ?>
         </div>
     </div>
     <?php endforeach; ?>
 
     <?php if (!empty($unfiledBookmarks)): ?>
-    <div class="mt-2 space-y-1">
+    <div class="ld-bookmark-grid">
         <?php foreach ($unfiledBookmarks as $bm): ?>
-        <?php
-            $bmIcon = null;
-            if ($showBookmarkIcons ?? true) {
-                if (!empty($bm['favicon_ext'])) {
-                    $bmIcon = '/api/bookmarks/' . (int) $bm['id'] . '/favicon';
-                } elseif (!empty($bm['favicon_url'])) {
-                    $bmIcon = (string) $bm['favicon_url'];
-                }
-            }
-        ?>
-        <a
-            href="<?= e($bm['url']) ?>"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="flex items-center gap-2 text-sm text-muted link truncate"
-        >
-            <?php if ($bmIcon !== null): ?>
-                <img src="<?= e($bmIcon) ?>" alt="" class="w-3.5 h-3.5 flex-shrink-0" loading="lazy">
-            <?php else: ?>
-                <span class="text-faint flex-shrink-0">›</span>
-            <?php endif; ?>
-            <span class="truncate"><?= e($bm['title']) ?></span>
-        </a>
+            <?php $bmCard($bm); ?>
         <?php endforeach; ?>
     </div>
     <?php endif; ?>
-
+</div>
 <?php endif; ?>

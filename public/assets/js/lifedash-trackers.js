@@ -152,7 +152,7 @@
         if (m.kind === 'habit' && c.goal_metric_id) bits.push(`auto when metric ${c.goal_metric_id} hits ${c.goal_threshold ?? 'its goal'}`);
         if (m.kind === 'scale') bits.push(`${c.min ?? 1}–${c.max ?? 5}`);
         if (m.kind === 'number' && m.unit) bits.push(m.unit);
-        if (m.kind === 'number' && c.goal !== undefined) bits.push(`goal ${c.goal}${c.goal_direction === 'down' ? ' ↓' : c.goal_direction === 'up' ? ' ↑' : ''}`);
+        if (m.kind === 'number' && c.goal !== undefined) bits.push(`goal ${c.goal}${c.goal_direction === 'down' ? ' lower' : c.goal_direction === 'up' ? ' higher' : ''}`);
         if (m.kind === 'duration' && c.goal_seconds) bits.push(`goal ${Math.round(c.goal_seconds / 60)} min`);
         bits.push(`key ${m.key}`);
         if (m.created_by !== 'user') bits.push(`by ${m.created_by}`);
@@ -193,15 +193,15 @@
         const c = m.config || {};
         return `
             <div class="ld-metric-row${m.archived ? ' is-archived' : ''}" data-id="${m.id}">
-                <div class="ld-metric-emoji">${esc(c.emoji || (m.kind === 'habit' ? '✓' : m.kind === 'scale' ? '◐' : m.kind === 'duration' ? '⏱' : '#'))}</div>
+                <div class="ld-metric-emoji">${esc(c.emoji || (m.kind === 'habit' ? 'H' : m.kind === 'scale' ? 'S' : m.kind === 'duration' ? 'D' : 'N'))}</div>
                 <div class="min-w-0">
                     <div class="text-primary text-sm">${esc(m.name)}</div>
                     <div class="text-faint mono text-xs">${esc(describe(m))}</div>
                 </div>
                 <div class="ld-metric-actions">
                     ${m.archived ? '' : `
-                    <button type="button" class="btn text-xs" data-move="-1" ${idx === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
-                    <button type="button" class="btn text-xs" data-move="1" ${idx === group.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+                    <button type="button" class="btn text-xs" data-move="-1" ${idx === 0 ? 'disabled' : ''} aria-label="Move up">Up</button>
+                    <button type="button" class="btn text-xs" data-move="1" ${idx === group.length - 1 ? 'disabled' : ''} aria-label="Move down">Down</button>
                     <button type="button" class="btn text-xs" data-edit-open>Edit</button>`}
                     <button type="button" class="btn text-xs" data-archive="${m.archived ? '0' : '1'}">${m.archived ? 'Restore' : 'Archive'}</button>
                 </div>

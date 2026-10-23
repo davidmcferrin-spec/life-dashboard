@@ -46,7 +46,7 @@ function renderTodoTabs(tabLists, activeId) {
 
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = `todo-widget-tab clip-tab text-xs px-2 py-0.5 rounded mono truncate${isActive ? ' clip-tab-active' : ''}`;
+        btn.className = `todo-widget-tab text-xs px-2 py-0.5 truncate${isActive ? ' is-on' : ''}`;
         btn.setAttribute('role', 'tab');
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
         btn.title = label;
@@ -221,7 +221,7 @@ function widgetItemHtml(item) {
         : 'todo-widget-title text-muted truncate flex-1 min-w-0';
 
     return `
-        <div class="todo-line mono text-sm min-w-0${dueClass}" data-id="${item.id}">
+        <div class="todo-line text-sm min-w-0${dueClass}" data-id="${item.id}">
             <input type="checkbox" class="todo-widget-check flex-shrink-0" data-id="${item.id}" aria-label="Complete task">
             ${flag}
             ${pri}
