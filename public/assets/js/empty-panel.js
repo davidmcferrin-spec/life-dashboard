@@ -22,6 +22,7 @@
             action = '<button ' + (opts.actionAttrs || 'type="button"') + ' class="btn-primary">' + esc(opts.actionLabel) + '</button>';
         }
         return '<div class="empty-panel">'
+            + '<span class="empty-panel-mark" aria-hidden="true"></span>'
             + '<p class="empty-panel-title">' + esc(opts.title || '') + '</p>'
             + '<p class="empty-panel-body">' + esc(opts.body || '') + '</p>'
             + action

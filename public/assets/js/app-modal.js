@@ -148,6 +148,26 @@
         }
     }
 
+    // The times character is not the icon. CSS paints x.svg; this only strips the glyph.
+    function paintClose(btn) {
+        if (!btn || !btn.classList || btn.classList.contains('app-modal-icon')) return;
+        const raw = btn.textContent;
+        const label = raw == null ? '' : String(raw).replace(/\s+/g, '');
+        if (label !== '×' && label !== '✕') return;
+        btn.textContent = '';
+        btn.classList.add('app-modal-icon');
+    }
+
+    function paintCloses(root) {
+        if (!root || root.nodeType !== 1) return;
+        const found = [];
+        if (root.classList && root.classList.contains('app-modal-close')) found.push(root);
+        if (typeof root.querySelectorAll === 'function') {
+            root.querySelectorAll('.app-modal-close').forEach((btn) => found.push(btn));
+        }
+        found.forEach(paintClose);
+    }
+
     const observer = new MutationObserver((records) => {
         const bag = new Set();
         records.forEach((rec) => {
@@ -155,7 +175,10 @@
                 collect(rec.target, bag);
                 return;
             }
-            Array.from(rec.addedNodes || []).forEach((node) => collect(node, bag));
+            Array.from(rec.addedNodes || []).forEach((node) => {
+                collect(node, bag);
+                paintCloses(node);
+            });
             Array.from(rec.removedNodes || []).forEach((node) => collect(node, bag));
         });
         if (!bag.size) return;
@@ -166,6 +189,7 @@
     });
 
     function boot() {
+        if (document.body) paintCloses(document.body);
         observer.observe(document.documentElement, {
             subtree: true,
             childList: true,
@@ -265,10 +289,10 @@
 
             const close = document.createElement('button');
             close.type = 'button';
-            close.className = 'app-modal-close';
+            close.className = 'app-modal-close app-modal-icon';
             close.setAttribute('data-close', '');
             close.setAttribute('aria-label', 'Close');
-            close.textContent = '×';
+            close.textContent = '';
 
             const body = document.createElement('p');
             body.className = 'text-sm mb-4';

@@ -26,9 +26,15 @@
             }, { once: true });
             return;
         }
+        var toneClass = 'toast-danger toast-error';
+        if (tone === 'ok') toneClass = 'toast-ok';
+        else if (tone === 'warn') toneClass = 'toast-warn';
         var item = document.createElement('div');
-        item.className = 'toast ' + (tone === 'ok' ? 'toast-ok' : 'toast-error');
+        item.className = 'toast ' + toneClass;
         item.setAttribute('role', 'status');
+        var icon = document.createElement('span');
+        icon.className = 'toast-icon';
+        icon.setAttribute('aria-hidden', 'true');
         var body = document.createElement('p');
         body.className = 'toast-text';
         body.textContent = text;
@@ -36,7 +42,7 @@
         button.type = 'button';
         button.className = 'toast-dismiss';
         button.setAttribute('aria-label', 'Dismiss');
-        button.textContent = 'Dismiss';
+        item.appendChild(icon);
         item.appendChild(body);
         item.appendChild(button);
         root().appendChild(item);
