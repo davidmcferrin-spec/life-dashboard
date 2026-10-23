@@ -9418,3 +9418,160 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+.music-table tr.is-selected td {
+    background: var(--accent-soft);
+}
+
+.music-table input[type="checkbox"] {
+    accent-color: var(--accent);
+    height: 16px;
+    width: 16px;
+}
+
+.music-genres,
+.music-genre-tags,
+.music-genre-add {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.music-genre-add .input {
+    flex: 1;
+    min-width: 0;
+}
+
+.music-waveform {
+    align-items: flex-end;
+    display: flex;
+    gap: 2px;
+    height: 48px;
+    margin: 12px 0;
+}
+
+.music-waveform i {
+    background: var(--accent);
+    border-radius: 1px;
+    display: block;
+    flex: 1 1 0;
+    min-height: 2px;
+}
+
+.music-waveform-empty,
+.music-appears p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 8px 0;
+}
+
+.music-appears {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.music-appears a {
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    color: var(--text);
+    display: flex;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 10px;
+    text-decoration: none;
+}
+
+.music-appears a span {
+    flex: 1;
+    min-width: 0;
+}
+
+.music-log-head {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.music-log-head div {
+    flex: 1;
+    min-width: 0;
+}
+
+.music-log-head h2 {
+    font-size: 20px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.music-log-head p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 4px 0 0;
+}
+
+.music-log-head .music-badge {
+    flex: 0 0 auto;
+    margin: 0;
+}
+
+.music-badge.is-down {
+    color: var(--danger);
+}
+
+.music-badge.is-down::before {
+    background: var(--danger);
+}
+
+.music-log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.music-log-list article {
+    align-items: start;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 32px 120px minmax(0, 1fr) auto;
+}
+
+.music-log-list h3 {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.music-log-list p,
+.music-log-list time {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 4px 0 0;
+}
+
+.music-log-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.music-log-actions .btn {
+    align-items: center;
+    display: inline-flex;
+    gap: 6px;
+}
+
+@media (max-width: 700px) {
+    .music-log-list article {
+        grid-template-columns: 32px minmax(0, 1fr);
+    }
+
+    .music-log-list time,
+    .music-log-actions {
+        grid-column: 2;
+    }
+}
+

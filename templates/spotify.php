@@ -22,7 +22,8 @@ $musicIconNames = [
     'music-2', 'list-music', 'disc-3', 'wand-sparkles', 'sprout', 'history',
     'shuffle', 'repeat', 'arrow-left-right', 'speaker', 'smartphone', 'monitor',
     'chevron-right', 'chevron-down', 'search', 'x', 'sparkles', 'bot',
-    'layout-dashboard', 'settings',
+    'layout-dashboard', 'settings', 'undo-2', 'eye', 'plus', 'tag',
+    'refresh-cw', 'cloud-sun', 'pencil', 'play',
 ];
 $musicIcon = static function (string $name) use ($musicIconNames): void {
     if (!in_array($name, $musicIconNames, true)) {
@@ -87,6 +88,9 @@ require __DIR__ . '/partials/head.php';
             </header>
             <h2 id="music-drawer-title" class="music-drawer-title"></h2>
             <p id="music-drawer-artist" class="music-muted"></p>
+            <button type="button" class="btn" id="music-drawer-play" hidden><?php $musicIcon('play'); ?> Play</button>
+            <div id="music-waveform" class="music-waveform" hidden></div>
+            <p id="music-waveform-empty" class="music-muted" hidden>No loudness samples stored.</p>
             <form id="music-meta-form" class="music-form">
                 <input type="hidden" name="uri" value="">
                 <label class="music-field">BPM
@@ -115,12 +119,25 @@ require __DIR__ . '/partials/head.php';
                 </label>
                 <button type="submit" class="btn-primary">Save notes</button>
             </form>
+            <form id="music-genre-form" class="music-form">
+                <div class="music-field">Genre
+                    <div id="music-genre-tags" class="music-genre-tags"></div>
+                    <div class="music-genre-add">
+                        <input id="music-genre-input" class="input" maxlength="40" placeholder="Add a genre" autocomplete="off">
+                        <button type="submit" class="btn">Add</button>
+                    </div>
+                </div>
+            </form>
             <form id="music-drawer-add" class="music-form" hidden>
                 <label class="music-field">Add to playlist
                     <select name="playlist_id" class="input"></select>
                 </label>
                 <button type="submit" class="btn">Add track</button>
             </form>
+            <section id="music-appears" class="music-appears" hidden>
+                <p class="music-kicker">Appears in</p>
+                <div id="music-appears-list"></div>
+            </section>
         </aside>
     </div>
     <div id="music-icons" hidden>
