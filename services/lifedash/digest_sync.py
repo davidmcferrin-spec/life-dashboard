@@ -15,7 +15,8 @@ from typing import Any, Callable
 from .config import REPO_ROOT
 from .digest_brief import BRIEF_BUDGET, OllamaAsk, chat_target, plan_briefs
 from .digest_http import FetchResult, UrlRejected, fetch_with_backoff, urllib_transport
-from .digest_parse import content_hash, plan_changes, read_page, snapshot_text
+from .digest_brief import excerpt
+from .digest_parse import content_hash, date_phrases, peel_trailing_date, plan_changes, read_page, snapshot_text, _prefer_date
 
 SEED_FLAG = "defaults_seeded_digest"
 RETENTION_KEY = "digest_snapshot_days"
@@ -38,6 +39,43 @@ def load_seeds() -> list[dict[str, str]]:
         if product and label and url:
             seeds.append({"product": product, "label": label, "url": url})
     return seeds
+
+
+def repair_stored(
+    title: str,
+    published_on: str | None,
+    summary: str,
+    brief: str,
+    brief_kind: str,
+) -> dict[str, str | None] | None:
+    """Pull a glued date out of a stored note and rebuild the brief when it copied that date."""
+    cleaned, found, token = peel_trailing_date(summary)
+    published = _prefer_date(published_on if published_on else None, found)
+    brief_cleaned, brief_found, brief_token = peel_trailing_date(brief)
+    if brief_found:
+        published = _prefer_date(published, brief_found)
+    phrases = [token, brief_token]
+    if found:
+        phrases.extend(date_phrases(found))
+    if brief_found:
+        phrases.extend(date_phrases(brief_found))
+    copied = any(phrase and phrase.casefold() in brief.casefold() for phrase in phrases)
+    new_brief = brief
+    new_kind = brief_kind
+    if copied:
+        new_brief = excerpt(cleaned or brief_cleaned)
+        new_kind = "excerpt" if new_brief else ""
+    same_summary = cleaned == summary
+    same_date = (published or None) == (published_on or None)
+    if same_summary and same_date and new_brief == brief and new_kind == brief_kind:
+        return None
+    return {
+        "summary": cleaned,
+        "published_on": published,
+        "brief": new_brief,
+        "brief_kind": new_kind,
+        "content_hash": content_hash(f"{title}\n{published or ''}\n{cleaned}"),
+    }
 
 
 def run_source(source: dict[str, Any], fetch: Fetch) -> dict[str, Any]:
@@ -125,6 +163,7 @@ class DigestSync:
             self._lock(user_id)
             try:
                 self._seed(user_id)
+                self._repair(user_id)
                 for source_id in self._enabled(user_id):
                     self._check_source(source_id)
                     checked += 1
@@ -137,6 +176,7 @@ class DigestSync:
         self._lock(user_id)
         try:
             self._seed(user_id)
+            self._repair(user_id)
             ids = self._enabled(user_id)
             for source_id in ids:
                 self._check_source(source_id)
@@ -180,6 +220,31 @@ class DigestSync:
             """,
             (user_id, SEED_FLAG),
         )
+
+    def _repair(self, user_id: int) -> None:
+        rows = self.conn.execute(
+            """
+            SELECT id, title, published_on, summary, brief, brief_kind, content_hash
+            FROM digest_entries WHERE user_id = %s
+            """,
+            (user_id,),
+        ).fetchall()
+        for row in rows:
+            published = None if row[2] in (None, "") else str(row[2])[:10]
+            fixed = repair_stored(str(row[1] or ""), published, str(row[3] or ""), str(row[4] or ""), str(row[5] or ""))
+            if fixed is None:
+                continue
+            self.conn.execute(
+                """
+                UPDATE digest_entries
+                SET summary = %s, published_on = %s, brief = %s, brief_kind = %s, content_hash = %s
+                WHERE id = %s AND content_hash = %s
+                """,
+                (
+                    fixed["summary"], fixed["published_on"], fixed["brief"], fixed["brief_kind"], fixed["content_hash"],
+                    int(row[0]), str(row[6]),
+                ),
+            )
 
     def _check_source(self, source_id: int) -> None:
         row = self.conn.execute(

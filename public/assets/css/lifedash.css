@@ -38,10 +38,17 @@
     width: 100%;
 }
 
-/* Cap is set in px from lifedash-grid.js (1600 / 2400 / 3200). */
+/* Same cap as the dashboard grid, for a page that shares the class without the grid script. */
 .ld-grid.ld-cols-capped {
     margin-left: auto;
     margin-right: auto;
+    max-width: 1600px;
+}
+@media (min-width: 1600px) {
+    .ld-grid.ld-cols-capped { max-width: 2400px; }
+}
+@media (min-width: 3440px) {
+    .ld-grid.ld-cols-capped { max-width: 3200px; }
 }
 
 /* -------------------------------------------------------
@@ -1981,6 +1988,7 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
 .ld-digest-item { padding: 0.75rem 0.9rem; }
 .ld-digest-head { align-items: center; display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; }
 .ld-digest-date { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; margin-left: auto; }
+.ld-digest-date.is-found { color: var(--text-muted); font-weight: 400; }
 .ld-digest-title { font-size: 1rem; line-height: 1.35; margin: 0.4rem 0 0.25rem; }
 .ld-digest-title a { color: inherit; }
 .ld-digest-brief { color: var(--text-muted); font-size: 0.92rem; line-height: 1.45; margin: 0; }

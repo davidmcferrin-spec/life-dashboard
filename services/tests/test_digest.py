@@ -3,8 +3,8 @@
 from pathlib import Path
 
 from lifedash.digest_http import FetchResult, UrlRejected, fetch_with_backoff
-from lifedash.digest_parse import content_hash, discover_feed, interpret, parse_feed, parse_html, plan_changes, read_page, snapshot_text, version_of
-from lifedash.digest_sync import load_seeds, run_source
+from lifedash.digest_parse import content_hash, discover_feed, interpret, parse_feed, parse_html, peel_trailing_date, plan_changes, read_page, snapshot_text, version_of
+from lifedash.digest_sync import load_seeds, repair_stored, run_source
 
 FIXTURES = Path(__file__).parent / "fixtures" / "digest"
 
@@ -22,6 +22,8 @@ def test_changelog_headings_keep_dates_and_subsections():
     assert "Command Palette" not in entries[0]["summary"]
     assert entries[0]["title"] == "Harbor Notes 1.2"
     assert entries[0]["url"] == "https://notes.example.com/changelog/harbor-notes"
+    assert entries[1]["published_on"] == "2026-09-18"
+    assert "September 18" not in entries[1]["summary"]
 
 
 def test_version_notes_use_anchors_and_drop_duplicate_dom():
@@ -222,6 +224,68 @@ def test_brief_uses_the_model_once_and_excerpts_when_it_is_down():
     ask = OllamaAsk("http://127.0.0.1:1", "llama3.2:3b", timeout=0.2)
     assert ask("hello") is None
     assert ask.down is True
+
+
+def test_listing_dates_stay_off_the_summary():
+    entries = {entry["title"]: entry for entry in parse_html(_html("listing-dates.html"), "https://notes.example.com/news")}
+    voice = entries["Voice Preview"]
+    assert voice["published_on"] == "2026-10-14"
+    assert "Oct 14" not in voice["summary"]
+    assert "2026" not in voice["summary"]
+    partner = entries["Partner Note"]
+    assert partner["published_on"] == "2026-10-22"
+    assert partner["summary"] == "A short partner line."
+    sample = entries["Open Release of Sample-1"]
+    assert sample["published_on"] == "2024-03-17"
+    assert sample["summary"] == "We are releasing the model Sample-1."
+    assert "Mar 17" not in sample["summary"]
+    smarter = entries["Smarter notes"]
+    assert smarter["published_on"] == "2026-10-14"
+    assert "0.9.0" not in smarter["summary"]
+    assert entries["Mail notes"]["published_on"] == "2026-10-11"
+    later = entries["Later note"]["published_on"]
+    assert later.endswith("-10-02")
+    assert not later.startswith("2023")
+    assert not later.startswith("2024")
+
+
+def test_month_labels_belong_to_the_following_note():
+    entries = parse_html(_html("month-labels.html"), "https://notes.example.com/months")
+    assert [entry["title"] for entry in entries] == ["Voice day", "Quiet day"]
+    assert entries[0]["published_on"].endswith("-10-14")
+    assert "October" not in entries[0]["summary"]
+    assert entries[1]["published_on"].endswith("-10-02")
+    assert entries[1]["summary"] == "Requests continue on October 2, 2026. The line stays."
+
+
+def test_peel_and_repair_keep_the_same_hash():
+    cleaned, found, token = peel_trailing_date("We are releasing the model Grok-1. Mar 17, 2024")
+    assert cleaned == "We are releasing the model Grok-1."
+    assert found == "2024-03-17"
+    assert token == "Mar 17, 2024"
+    kept = "Requests continue on October 2, 2026. The line stays."
+    assert peel_trailing_date(kept) == (kept, None, "")
+    assert peel_trailing_date("Product Oct 12, 2026")[0] == ""
+    fixed = repair_stored(
+        "Open Release of Grok-1",
+        None,
+        "We are releasing the model Grok-1. Mar 17, 2024",
+        "We are releasing the model Grok-1. March 17, 2024",
+        "ollama",
+    )
+    assert fixed is not None
+    assert fixed["summary"] == "We are releasing the model Grok-1."
+    assert fixed["published_on"] == "2024-03-17"
+    assert fixed["brief_kind"] == "excerpt"
+    assert "Mar" not in (fixed["brief"] or "")
+    assert fixed["content_hash"] == "02cffed9d1a3f454f1234d663139f42ec7bdf13a2fa9e1cdef58794b28b82aba"
+    assert repair_stored(
+        "Open Release of Grok-1",
+        "2024-03-17",
+        "We are releasing the model Grok-1.",
+        fixed["brief"] or "",
+        "excerpt",
+    ) is None
 
 
 def test_seed_list_uses_the_resolved_docs_url():
