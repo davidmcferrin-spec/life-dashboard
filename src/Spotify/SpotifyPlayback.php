@@ -33,15 +33,31 @@ final class SpotifyPlayback
                 throw ValidationException::withFields(['type' => 'type must be track, artist, or album.']);
             }
         }
-        $data = $this->account->call($userId, fn (string $token): array => $this->http->api('GET', '/search', $token, null, [
-            'q' => $q,
-            'type' => implode(',', $types),
-            'limit' => 20,
-        ]));
+        $data = $this->account->call($userId, fn (string $token): array => $this->http->api(
+            'GET',
+            '/search',
+            $token,
+            null,
+            self::searchParams($q, implode(',', $types)),
+        ));
         return [
             'tracks' => self::tracks($data['tracks']['items'] ?? []),
             'artists' => self::artists($data['artists']['items'] ?? []),
             'albums' => self::albums($data['albums']['items'] ?? []),
+        ];
+    }
+
+    /**
+     * Spotify search answers 400 Invalid limit when limit is above 10.
+     *
+     * @return array{q: string, type: string, limit: int}
+     */
+    public static function searchParams(string $q, string $type): array
+    {
+        return [
+            'q' => $q,
+            'type' => $type,
+            'limit' => 10,
         ];
     }
 
@@ -128,6 +144,54 @@ final class SpotifyPlayback
                 : null,
             'queue' => self::tracks($data['queue'] ?? []),
         ];
+    }
+
+    /**
+     * Save or remove Liked Songs. ids are Spotify track ids, at most 50.
+     *
+     * @param list<string> $ids
+     * @return array{ids: list<string>, tracks: list<array<string, mixed>>}
+     */
+    public function library(int $userId, array $ids, bool $save): array
+    {
+        $ids = self::libraryIds($ids);
+        $tracks = $this->account->call($userId, function (string $token) use ($ids, $save): array {
+            $this->http->api($save ? 'PUT' : 'DELETE', '/me/tracks', $token, ['ids' => $ids]);
+            if (!$save) {
+                return [];
+            }
+            $data = $this->http->api('GET', '/tracks', $token, null, ['ids' => implode(',', $ids)]);
+            return self::tracks($data['tracks'] ?? []);
+        });
+        return ['ids' => $ids, 'tracks' => $tracks];
+    }
+
+    /**
+     * @param list<string>|mixed $raw
+     * @return list<string>
+     */
+    public static function libraryIds(mixed $raw): array
+    {
+        if (!is_array($raw) || $raw === []) {
+            throw ValidationException::withFields(['uris' => 'Send at least one track.']);
+        }
+        if (count($raw) > 50) {
+            throw ValidationException::withFields(['uris' => 'At most 50 tracks at once.']);
+        }
+        $ids = [];
+        foreach ($raw as $value) {
+            $value = trim((string) $value);
+            if (preg_match('/^spotify:track:([A-Za-z0-9]+)$/', $value, $m) === 1) {
+                $ids[] = $m[1];
+                continue;
+            }
+            if (preg_match('/^[A-Za-z0-9]+$/', $value) === 1) {
+                $ids[] = $value;
+                continue;
+            }
+            throw ValidationException::withFields(['uris' => 'Each track must be a spotify:track URI.']);
+        }
+        return array_values(array_unique($ids));
     }
 
     /**

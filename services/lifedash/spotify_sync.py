@@ -546,6 +546,10 @@ class Worker:
             self._set_change(first, "pushed", None)
             return "created"
         if is_playlist_delete(requests[0]["method"], requests[0]["path"]):
+            self.conn.execute(
+                "UPDATE spotify_prompts SET target_playlist_id = NULL WHERE user_id = %s AND target_playlist_id = %s",
+                (user_id, playlist_id),
+            )
             self.conn.execute("DELETE FROM spotify_playlists WHERE id = %s", (playlist_id,))
             return "stop"
         self._set_change(first, "pushed", None)

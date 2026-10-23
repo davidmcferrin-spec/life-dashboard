@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\DB\Database;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Router\Router;
 use Dashboard\Spotify\SpotifyAccess;
@@ -94,6 +95,17 @@ final class SpotifyApi
         $r->post('/api/v1/spotify/playlists/{id}/discard', fn (array $p) => $this->run(fn (int $u) => [
             'discarded' => $this->svc()->library()->discard($u, $this->id($p)),
         ], 200, true));
+        $r->post('/api/v1/spotify/playlists/{id}/delete', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->deletePlaylist($u, $this->id($p), $this->by()), 200, true));
+        $r->post('/api/v1/spotify/saved/remove', fn () => $this->run(function (int $u): array {
+            $changed = $this->svc()->playback()->library($u, $this->trackList(), false);
+            $this->svc()->library()->forgetSaved($u, $changed['ids']);
+            return ['removed' => $changed['ids']];
+        }, 200, true));
+        $r->post('/api/v1/spotify/saved', fn () => $this->run(function (int $u): array {
+            $changed = $this->svc()->playback()->library($u, $this->trackList(), true);
+            $this->svc()->library()->rememberSaved($u, $changed['tracks']);
+            return ['saved' => $changed['ids']];
+        }, 200, true));
         $r->post('/api/v1/spotify/push', fn () => $this->run(function (int $u): array {
             $playlistId = $this->playlistId();
             if ($playlistId !== null) {
@@ -150,7 +162,9 @@ final class SpotifyApi
     {
         $this->runner->run(function (int $userId) use ($fn, $mutating): array {
             if ($mutating) {
-                $enabled = (new DeployService())->mcpUpdatesEnabled();
+                // A DeployService with no database reports the switch as off.
+                // deploy_status reads server_flags through the app database.
+                $enabled = (new DeployService(Database::getInstance()))->mcpUpdatesEnabled();
                 SpotifyAccess::assertChange($this->runner->tokenId(), $enabled);
             }
             try {
@@ -186,6 +200,16 @@ final class SpotifyApi
             return null;
         }
         return trim($value);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function trackList(): array
+    {
+        $body = $this->runner->body();
+        $raw = $body['uris'] ?? $body['ids'] ?? null;
+        return is_array($raw) ? array_values($raw) : [];
     }
 
     private function playlistId(): ?int

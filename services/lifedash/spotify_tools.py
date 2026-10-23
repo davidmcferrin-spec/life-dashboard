@@ -209,8 +209,13 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
         ["profile"],
     ),
     _tool(
+        "get_queue",
+        "The current track and the upcoming queue. Requires spotify:read.",
+    ),
+    _tool(
         "play",
-        "Start playback of a context URI, track URIs, or a synced playlist id. " + PLAYBACK,
+        "Start playback of a context URI, track URIs, or a synced playlist id. "
+        "Omit those to resume on the active device. device_id chooses a Connect device. " + PLAYBACK,
         {
             "context_uri": {"type": "string"},
             "uris": {"type": "array", "items": {"type": "string"}},
@@ -218,6 +223,11 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
             "device_id": {"type": "string"},
             "offset": {"type": "integer"},
         },
+    ),
+    _tool(
+        "resume",
+        "Resume playback on the active device, or on device_id. Same as play with no tracks. " + PLAYBACK,
+        {"device_id": {"type": "string"}},
     ),
     _tool("pause", "Pause playback. " + PLAYBACK, {"device_id": {"type": "string"}}),
     _tool("next", "Skip to the next track. " + PLAYBACK, {"device_id": {"type": "string"}}),
@@ -257,6 +267,31 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
         "Move playback to a Spotify Connect device. Omit play to keep the current playback state. " + PLAYBACK,
         {"device_id": {"type": "string"}, "play": {"type": "boolean"}},
         ["device_id"],
+    ),
+    _tool(
+        "save_tracks",
+        "Save tracks to Liked Songs. At most 50. Reconnect Spotify if the grant has no user-library-modify. " + WRITE,
+        {"uris": {"type": "array", "items": {"type": "string"}}},
+        ["uris"],
+    ),
+    _tool(
+        "remove_saved_tracks",
+        "Remove tracks from Liked Songs. At most 50. " + WRITE,
+        {"uris": {"type": "array", "items": {"type": "string"}}},
+        ["uris"],
+    ),
+    _tool(
+        "delete_spotify_playlist",
+        "Unfollow and delete an owned playlist. A draft that is not on Spotify yet is removed now. "
+        "A playlist on Spotify is staged until push. Refused when you do not own it. " + WRITE,
+        {"playlist_id": {"type": "integer"}},
+        ["playlist_id"],
+    ),
+    _tool(
+        "set_player_enabled",
+        "Show or hide the floating player. " + WRITE,
+        {"enabled": {"type": "boolean"}},
+        ["enabled"],
     ),
 ]
 
@@ -301,6 +336,9 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "get_now_playing":
         _empty(name, args)
         return "GET", "/api/v1/spotify/player", None
+    if name == "get_queue":
+        _empty(name, args)
+        return "GET", "/api/v1/spotify/queue", None
     if name in {"list_spotify_devices", "list_devices"}:
         _empty(name, args)
         return "GET", "/api/v1/spotify/devices", None
@@ -367,6 +405,9 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "play":
         _unknown(name, args, {"context_uri", "uris", "playlist_id", "device_id", "offset"})
         return "POST", "/api/v1/spotify/playback/play", _pick(args, ("context_uri", "uris", "playlist_id", "device_id", "offset"))
+    if name == "resume":
+        _unknown(name, args, {"device_id"})
+        return "POST", "/api/v1/spotify/playback/play", _pick(args, ("device_id",))
     if name in {"pause", "next", "previous"}:
         _unknown(name, args, {"device_id"})
         return "POST", f"/api/v1/spotify/playback/{name}", _pick(args, ("device_id",))
@@ -402,6 +443,17 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
         if not isinstance(device, str) or not device:
             raise ValueError("device_id is required.")
         return "POST", "/api/v1/spotify/playback/transfer", _pick(args, ("device_id", "play"))
+    if name in {"save_tracks", "remove_saved_tracks"}:
+        _unknown(name, args, {"uris"})
+        path = "/api/v1/spotify/saved" if name == "save_tracks" else "/api/v1/spotify/saved/remove"
+        return "POST", path, {"uris": _uri_list(args)}
+    if name == "delete_spotify_playlist":
+        return "POST", f"/api/v1/spotify/playlists/{_id(args, 'playlist_id')}/delete", {}
+    if name == "set_player_enabled":
+        _unknown(name, args, {"enabled"})
+        if not isinstance(args.get("enabled"), bool):
+            raise ValueError("enabled must be true or false.")
+        return "POST", "/api/v1/spotify/player", {"enabled": args["enabled"]}
     return None
 
 
