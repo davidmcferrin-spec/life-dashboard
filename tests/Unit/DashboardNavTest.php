@@ -130,41 +130,51 @@ final class DashboardNavTest extends TestCase
         self::assertDoesNotMatchRegularExpression('/href="\/systems"/', $html);
     }
 
-    public function testOverviewHeroSitsInsideTheWidgetGrid(): void
+    public function testSearchStaysFixedAboveTheWidgetGrid(): void
     {
         $html = file_get_contents(VIEWS_DIR . '/dashboard.php');
         self::assertIsString($html);
-        $gridAt = strpos($html, 'id="ld-grid"');
-        $heroAt = strpos($html, 'data-hero="search"');
+        $searchAt = strpos($html, 'class="ld-search-row"');
         $formAt = strpos($html, 'id="search-form"');
+        $gridAt = strpos($html, 'id="ld-grid"');
         $endAt = strpos($html, 'id="ld-initial"');
-        self::assertNotFalse($gridAt);
-        self::assertNotFalse($heroAt);
+        self::assertNotFalse($searchAt);
         self::assertNotFalse($formAt);
+        self::assertNotFalse($gridAt);
         self::assertNotFalse($endAt);
-        self::assertGreaterThan($gridAt, $heroAt);
-        self::assertGreaterThan($heroAt, $formAt);
-        self::assertGreaterThan($formAt, $endAt);
-        foreach (['vitals', 'agenda', 'act-digest', 'act-pings', 'act-life'] as $hero) {
-            $at = strpos($html, 'data-hero="' . $hero . '"');
-            self::assertNotFalse($at);
-            self::assertGreaterThan($gridAt, $at);
-            self::assertGreaterThan($at, $endAt);
-        }
+        self::assertGreaterThan($searchAt, $formAt);
+        self::assertGreaterThan($formAt, $gridAt);
+        self::assertGreaterThan($gridAt, $endAt);
+        $searchRow = substr($html, $searchAt, $gridAt - $searchAt);
+        self::assertStringContainsString('ld-search-box', $searchRow);
+        self::assertStringContainsString('search-engine-btn', $searchRow);
+        self::assertStringContainsString('How can I assist you?', $searchRow);
+        self::assertStringNotContainsString('grid-stack-item', $searchRow);
+        self::assertStringNotContainsString('data-widget-id', $searchRow);
+        self::assertStringNotContainsString('data-action="remove"', $searchRow);
+        self::assertStringNotContainsString('gs-no-move', $searchRow);
+        self::assertStringNotContainsString('data-hero', $html);
         self::assertStringNotContainsString('ov-layout', $html);
-        self::assertStringContainsString('gs-no-move="true"', $html);
-        self::assertStringContainsString('gs-no-resize="true"', $html);
-        self::assertStringContainsString('How can I assist you?', $html);
 
         $css = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
         self::assertIsString($css);
         self::assertStringNotContainsString('minmax(0, 1fr) 320px', $css);
-        self::assertStringContainsString('.ld-hero-item', $css);
+        self::assertMatchesRegularExpression(
+            '/#search-form\.ov-composer\.ld-search-box\s*\{[^}]*margin-left:\s*auto;[^}]*margin-right:\s*auto;[^}]*max-width:\s*42rem;/s',
+            $css
+        );
+        self::assertMatchesRegularExpression(
+            '/\.ld-search-row\s*\{[^}]*width:\s*100%;/s',
+            $css
+        );
 
         $js = file_get_contents(ROOT_DIR . '/public/assets/js/lifedash-grid.js');
         self::assertIsString($js);
-        self::assertStringContainsString('function heroPlan', $js);
-        self::assertStringContainsString('function storedY', $js);
+        self::assertStringNotContainsString('function heroPlan', $js);
+        self::assertStringNotContainsString('function storedY', $js);
+        self::assertStringNotContainsString('heroOffset', $js);
+        self::assertStringContainsString('function fillWidth', $js);
         self::assertStringContainsString('editBtn.disabled = phone', $js);
+        self::assertStringContainsString('The search box sits above this grid. It is not a widget.', $js);
     }
 }

@@ -46,6 +46,7 @@ final class WidgetDataService
         private readonly ShoppingService $shopping,
         private readonly CallService $calls,
         private readonly PantryService $pantry,
+        private readonly \Dashboard\DB\Database $db,
     ) {}
 
     /**
@@ -69,6 +70,12 @@ final class WidgetDataService
             'shopping'  => $this->shoppingData($userId, $c),
             'pantry'    => $this->pantry->summary($userId, (int) ($c['soon_days'] ?? 3)),
             'digest'    => \Dashboard\Digest\DigestService::fromDatabase()->card($userId),
+            'vitals'    => $this->overviewCard($userId, 'vitals'),
+            'agenda'    => $this->overviewCard($userId, 'agenda'),
+            'quick_actions' => [
+                'metric_ids' => [],
+                'actions'    => OverviewCards::actions(),
+            ],
             'calls'     => $this->callsData($userId, $c),
             'spending'  => $this->spendingData($userId, $c),
             'networth'       => $this->networthData($userId),
@@ -93,9 +100,18 @@ final class WidgetDataService
     }
 
     /**
-     * @param array<string, mixed> $config
      * @return array<string, mixed>
      */
+    private function overviewCard(int $userId, string $which): array
+    {
+        $board = (new OverviewCards($this->db, $this->habits, $this->metrics, $this->points, $this->clock))->board($userId);
+        return [
+            'metric_ids' => [],
+            'note'       => $board['note'],
+            'items'      => $which === 'agenda' ? $board['agenda'] : $board['vitals'],
+        ];
+    }
+
     private function callsData(int $userId, array $config): array
     {
         return $this->calls->board($userId, (int) ($config['limit'] ?? 16));

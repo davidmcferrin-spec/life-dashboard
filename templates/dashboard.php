@@ -41,6 +41,7 @@ $starfieldPref  = $prefService->getStarfield($userId);
 $lifedash = Services::fromDatabase($db);
 $lifedash->widgets->ensureSeeded($userId);
 $lifedash->widgets->ensureCompactRow($userId);
+$lifedash->widgets->ensureOverviewWidgets($userId);
 $widgets     = $lifedash->widgets->list($userId);
 $wideLayouts = $lifedash->widgets->breakpointLayouts($userId);
 $onBoard  = array_fill_keys(array_column($widgets, 'type'), true);
@@ -78,247 +79,6 @@ $timezones = [
     ['label' => 'PT', 'tz' => 'America/Los_Angeles'],
 ];
 
-// Stored rows only. Do not seed defaults, and do not turn a missing reading into a score.
-$overviewNote = null;
-$vitals = [];
-$agenda = [];
-$overviewMeter = static function (float $n): string {
-    $text = rtrim(rtrim(sprintf('%.2f', $n), '0'), '.');
-    return $text === '' || $text === '-' ? '0' : $text;
-};
-try {
-    $today = $lifedash->clock->today();
-    $tomorrow = \Dashboard\Support\Clock::shiftDate($today, -1);
-    $tz = $lifedash->clock->timezone();
-    $formatNum = static function (float $value, int $decimals): string {
-        return number_format($value, $decimals, '.', ',');
-    };
-    $formatDur = static function (float $seconds): string {
-        $s = max(0, (int) round($seconds));
-        if ($s < 60) {
-            return $s . 's';
-        }
-        $minutes = intdiv($s, 60);
-        if ($minutes < 60) {
-            return $minutes . 'm';
-        }
-        $hours = intdiv($minutes, 60);
-        $rem = $minutes % 60;
-        return $rem === 0 ? $hours . 'h' : $hours . 'h ' . $rem . 'm';
-    };
-    $bar = static function (float $now, float $span): int {
-        if ($span <= 0) {
-            return 0;
-        }
-        return (int) max(0, min(100, round(($now / $span) * 100)));
-    };
-
-    $habitSummary = $lifedash->habits->summary($userId, null, 1);
-    $habitRows = $habitSummary['habits'] ?? [];
-    if (is_array($habitRows) && $habitRows !== []) {
-        $habitTotal = count($habitRows);
-        $habitDone = 0;
-        foreach ($habitRows as $habit) {
-            if (!empty($habit['done_today'])) {
-                $habitDone++;
-            }
-        }
-        $vitals[] = [
-            'label'  => 'Habits',
-            'detail' => $habitDone . ' of ' . $habitTotal . ' today',
-            'meter'  => ['min' => 0, 'max' => $habitTotal, 'now' => $habitDone, 'pct' => $bar((float) $habitDone, (float) $habitTotal)],
-        ];
-    }
-
-    $pingRows = $db->fetchAll(
-        'SELECT is_up FROM user_ping_targets WHERE user_id = ? AND is_active = 1',
-        [$userId]
-    );
-    if ($pingRows !== []) {
-        $pingUp = 0;
-        $pingChecked = 0;
-        foreach ($pingRows as $ping) {
-            if ($ping['is_up'] === null) {
-                continue;
-            }
-            $pingChecked++;
-            if ((int) $ping['is_up'] === 1) {
-                $pingUp++;
-            }
-        }
-        $vitals[] = [
-            'label'  => 'Pings',
-            'detail' => $pingChecked === 0 ? 'Not checked' : $pingUp . ' of ' . $pingChecked . ' up',
-            'meter'  => $pingChecked === 0 ? null : ['min' => 0, 'max' => $pingChecked, 'now' => $pingUp, 'pct' => $bar((float) $pingUp, (float) $pingChecked)],
-        ];
-    }
-
-    foreach ($lifedash->metrics->list($userId) as $metric) {
-        if (count($vitals) >= 4) {
-            break;
-        }
-        $kind = (string) $metric['kind'];
-        if ($kind === 'habit') {
-            continue;
-        }
-        $config = is_array($metric['config']) ? $metric['config'] : [];
-        try {
-            $points = $lifedash->points->list($userId, (int) $metric['id'], $today, $today, 1);
-        } catch (\Throwable) {
-            continue;
-        }
-        $latest = $points[0] ?? null;
-        if ($latest === null) {
-            continue;
-        }
-        $value = (float) $latest['value'];
-        $name = (string) $metric['name'];
-        if ($kind === 'scale') {
-            $min = isset($config['min']) ? (int) $config['min'] : 1;
-            $max = isset($config['max']) ? (int) $config['max'] : 5;
-            if ($max <= $min) {
-                continue;
-            }
-            $vitals[] = [
-                'label'  => $name,
-                'detail' => $formatNum($value, 0) . ' / ' . $max,
-                'meter'  => ['min' => $min, 'max' => $max, 'now' => $value, 'pct' => $bar($value - $min, (float) ($max - $min))],
-            ];
-            continue;
-        }
-        if ($kind === 'number') {
-            $direction = (string) ($config['goal_direction'] ?? 'up');
-            if ($direction === 'down' || !isset($config['goal']) || !is_numeric($config['goal']) || (float) $config['goal'] <= 0) {
-                continue;
-            }
-            $goal = (float) $config['goal'];
-            $decimals = isset($config['decimals']) && is_numeric($config['decimals'])
-                ? max(0, min(4, (int) $config['decimals']))
-                : (abs($value - round($value)) < 0.001 ? 0 : 1);
-            $unit = is_string($metric['unit'] ?? null) ? trim((string) $metric['unit']) : '';
-            $detail = $formatNum($value, $decimals) . ' of ' . $formatNum($goal, $decimals);
-            if ($unit !== '') {
-                $detail .= ' ' . $unit;
-            }
-            $vitals[] = [
-                'label'  => $name,
-                'detail' => $detail,
-                'meter'  => ['min' => 0, 'max' => max($goal, $value), 'now' => $value, 'pct' => $bar($value, $goal)],
-            ];
-            continue;
-        }
-        if ($kind === 'duration' && isset($config['goal_seconds']) && is_numeric($config['goal_seconds']) && (int) $config['goal_seconds'] > 0) {
-            $goalSeconds = (int) $config['goal_seconds'];
-            $vitals[] = [
-                'label'  => $name,
-                'detail' => $formatDur($value) . ' of ' . $formatDur((float) $goalSeconds),
-                'meter'  => ['min' => 0, 'max' => max($goalSeconds, $value), 'now' => $value, 'pct' => $bar($value, (float) $goalSeconds)],
-            ];
-        }
-    }
-    $vitals = array_slice($vitals, 0, 4);
-
-    $todoRows = $db->fetchAll(
-        'SELECT i.id, i.title, i.due_date
-         FROM user_todo_items i
-         JOIN user_todo_lists l ON l.id = i.list_id
-         WHERE i.status = \'open\'
-           AND i.due_date IS NOT NULL
-           AND i.due_date <= ?
-           AND (
-                l.user_id = ?
-                OR i.assigned_to_user_id = ?
-                OR EXISTS (
-                    SELECT 1 FROM todo_list_user_shares s
-                    WHERE s.list_id = l.id AND s.shared_with_user_id = ?
-                )
-           )
-         ORDER BY i.due_date ASC, i.id ASC
-         LIMIT 8',
-        [$today, $userId, $userId, $userId]
-    );
-    foreach ($todoRows as $todo) {
-        $dueDay = substr((string) $todo['due_date'], 0, 10);
-        $dueDt = \DateTimeImmutable::createFromFormat('!Y-m-d', $dueDay);
-        if ($dueDt === false) {
-            continue;
-        }
-        $timeLabel = $dueDay === $today
-            ? 'Today'
-            : ($dueDt->format('Y') === substr($today, 0, 4) ? $dueDt->format('M j') : $dueDt->format('M j, Y'));
-        $agenda[] = [
-            'sort'     => ($dueDay === $today ? '0 ' : '1 ') . $dueDay . ' 00:00:00',
-            'time'     => $timeLabel,
-            'datetime' => $dueDay,
-            'title'    => (string) $todo['title'],
-            'href'     => '/todos',
-        ];
-    }
-
-    $flightRows = $db->fetchAll(
-        'SELECT ident, departure_at, origin_display, dest_display, origin_icao, dest_icao
-         FROM user_flight_watches
-         WHERE user_id = ? AND is_active = 1 AND is_complete = 0
-           AND departure_at >= ? AND departure_at < ?
-         ORDER BY departure_at ASC
-         LIMIT 8',
-        [$userId, $today . ' 00:00:00', $tomorrow . ' 00:00:00']
-    );
-    foreach ($flightRows as $flight) {
-        $parsed = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', substr((string) $flight['departure_at'], 0, 19), $tz);
-        if ($parsed === false) {
-            continue;
-        }
-        $origin = trim((string) ($flight['origin_display'] ?: $flight['origin_icao'] ?: ''));
-        $dest = trim((string) ($flight['dest_display'] ?: $flight['dest_icao'] ?: ''));
-        $title = (string) $flight['ident'];
-        if ($origin !== '' && $dest !== '') {
-            $title .= ' ' . $origin . '–' . $dest;
-        }
-        $agenda[] = [
-            'sort'     => '0 ' . $parsed->format('Y-m-d H:i:s'),
-            'time'     => $parsed->format('g:i A'),
-            'datetime' => $parsed->format('Y-m-d\TH:i:s'),
-            'title'    => $title,
-            'href'     => '/settings/flights',
-        ];
-    }
-
-    $packageRows = $db->fetchAll(
-        'SELECT label, status_label, estimated_delivery_at
-         FROM user_package_watches
-         WHERE user_id = ? AND is_active = 1 AND is_complete = 0
-           AND estimated_delivery_at IS NOT NULL
-           AND estimated_delivery_at >= ? AND estimated_delivery_at < ?
-         ORDER BY estimated_delivery_at ASC
-         LIMIT 8',
-        [$userId, $today . ' 00:00:00', $tomorrow . ' 00:00:00']
-    );
-    foreach ($packageRows as $package) {
-        $parsed = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', substr((string) $package['estimated_delivery_at'], 0, 19), $tz);
-        if ($parsed === false) {
-            continue;
-        }
-        $label = trim((string) ($package['label'] ?? ''));
-        $status = trim((string) ($package['status_label'] ?? ''));
-        $title = $label !== '' ? $label : ($status !== '' ? $status : 'Package');
-        $agenda[] = [
-            'sort'     => '0 ' . $parsed->format('Y-m-d H:i:s'),
-            'time'     => $parsed->format('H:i:s') === '00:00:00' ? 'Today' : $parsed->format('g:i A'),
-            'datetime' => $parsed->format('Y-m-d\TH:i:s'),
-            'title'    => $title,
-            'href'     => '/settings/packages',
-        ];
-    }
-
-    usort($agenda, static fn (array $a, array $b): int => [$a['sort'], $a['title']] <=> [$b['sort'], $b['title']]);
-    $agenda = array_slice($agenda, 0, 5);
-} catch (\Throwable $overviewError) {
-    error_log('Overview rail: ' . $overviewError->getMessage());
-    $overviewNote = 'Vitals and agenda could not be loaded.';
-    $vitals = [];
-    $agenda = [];
-}
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen" data-ai-presence="<?= $showAiPresence ? '1' : '0' ?>">
@@ -358,10 +118,38 @@ try {
     </div>
 
     <!-- -------------------------------------------------------
-         WIDGET GRID. Overview blocks are locked cells in this grid
-         (12 / 18 / 24 fluid columns, capped and centered; 1 column under 700px).
+         Search stays fixed and centered. Vitals, agenda, and quick actions
+         are ordinary widgets in the grid below.
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
+        <div class="ld-search-row">
+            <form id="search-form" method="GET" target="_blank" class="ov-composer ld-search-box" action="https://www.google.com/search">
+                <label class="ov-sr" for="search-input">How can I assist you?</label>
+                <svg class="ov-command" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8l4 4-4 4M13 16h5"/>
+                </svg>
+                <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
+                <button type="submit" class="ov-send btn-primary" aria-label="Send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 6l6 6-6 6"/>
+                    </svg>
+                </button>
+            </form>
+            <div class="seg-group ov-engines">
+                <?php foreach ($searchEngines as $key => $engine): ?>
+                <button
+                    type="button"
+                    class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
+                    data-engine="<?= e($key) ?>"
+                    data-url="<?= e($engine['url']) ?>"
+                    data-param="<?= e($engine['param']) ?>"
+                >
+                    <?= e($engine['label']) ?>
+                </button>
+                <?php endforeach; ?>
+            </div>
+            <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
+        </div>
         <div class="ld-toolbar">
             <span id="ld-status" class="text-faint text-xs mono" aria-live="polite"></span>
             <div class="ld-toolbar-actions">
@@ -377,132 +165,6 @@ try {
         <?php endif; ?>
 
         <div id="ld-grid" class="grid-stack dashboard-widgets ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="search"
-                 gs-x="0" gs-y="0" gs-w="9" gs-h="4" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <form id="search-form" method="GET" target="_blank" class="ov-composer" action="https://www.google.com/search">
-                            <label class="ov-sr" for="search-input">How can I assist you?</label>
-                            <svg class="ov-command" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8l4 4-4 4M13 16h5"/>
-                            </svg>
-                            <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
-                            <button type="submit" class="ov-send btn-primary" aria-label="Send">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 6l6 6-6 6"/>
-                                </svg>
-                            </button>
-                        </form>
-                        <div class="seg-group ov-engines">
-                            <?php foreach ($searchEngines as $key => $engine): ?>
-                            <button
-                                type="button"
-                                class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
-                                data-engine="<?= e($key) ?>"
-                                data-url="<?= e($engine['url']) ?>"
-                                data-param="<?= e($engine['param']) ?>"
-                            >
-                                <?= e($engine['label']) ?>
-                            </button>
-                            <?php endforeach; ?>
-                        </div>
-                        <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="vitals"
-                 gs-x="9" gs-y="0" gs-w="3" gs-h="6" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <section class="ov-card" aria-labelledby="ov-vitals-title">
-                            <h2 id="ov-vitals-title" class="ov-kicker">System vitals</h2>
-                            <?php if ($overviewNote !== null): ?>
-                            <p class="ov-empty"><?= e($overviewNote) ?></p>
-                            <?php elseif ($vitals === []): ?>
-                            <p class="ov-empty">Nothing logged yet.</p>
-                            <?php else: ?>
-                            <ul class="ov-vitals">
-                                <?php foreach ($vitals as $vital): ?>
-                                <li class="ov-vital">
-                                    <div class="ov-vital-row">
-                                        <span class="ov-vital-label"><?= e($vital['label']) ?></span>
-                                        <span class="ov-vital-detail"><?= e($vital['detail']) ?></span>
-                                    </div>
-                                    <?php if ($vital['meter'] !== null): ?>
-                                    <div class="ov-bar" role="meter"
-                                         aria-valuemin="<?= e($overviewMeter((float) $vital['meter']['min'])) ?>"
-                                         aria-valuemax="<?= e($overviewMeter((float) $vital['meter']['max'])) ?>"
-                                         aria-valuenow="<?= e($overviewMeter((float) $vital['meter']['now'])) ?>"
-                                         aria-label="<?= e($vital['label']) ?>">
-                                        <span style="width: <?= (int) $vital['meter']['pct'] ?>%"></span>
-                                    </div>
-                                    <?php endif; ?>
-                                </li>
-                                <?php endforeach; ?>
-                            </ul>
-                            <?php endif; ?>
-                        </section>
-                    </div>
-                </div>
-            </div>
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-digest"
-                 gs-x="0" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <h2 class="ov-sr">Quick actions</h2>
-                        <a class="ov-action" href="/digest">
-                            <span class="ov-action-title">Brief my day</span>
-                            <span class="ov-action-line">Grok Digest</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-pings"
-                 gs-x="3" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <a class="ov-action" href="/settings/pings">
-                            <span class="ov-action-title">Analyze systems</span>
-                            <span class="ov-action-line">System status</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="act-life"
-                 gs-x="6" gs-y="4" gs-w="3" gs-h="3" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <a class="ov-action" href="/settings/life">
-                            <span class="ov-action-title">Optimize energy</span>
-                            <span class="ov-action-line">Sleep, steps, and exercise</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="grid-stack-item ld-hero-item ld-h-lock ld-place-lock" data-hero="agenda"
-                 gs-x="9" gs-y="6" gs-w="3" gs-h="6" gs-locked="true" gs-no-move="true" gs-no-resize="true">
-                <div class="grid-stack-item-content ld-hero-content">
-                    <div class="ld-hero-fit">
-                        <section class="ov-card" aria-labelledby="ov-agenda-title">
-                            <h2 id="ov-agenda-title" class="ov-kicker">Today's agenda</h2>
-                            <?php if ($overviewNote !== null): ?>
-                            <p class="ov-empty"><?= e($overviewNote) ?></p>
-                            <?php elseif ($agenda === []): ?>
-                            <p class="ov-empty">Nothing due today.</p>
-                            <?php else: ?>
-                            <ol class="ov-agenda">
-                                <?php foreach ($agenda as $item): ?>
-                                <li>
-                                    <time datetime="<?= e($item['datetime']) ?>"><?= e($item['time']) ?></time>
-                                    <a href="<?= e($item['href']) ?>"><?= e($item['title']) ?></a>
-                                </li>
-                                <?php endforeach; ?>
-                            </ol>
-                            <?php endif; ?>
-                        </section>
-                    </div>
-                </div>
-            </div>
             <?php foreach ($widgets as $w):
                 $legacyKey = WidgetTypeRegistry::isLegacy($w['type']) ? substr($w['type'], 7) : null;
                 $partial   = $legacyKey !== null ? __DIR__ . '/partials/widgets/' . $legacyKey . '.php' : null;
