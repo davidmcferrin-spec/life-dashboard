@@ -5,7 +5,10 @@ Each tool call is an HTTP request to the PHP ``/api/v1`` API with the caller's
 bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
 The tool registry is the ``TOOLS`` list in this module: one list for every
-caller, not a per-session cache and not a filter on protocol version or token scope.
+authenticated caller, not a per-session cache and not a filter on protocol
+version or token scope. A JSON-RPC method is answered only after the PHP API
+accepts the bearer. Discovery, client registration metadata, and ``/healthz``
+stay open.
 """
 from __future__ import annotations
 
@@ -2681,17 +2684,51 @@ def negotiate_protocol(params: Any) -> str:
     return PROTOCOL
 
 
+# Same rule as PHP ApiRunner::bearerToken(): /^Bearer\s+(\S+)/i.
+# "Bearer" and "Bearer " do not carry a token.
+_BEARER_TOKEN = re.compile(r"^Bearer\s+(\S+)", re.IGNORECASE)
+
+# PHP runs BearerTokens::resolve here and then skips the scope check, so a
+# static API token and an OAuth access token are accepted or rejected the
+# same way they would be on a real tools/call, including a narrow scope.
+_TOKEN_CHECK_PATH = "/api/v1/agent-prompt"
+
+
+def presented_bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    match = _BEARER_TOKEN.match(authorization)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def reject_unless_accepted(authorization: str | None, fetch: Fetch, reply: Callable[..., RpcReply]) -> RpcReply | None:
+    """None when PHP would accept this bearer. The reply is a refusal otherwise."""
+    if not isinstance(authorization, str) or presented_bearer(authorization) is None:
+        return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
+    status, _payload = fetch("GET", _TOKEN_CHECK_PATH, None, authorization, "auth")
+    if status == 401:
+        return reply(error={"code": -32001, "message": "Invalid or expired token."}, http_status=401)
+    if 200 <= status < 300:
+        return None
+    # Anything else is not an accept. A 403 on this path is not a tool-scope
+    # refusal, so it must not unlock the tool list.
+    return reply(
+        error={"code": -32002, "message": "Token check failed."},
+        http_status=502 if status >= 500 else status,
+    )
+
+
 def handle_message(
     message: dict[str, Any],
     authorization: str | None,
     fetch: Fetch,
     limiter: RequestLimiter | None = None,
 ) -> dict[str, Any] | None:
-    """One JSON-RPC message. Notifications (no id) return None."""
+    """One JSON-RPC message. Notifications (no id) return None once the bearer is accepted."""
     method = message.get("method")
     msg_id = message.get("id")
-    if method == "notifications/initialized" or (method or "").startswith("notifications/"):
-        return None
 
     def reply(result: Any = None, error: dict[str, Any] | None = None, http_status: int = 200) -> RpcReply:
         payload = RpcReply(jsonrpc="2.0", id=msg_id)
@@ -2702,6 +2739,33 @@ def handle_message(
         payload.http_status = http_status
         return payload
 
+    if method == "tools/call":
+        header = authorization if isinstance(authorization, str) else None
+        if presented_bearer(header) is None or header is None:
+            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
+        gate = limiter if limiter is not None else _PROCESS_LIMITER
+        if not gate.allow(header):
+            return reply(error={"code": -32029, "message": "Rate limit: 60 requests per minute for this token."})
+        denied = reject_unless_accepted(header, fetch, reply)
+        if denied is not None:
+            return denied
+        params = message.get("params") or {}
+        name = str(params.get("name") or "")
+        try:
+            http_method, path, body = resolve(name, params.get("arguments") or {})
+        except (KeyError, TypeError, ValueError) as exc:
+            return reply(_result(str(exc), is_error=True))
+        status, payload = fetch(http_method, path, body, header, name)
+        text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+        # PHP 401 is an auth failure. Claude's connector looks for HTTP 401,
+        # not a JSON-RPC error inside HTTP 200.
+        return reply(_result(text, is_error=status >= 400), http_status=401 if status == 401 else 200)
+
+    denied = reject_unless_accepted(authorization, fetch, reply)
+    if denied is not None:
+        return denied
+    if method == "notifications/initialized" or (method or "").startswith("notifications/"):
+        return None
     if method == "initialize":
         return reply({
             "protocolVersion": negotiate_protocol(message.get("params")),
@@ -2711,26 +2775,8 @@ def handle_message(
     if method == "ping":
         return reply({})
     if method == "tools/list":
-        if not authorization:
-            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
+        # Scope is enforced when the tool is called, not by hiding names.
         return reply({"tools": TOOLS})
-    if method == "tools/call":
-        if not authorization:
-            return reply(error={"code": -32001, "message": "Authorization: Bearer is required."}, http_status=401)
-        gate = limiter if limiter is not None else _PROCESS_LIMITER
-        if not gate.allow(authorization):
-            return reply(error={"code": -32029, "message": "Rate limit: 60 requests per minute for this token."})
-        params = message.get("params") or {}
-        name = str(params.get("name") or "")
-        try:
-            http_method, path, body = resolve(name, params.get("arguments") or {})
-        except (KeyError, TypeError, ValueError) as exc:
-            return reply(_result(str(exc), is_error=True))
-        status, payload = fetch(http_method, path, body, authorization, name)
-        text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
-        # PHP 401 is an auth failure. Claude's connector looks for HTTP 401,
-        # not a JSON-RPC error inside HTTP 200.
-        return reply(_result(text, is_error=status >= 400), http_status=401 if status == 401 else 200)
     return reply(error={"code": -32601, "message": f"Method not found: {method}"})
 
 
