@@ -129,7 +129,10 @@ require __DIR__ . '/_shell-top.php';
                     <?php foreach ($customFeedSources as $source): ?>
                     <form method="post" action="/settings/feeds/<?= (int) $source['id'] ?>/delete"
                         class="flex flex-wrap items-center justify-between gap-2"
-                        onsubmit="return confirm('Delete <?= e($source['name']) ?> and its cached articles?');">
+                        data-confirm-title="Delete feed"
+                        data-confirm-message="<?= e('Delete ' . $source['name'] . ' and its cached articles?') ?>"
+                        data-confirm-label="Delete"
+                        data-confirm-danger="1">
                         <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                         <span class="text-muted text-sm truncate"><?= e($source['name']) ?></span>
                         <button type="submit" class="text-danger text-xs mono hover:underline">Delete feed</button>
@@ -139,4 +142,7 @@ require __DIR__ . '/_shell-top.php';
                 <?php endif; ?>
             </section>
 
-<?php require __DIR__ . '/_shell-bottom.php'; ?>
+<?php
+$settingsScripts = ['/assets/js/settings-confirms.js?v=' . $assetVer];
+require __DIR__ . '/_shell-bottom.php';
+

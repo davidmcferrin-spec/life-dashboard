@@ -119,7 +119,10 @@ require __DIR__ . '/_shell-top.php';
 
                         <?php if (!$isSelf): ?>
                         <form method="post" action="/settings/users/<?= $acctId ?>/delete"
-                            onsubmit="return confirm('Delete this user and all of their private data? This cannot be undone.');">
+                            data-confirm-title="Delete <?= e((string) $acct['username']) ?>"
+                            data-confirm-message="Delete this user and all of their private data? This cannot be undone."
+                            data-confirm-label="Delete"
+                            data-confirm-danger="1">
                             <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                             <button type="submit" class="text-danger text-xs mono hover:underline">Delete user</button>
                         </form>
@@ -141,4 +144,7 @@ require __DIR__ . '/_shell-top.php';
                 </div>
             </section>
 
-<?php require __DIR__ . '/_shell-bottom.php'; ?>
+<?php
+$settingsScripts = ['/assets/js/settings-confirms.js?v=' . $assetVer];
+require __DIR__ . '/_shell-bottom.php';
+

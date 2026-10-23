@@ -74,6 +74,10 @@ require __DIR__ . '/_shell-top.php';
                         $revoked  = (bool) ($tok['revoked'] ?? false);
                         $expired  = (bool) ($tok['is_expired'] ?? false);
                         $inactive = $revoked || $expired;
+                        $tokenLabel = trim((string) ($tok['label'] ?? ''));
+                        if ($tokenLabel === '') {
+                            $tokenLabel = 'Unlabeled';
+                        }
                     ?>
                     <div class="box-subtle p-4 <?= $inactive ? 'opacity-50' : '' ?>">
                         <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
@@ -99,14 +103,20 @@ require __DIR__ . '/_shell-top.php';
                         <?php if (!$revoked): ?>
                         <div class="flex flex-wrap gap-2">
                             <form method="post" action="/settings/tokens/regenerate" class="inline"
-                                onsubmit="return confirm('Regenerate? The old token will stop working immediately.');">
+                                data-confirm-title="Regenerate <?= e($tokenLabel) ?>"
+                                data-confirm-message="Regenerate? The old token will stop working immediately."
+                                data-confirm-label="Regenerate"
+                                data-confirm-danger="1">
                                 <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                                 <input type="hidden" name="token_id" value="<?= (int) $tok['id'] ?>">
                                 <button type="submit" class="btn">Regenerate</button>
                             </form>
 
                             <form method="post" action="/settings/tokens/revoke" class="inline"
-                                onsubmit="return confirm('Revoke this token?');">
+                                data-confirm-title="Revoke <?= e($tokenLabel) ?>"
+                                data-confirm-message="Revoke this token?"
+                                data-confirm-label="Revoke"
+                                data-confirm-danger="1">
                                 <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                                 <input type="hidden" name="token_id" value="<?= (int) $tok['id'] ?>">
                                 <button type="submit" class="btn-danger">Revoke</button>
@@ -131,4 +141,7 @@ require __DIR__ . '/_shell-top.php';
                 <?php endif; ?>
             </section>
 
-<?php require __DIR__ . '/_shell-bottom.php'; ?>
+<?php
+$settingsScripts = ['/assets/js/settings-confirms.js?v=' . $assetVer];
+require __DIR__ . '/_shell-bottom.php';
+
