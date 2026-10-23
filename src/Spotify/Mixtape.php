@@ -136,9 +136,10 @@ final class Mixtape
     /**
      * @param list<array<string, mixed>> $tracks
      * @param array<string, int> $arc
+     * @param array<string, mixed> $options locks, avoid, slots, key, target_ms
      * @return array{order: list<array<string, mixed>>, rough: list<array<string, mixed>>, missing: list<array<string, mixed>>, arc: array<string, int>}
      */
-    public static function plan(array $tracks, array $arc): array
+    public static function plan(array $tracks, array $arc, array $options = []): array
     {
         $missing = [];
         $ready = [];
@@ -164,34 +165,104 @@ final class Mixtape
             }
         }
 
-        $counts = self::sectionCounts(count($ready));
-        $order = [];
-        $prevBpm = null;
-        $prevKey = null;
+        $keyOn = !array_key_exists('key', $options) || $options['key'] !== false;
+        $avoid = [];
+        foreach ($options['avoid'] ?? [] as $uri) {
+            if (is_string($uri) && $uri !== '') {
+                $avoid[] = $uri;
+            }
+        }
+        $readyByUri = [];
+        foreach ($ready as $track) {
+            $readyByUri[(string) $track['uri']] = $track;
+        }
+        $slots = isset($options['slots']) && is_numeric($options['slots']) ? (int) $options['slots'] : 0;
+        $limit = $slots > 0 ? $slots : count($ready);
+        $placed = [];
+        $used = [];
+        foreach ($options['locks'] ?? [] as $lock) {
+            if (!is_array($lock)) {
+                continue;
+            }
+            $uri = (string) ($lock['uri'] ?? '');
+            if ($uri === '' || !isset($readyByUri[$uri]) || isset($used[$uri]) || !is_numeric($lock['position'] ?? null)) {
+                continue;
+            }
+            $pos = (int) $lock['position'];
+            // A position past this plan would open an empty slot.
+            if ($pos < 0 || $pos >= $limit || isset($placed[$pos])) {
+                continue;
+            }
+            $placed[$pos] = $readyByUri[$uri];
+            $used[$uri] = true;
+        }
+        $pool = [];
+        foreach ($ready as $track) {
+            if (!isset($used[(string) $track['uri']])) {
+                $pool[] = $track;
+            }
+        }
+        $n = $slots > 0 ? min($limit, count($used) + count($pool)) : count($used) + count($pool);
+        foreach (array_keys($placed) as $pos) {
+            if ($pos < $n) {
+                continue;
+            }
+            $pool[] = $placed[$pos];
+            unset($used[(string) $placed[$pos]['uri']], $placed[$pos]);
+        }
+        $n = $slots > 0 ? min($slots, count($used) + count($pool)) : count($used) + count($pool);
+        $lockedUris = [];
+        foreach ($placed as $track) {
+            $lockedUris[(string) $track['uri']] = true;
+        }
+
+        $counts = self::sectionCounts($n);
+        $sectionAt = [];
+        $cursor = 0;
         foreach (self::SECTIONS as $section) {
-            $need = $counts[$section];
-            for ($i = 0; $i < $need; $i++) {
-                $pick = self::pick($ready, $arc[$section], $prevBpm, $prevKey);
-                $ready = $pick['rest'];
-                $chosen = $pick['track'];
-                $bpm = isset($chosen['bpm']) && $chosen['bpm'] !== null && $chosen['bpm'] !== '' ? (float) $chosen['bpm'] : null;
-                $key = self::parseCamelot(isset($chosen['camelot']) ? (string) $chosen['camelot'] : null);
-                $order[] = [
-                    'uri' => (string) $chosen['uri'],
-                    'section' => $section,
-                    'position' => count($order),
-                    'energy' => (int) $chosen['energy'],
-                    'bpm' => $bpm,
-                    'camelot' => $key,
-                ];
-                $prevBpm = $bpm ?? $prevBpm;
-                $prevKey = $key ?? $prevKey;
+            for ($i = 0; $i < $counts[$section]; $i++) {
+                $sectionAt[$cursor] = $section;
+                $cursor++;
             }
         }
 
+        $order = [];
+        $prevBpm = null;
+        $prevKey = null;
+        for ($i = 0; $i < $n; $i++) {
+            if (isset($placed[$i])) {
+                $chosen = $placed[$i];
+            } elseif ($pool === []) {
+                break;
+            } else {
+                $pick = self::pick($pool, $arc[$sectionAt[$i]], $prevBpm, $prevKey, $keyOn, $avoid);
+                $pool = $pick['rest'];
+                $chosen = $pick['track'];
+            }
+            $bpm = isset($chosen['bpm']) && $chosen['bpm'] !== null && $chosen['bpm'] !== '' ? (float) $chosen['bpm'] : null;
+            $key = self::parseCamelot(isset($chosen['camelot']) ? (string) $chosen['camelot'] : null);
+            $duration = isset($chosen['duration_ms']) && is_numeric($chosen['duration_ms']) ? (int) $chosen['duration_ms'] : 0;
+            $order[] = [
+                'uri' => (string) $chosen['uri'],
+                'section' => $sectionAt[$i],
+                'position' => count($order),
+                'energy' => (int) $chosen['energy'],
+                'bpm' => $bpm,
+                'camelot' => $key,
+                'duration_ms' => $duration,
+            ];
+            $prevBpm = $bpm ?? $prevBpm;
+            $prevKey = $key ?? $prevKey;
+        }
+
+        $target = $options['target_ms'] ?? null;
+        if (is_numeric($target) && (int) $target > 0) {
+            $order = self::fitLength($order, (int) $target, $lockedUris);
+        }
+
         $rough = [];
-        for ($i = 1, $n = count($order); $i < $n; $i++) {
-            $reasons = self::transition($order[$i - 1], $order[$i]);
+        for ($i = 1, $count = count($order); $i < $count; $i++) {
+            $reasons = self::transition($order[$i - 1], $order[$i], $keyOn);
             if ($reasons !== []) {
                 $rough[] = [
                     'from' => $order[$i - 1]['uri'],
@@ -302,8 +373,20 @@ final class Mixtape
      * @param list<array<string, mixed>> $ready
      * @return array{track: array<string, mixed>, rest: list<array<string, mixed>>}
      */
-    private static function pick(array $ready, int $target, ?float $prevBpm, ?string $prevKey): array
+    private static function pick(array $ready, int $target, ?float $prevBpm, ?string $prevKey, bool $keyOn = true, array $avoid = []): array
     {
+        if ($avoid !== []) {
+            $open = [];
+            foreach ($ready as $track) {
+                if (!in_array((string) ($track['uri'] ?? ''), $avoid, true)) {
+                    $open[] = $track;
+                }
+            }
+            // A swap with no alternate keeps the track so the slot does not disappear.
+            if ($open !== []) {
+                $ready = $open;
+            }
+        }
         $best = 0;
         $bestScore = null;
         foreach ($ready as $i => $track) {
@@ -311,7 +394,7 @@ final class Mixtape
             $bpm = isset($track['bpm']) && $track['bpm'] !== null && $track['bpm'] !== '' ? (float) $track['bpm'] : null;
             $bpmPenalty = ($prevBpm !== null && $bpm !== null) ? min(20.0, abs($bpm - $prevBpm) / 2) : 0.0;
             $key = self::parseCamelot(isset($track['camelot']) ? (string) $track['camelot'] : null);
-            $keyPenalty = ($prevKey !== null && $key !== null && !self::compatible($prevKey, $key)) ? 15 : 0;
+            $keyPenalty = ($keyOn && $prevKey !== null && $key !== null && !self::compatible($prevKey, $key)) ? 15 : 0;
             $score = $energy + $bpmPenalty + $keyPenalty;
             if ($bestScore === null || $score < $bestScore) {
                 $bestScore = $score;
@@ -328,7 +411,7 @@ final class Mixtape
      * @param array<string, mixed> $right
      * @return list<string>
      */
-    private static function transition(array $left, array $right): array
+    private static function transition(array $left, array $right, bool $keyOn = true): array
     {
         $reasons = [];
         $lb = $left['bpm'];
@@ -338,13 +421,72 @@ final class Mixtape
         } elseif (abs((float) $lb - (float) $rb) > self::BPM_STEP) {
             $reasons[] = 'bpm';
         }
-        $lk = $left['camelot'];
-        $rk = $right['camelot'];
-        if ($lk === null || $rk === null) {
-            $reasons[] = 'missing_key';
-        } elseif (!self::compatible((string) $lk, (string) $rk)) {
-            $reasons[] = 'key';
+        if ($keyOn) {
+            $lk = $left['camelot'];
+            $rk = $right['camelot'];
+            if ($lk === null || $rk === null) {
+                $reasons[] = 'missing_key';
+            } elseif (!self::compatible((string) $lk, (string) $rk)) {
+                $reasons[] = 'key';
+            }
         }
         return $reasons;
+    }
+
+    /**
+     * Drop unlocked rows from the end until the sequence fits.
+     * Locked rows stay even when they run past the target, because the listener pinned them.
+     *
+     * @param list<array<string, mixed>> $order
+     * @param array<string, true> $lockedUris
+     * @return list<array<string, mixed>>
+     */
+    private static function fitLength(array $order, int $target, array $lockedUris): array
+    {
+        $known = false;
+        $total = 0;
+        foreach ($order as $row) {
+            $ms = max(0, (int) ($row['duration_ms'] ?? 0));
+            if ($ms > 0) {
+                $known = true;
+            }
+            $total += $ms;
+        }
+        if (!$known) {
+            return $order;
+        }
+        $changed = false;
+        while ($total > $target && count($order) > count($lockedUris) && count($order) > 1) {
+            $drop = null;
+            for ($i = count($order) - 1; $i >= 0; $i--) {
+                if (!isset($lockedUris[(string) $order[$i]['uri']])) {
+                    $drop = $i;
+                    break;
+                }
+            }
+            if ($drop === null) {
+                break;
+            }
+            $total -= max(0, (int) ($order[$drop]['duration_ms'] ?? 0));
+            array_splice($order, $drop, 1);
+            $changed = true;
+        }
+        if (!$changed) {
+            return $order;
+        }
+        $counts = self::sectionCounts(count($order));
+        $sectionAt = [];
+        $cursor = 0;
+        foreach (self::SECTIONS as $section) {
+            for ($i = 0; $i < $counts[$section]; $i++) {
+                $sectionAt[$cursor] = $section;
+                $cursor++;
+            }
+        }
+        foreach ($order as $i => $row) {
+            $order[$i]['position'] = $i;
+            $order[$i]['section'] = $sectionAt[$i] ?? $row['section'];
+        }
+        return $order;
     }
 }

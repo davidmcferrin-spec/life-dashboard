@@ -8,7 +8,7 @@ use Dashboard\DB\Database;
 use Dashboard\Support\Clock;
 use Dashboard\Support\ValidationException;
 
-/** Stored track notes, season windows, and the read-only arc order. */
+/** Stored track notes, season windows, arc order, and mixtape lock rows. */
 final class MixtapeLibrary
 {
     public function __construct(private readonly Database $db) {}
@@ -218,9 +218,10 @@ final class MixtapeLibrary
     /**
      * @param list<string> $uris
      * @param array<string, mixed>|null $arc
+     * @param array<string, mixed> $options
      * @return array<string, mixed>
      */
-    public function plan(int $userId, array $uris, ?int $promptId, ?array $arc): array
+    public function plan(int $userId, array $uris, ?int $promptId, ?array $arc, array $options = []): array
     {
         $chosen = Mixtape::ARC;
         if ($promptId !== null) {
@@ -250,9 +251,87 @@ final class MixtapeLibrary
             $row = $byId[$id] ?? ['uri' => 'spotify:track:' . $id, 'bpm' => null, 'camelot' => null, 'energy' => null];
             $tracks[] = $row;
         }
-        $plan = Mixtape::plan($tracks, $chosen);
+        $durations = is_array($options['durations'] ?? null) ? $options['durations'] : [];
+        foreach ($tracks as $i => $row) {
+            $uri = (string) ($row['uri'] ?? '');
+            if (isset($durations[$uri]) && is_numeric($durations[$uri])) {
+                $tracks[$i]['duration_ms'] = max(0, (int) $durations[$uri]);
+            }
+        }
+        $plan = Mixtape::plan($tracks, $chosen, [
+            'locks' => is_array($options['locks'] ?? null) ? $options['locks'] : [],
+            'key' => !array_key_exists('key', $options) || $options['key'] !== false,
+            'target_ms' => isset($options['target_ms']) && is_numeric($options['target_ms']) ? (int) $options['target_ms'] : null,
+            'avoid' => is_array($options['avoid'] ?? null) ? $options['avoid'] : [],
+            'slots' => isset($options['slots']) && is_numeric($options['slots']) ? (int) $options['slots'] : 0,
+        ]);
         $plan['prompt_id'] = $promptId;
         return $plan;
+    }
+
+    /**
+     * @return array{locks: list<array<string, mixed>>}
+     */
+    public function locks(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT spotify_track_id, position FROM spotify_mixtape_locks WHERE user_id = ? ORDER BY position, id',
+            [$userId]
+        );
+        $locks = [];
+        foreach ($rows as $row) {
+            $id = (string) $row['spotify_track_id'];
+            $locks[] = [
+                'spotify_track_id' => $id,
+                'uri' => 'spotify:track:' . $id,
+                'position' => (int) $row['position'],
+            ];
+        }
+        return ['locks' => $locks];
+    }
+
+    /**
+     * @param list<mixed> $locks
+     * @return array{saved: bool, locks: list<array<string, mixed>>}
+     */
+    public function saveLocks(int $userId, array $locks): array
+    {
+        $rows = [];
+        $seenUri = [];
+        $seenPos = [];
+        foreach ($locks as $lock) {
+            if (!is_array($lock)) {
+                throw ValidationException::withFields(['locks' => 'Each lock must be an object.']);
+            }
+            $uri = trim((string) ($lock['uri'] ?? ''));
+            if ($uri === '') {
+                continue;
+            }
+            $id = Mixtape::trackId($uri);
+            if (!is_numeric($lock['position'] ?? null)) {
+                throw ValidationException::withFields(['locks' => 'Each lock needs a position.']);
+            }
+            $pos = (int) $lock['position'];
+            if ($pos < 0 || $pos > 499) {
+                throw ValidationException::withFields(['locks' => 'Lock position must be 0 to 499.']);
+            }
+            if (isset($seenUri[$id]) || isset($seenPos[$pos])) {
+                throw ValidationException::withFields(['locks' => 'Each track and position can be locked once.']);
+            }
+            $seenUri[$id] = true;
+            $seenPos[$pos] = true;
+            $rows[] = [$id, $pos];
+        }
+        $this->db->transaction(function (Database $db) use ($userId, $rows): void {
+            $db->execute('DELETE FROM spotify_mixtape_locks WHERE user_id = ?', [$userId]);
+            foreach ($rows as [$id, $pos]) {
+                $db->execute(
+                    'INSERT INTO spotify_mixtape_locks (user_id, spotify_track_id, position) VALUES (?, ?, ?)',
+                    [$userId, $id, $pos]
+                );
+            }
+        });
+        return ['saved' => true] + $this->locks($userId);
     }
 
     /**
