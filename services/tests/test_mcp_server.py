@@ -19,12 +19,19 @@ from lifedash.mcp_server import (
     metadata_url,
     negotiate_protocol,
     plain_http_denied_message,
+    presented_bearer,
     protected_resource_document,
     request_transport,
     resolve,
     urllib_fetch,
     www_authenticate,
 )
+
+
+def assert_no_tool_names(payload):
+    blob = payload if isinstance(payload, str) else json.dumps(payload)
+    for tool in TOOLS:
+        assert tool["name"] not in blob
 
 
 def test_tools_cover_the_platform_and_never_a_trade():
@@ -473,9 +480,11 @@ def test_rate_limit_stops_the_next_call_without_fetching():
     assert call(2, auth)["result"]["isError"] is False
     blocked = call(3, auth)
     assert blocked["error"]["code"] == -32029
-    assert calls["n"] == 2
+    assert_no_tool_names(blocked)
+    # Each allowed call checks the token, then performs the tool. The blocked call does neither.
+    assert calls["n"] == 4
     assert call(4, "Bearer other-token")["result"]["isError"] is False
-    assert calls["n"] == 3
+    assert calls["n"] == 6
     for i in range(5):
         listed = handle_message(
             {"jsonrpc": "2.0", "id": 10 + i, "method": "tools/list"},
@@ -484,7 +493,8 @@ def test_rate_limit_stops_the_next_call_without_fetching():
             limiter,
         )
         assert "tools" in listed["result"]
-    assert calls["n"] == 3
+    # Listing checks the token and is not part of the tool-call limit.
+    assert calls["n"] == 11
 
 
 def test_initialize_and_tool_call_forward_the_bearer_token():
@@ -494,13 +504,20 @@ def test_initialize_and_tool_call_forward_the_bearer_token():
         seen.update(method=method, path=path, authorization=authorization, tool=tool)
         return 200, {"metrics": []}
 
-    init = handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, None, fetch)
+    denied_init = handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, None, fetch)
+    assert denied_init["error"]["code"] == -32001
+    assert denied_init.http_status == 401
+    assert seen == {}
+
+    init = handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}, "Bearer ld_test", fetch)
     assert init["result"]["serverInfo"]["name"] == "lifedash"
     assert init["result"]["protocolVersion"] == "2025-03-26"
-    assert handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}, None, fetch) is None
+    assert handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}, None, fetch)["error"]["code"] == -32001
+    assert handle_message({"jsonrpc": "2.0", "method": "notifications/initialized"}, "Bearer ld_test", fetch) is None
 
     denied = handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_metrics"}}, None, fetch)
     assert denied["error"]["code"] == -32001
+    assert_no_tool_names(denied)
 
     ok = handle_message(
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "list_metrics", "arguments": {}}},
@@ -526,12 +543,24 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
     assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
 
-    def fetch(*_args):
-        raise AssertionError("tools/list must not call the API")
+    accepted = {"Bearer money-only", "Bearer full-token"}
+    probes = {"n": 0}
+
+    def fetch(method, path, body, authorization, tool):
+        if authorization not in accepted:
+            return 401, {"error": "Invalid or expired token."}
+        if path == "/api/v1/agent-prompt":
+            probes["n"] += 1
+            assert tool == "auth"
+            return 200, {"prompt": "ok"}
+        raise AssertionError(path)
 
     denied = handle_message({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, None, fetch)
     assert denied["error"]["code"] == -32001
+    assert denied.http_status == 401
     assert "result" not in denied
+    assert_no_tool_names(denied)
+    assert probes["n"] == 0
 
     def listed(token, protocol):
         if protocol:
@@ -545,8 +574,10 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
         return [tool["name"] for tool in reply["result"]["tools"]]
 
     full = [tool["name"] for tool in TOOLS]
+    # A narrow token still receives the whole registry. PHP enforces scope on the call.
     assert listed("Bearer money-only", None) == full
     assert listed("Bearer full-token", "2025-06-18") == full
+    assert probes["n"] == 3
     assert "create_habit" in full
     assert "create_debt" in full
     assert "list_todos" in full
@@ -574,10 +605,19 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
         assert status == 401
         assert body["error"]["code"] == -32001
         assert headers["WWW-Authenticate"] == "Bearer"
+        assert_no_tool_names(body)
 
         status, headers, body = post(
             {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}},
             {},
+        )
+        assert status == 401
+        assert body["error"]["code"] == -32001
+        assert_no_tool_names(body)
+
+        status, headers, body = post(
+            {"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "2025-11-25"}},
+            {"Authorization": "Bearer full-token"},
         )
         assert status == 200
         assert body["result"]["protocolVersion"] == "2025-11-25"
@@ -585,6 +625,14 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
         status, headers, body = post(
             {"jsonrpc": "2.0", "id": 3, "method": "tools/list"},
             {"Authorization": "Bearer anything", "Mcp-Session-Id": "stale"},
+        )
+        assert status == 401
+        assert body["error"]["message"] == "Invalid or expired token."
+        assert_no_tool_names(body)
+
+        status, headers, body = post(
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/list"},
+            {"Authorization": "Bearer full-token", "Mcp-Session-Id": "stale"},
         )
         assert status == 200
         assert [tool["name"] for tool in body["result"]["tools"]] == full
@@ -652,8 +700,12 @@ def test_oauth_discovery_and_upstream_401():
             urllib.request.urlopen(req)
             raise AssertionError("upstream 401 must stay HTTP 401")
         except urllib.error.HTTPError as exc:
+            raw = exc.read().decode()
             assert exc.code == 401
             assert exc.headers.get("WWW-Authenticate") == www_authenticate(public)
+            body = json.loads(raw)
+            assert body["error"]["message"] == "Invalid or expired token."
+            assert_no_tool_names(raw)
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/.well-known/oauth-protected-resource/mcp") as res:
             body = json.loads(res.read().decode())
             assert body["authorization_servers"] == [issuer]
@@ -730,7 +782,7 @@ def test_plain_http_stays_on_until_the_override_says_off():
 
     server, port = serve(lambda: True)
     try:
-        status, body = post(port, init, {})
+        status, body = post(port, init, {"Authorization": "Bearer ld_test"})
         assert status == 200
         assert body["result"]["protocolVersion"] == "2025-03-26"
         status, body = post(port, call, {"Authorization": "Bearer ld_test"})
@@ -860,7 +912,9 @@ def test_spotify_writes_and_playback_follow_plain_http():
         status, body = post("sync_spotify", {"X-Forwarded-Proto": "https"})
         assert status == 200
         assert seen == [
+            ("GET", "/api/v1/agent-prompt", "auth"),
             ("POST", "/api/v1/spotify/playback/play", "play"),
+            ("GET", "/api/v1/agent-prompt", "auth"),
             ("POST", "/api/v1/spotify/sync", "sync_spotify"),
         ]
     finally:
@@ -964,6 +1018,163 @@ def test_public_url_is_reread_on_each_request():
         current["public"] = "https://mcp-two.example/mcp"
         current["issuer"] = "https://dash-two.example"
         assert resource() == "https://mcp-two.example/mcp"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_jsonrpc_accepts_only_tokens_the_api_accepts():
+    """PHP accepts the bearer. A static API token and an OAuth access token both count."""
+    api = "Bearer ld_agent"
+    oauth = "Bearer ldoa_connector"
+    accepted = {api, oauth}
+    calls = []
+
+    def fetch(method, path, body, authorization, tool):
+        calls.append((method, path, authorization, tool))
+        if authorization not in accepted:
+            return 401, {"error": "Invalid or expired token."}
+        if path == "/api/v1/agent-prompt":
+            return 200, {"prompt": "ok"}
+        if path == "/api/v1/metrics":
+            kind = "oauth" if authorization == oauth else "api"
+            return 200, {"metrics": [], "kind": kind}
+        return 500, {"error": "unexpected " + path}
+
+    def rpc(method, params=None, msg_id=1):
+        message = {"jsonrpc": "2.0", "id": msg_id, "method": method}
+        if params is not None:
+            message["params"] = params
+        return message
+
+    listing = rpc("tools/list")
+    calling = rpc("tools/call", {"name": "list_metrics", "arguments": {}})
+    full = [tool["name"] for tool in TOOLS]
+    assert presented_bearer("Bearer ld_agent") == "ld_agent"
+    assert presented_bearer("bearer ldoa_connector") == "ldoa_connector"
+    assert presented_bearer(None) is None
+    assert presented_bearer("") is None
+    assert presented_bearer("Bearer") is None
+    assert presented_bearer("Bearer ") is None
+    assert presented_bearer("Bearer\t") is None
+
+    for header in (None, "", "Bearer", "Bearer ", "Bearer\t", "Basic abc"):
+        calls.clear()
+        for message in (listing, calling, rpc("initialize", {}), rpc("ping")):
+            reply = handle_message(message, header, fetch)
+            assert reply.http_status == 401
+            assert reply["error"] == {"code": -32001, "message": "Authorization: Bearer is required."}
+            assert "result" not in reply
+            assert_no_tool_names(reply)
+        assert calls == []
+
+    for header in ("Bearer anything", "Bearer ld_nope", "Bearer ldoa_nope"):
+        for message in (listing, calling):
+            calls.clear()
+            reply = handle_message(message, header, fetch)
+            assert reply.http_status == 401
+            assert reply["error"] == {"code": -32001, "message": "Invalid or expired token."}
+            assert_no_tool_names(reply)
+            assert calls == [("GET", "/api/v1/agent-prompt", header, "auth")]
+
+    for header, kind in ((api, "api"), (oauth, "oauth")):
+        calls.clear()
+        listed = handle_message(listing, header, fetch)
+        assert listed.http_status == 200
+        assert [tool["name"] for tool in listed["result"]["tools"]] == full
+        ping = handle_message(rpc("ping"), header, fetch)
+        assert ping["result"] == {}
+        called = handle_message(calling, header, fetch)
+        assert called["result"]["isError"] is False
+        text = json.loads(called["result"]["content"][0]["text"])
+        assert text == {"metrics": [], "kind": kind}
+        assert ("GET", "/api/v1/metrics", header, "list_metrics") in calls
+
+    def lowercase(method, path, body, authorization, tool):
+        assert authorization == "bearer ld_agent"
+        if path == "/api/v1/agent-prompt":
+            return 200, {"prompt": "ok"}
+        return 200, {"metrics": [], "kind": "api"}
+
+    lowered = handle_message(calling, "bearer ld_agent", lowercase)
+    assert lowered["result"]["isError"] is False
+
+    def down(method, path, body, authorization, tool):
+        return 503, {"error": "db down", "tools": full}
+
+    failed = handle_message(listing, api, down)
+    assert failed["error"]["code"] == -32002
+    assert failed.http_status == 502
+    assert_no_tool_names(failed)
+    assert "db down" not in json.dumps(failed)
+
+    def forbidden(method, path, body, authorization, tool):
+        return 403, {"error": "forbidden", "tools": full}
+
+    blocked = handle_message(calling, oauth, forbidden)
+    assert blocked.http_status == 403
+    assert "result" not in blocked
+    assert_no_tool_names(blocked)
+
+    public = "https://mcp.example.com/mcp"
+    issuer = "https://dash.example.com"
+    handler = make_handler(fetch, mcp_public_url=public, issuer=issuer)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        def post(payload, headers):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/mcp",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **headers},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as res:
+                    raw = res.read().decode()
+                    return res.status, raw
+            except urllib.error.HTTPError as exc:
+                return exc.code, exc.read().decode()
+
+        def open_get(path):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}") as res:
+                return res.status, json.loads(res.read().decode())
+
+        before = len(calls)
+        for path in (
+            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
+            "/.well-known/oauth-authorization-server",
+        ):
+            status, body = open_get(path)
+            assert status == 200
+        assert len(calls) == before
+        status, body = open_get("/.well-known/oauth-authorization-server")
+        assert body["registration_endpoint"] == issuer + "/oauth/register"
+        assert body["token_endpoint"] == issuer + "/oauth/token"
+        status, body = open_get("/healthz")
+        assert status == 200
+        assert body["ok"] is True
+        assert_no_tool_names(body)
+
+        for header in ({}, {"Authorization": "Bearer"}, {"Authorization": "Bearer "}, {"Authorization": "Bearer anything"}):
+            for payload in (listing, calling):
+                status, raw = post(payload, header)
+                assert status == 401
+                assert_no_tool_names(raw)
+                parsed = json.loads(raw)
+                assert "result" not in parsed
+                assert "tools" not in parsed
+
+        for header in ({"Authorization": api}, {"Authorization": oauth}):
+            status, raw = post(listing, header)
+            assert status == 200
+            assert [tool["name"] for tool in json.loads(raw)["result"]["tools"]] == full
+            status, raw = post(calling, header)
+            assert status == 200
+            assert json.loads(raw)["result"]["isError"] is False
     finally:
         server.shutdown()
         server.server_close()
