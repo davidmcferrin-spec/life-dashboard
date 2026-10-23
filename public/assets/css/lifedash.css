@@ -4537,6 +4537,12 @@ html[data-theme="light"] .settings-shell {
     --settings-accent-soft: rgba(22, 140, 136, 0.10);
 }
 
+/* Dark grey only. The unscoped shell stays the JARVIS teal. */
+html[data-theme="dark"] .settings-shell {
+    --settings-accent: #9ab4b5;
+    --settings-accent-soft: rgba(154, 180, 181, 0.11);
+}
+
 .settings-main {
     margin: 0 auto;
     max-width: 1180px;

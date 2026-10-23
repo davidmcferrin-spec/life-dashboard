@@ -49,10 +49,10 @@
 
 /* -------------------------------------------------------
    Theme tokens
-   Figma palette on the existing names. One teal accent in
-   jarvis, light, and dark. A saved JarvisAccent still tints
-   JARVIS. The design tertiary is ~3:1, so muted stays a
-   readable colour. Radius 6 / 10 / 14 / 999.
+   Figma palette on the existing names. Teal stays on jarvis
+   and light. Dark uses the design grey accent. A saved
+   JarvisAccent still tints JARVIS only. The design tertiary
+   is ~3:1, so muted stays a readable colour. Radius 6 / 10 / 14 / 999.
    ------------------------------------------------------- */
 
 :root {
@@ -156,10 +156,10 @@ html[data-theme="dark"] {
     --text-muted: #8b979e;
     --text-faint: var(--text-muted);
     --text-label: var(--text-muted);
-    --accent: #44d7d0;
-    --accent-hover: #80e4df;
+    --accent: #9ab4b5;
+    --accent-hover: #bacccd;
     --accent-ink: #06201f;
-    --accent-soft: rgba(68, 215, 208, 0.11);
+    --accent-soft: rgba(154, 180, 181, 0.11);
     --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
     --input-bg: var(--bg);
     --input-border: #333d40;
