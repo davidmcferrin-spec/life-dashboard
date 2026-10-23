@@ -34,9 +34,11 @@ const el = {
     remoteBanner:   $('#clip-remote-banner'),
     remoteReload:   $('#clip-remote-reload'),
     newBoard:       $('#clip-new-board'),
+    newBoardModal:  $('#clip-new-board-modal'),
     newBoardForm:   $('#clip-new-board-form'),
     newBoardName:   $('#clip-new-board-name'),
     newBoardCancel: $('#clip-new-board-cancel'),
+    copyModal:      $('#clip-share-copy-modal'),
     deleteBoard:    $('#clip-delete-board'),
     copyLocal:      $('#clip-copy-local'),
     sharingJump:    $('#clip-sharing-jump'),
@@ -48,6 +50,70 @@ const el = {
     shareLinkForm:  $('#clip-share-link-form'),
     shareUserForm:  $('#clip-share-user-form'),
 };
+
+function openModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal, onClose) {
+    if (!modal) return;
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) {
+            if (onClose) onClose();
+            else closeModal(modal);
+        }
+    });
+}
+
+function clearFieldError(id) {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = '';
+    node.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const node = document.getElementById(id);
+    if (!node) {
+        alert(message);
+        return;
+    }
+    node.textContent = message;
+    node.classList.remove('hidden');
+}
+
+let copyOnClose = null;
+
+function closeCopyLink() {
+    closeModal(el.copyModal);
+    const done = copyOnClose;
+    copyOnClose = null;
+    if (done) done();
+}
+
+function openCopyLink(url, onClose) {
+    const input = document.getElementById('clip-share-copy-url');
+    if (input) input.value = url;
+    copyOnClose = onClose || null;
+    openModal(el.copyModal);
+    requestAnimationFrame(() => {
+        input?.focus();
+        input?.select();
+    });
+}
+
+bindModal(el.newBoardModal, () => hideNewBoardForm());
+bindModal(el.copyModal, closeCopyLink);
 
 function initClipView() {
     if (!window.ClipboardMarkdown) {
@@ -333,12 +399,24 @@ async function loadShares(boardId) {
 
     el.shareLinks.querySelectorAll('.revoke-link').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Revoke this link?')) return;
-            await api(`/api/clipboards/${boardId}/shares/link/${btn.dataset.id}/revoke`, {
-                method: 'POST',
-                body: JSON.stringify({}),
-            });
-            loadShares(boardId);
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Revoke link',
+                    message: 'Revoke this link?',
+                    confirmLabel: 'Revoke',
+                    danger: true,
+                });
+                if (!ok) return;
+                await api(`/api/clipboards/${boardId}/shares/link/${btn.dataset.id}/revoke`, {
+                    method: 'POST',
+                    body: JSON.stringify({}),
+                });
+                loadShares(boardId);
+            } finally {
+                if (btn.isConnected) btn.dataset.confirming = '';
+            }
         });
     });
 
@@ -488,6 +566,7 @@ async function createBoard(name) {
     const trimmed = (name || '').trim();
     if (!trimmed) return;
 
+    clearFieldError('clip-new-board-error');
     setStatus('Creating board…');
 
     const { res, data } = await api('/api/clipboards/create', {
@@ -496,7 +575,9 @@ async function createBoard(name) {
     });
 
     if (!res.ok) {
-        setStatus(apiErrorMessage(data, res, 'Could not create board.'), 'err');
+        const message = apiErrorMessage(data, res, 'Could not create board.');
+        showFieldError('clip-new-board-error', message);
+        setStatus(message, 'err');
         return;
     }
 
@@ -506,16 +587,15 @@ async function createBoard(name) {
 }
 
 function showNewBoardForm() {
-    el.newBoardForm?.classList.remove('hidden');
+    clearFieldError('clip-new-board-error');
     el.newBoard?.classList.add('hidden');
-    if (el.newBoardName) {
-        el.newBoardName.value = '';
-        el.newBoardName.focus();
-    }
+    if (el.newBoardName) el.newBoardName.value = '';
+    openModal(el.newBoardModal);
 }
 
 function hideNewBoardForm() {
-    el.newBoardForm?.classList.add('hidden');
+    closeModal(el.newBoardModal);
+    clearFieldError('clip-new-board-error');
     el.newBoard?.classList.remove('hidden');
     if (el.newBoardName) el.newBoardName.value = '';
 }
@@ -523,6 +603,7 @@ function hideNewBoardForm() {
 el.shareLinkForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (activeId === null || !isOwner) return;
+    clearFieldError('clip-share-link-error');
 
     const { res, data } = await api(`/api/clipboards/${activeId}/shares/link`, {
         method: 'POST',
@@ -534,12 +615,16 @@ el.shareLinkForm?.addEventListener('submit', async (e) => {
     });
 
     if (!res.ok) {
-        alert(data.error || 'Could not create link.');
+        showFieldError('clip-share-link-error', data.error || 'Could not create link.');
         return;
     }
 
     if (data.link?.url) {
-        prompt('Copy this share link (shown once in list below):', data.link.url);
+        const boardId = activeId;
+        openCopyLink(data.link.url, () => {
+            if (boardId !== null) loadShares(boardId);
+        });
+        return;
     }
     loadShares(activeId);
 });
@@ -547,6 +632,7 @@ el.shareLinkForm?.addEventListener('submit', async (e) => {
 el.shareUserForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (activeId === null || !isOwner) return;
+    clearFieldError('clip-share-user-error');
 
     const { res, data } = await api(`/api/clipboards/${activeId}/shares/user`, {
         method: 'POST',
@@ -557,7 +643,7 @@ el.shareUserForm?.addEventListener('submit', async (e) => {
     });
 
     if (!res.ok) {
-        alert(data.error || 'Could not share.');
+        showFieldError('clip-share-user-error', data.error || 'Could not share.');
         return;
     }
 
@@ -571,7 +657,13 @@ async function deleteBoard() {
     const board = activeBoard();
     if (!board) return;
 
-    if (!confirm(`Delete "${board.name}"? This cannot be undone.`)) return;
+    const ok = await globalThis.AppModal.confirm({
+        title: 'Delete board',
+        message: `Delete "${board.name}"? This cannot be undone.`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
 
     const { res, data } = await api(`/api/clipboards/${activeId}/delete`, {
         method: 'POST',

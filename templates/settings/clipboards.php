@@ -38,13 +38,6 @@ require __DIR__ . '/_shell-top.php';
                         <h2 class="section-title">Boards</h2>
                         <button type="button" id="clip-new-board" class="text-accent hover:text-accent mono text-lg leading-none" title="New board">+</button>
                     </div>
-                    <form id="clip-new-board-form" class="hidden mb-3 space-y-2">
-                        <input type="text" id="clip-new-board-name" class="input mono text-xs w-full" placeholder="Board name" maxlength="128" required>
-                        <div class="flex gap-2">
-                            <button type="submit" class="btn-primary text-xs flex-1">Create</button>
-                            <button type="button" id="clip-new-board-cancel" class="btn text-xs">Cancel</button>
-                        </div>
-                    </form>
                     <ul id="clip-board-list" class="space-y-1 text-sm">
                         <li class="text-faint mono text-xs py-2">Loading…</li>
                     </ul>
@@ -111,6 +104,7 @@ require __DIR__ . '/_shell-top.php';
                                         <option value="P90D">90 days</option>
                                     </select>
                                     <input type="text" id="clip-link-label" class="input mono text-sm w-full" placeholder="Label (optional)">
+                                    <p id="clip-share-link-error" class="ld-field-error hidden" role="alert"></p>
                                     <button type="submit" class="btn-primary text-sm">Create share link</button>
                                 </form>
                                 <ul id="clip-share-links" class="space-y-2 text-xs mono"></ul>
@@ -125,12 +119,47 @@ require __DIR__ . '/_shell-top.php';
                                         <option value="write">Write</option>
                                     </select>
                                     <button type="submit" class="btn text-sm">Add</button>
+                                    <p id="clip-share-user-error" class="ld-field-error hidden w-full" role="alert"></p>
                                 </form>
                                 <ul id="clip-share-users" class="space-y-2 text-xs mono"></ul>
                             </div>
                         </div>
                     </section>
                 </section>
+            </div>
+
+            <div id="clip-new-board-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="clip-new-board-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="clip-new-board-title" class="section-title text-sm">New board</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="clip-new-board-form" class="space-y-3">
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Board name</span>
+                            <input type="text" id="clip-new-board-name" class="input mono text-sm w-full mt-1" placeholder="Board name" maxlength="128" required>
+                        </label>
+                        <p id="clip-new-board-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Create</button>
+                            <button type="button" id="clip-new-board-cancel" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="clip-share-copy-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="clip-share-copy-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="clip-share-copy-title" class="section-title text-sm">Copy this share link</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <p class="text-sm mb-3">Shown once in the list below.</p>
+                    <input type="text" id="clip-share-copy-url" readonly class="input mono text-xs w-full" onclick="this.select()">
+                    <button type="button" class="btn text-sm mt-3" data-close>Close</button>
+                </div>
             </div>
             </div>
 
