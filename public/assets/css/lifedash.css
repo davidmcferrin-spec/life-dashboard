@@ -2600,3 +2600,34 @@ body.cloudpad-page .app-content {
     }
 }
 
+/* Group spacing only. Link color and the active state stay in dashboard.css. */
+.settings-nav-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.settings-nav-group + .settings-nav-group {
+    border-top: 1px solid var(--chrome-border);
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+}
+
+.settings-nav-group .settings-nav-group-label {
+    margin: 0;
+    padding: 0 0.75rem 0.125rem;
+}
+
+@media (min-width: 1024px) {
+    .settings-nav-aside {
+        align-self: flex-start;
+        position: sticky;
+        top: 1.5rem;
+    }
+
+    .settings-nav-aside .settings-nav {
+        max-height: calc(100vh - 3rem);
+        overflow: auto;
+    }
+}
+
