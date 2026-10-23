@@ -668,7 +668,7 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
 
 /* -------------------------------------------------------
    Knowledge vault + brain
-   IBM Plex only. Teal accent is the theme token in every theme.
+   Inter and DM Mono (--font-sans / --font-mono). Teal accent is the theme token in every theme.
    ------------------------------------------------------- */
 @font-face {
     font-family: 'DM Mono';
@@ -5656,7 +5656,7 @@ html[data-theme="light"] .app-modal-backdrop {
 
 /* -------------------------------------------------------
    Tracking, data, and life widgets.
-   IBM Plex, 11–32px, teal accent. cardWipe is the design
+   Inter and DM Mono, 11–32px, teal accent. cardWipe is the design
    reveal; reduced motion shows the card immediately.
    ------------------------------------------------------- */
 @font-face {
@@ -6165,7 +6165,7 @@ html[data-theme="light"] .app-modal-backdrop {
 /* -------------------------------------------------------
    Finance settings (Money, Investing, Stocks).
    Teal is the theme accent. Type stays on 11–32px.
-   IBM Plex Sans only inside .fin-page.
+   Inter and DM Mono (--font-sans / --font-mono) inside .fin-page.
    ------------------------------------------------------- */
 
 .fin-page {
@@ -6694,7 +6694,7 @@ html[data-theme="light"] .fin-card {
 
 /* -------------------------------------------------------
    Add-widget catalog and widget states.
-   Type is 11px and up (IBM Plex). Accent stays the theme teal.
+   Type is 11px and up (Inter / DM Mono). Accent stays the theme teal.
    ------------------------------------------------------- */
 .app-modal-panel.ld-catalog-panel {
     background: var(--surface-raised);
@@ -7002,7 +7002,7 @@ html[data-theme="light"] .fin-card {
 
 /* -------------------------------------------------------
    Money, investing, and stocks widgets.
-   IBM Plex, 11–32px, teal via --accent in every theme.
+   Inter and DM Mono, 11–32px, teal via --accent in every theme.
    ------------------------------------------------------- */
 @font-face {
     font-family: 'DM Mono';
