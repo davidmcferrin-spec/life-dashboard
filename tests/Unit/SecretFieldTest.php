@@ -2,19 +2,7 @@
 
 declare(strict_types=1);
 
-namespace {
-    if (!function_exists('e')) {
-        /**
-         * The app helper from bootstrap.php. Templates call the global function.
-         */
-        function e(string $value): string
-        {
-            return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        }
-    }
-}
-
-namespace Dashboard\Tests\Unit {
+namespace Dashboard\Tests\Unit;
 
 use Dashboard\Settings\SecretMask;
 use PHPUnit\Framework\TestCase;
@@ -192,5 +180,4 @@ final class SecretFieldTest extends TestCase
 
         return $html;
     }
-}
 }

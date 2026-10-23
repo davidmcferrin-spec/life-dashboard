@@ -41,6 +41,17 @@ spl_autoload_register(static function (string $class): void {
 
 date_default_timezone_set('UTC');
 
+if (!function_exists('e')) {
+    /**
+     * Same HTML escape as bootstrap.php. The test runner does not load that
+     * file, and templates call this global helper.
+     */
+    function e(string $value): string
+    {
+        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+}
+
 if (!function_exists('jsonResponse')) {
     /**
      * Same exit hatch as bootstrap.php. Tests set LIFEDASH_TEST_CAPTURE=1.
