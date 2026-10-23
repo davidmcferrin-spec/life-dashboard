@@ -421,13 +421,6 @@ require __DIR__ . '/_shell-top.php';
                             <span id="cloudpad-canvas-count" class="mono text-xs text-faint">…</span>
                         </div>
                         <button type="button" id="cloudpad-new-canvas" class="text-accent hover:text-accent mono text-lg leading-none mb-3" title="New canvas">+</button>
-                        <form id="cloudpad-new-canvas-form" class="hidden mb-3 space-y-2">
-                            <input type="text" id="cloudpad-new-canvas-name" class="input mono text-xs w-full" placeholder="Canvas name" maxlength="128" required>
-                            <div class="flex gap-2">
-                                <button type="submit" class="btn-primary text-xs flex-1">Create</button>
-                                <button type="button" id="cloudpad-new-canvas-cancel" class="btn text-xs">Cancel</button>
-                            </div>
-                        </form>
                         <ul id="cloudpad-canvas-list" class="space-y-1 text-sm">
                             <li class="text-faint mono text-xs py-2">Loading…</li>
                         </ul>
@@ -499,6 +492,27 @@ require __DIR__ . '/_shell-top.php';
                             </section>
                         </div>
                     </section>
+                </div>
+
+                <div id="cloudpad-new-canvas-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="cloudpad-new-canvas-title">
+                    <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                    <div class="app-modal-panel surface">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <h2 id="cloudpad-new-canvas-title" class="section-title text-sm">New canvas</h2>
+                            <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                        </div>
+                        <form id="cloudpad-new-canvas-form" class="space-y-3">
+                            <label class="block">
+                                <span class="mono text-xs text-faint">Canvas name</span>
+                                <input type="text" id="cloudpad-new-canvas-name" class="input mono text-sm w-full mt-1" placeholder="Canvas name" maxlength="128" required>
+                            </label>
+                            <p id="cloudpad-new-canvas-error" class="ld-field-error hidden" role="alert"></p>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="submit" class="btn-primary text-sm">Create</button>
+                                <button type="button" id="cloudpad-new-canvas-cancel" class="btn text-sm" data-close>Cancel</button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
 
