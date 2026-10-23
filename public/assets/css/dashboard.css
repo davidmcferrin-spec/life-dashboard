@@ -182,6 +182,15 @@ body.page {
     min-height: 100vh;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* Starfield background (dark mode, per-user setting) */
 #starfield-canvas {
     position: fixed;
@@ -280,7 +289,11 @@ input[type="radio"] {
 }
 
 .nav-link {
+    align-items: center;
     color: var(--text-muted);
+    display: inline-flex;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.65rem;
     transition: color 0.15s ease;
 }
 
@@ -506,7 +519,9 @@ input[type="radio"] {
     border: 1px solid var(--input-border);
     border-radius: var(--radius-control);
     color: var(--text-primary);
+    font-family: var(--font-sans);
     font-size: 0.875rem;
+    min-height: 2.5rem;
     padding: 0.375rem 0.75rem;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -515,10 +530,8 @@ input[type="radio"] {
     color: var(--input-placeholder);
 }
 
-.input:focus {
+.input:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--focus-ring);
-    outline: none;
 }
 
 textarea.input {
@@ -532,13 +545,23 @@ select.input {
 
 .btn,
 .btn-danger,
-.btn-primary {
+.btn-primary,
+.seg-btn {
+    align-items: center;
+    background: transparent;
     border: 1px solid var(--input-border);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-control);
     color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    padding: 0.375rem 0.75rem;
+    cursor: pointer;
+    display: inline-flex;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    font-weight: 500;
+    gap: 0.35rem;
+    justify-content: center;
+    line-height: 1.25;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.875rem;
     transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
@@ -576,13 +599,7 @@ select.input {
 }
 
 .seg-btn {
-    border: 1px solid var(--input-border);
-    border-radius: 0.375rem;
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
-    padding: 0.25rem 0.75rem;
-    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 
 .seg-btn:hover {
@@ -598,10 +615,12 @@ select.input {
 
 /* Settings sidebar */
 .settings-nav a {
-    border-radius: 0.375rem;
-    display: block;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.75rem;
+    border-radius: var(--radius-control);
+    display: flex;
+    align-items: center;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    min-height: 2.5rem;
     padding: 0.5rem 0.75rem;
     transition: background 0.15s ease, color 0.15s ease;
 }
@@ -638,7 +657,7 @@ select.input {
 .theme-switch {
     display: inline-flex;
     border: 1px solid var(--input-border);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-control);
     overflow: hidden;
 }
 
@@ -655,10 +674,11 @@ select.input {
     cursor: pointer;
     position: relative;
     z-index: 1;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
     letter-spacing: 0.02em;
-    padding: 0.25rem 0.45rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.65rem;
     transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -742,7 +762,6 @@ select.input {
 .dashboard-widget-resize:hover,
 .dashboard-widget-resize:focus-visible {
     background: var(--accent-soft);
-    outline: none;
 }
 
 body.is-widget-resizing {
@@ -755,16 +774,22 @@ body.is-widget-resizing {
 }
 
 .dashboard-widget-handle {
+    align-items: center;
     background: transparent;
     border: none;
     color: var(--text-faint);
     cursor: grab;
-    display: inline-block;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
+    display: inline-flex;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    height: 2.5rem;
+    justify-content: center;
     letter-spacing: -0.15em;
     line-height: 1;
-    padding: 0.15rem 0.25rem;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    padding: 0;
+    width: 2.5rem;
     position: absolute;
     right: 0.5rem;
     top: 0.45rem;
@@ -829,9 +854,9 @@ body.is-widget-resizing {
 }
 
 .dashboard-widgets .todo-line .todo-widget-check {
-    height: 0.875rem;
+    height: 2.5rem;
     margin: 0;
-    width: 0.875rem;
+    width: 2.5rem;
 }
 
 .dashboard-widgets .todo-line > :nth-child(2) {
@@ -1031,13 +1056,20 @@ body.app-modal-open {
 }
 
 .app-modal-close {
-    flex-shrink: 0;
-    width: 1.75rem;
-    height: 1.75rem;
-    line-height: 1;
-    border-radius: 0.25rem;
-    font-size: 1.25rem;
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-control);
     color: var(--text-faint);
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 1rem;
+    height: 2.5rem;
+    justify-content: center;
+    line-height: 1;
+    min-height: 2.5rem;
+    min-width: 2.5rem;
+    width: 2.5rem;
     transition: color 0.12s ease, background 0.12s ease;
 }
 
@@ -1219,7 +1251,8 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
     caret-color: var(--accent);
     color: var(--text-primary);
     font-size: 1rem;
-    padding: 0.875rem 1.5rem;
+    min-height: 2.5rem;
+    padding: 0.875rem 3rem 0.875rem 1.5rem;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
     width: 100%;
 }
@@ -1271,10 +1304,16 @@ html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35)
     text-transform: uppercase;
 }
 
-.search-input:focus {
+.search-input:focus-visible {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--focus-ring);
-    outline: none;
+}
+
+#search-form button[type="submit"] {
+    align-items: center;
+    display: inline-flex;
+    height: 2.5rem;
+    justify-content: center;
+    width: 2.5rem;
 }
 
 .clock-label {

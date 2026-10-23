@@ -135,7 +135,7 @@ $timezones = [
 
         <form id="search-form" method="GET" target="_blank" class="w-full max-w-2xl relative" action="https://www.google.com/search">
             <input type="text" id="search-input" name="q" placeholder="Search..." autofocus class="search-input mono">
-            <button type="submit" class="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-colors">
+            <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-accent transition-colors" aria-label="Search">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                 </svg>
