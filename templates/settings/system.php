@@ -73,7 +73,7 @@ require __DIR__ . '/_shell-top.php';
                 <a href="/settings/system" class="text-xs mono text-accent hover:underline">Refresh</a>
             </div>
 
-            <section class="surface p-5" id="deploy">
+            <section class="settings-block" id="deploy">
                 <h2 class="text-primary font-medium mb-1">Update from main</h2>
                 <p class="text-muted text-sm mb-4">
                     Queues the same update as <span class="mono">lifedash-deploy</span>. The server fetches
@@ -150,7 +150,7 @@ require __DIR__ . '/_shell-top.php';
                 <pre id="deploy-log" class="mono text-xs overflow-x-auto max-h-64 overflow-y-auto mt-3 hidden whitespace-pre-wrap break-words"></pre>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Application health</h2>
                 <p class="text-muted text-sm mb-4">Runtime checks for PHP, the database, storage, lifedash-mcp, lifedash-push, and API configuration.</p>
 
@@ -172,7 +172,7 @@ require __DIR__ . '/_shell-top.php';
                 </div>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Cron jobs</h2>
                 <p class="text-muted text-sm mb-4">Last run times are parsed from the most recent timestamp in each log file.</p>
 
@@ -213,7 +213,7 @@ require __DIR__ . '/_shell-top.php';
                 </div>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Recent logs</h2>
                 <p class="text-muted text-sm mb-4">Last 150 lines per job (tail read).</p>
 

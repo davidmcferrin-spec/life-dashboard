@@ -25,9 +25,10 @@ final class DashboardNavTest extends TestCase
             "['Clock', '/clock']",
             "['Pantry', '/pantry']",
             "['Meals', '/pantry?view=meals']",
-            "['Flights', '/settings/flights']",
+            "['Flights', '/flights']",
             "['Packages', '/settings/packages']",
-            'href="/settings"',
+            'class="app-settings-pin',
+            'app-settings-label">Settings</span>',
             'href="/logout"',
             'data-player-toggle',
             'id="live-date"',
@@ -80,6 +81,31 @@ final class DashboardNavTest extends TestCase
         self::assertIsString($settingsBottom);
         self::assertStringContainsString('app-shell-open.php', $settingsTop);
         self::assertStringContainsString('app-shell-close.php', $settingsBottom);
+        self::assertStringContainsString('settings-kicker', $settingsTop);
+        self::assertStringContainsString('settings-footer', $settingsBottom);
+        self::assertStringContainsString('Changes saved automatically', $settingsBottom);
+
+        $nav = file_get_contents(VIEWS_DIR . '/settings/_nav.php');
+        self::assertIsString($nav);
+        self::assertStringContainsString('settings-rail', $nav);
+        self::assertStringContainsString('settings-step-num', $nav);
+        self::assertStringContainsString("'Money'", $nav);
+        self::assertStringContainsString("'Investing'", $nav);
+
+        $flights = file_get_contents(VIEWS_DIR . '/flights.php');
+        self::assertIsString($flights);
+        self::assertStringNotContainsString('FLIGHT_PROVIDER', $flights);
+        self::assertStringContainsString('flight-add-modal', $flights);
+        self::assertStringNotContainsString('settings/_shell-top.php', $flights);
+
+        $provider = file_get_contents(VIEWS_DIR . '/settings/flight-provider.php');
+        self::assertIsString($provider);
+        self::assertStringContainsString('FlightAware key', $provider);
+        self::assertStringNotContainsString('FLIGHT_PROVIDER=', $provider);
+
+        $shell = file_get_contents(ROOT_DIR . '/templates/partials/app-shell-open.php');
+        self::assertIsString($shell);
+        self::assertStringNotContainsString('href="/settings">Settings</a>', $shell);
     }
 
     public function testWidgetGridStaysOnTheDashboard(): void

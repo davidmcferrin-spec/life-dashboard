@@ -20,7 +20,7 @@ require __DIR__ . '/_shell-top.php';
                 <p id="bm-backfill-status" class="text-faint mono text-xs mt-2" aria-live="polite"></p>
             </header>
 
-            <details class="surface p-4 mb-4">
+            <details class="settings-block mb-4">
                 <summary class="text-sm font-medium text-primary cursor-pointer">Capture icon from open tab (local / LAN sites)</summary>
                 <div class="mt-3 space-y-2 text-sm text-muted">
                     <p>Drag this link to your bookmarks bar, then click it while viewing a site. The page sends its favicon to your dashboard (matches an existing link by URL or creates an unfiled one).</p>

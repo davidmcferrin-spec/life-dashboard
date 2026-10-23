@@ -23,8 +23,8 @@
     async function load() {
         const data = await api.get('/pantry/categories');
         root.innerHTML = (data.categories || []).map((row) => `
-            <form class="surface p-3" data-category="${esc(row.category)}">
-                <h2 class="text-sm text-primary">${esc(row.category)}</h2>
+            <form class="settings-block" data-category="${esc(row.category)}">
+                <h2 class="settings-section">${esc(row.category)}</h2>
                 <div class="grid grid-cols-2 gap-2 mt-2 sm:grid-cols-4">
                     ${field('pantry_days', row.pantry_days)}
                     ${field('fridge_days', row.fridge_days)}

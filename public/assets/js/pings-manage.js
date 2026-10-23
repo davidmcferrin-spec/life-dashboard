@@ -87,16 +87,14 @@ async function loadList() {
     }
 
     el.innerHTML = targets.map(t => `
-        <div class="surface p-4" data-id="${t.id}">
-            <div class="flex justify-between items-start gap-2">
-                <div>
-                    <span class="text-primary font-medium">${esc(t.label)}</span>
-                    <p class="mono text-xs text-faint mt-1">${esc(t.target)}</p>
-                </div>
-                ${statusChip(t)}
+        <div class="watch-row" data-id="${t.id}">
+            <div class="watch-row-main">
+                <span class="text-primary font-medium">${esc(t.label)}</span>
+                <p class="watch-row-meta">${esc(t.target)}</p>
+                ${t.latency_ms != null ? `<p class="watch-row-meta">${esc(t.latency_ms)} ms</p>` : ''}
             </div>
-            ${t.latency_ms != null ? `<p class="mono text-xs text-faint mt-1">${esc(t.latency_ms)} ms</p>` : ''}
-            <button type="button" class="ping-delete btn-danger mt-2" data-id="${t.id}">Delete</button>
+            ${statusChip(t)}
+            <button type="button" class="ping-delete btn-danger" data-id="${t.id}">Delete</button>
         </div>
     `).join('');
 

@@ -76,7 +76,7 @@ async function loadList() {
             title: 'No watches yet',
             body: 'Add a flight to follow it here.',
             actionLabel: 'Flight watches',
-            actionHref: '/settings/flights',
+            actionHref: '/flights',
         });
         return;
     }
@@ -86,15 +86,18 @@ async function loadList() {
             ? `<a href="${esc(f.external_url)}" class="mono text-primary font-semibold link" target="_blank" rel="noopener noreferrer" title="View on FlightAware">${esc(f.ident)}</a>`
             : `<span class="mono text-primary font-semibold">${esc(f.ident)}</span>`;
 
+        const route = (f.origin_display || f.dest_display)
+            ? `<p class="watch-row-meta">${esc(f.origin_display || '???')} → ${esc(f.dest_display || '???')}</p>`
+            : '';
         return `
-        <div class="surface p-4" data-id="${f.id}">
-            <div class="flex justify-between items-start gap-2">
+        <div class="watch-row" data-id="${f.id}">
+            <div class="watch-row-main">
                 ${identHtml}
-                <span class="chip ${f.airborne ? 'chip-ok' : 'chip-neutral'}">${esc(f.status_label)}</span>
+                <p class="watch-row-meta">Departs ${esc(f.departure_at)}${f.in_poll_window ? ' · polling now' : ''}</p>
+                ${route}
             </div>
-            <p class="mono text-xs text-faint mt-1">Departs ${esc(f.departure_at)}${f.in_poll_window ? ' · polling active' : ' · polling starts 24h before'}</p>
-            ${f.origin_display || f.dest_display ? `<p class="mono text-xs text-faint">${esc(f.origin_display || '???')} → ${esc(f.dest_display || '???')}</p>` : ''}
-            <button type="button" class="flight-delete btn-danger mt-2" data-id="${f.id}">Delete</button>
+            <span class="chip ${f.airborne ? 'chip-ok' : 'chip-neutral'}">${esc(f.status_label)}</span>
+            <button type="button" class="flight-delete btn-danger" data-id="${f.id}">Delete</button>
         </div>
     `;
     }).join('');

@@ -23,7 +23,7 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <section class="surface p-4 space-y-3 mb-4">
+            <section class="settings-block space-y-3 mb-4">
                 <h2 class="section-title">Account</h2>
                 <?php if (empty($spotify['configured'])): ?>
                 <p class="text-sm text-muted">
@@ -64,7 +64,7 @@ require __DIR__ . '/_shell-top.php';
                 <?php endif; ?>
             </section>
 
-            <section class="surface p-4 space-y-3">
+            <section class="settings-block space-y-3">
                 <h2 class="section-title">Player</h2>
                 <p class="text-sm text-muted">
                     The Player button on the dashboard shows or hides the floating player on this browser.

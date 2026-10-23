@@ -50,8 +50,8 @@
         const sourceEl = $('cloud-admin-source');
         if (sourceEl) {
             sourceEl.textContent = data.source === 'database'
-                ? 'Active settings: encrypted database (overrides .env).'
-                : 'Active settings: .env file (nothing saved in database yet).';
+                ? 'Active settings: saved on this server.'
+                : 'Active settings: not saved on this server yet.';
         }
     }
 

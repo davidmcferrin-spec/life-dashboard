@@ -24,7 +24,7 @@ require __DIR__ . '/_shell-top.php';
 
             <?php $pageEyebrow = 'Settings'; $pageHeading = 'Users'; require __DIR__ . '/../partials/page-heading.php'; ?>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Create user</h2>
                 <p class="text-muted text-sm mb-4">
                     Admins manage login accounts only. Each user’s bookmarks, clipboards, and widgets stay private
@@ -59,7 +59,7 @@ require __DIR__ . '/_shell-top.php';
                 </form>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-1">Accounts</h2>
                 <p class="text-muted text-sm mb-4"><?= count($accounts) ?> user<?= count($accounts) === 1 ? '' : 's' ?></p>
 
@@ -70,7 +70,7 @@ require __DIR__ . '/_shell-top.php';
                         $isSelf    = $acctId === $actingId;
                         $isAdmin   = (int) ($acct['is_admin'] ?? 0) === 1;
                     ?>
-                    <div class="border border-chrome rounded-lg p-4 space-y-3">
+                    <div class="settings-row">
                         <div class="flex flex-wrap items-center gap-2">
                             <span class="text-primary font-medium mono"><?= e((string) $acct['username']) ?></span>
                             <?php if ($isAdmin): ?>

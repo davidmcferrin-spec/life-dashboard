@@ -39,7 +39,7 @@ unset($_SESSION['settings_flash']);
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <?php $pageEyebrow = 'Settings'; $pageHeading = 'News sources'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Add custom RSS feeds, then choose which built-in and personal sources appear on the

@@ -1,13 +1,47 @@
 <?php
 /**
- * Settings layout — top chrome + sidebar open
+ * Settings layout. One steps rail and one content panel.
  *
- * Expects: $user, $active, $pageTitle (before head include), optional $flash
- * Optional: $settingsMainClass (main element classes), $settingsContentClass (content column)
+ * Expects: $user, $active, $pageTitle. Optional $flash, $settingsFormId,
+ * $settingsSubmitLabel, $settingsFooterNote, $settingsMainClass, $settingsWide.
  */
 $flash = $flash ?? null;
-$settingsMainClass    = $settingsMainClass ?? 'max-w-screen-xl mx-auto px-4 py-6';
-$settingsContentClass = $settingsContentClass ?? 'flex-1 space-y-8 min-w-0';
+$active = $active ?? 'general';
+$settingsFormId = $settingsFormId ?? '';
+$settingsSubmitLabel = $settingsSubmitLabel ?? 'Save';
+
+$settingsRenderNav = false;
+include __DIR__ . '/_nav.php';
+
+$settingsIsAdmin = !empty($user) && (int) ($user['is_admin'] ?? 0) === 1;
+$settingsGroups = settings_nav_groups($settingsIsAdmin);
+$settingsPageLinks = settings_nav_page_links();
+$settingsTrail = settings_nav_trail($settingsGroups);
+$settingsStepTotal = count($settingsTrail);
+$settingsStepIndex = null;
+foreach ($settingsTrail as $index => $step) {
+    if ($step['key'] === $active) {
+        $settingsStepIndex = $index;
+        break;
+    }
+}
+$settingsCurrent = $settingsStepIndex !== null ? $settingsTrail[$settingsStepIndex] : null;
+$settingsPrev = ($settingsStepIndex !== null && $settingsStepIndex > 0) ? $settingsTrail[$settingsStepIndex - 1] : null;
+$settingsNext = ($settingsStepIndex !== null && $settingsStepIndex < $settingsStepTotal - 1)
+    ? $settingsTrail[$settingsStepIndex + 1]
+    : null;
+$settingsGroupTitle = $settingsCurrent['group'] ?? 'Settings';
+
+$settingsNarrow = !isset($settingsMainClass) && empty($settingsWide);
+$settingsMainClass = $settingsMainClass ?? 'settings-main';
+if (!isset($settingsContentClass)) {
+    $settingsContentClass = 'settings-panel';
+} else {
+    $settingsContentClass .= ' settings-panel';
+}
+if ($settingsNarrow) {
+    $settingsContentClass .= ' is-narrow';
+}
 
 if (!isset($themePref) && !empty($user['id'])) {
     $shellPrefs    = new \Dashboard\Settings\PreferenceService(\Dashboard\DB\Database::getInstance());
@@ -27,7 +61,21 @@ if (!isset($themePref) && !empty($user['id'])) {
     </div>
     <?php endif; ?>
 
-    <div class="flex flex-col lg:flex-row gap-6">
-        <?php require __DIR__ . '/_nav.php'; ?>
+    <div class="page-heading settings-page-head">
+        <p class="page-eyebrow">Settings</p>
+        <p class="page-title"><?= e($settingsGroupTitle) ?></p>
+    </div>
+
+    <button type="button" class="settings-rail-toggle" id="settings-rail-toggle" aria-expanded="false" aria-controls="settings-rail">Sections</button>
+    <button type="button" class="settings-rail-backdrop" id="settings-rail-backdrop" hidden aria-label="Close sections"></button>
+
+    <div class="settings-layout">
+        <?php
+        $settingsRenderNav = true;
+        include __DIR__ . '/_nav.php';
+        ?>
 
         <div class="<?= e($settingsContentClass) ?>">
+            <?php if ($settingsCurrent !== null): ?>
+            <p class="settings-kicker">Step <?= e(sprintf('%02d', $settingsCurrent['number'])) ?> / <?= e(sprintf('%02d', $settingsStepTotal)) ?></p>
+            <?php endif; ?>

@@ -42,7 +42,7 @@ require __DIR__ . '/_shell-top.php';
                 !empty($plainHttp['config'])
             );
             ?>
-            <section class="surface p-4 mb-4" id="plain-http">
+            <section class="settings-block mb-4" id="plain-http">
                 <h2 class="section-title">Plain HTTP</h2>
                 <p class="text-muted text-sm mt-1">
                     Grok and other clients can keep using <span class="mono">http://&lt;lan-ip&gt;:8765/mcp</span> until this is off.
@@ -70,7 +70,7 @@ require __DIR__ . '/_shell-top.php';
                 </form>
             </section>
 
-            <form id="agent-create" class="surface p-4 space-y-3 mb-4">
+            <form id="agent-create" class="settings-block space-y-3 mb-4">
                 <h2 class="section-title">New token</h2>
                 <div class="ld-form-grid">
                     <label class="block ld-field">
@@ -113,7 +113,7 @@ require __DIR__ . '/_shell-top.php';
                 <p id="agent-create-error" class="ld-field-error" role="alert"></p>
             </form>
 
-            <section class="surface p-4 mb-4" id="oauth-clients">
+            <section class="settings-block mb-4" id="oauth-clients">
                 <h2 class="section-title">OAuth clients</h2>
                 <p class="text-muted text-sm mt-1">
                     Claude custom connectors register here and ask you to allow scopes.
@@ -171,12 +171,12 @@ require __DIR__ . '/_shell-top.php';
                 <?php endif; ?>
             </section>
 
-            <section class="surface p-4 mb-4">
+            <section class="settings-block mb-4">
                 <h2 class="section-title">Tokens</h2>
                 <div id="agent-tokens" class="mt-2" data-admin="<?= (int) ($user['is_admin'] ?? 0) === 1 ? '1' : '0' ?>" data-areas="<?= e(json_encode(\Dashboard\Api\V1\Scope::AREAS, JSON_THROW_ON_ERROR)) ?>"><p class="empty-state mono text-xs">Loading…</p></div>
             </section>
 
-            <section class="surface p-4 mb-4">
+            <section class="settings-block mb-4">
                 <div class="flex items-center justify-between gap-3">
                     <h2 class="section-title">Prompt</h2>
                     <button type="button" id="agent-copy-prompt" class="btn text-xs">Copy</button>
@@ -184,7 +184,7 @@ require __DIR__ . '/_shell-top.php';
                 <textarea id="agent-prompt" class="input w-full mt-2 ld-markup" rows="10" readonly></textarea>
             </section>
 
-            <section class="surface p-4">
+            <section class="settings-block">
                 <h2 class="section-title">Audit</h2>
                 <div id="agent-audit" class="mt-2"><p class="empty-state mono text-xs">Loading…</p></div>
             </section>

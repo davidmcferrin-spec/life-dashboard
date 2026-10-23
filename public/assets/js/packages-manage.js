@@ -96,15 +96,15 @@ async function loadList() {
         const eta = formatEta(p.estimated_delivery_at);
 
         return `
-        <div class="surface p-4" data-id="${p.id}">
-            <div class="flex justify-between items-start gap-2">
+        <div class="watch-row" data-id="${p.id}">
+            <div class="watch-row-main">
                 ${trackHtml}
-                <span class="chip chip-neutral">${esc(p.status_label)}</span>
+                <p class="watch-row-meta">${esc(carrierLabel(p.carrier, p.carrier_resolved))} · ${esc(p.tracking_number)}${inactive}${linkOnly}</p>
+                ${p.status_detail ? `<p class="watch-row-meta">${esc(p.status_detail)}</p>` : ''}
+                ${eta ? `<p class="watch-row-meta">ETA ${esc(eta)}</p>` : ''}
             </div>
-            <p class="mono text-xs text-faint mt-1">${esc(carrierLabel(p.carrier, p.carrier_resolved))} · ${esc(p.tracking_number)}${inactive}${linkOnly}</p>
-            ${p.status_detail ? `<p class="mono text-xs text-faint mt-1">${esc(p.status_detail)}</p>` : ''}
-            ${eta ? `<p class="mono text-xs text-faint mt-1">ETA ${esc(eta)}</p>` : ''}
-            <button type="button" class="package-delete btn-danger mt-2" data-id="${p.id}">Delete</button>
+            <span class="chip chip-neutral">${esc(p.status_label)}</span>
+            <button type="button" class="package-delete btn-danger" data-id="${p.id}">Delete</button>
         </div>
     `;
     }).join('');

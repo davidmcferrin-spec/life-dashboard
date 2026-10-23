@@ -31,7 +31,7 @@ require __DIR__ . '/_shell-top.php';
             </div>
             <?php endif; ?>
 
-            <section class="surface p-5" id="token-create">
+            <section class="settings-block" id="token-create">
                 <?php $pageEyebrow = 'Settings'; $pageHeading = 'Create token'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Tokens log you in via <code class="mono text-faint">/auto/{token}</code> without a password.
@@ -57,7 +57,7 @@ require __DIR__ . '/_shell-top.php';
                 </form>
             </section>
 
-            <section class="surface p-5">
+            <section class="settings-block">
                 <h2 class="text-primary font-medium mb-4">Your tokens</h2>
 
                 <?php if (empty($tokens)): ?>

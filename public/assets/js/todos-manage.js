@@ -82,7 +82,7 @@ function listCard(list) {
     const perm   = list.is_owner ? '' : `<span class="mono text-xs text-faint">${esc(list.permission)} access</span>`;
 
     return `
-        <div class="surface p-4" data-list-id="${list.id}">
+        <div class="watch-row" data-list-id="${list.id}">
             <div class="flex flex-wrap justify-between items-start gap-2">
                 <div>
                     <span class="text-primary font-medium">${esc(list.name)}</span>

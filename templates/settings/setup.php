@@ -13,11 +13,10 @@ $extraStyles = ['/assets/css/lifedash.css'];
 require __DIR__ . '/_shell-top.php';
 ?>
 
-            <section class="surface p-5">
-                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Setup'; require __DIR__ . '/../partials/page-heading.php'; ?>
+                <?php $pageEyebrow = ''; $pageHeading = 'Setup'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mb-4">
                     Keys for weather, stocks, flights, packages, X, and the local model.
-                    Saved values override the environment. The app secret and database password stay in the environment file.
+                    Saved here, encrypted. The app secret and database password are not on this page.
                 </p>
                 <ul class="setup-list" id="setup-list">
                     <?php foreach ($setupState['groups'] as $group): ?>
@@ -31,7 +30,6 @@ require __DIR__ . '/_shell-top.php';
                     </li>
                     <?php endforeach; ?>
                 </ul>
-            </section>
 
 <div id="setup-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
     <div class="app-modal-backdrop" data-setup-close></div>
