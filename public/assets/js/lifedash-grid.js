@@ -897,8 +897,28 @@
     });
 
     // -----------------------------------------------------------------
-    // Remove (two-step confirm, no browser dialog) + configure
+    // Remove (shared confirm) + configure
     // -----------------------------------------------------------------
+    async function confirmRemove(id) {
+        const entry = widgets.get(id);
+        if (!entry) return;
+        const name = String(entry.widget.title || entry.widget.label || '').trim() || 'this widget';
+        const ok = await globalThis.AppModal.confirm({
+            title: 'Remove widget',
+            message: 'Remove ' + name + '?',
+            confirmLabel: 'Remove',
+            danger: true,
+        });
+        if (!ok || !widgets.has(id)) return;
+        try {
+            await api.post(`/widgets/${id}/delete`, {});
+            removeLocal(id);
+            status('Widget removed');
+        } catch (err) {
+            status(err.message, 'error');
+        }
+    }
+
     gridEl.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-action]');
         if (!btn || !editing) return;
@@ -935,20 +955,11 @@
         } else if (btn.dataset.action === 'configure') {
             openConfig(widgets.get(id).widget);
         } else if (btn.dataset.action === 'remove') {
-            if (btn.dataset.armed !== '1') {
-                btn.dataset.armed = '1';
-                btn.textContent = 'Remove?';
-                setTimeout(() => {
-                    if (btn.isConnected) {
-                        btn.dataset.armed = '';
-                        btn.textContent = '✕';
-                    }
-                }, 3000);
-                return;
-            }
-            api.post(`/widgets/${id}/delete`, {})
-                .then(() => { removeLocal(id); status('Widget removed'); })
-                .catch((err) => status(err.message, 'error'));
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            confirmRemove(id).finally(() => {
+                if (btn.isConnected) btn.dataset.confirming = '';
+            });
         }
     });
 
@@ -965,13 +976,11 @@
         if (!document.querySelector('.app-modal:not(.hidden)')) document.body.classList.remove('app-modal-open');
     }
 
+    // Escape is handled by app-modal.js, which clicks [data-close].
     ['ld-add-modal', 'ld-config-modal'].forEach((id) => {
         const m = document.getElementById(id);
         m?.addEventListener('click', (e) => {
             if (e.target.closest('[data-close]')) closeModal(id);
-        });
-        m?.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeModal(id);
         });
     });
 

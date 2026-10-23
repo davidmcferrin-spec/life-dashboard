@@ -84,6 +84,7 @@ function openTodoAddModal() {
     }
 
     closeTodoEditModal();
+    clearTodoFormError('todo-widget-add-error');
     const modal = document.getElementById('todo-widget-add-modal');
     modal?.classList.remove('hidden');
     document.body.classList.add('app-modal-open');
@@ -161,6 +162,7 @@ function openTodoEditModal(item) {
     }
 
     closeTodoAddModal();
+    clearTodoFormError('todo-widget-edit-error');
     const modal = document.getElementById('todo-widget-edit-modal');
     if (!modal) {
         return;
@@ -339,6 +341,23 @@ document.getElementById('todo-widget-edit-link-add')?.addEventListener('click', 
     document.getElementById('todo-widget-edit-links')?.appendChild(renderEditLinkRow({}, true));
 });
 
+function clearTodoFormError(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showTodoFormError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
 document.getElementById('todo-widget-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const input = document.getElementById('todo-widget-input');
@@ -360,7 +379,7 @@ document.getElementById('todo-widget-add-form')?.addEventListener('submit', asyn
         body: JSON.stringify(body),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not add task.');
+        showTodoFormError('todo-widget-add-error', data.error || 'Could not add task.');
         return;
     }
     closeTodoAddModal();
@@ -395,22 +414,11 @@ document.getElementById('todo-widget-edit-form')?.addEventListener('submit', asy
         body: JSON.stringify(body),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not save task.');
+        showTodoFormError('todo-widget-edit-error', data.error || 'Could not save task.');
         return;
     }
     closeTodoEditModal();
     loadTodoWidget(todoWidgetListId);
-});
-
-document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') {
-        return;
-    }
-    if (!document.getElementById('todo-widget-edit-modal')?.classList.contains('hidden')) {
-        closeTodoEditModal();
-    } else if (!document.getElementById('todo-widget-add-modal')?.classList.contains('hidden')) {
-        closeTodoAddModal();
-    }
 });
 
 async function loadTodosWidget() {

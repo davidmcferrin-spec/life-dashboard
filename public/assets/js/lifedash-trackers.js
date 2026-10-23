@@ -10,7 +10,11 @@
     const listEl = document.getElementById('trk-list');
     const showArchived = document.getElementById('trk-show-archived');
     const addError = document.getElementById('trk-add-error');
-    if (!form || !listEl) return;
+    const addModal = document.getElementById('trk-add-modal');
+    const editModal = document.getElementById('trk-edit-modal');
+    const editForm = document.getElementById('trk-edit-form');
+    const listError = document.getElementById('trk-list-error');
+    if (!form || !listEl || !addModal || !editModal || !editForm) return;
 
     const GROUPS = [
         ['habit', 'Habits'],
@@ -20,7 +24,6 @@
     ];
 
     let metrics = [];
-    let editingId = null;
 
     // ---------------------------------------------------------------
     // Add form: show only the fields relevant to the chosen kind
@@ -28,9 +31,38 @@
     function syncKindFields() {
         const kind = form.elements.kind.value;
         form.querySelectorAll('[data-kinds]').forEach((el) => {
-            el.style.display = el.dataset.kinds.split(' ').includes(kind) ? '' : 'none';
+            const show = el.dataset.kinds.split(' ').includes(kind);
+            // class hidden keeps these out of the modal focus trap; inline
+            // display wins over the label's block utility.
+            el.classList.toggle('hidden', !show);
+            el.style.display = show ? '' : 'none';
         });
     }
+
+    function openModal(modal) {
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+    }
+
+    function closeModal(modal) {
+        modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function bindModal(modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close]')) closeModal(modal);
+        });
+    }
+    bindModal(addModal);
+    bindModal(editModal);
+
+    document.getElementById('trk-add-open')?.addEventListener('click', () => {
+        addError.classList.add('hidden');
+        openModal(addModal);
+    });
     form.elements.kind.addEventListener('change', syncKindFields);
     syncKindFields();
 
@@ -92,7 +124,7 @@
             form.elements.kind.value = kind; // keep the kind for adding several in a row
             syncKindFields();
             await load();
-            form.elements.name.focus();
+            closeModal(addModal);
         } catch (err) {
             showError(addError, err);
         } finally {
@@ -154,16 +186,7 @@
         if (m.kind === 'duration') {
             extra += field('Goal (minutes)', `<input class="input w-full" type="number" name="goal_minutes" min="1" max="10080" value="${c.goal_seconds ? Math.round(c.goal_seconds / 60) : ''}">`);
         }
-        return `
-            <form class="ld-metric-edit" data-edit="${m.id}">
-                ${field('Name', `<input class="input w-full" name="name" maxlength="80" required value="${esc(m.name)}">`)}
-                ${extra}
-                <div class="flex items-end gap-2">
-                    <button type="submit" class="btn-primary text-xs">Save</button>
-                    <button type="button" class="btn text-xs" data-cancel>Cancel</button>
-                </div>
-                <p class="text-danger mono text-xs hidden" data-error style="grid-column:1/-1"></p>
-            </form>`;
+        return field('Name', `<input class="input w-full" name="name" maxlength="80" required value="${esc(m.name)}">`) + extra;
     }
 
     function rowHtml(m, idx, group) {
@@ -182,7 +205,6 @@
                     <button type="button" class="btn text-xs" data-edit-open>Edit</button>`}
                     <button type="button" class="btn text-xs" data-archive="${m.archived ? '0' : '1'}">${m.archived ? 'Restore' : 'Archive'}</button>
                 </div>
-                ${editingId === m.id ? editHtml(m) : ''}
             </div>`;
     }
 
@@ -190,7 +212,7 @@
         if (!metrics.length) {
             listEl.innerHTML = window.DashboardEmpty.html({
                 title: 'No habits yet',
-                body: 'Add a habit in the form above.',
+                body: 'Add one with Add tracker.',
                 actionLabel: 'Habits',
                 actionHref: '/settings/trackers',
             });
@@ -202,7 +224,28 @@
             return `<h3 class="ld-type-group" style="margin:0.75rem 0 0.35rem">${esc(label)}</h3>`
                 + group.map((m, i) => rowHtml(m, i, group)).join('');
         }).join('');
-        listEl.querySelector('[data-edit] input[name=name]')?.focus();
+    }
+
+    function showListError(err) {
+        if (!listError) return;
+        listError.textContent = err.message || 'Something went wrong.';
+        listError.classList.remove('hidden');
+    }
+
+    function clearListError() {
+        if (!listError) return;
+        listError.textContent = '';
+        listError.classList.add('hidden');
+    }
+
+    function openEdit(m) {
+        editForm.dataset.edit = String(m.id);
+        document.getElementById('trk-edit-title').textContent = 'Edit ' + m.name;
+        document.getElementById('trk-edit-fields').innerHTML = editHtml(m);
+        const errEl = editForm.querySelector('[data-error]');
+        errEl.textContent = '';
+        errEl.classList.add('hidden');
+        openModal(editModal);
     }
 
     listEl.addEventListener('click', async (e) => {
@@ -215,16 +258,14 @@
 
         try {
             if (btn.hasAttribute('data-edit-open')) {
-                editingId = editingId === id ? null : id;
-                render();
-            } else if (btn.hasAttribute('data-cancel')) {
-                editingId = null;
-                render();
+                openEdit(m);
             } else if (btn.dataset.archive !== undefined) {
+                clearListError();
                 btn.disabled = true;
                 await api.post(`/metrics/${id}/archive`, { archived: btn.dataset.archive === '1' });
                 await load();
             } else if (btn.dataset.move !== undefined) {
+                clearListError();
                 // Reorder within the kind group, then persist the full active order.
                 const active = metrics.filter((x) => !x.archived);
                 const group = active.filter((x) => x.kind === m.kind);
@@ -240,16 +281,16 @@
                 await load();
             }
         } catch (err) {
-            window.alert(err.message); // settings page: a plain message is fine here
+            showListError(err);
         }
     });
 
-    listEl.addEventListener('submit', async (e) => {
-        const f = e.target.closest('[data-edit]');
-        if (!f) return;
+    editForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const f = editForm;
         const id = Number(f.dataset.edit);
         const m = metrics.find((x) => x.id === id);
+        if (!m) return;
         const v = Object.fromEntries(new FormData(f).entries());
         const c = m.config || {};
         const merged = m.kind === 'scale' ? Object.assign({ min: c.min, max: c.max }, v) : v;
@@ -265,7 +306,7 @@
         errEl.classList.add('hidden');
         try {
             await api.post(`/metrics/${id}/update`, body);
-            editingId = null;
+            closeModal(editModal);
             await load();
         } catch (err) {
             showError(errEl, err);

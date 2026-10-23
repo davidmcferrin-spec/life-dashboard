@@ -21,8 +21,18 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <form id="trk-add-form" class="surface p-4 space-y-3 mb-4" novalidate>
-                <h2 class="section-title">Add</h2>
+            <p class="mb-4">
+                <button type="button" id="trk-add-open" class="btn-primary">Add tracker</button>
+            </p>
+
+            <div id="trk-add-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="trk-add-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface ld-modal-wide">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="trk-add-title" class="section-title text-sm">Add tracker</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="trk-add-form" class="space-y-3" novalidate>
                 <div class="ld-form-grid">
                     <label class="block ld-field">
                         <span>Name</span>
@@ -79,8 +89,31 @@ require __DIR__ . '/_shell-top.php';
                     </label>
                 </div>
                 <p id="trk-add-error" class="text-danger mono text-xs hidden" role="alert"></p>
-                <button type="submit" class="btn-primary">Add</button>
-            </form>
+                <div class="flex flex-wrap gap-2">
+                    <button type="submit" class="btn-primary">Add</button>
+                    <button type="button" class="btn" data-close>Cancel</button>
+                </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="trk-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="trk-edit-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface ld-modal-wide">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="trk-edit-title" class="section-title text-sm">Edit tracker</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="trk-edit-form" class="space-y-3" novalidate>
+                        <div id="trk-edit-fields" class="ld-metric-edit"></div>
+                        <p class="text-danger mono text-xs hidden" data-error role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Save</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
             <div class="flex items-center justify-between mb-2">
                 <h2 class="section-title">Your trackers</h2>
@@ -88,6 +121,7 @@ require __DIR__ . '/_shell-top.php';
                     <input type="checkbox" id="trk-show-archived"> Show archived
                 </label>
             </div>
+            <p id="trk-list-error" class="ld-field-error hidden mb-2" role="alert"></p>
             <div id="trk-list">
                 <p class="empty-state mono">Loading…</p>
             </div>
