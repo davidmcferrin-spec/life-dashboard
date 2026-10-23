@@ -28,7 +28,7 @@ if (empty($ldMediaWidgetsCss)) {
 
     <?php if ($showNewsFeed): ?>
         <?php require dirname(__DIR__) . '/news-feed-filters.php'; ?>
-        <div id="news-feed" class="ld-mk-news-grid">
+        <div id="news-feed" class="space-y-0.5">
             <div class="empty-state py-4 text-center">Loading feed...</div>
         </div>
         <div class="ld-mk-more">
