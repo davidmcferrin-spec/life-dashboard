@@ -1,5 +1,6 @@
 /**
  * Grok Digest page: a compact feed. History, compare, and sources share one menu.
+ * Each entry has its own menu. Topic chips filter tags stored on the entries.
  */
 'use strict';
 
@@ -16,6 +17,7 @@
         status: document.getElementById('digest-status'),
         error: document.getElementById('digest-error'),
         products: document.getElementById('digest-products'),
+        topics: document.getElementById('digest-topics'),
         feed: document.getElementById('digest-feed'),
         more: document.getElementById('digest-more'),
         sources: document.getElementById('digest-sources'),
@@ -34,6 +36,8 @@
     };
     let product = '';
     let products = [];
+    let topic = '';
+    let topics = [];
     let sourceRows = [];
     let compareMode = 'date';
     let group = 'date';
@@ -44,8 +48,18 @@
     let today = '';
     let loadGen = 0;
     const openIds = new Set();
-    const chevronNode = document.getElementById('digest-icon-chevron');
-    const chevronHtml = chevronNode ? chevronNode.innerHTML : '';
+
+    function iconHtml(id) {
+        const node = document.getElementById(id);
+        return node ? node.innerHTML : '';
+    }
+
+    const chevronHtml = iconHtml('digest-icon-chevron');
+    const ellipsisHtml = iconHtml('digest-icon-ellipsis');
+    const historyHtml = iconHtml('digest-icon-history');
+    const arrowHtml = iconHtml('digest-icon-arrow');
+    const compareHtml = iconHtml('digest-icon-compare');
+    const rssHtml = iconHtml('digest-icon-rss');
 
     function showError(error) {
         const message = (error && error.message) || 'Request failed.';
@@ -109,6 +123,7 @@
         if (els.unread.checked) params.set('unread', '1');
         const q = els.q.value.trim();
         if (q) params.set('q', q);
+        if (topic) params.set('topic', topic);
         params.set('limit', String(PAGE));
         if (offset) params.set('offset', String(offset));
         return '?' + params.toString();
@@ -125,6 +140,44 @@
         }
     }
 
+    function sourceBadge(count) {
+        const n = Math.max(1, Math.floor(Number(count) || 1));
+        return n === 1 ? '1 source' : n + ' sources';
+    }
+
+    function renderTopicChips() {
+        if (!els.topics) return;
+        const chips = [{ slug: '', label: 'All topics' }].concat(topics);
+        els.topics.innerHTML = chips.map((chip) => {
+            const on = chip.slug === topic ? ' is-on' : '';
+            return `<button type="button" class="ld-digest-chip${on}" data-topic="${esc(chip.slug)}">${esc(chip.label)}</button>`;
+        }).join('');
+    }
+
+    function itemMenu(item, id, open) {
+        const removes = (item.topics || []).map((row) => {
+            return `<button type="button" class="ld-digest-menu-item is-text" role="menuitem" data-untag="${esc(row.id)}" data-entry="${esc(id)}">Remove ${esc(row.label)}</button>`;
+        }).join('');
+        const read = item.url
+            ? `<a class="ld-digest-menu-item" role="menuitem" href="${esc(item.url)}" target="_blank" rel="noopener">${arrowHtml}Read full analysis</a>`
+            : '';
+        return `<div class="ld-digest-menu ld-digest-item-menu">
+            <button type="button" class="btn ld-digest-item-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Item actions">${ellipsisHtml}</button>
+            <div class="ld-digest-menu-panel" role="menu" hidden>
+                <button type="button" class="ld-digest-menu-item is-text" role="menuitem" data-menu-analysis="${esc(id)}">${open ? 'Collapse' : 'View analysis'}</button>
+                ${read}
+                <button type="button" class="ld-digest-menu-item" role="menuitem" data-menu-history>${historyHtml}History</button>
+                <button type="button" class="ld-digest-menu-item" role="menuitem" data-menu-compare="${esc(item.product || '')}">${compareHtml}Compare</button>
+                <button type="button" class="ld-digest-menu-item" role="menuitem" data-menu-sources>${rssHtml}Sources</button>
+                ${removes}
+                <form class="ld-digest-tag" data-tag-entry="${esc(id)}">
+                    <input class="input" name="topic" maxlength="40" placeholder="Topic" aria-label="Topic name" autocomplete="off">
+                    <button type="submit" class="btn">Tag</button>
+                </form>
+            </div>
+        </div>`;
+    }
+
     function card(item) {
         const id = String(item.id);
         const open = openIds.has(id);
@@ -139,20 +192,24 @@
         const source = item.source_label ? `<span>${esc(item.source_label)}</span>` : '';
         const summary = item.summary || '';
         const body = item.body || '';
-        const extra = body && body !== summary
-            ? `<div class="ld-digest-body" id="digest-note-${esc(id)}"${open ? '' : ' hidden'}>${esc(body)}</div><button type="button" class="ld-digest-toggle" data-toggle-note="${esc(id)}" aria-expanded="${open ? 'true' : 'false'}"><span class="ld-digest-toggle-label">${open ? 'Collapse' : 'View analysis'}</span>${chevronHtml}</button>`
+        const topicMarks = (item.topics || []).map((row) => `<span>${esc(row.label)}</span>`).join('');
+        const note = body && body !== summary ? `<p class="ld-digest-note">${esc(body)}</p>` : '';
+        const read = item.url
+            ? `<a class="ld-digest-read" href="${esc(item.url)}" target="_blank" rel="noopener">Read full analysis ${arrowHtml}</a>`
             : '';
+        const extra = `<div class="ld-digest-body" id="digest-note-${esc(id)}"${open ? '' : ' hidden'}>${note}<div class="ld-digest-analysis-bar"><span class="ld-digest-badge">${esc(sourceBadge(item.source_count))}</span>${read}</div></div><button type="button" class="ld-digest-toggle" data-toggle-note="${esc(id)}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="digest-note-${esc(id)}"><span class="ld-digest-toggle-label">${open ? 'Collapse' : 'View analysis'}</span>${chevronHtml}</button>`;
         const when = date
             ? `<time class="ld-digest-date${found ? ' is-found' : ''}" datetime="${esc(dateIso)}">${found ? 'Found ' : ''}${esc(date)}</time>`
             : '<span class="ld-digest-date"></span>';
         return `<article class="ld-digest-item${open ? ' is-open' : ''}">
             ${when}
             <div class="ld-digest-copy">
-                <p class="ld-digest-kicker"><span>${esc(item.product_label || '')}</span>${source}${version}${badges}</p>
+                <p class="ld-digest-kicker">${topicMarks}<span>${esc(item.product_label || '')}</span>${source}${version}${badges}</p>
                 <h3 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
                 ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
                 ${extra}
             </div>
+            ${itemMenu(item, id, open)}
         </article>`;
     }
 
@@ -273,8 +330,15 @@
             const batch = feed.items || [];
             items = reset ? batch : items.concat(batch);
             products = feed.products || products;
+            topics = feed.topics || topics;
+            if (topic && !topics.some((chip) => chip.slug === topic)) {
+                topic = '';
+                load(true);
+                return;
+            }
             if (sources) renderSources(sources);
             renderChips();
+            renderTopicChips();
             renderFeed();
         } catch (error) {
             if (gen !== loadGen) return;
@@ -282,6 +346,14 @@
         }
     }
 
+    if (els.topics) {
+        els.topics.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-topic]');
+            if (!button) return;
+            topic = button.getAttribute('data-topic') || '';
+            load(true);
+        });
+    }
     els.products.addEventListener('click', (event) => {
         const button = event.target.closest('[data-product]');
         if (!button) return;
@@ -307,27 +379,118 @@
         timer = setTimeout(() => load(true), 250);
     });
     els.more.addEventListener('click', () => load(false));
-    els.feed.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-toggle-note]');
-        if (!button) return;
-        const id = button.getAttribute('data-toggle-note');
+    function toggleNote(id) {
         const note = document.getElementById('digest-note-' + id);
         if (!note) return;
         const open = note.hasAttribute('hidden');
-        const label = button.querySelector('.ld-digest-toggle-label');
-        const article = button.closest('.ld-digest-item');
+        const button = note.parentElement ? note.parentElement.querySelector('[data-toggle-note="' + id + '"]') : null;
+        const label = button ? button.querySelector('.ld-digest-toggle-label') : null;
+        const article = note.closest('.ld-digest-item');
+        const menuItem = article ? article.querySelector('[data-menu-analysis]') : null;
         if (open) {
             note.removeAttribute('hidden');
             openIds.add(id);
             if (label) label.textContent = 'Collapse';
+            if (menuItem) menuItem.textContent = 'Collapse';
             if (article) article.classList.add('is-open');
         } else {
             note.setAttribute('hidden', '');
             openIds.delete(id);
             if (label) label.textContent = 'View analysis';
+            if (menuItem) menuItem.textContent = 'View analysis';
             if (article) article.classList.remove('is-open');
         }
-        button.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (button) button.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    function closeItemMenus(except) {
+        app.querySelectorAll('.ld-digest-item-menu').forEach((menu) => {
+            if (except && menu === except) return;
+            const panel = menu.querySelector('.ld-digest-menu-panel');
+            const button = menu.querySelector('.ld-digest-item-menu-btn');
+            if (panel) panel.hidden = true;
+            if (button) button.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    async function untagEntry(entryId, topicId) {
+        clearError();
+        try {
+            await api.post('/digest/items/' + entryId + '/topics/' + topicId + '/remove', {});
+            await load(true);
+        } catch (error) {
+            showError(error);
+        }
+    }
+
+    app.addEventListener('click', (event) => {
+        const toggle = event.target.closest('[data-toggle-note]');
+        if (toggle) {
+            toggleNote(toggle.getAttribute('data-toggle-note'));
+            return;
+        }
+        const trigger = event.target.closest('.ld-digest-item-menu-btn');
+        if (trigger) {
+            const menu = trigger.closest('.ld-digest-item-menu');
+            const panel = menu.querySelector('.ld-digest-menu-panel');
+            const willOpen = panel.hidden;
+            closeItemMenus();
+            setMenu(false);
+            if (willOpen) {
+                panel.hidden = false;
+                trigger.setAttribute('aria-expanded', 'true');
+                const first = panel.querySelector('[role="menuitem"]');
+                if (first) first.focus();
+            }
+            return;
+        }
+        const analysis = event.target.closest('[data-menu-analysis]');
+        if (analysis) {
+            toggleNote(analysis.getAttribute('data-menu-analysis'));
+            closeItemMenus();
+            return;
+        }
+        if (event.target.closest('[data-menu-history]')) {
+            closeItemMenus();
+            showView('history');
+            return;
+        }
+        const compare = event.target.closest('[data-menu-compare]');
+        if (compare) {
+            const productId = compare.getAttribute('data-menu-compare') || '';
+            closeItemMenus();
+            showView('compare');
+            if (productId) els.compareProduct.value = productId;
+            return;
+        }
+        if (event.target.closest('[data-menu-sources]')) {
+            closeItemMenus();
+            showView('sources');
+            return;
+        }
+        const untag = event.target.closest('[data-untag]');
+        if (untag) {
+            const entryId = untag.getAttribute('data-entry');
+            const topicId = untag.getAttribute('data-untag');
+            closeItemMenus();
+            untagEntry(entryId, topicId);
+        }
+    });
+    app.addEventListener('submit', async (event) => {
+        const form = event.target.closest ? event.target.closest('[data-tag-entry]') : null;
+        if (!form || !form.hasAttribute('data-tag-entry')) return;
+        event.preventDefault();
+        const entryId = form.getAttribute('data-tag-entry');
+        const input = form.querySelector('input');
+        const name = input ? input.value.trim() : '';
+        if (!name) return;
+        clearError();
+        try {
+            await api.post('/digest/items/' + entryId + '/topics', { name: name });
+            await load(true);
+        } catch (error) {
+            showError(error);
+        }
     });
     document.getElementById('digest-read').addEventListener('click', async () => {
         clearError();
@@ -346,6 +509,7 @@
         }
         if (event.target.closest('[data-empty-reset]')) {
             product = '';
+            topic = '';
             els.q.value = '';
             els.unread.checked = false;
             load(true);
@@ -549,6 +713,7 @@
         menuPanel.hidden = !open;
         menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
         if (!open) return;
+        closeItemMenus();
         const current = menuPanel.querySelector('[aria-current="true"]') || menuPanel.querySelector('[role="menuitem"]');
         if (current) current.focus();
     }
@@ -572,21 +737,43 @@
             if (next) next.focus();
         });
         document.addEventListener('click', (event) => {
-            if (menuPanel.hidden) return;
-            if (menuBtn.contains(event.target) || menuPanel.contains(event.target)) return;
-            setMenu(false);
+            if (!menuPanel.hidden && !menuBtn.contains(event.target) && !menuPanel.contains(event.target)) {
+                setMenu(false);
+            }
+            if (!event.target.closest('.ld-digest-item-menu')) closeItemMenus();
         });
         document.addEventListener('keydown', (event) => {
-            if (event.key !== 'Escape' || menuPanel.hidden) return;
+            if (event.key !== 'Escape') return;
+            const openItem = app.querySelector('.ld-digest-item-menu .ld-digest-menu-panel:not([hidden])');
+            if (openItem) {
+                const menu = openItem.closest('.ld-digest-item-menu');
+                closeItemMenus();
+                const button = menu ? menu.querySelector('.ld-digest-item-menu-btn') : null;
+                if (button) button.focus();
+                return;
+            }
+            if (menuPanel.hidden) return;
             setMenu(false);
             menuBtn.focus();
         });
     }
+    app.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        const panel = event.target.closest('.ld-digest-item-menu .ld-digest-menu-panel');
+        if (!panel || event.target.tagName === 'INPUT') return;
+        const items = Array.from(panel.querySelectorAll('[role="menuitem"]'));
+        const index = items.indexOf(document.activeElement);
+        if (index < 0) return;
+        event.preventDefault();
+        const step = event.key === 'ArrowDown' ? 1 : -1;
+        const next = items[(index + step + items.length) % items.length];
+        if (next) next.focus();
+    });
 
     window.addEventListener('lifedash:poll', () => load(true));
     window.addEventListener('lifedash:event', (event) => {
         const table = event.detail && event.detail.table;
-        if (table === 'digest_entries' || table === 'digest_sources' || table === 'digest_cursors') {
+        if (table === 'digest_entries' || table === 'digest_sources' || table === 'digest_cursors' || table === 'digest_topics' || table === 'digest_entry_topics') {
             load(true);
         }
     });
