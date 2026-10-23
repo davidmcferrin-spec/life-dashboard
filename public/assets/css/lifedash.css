@@ -9418,3 +9418,1028 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+/* Brain mesh. CSS 3D clouds from the Figma screen, teal in every theme, IBM Plex, 11–32px. */
+.brain-screen .app-content {
+    height: calc(100vh - 72px);
+    min-height: 0;
+    overflow: hidden;
+}
+
+.brain-screen-page {
+    --accent: #44d7d0;
+    --accent-hover: #80e4df;
+    --accent-ink: #06201f;
+    --accent-soft: rgba(68, 215, 208, 0.14);
+    --accent-border: rgba(68, 215, 208, 0.28);
+    --brain-write: #e3b45f;
+    color: var(--text-primary);
+    display: grid;
+    font-family: 'IBM Plex Sans', var(--font-sans);
+    grid-template-columns: minmax(0, 1fr) 280px;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.brain-screen-page button,
+.brain-screen-page input,
+.brain-screen-page a {
+    font-family: 'IBM Plex Sans', var(--font-sans);
+}
+
+.brain-screen-page .brain-canvas {
+    background:
+        radial-gradient(circle at 50% 47%, rgba(28, 112, 108, 0.2), transparent 26%),
+        radial-gradient(circle at 50% 100%, rgba(16, 66, 67, 0.17), transparent 48%),
+        #060a0b;
+    cursor: grab;
+    isolation: isolate;
+    min-width: 0;
+    overflow: hidden;
+    perspective: 950px;
+    position: relative;
+    touch-action: none;
+    user-select: none;
+}
+
+.brain-screen-page .brain-canvas.dragging,
+.brain-screen-page .brain-canvas.camera-free.dragging {
+    cursor: grabbing;
+}
+
+.brain-screen-page .brain-canvas.camera-free {
+    cursor: move;
+}
+
+.brain-screen-page .brain-canvas::before {
+    animation: brain-drift 28s linear infinite;
+    background-image: radial-gradient(rgba(108, 222, 217, 0.2) 0.7px, transparent 0.8px);
+    background-size: 22px 22px;
+    content: "";
+    inset: 0;
+    mask-image: radial-gradient(circle, #000, transparent 82%);
+    opacity: 0.52;
+    pointer-events: none;
+    position: absolute;
+}
+
+.brain-screen-page .brain-canvas::after {
+    border: 1px solid rgba(68, 215, 208, 0.05);
+    border-radius: 50%;
+    box-shadow: 0 0 90px rgba(68, 215, 208, 0.035), inset 0 0 90px rgba(68, 215, 208, 0.025);
+    content: "";
+    inset: 8%;
+    pointer-events: none;
+    position: absolute;
+}
+
+.brain-screen-page .brain-horizon {
+    background-image:
+        linear-gradient(rgba(68, 215, 208, 0.075) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(68, 215, 208, 0.075) 1px, transparent 1px);
+    background-size: 42px 42px;
+    bottom: -45%;
+    height: 70%;
+    left: -20%;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent 72%);
+    pointer-events: none;
+    position: absolute;
+    right: -20%;
+    transform: rotateX(67deg);
+    transform-origin: center top;
+    z-index: 0;
+}
+
+.brain-screen-page .scan-beam {
+    animation: brain-scan 9s ease-in-out infinite;
+    background: linear-gradient(90deg, transparent, rgba(68, 215, 208, 0.028));
+    border-right: 1px solid rgba(68, 215, 208, 0.18);
+    bottom: 8%;
+    left: 0;
+    pointer-events: none;
+    position: absolute;
+    top: 7%;
+    width: 22%;
+    z-index: 2;
+}
+
+.brain-screen-page .brain-readout {
+    bottom: 58px;
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    left: 17px;
+    letter-spacing: 0.08em;
+    position: absolute;
+    z-index: 6;
+}
+
+.brain-screen-page .brain-readout span,
+.brain-screen-page .brain-readout strong {
+    display: block;
+}
+
+.brain-screen-page .brain-readout span {
+    color: var(--accent);
+}
+
+.brain-screen-page .brain-readout span i {
+    animation: brain-blink 1.4s infinite;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    display: inline-block;
+    height: 8px;
+    margin-right: 6px;
+    width: 8px;
+}
+
+.brain-screen-page .brain-readout strong {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    margin-top: 6px;
+}
+
+.brain-screen-page .brain-toolbar {
+    display: flex;
+    gap: 6px;
+    position: absolute;
+    top: 16px;
+    z-index: 6;
+}
+
+.brain-screen-page .brain-toolbar.left { left: 16px; }
+.brain-screen-page .brain-toolbar.right { right: 16px; }
+
+.brain-screen-page .brain-toolbar .icon-btn,
+.brain-screen-page .brain-toolbar .chip,
+.brain-screen-page .brain-search {
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 90%, transparent);
+    border: 1px solid var(--border-soft, var(--surface-border));
+    color: var(--text-primary);
+}
+
+.brain-screen-page .brain-search {
+    align-items: center;
+    border-radius: 7px;
+    display: flex;
+    gap: 7px;
+    height: 32px;
+    padding: 0 9px;
+    width: 190px;
+}
+
+.brain-screen-page .brain-search svg,
+.brain-screen-page .icon-btn svg,
+.brain-screen-page .camera-dock svg,
+.brain-screen-page .node-panel footer svg,
+.brain-screen-page .io-readout svg {
+    display: block;
+    flex: none;
+    height: 16px;
+    width: 16px;
+}
+
+.brain-screen-page .brain-search svg { color: var(--text-secondary); }
+
+.brain-screen-page .brain-search input {
+    background: transparent;
+    border: 0;
+    color: var(--text-primary);
+    font-size: 13px;
+    min-width: 0;
+    outline: 0;
+    width: 100%;
+}
+
+.brain-screen-page .chip,
+.brain-screen-page .icon-btn {
+    align-items: center;
+    border-radius: 7px;
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 500;
+    justify-content: center;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0 10px;
+}
+
+.brain-screen-page .icon-btn { padding: 0; width: 32px; }
+
+.brain-screen-page .chip.active,
+.brain-screen-page .camera-dock > button.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent);
+}
+
+.brain-screen-page .icon-btn:focus-visible,
+.brain-screen-page .chip:focus-visible,
+.brain-screen-page .camera-dock > button:focus-visible,
+.brain-screen-page .neural-object:focus-visible,
+.brain-screen-page .cloud-core:focus-visible,
+.brain-screen-page .node-panel footer a:focus-visible,
+.brain-screen-page .node-panel footer button:focus-visible,
+.brain-screen-page .node-panel section button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.brain-screen-page .neural-world {
+    inset: 0;
+    perspective: 900px;
+    pointer-events: none;
+    position: absolute;
+    transform-style: preserve-3d;
+    z-index: 4;
+}
+
+.brain-screen-page .neural-world-inner {
+    inset: 0;
+    position: absolute;
+    transform: translate3d(calc(var(--focus-x) + var(--camera-x)), calc(var(--focus-y) + var(--camera-y)), 0) scale(var(--camera-zoom)) rotateX(var(--world-rx)) rotateY(var(--world-ry));
+    transform-style: preserve-3d;
+    transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.brain-screen-page .brain-canvas.dragging .neural-world-inner { transition: none; }
+
+.brain-screen-page .mode-2d .neural-world-inner {
+    transform: translate3d(calc(var(--focus-x) + var(--camera-x)), calc(var(--focus-y) + var(--camera-y)), 0) scale(var(--camera-zoom));
+}
+
+.brain-screen-page .neural-cloud {
+    animation: brain-breathe 8s ease-in-out var(--cloud-delay) infinite;
+    height: 250px;
+    left: var(--cloud-x);
+    pointer-events: none;
+    position: absolute;
+    top: var(--cloud-y);
+    transform: translate3d(-50%, -50%, 0) scale(var(--cloud-scale));
+    transform-style: preserve-3d;
+    width: 250px;
+}
+
+.brain-screen-page .mode-2d .neural-cloud {
+    transform: translate3d(-50%, -50%, 0) scale(var(--cloud-scale));
+}
+
+.brain-screen-page .neural-cloud::before {
+    background: radial-gradient(circle, rgba(68, 215, 208, 0.065), transparent 67%);
+    border-radius: 50%;
+    content: "";
+    filter: blur(9px);
+    inset: -25%;
+    position: absolute;
+    transform: translateZ(-40px);
+}
+
+.brain-screen-page .geodesic-shell {
+    animation: brain-geo 28s linear infinite;
+    border: 1px solid rgba(68, 215, 208, 0.11);
+    border-radius: 50%;
+    box-shadow: 0 0 45px rgba(68, 215, 208, 0.045), inset 0 0 40px rgba(68, 215, 208, 0.035);
+    inset: 12px;
+    position: absolute;
+    transform-style: preserve-3d;
+}
+
+.brain-screen-page .geodesic-shell::before,
+.brain-screen-page .geodesic-shell::after,
+.brain-screen-page .geodesic-shell > i {
+    border: 1px solid rgba(68, 215, 208, 0.09);
+    border-radius: 50%;
+    content: "";
+    inset: 0;
+    position: absolute;
+}
+
+.brain-screen-page .geodesic-shell::before { transform: rotateX(62deg); }
+.brain-screen-page .geodesic-shell::after { transform: rotateY(62deg); }
+.brain-screen-page .geodesic-shell > i:nth-child(1) { transform: rotateX(32deg); }
+.brain-screen-page .geodesic-shell > i:nth-child(2) { transform: rotateX(-32deg); }
+.brain-screen-page .geodesic-shell > i:nth-child(3) { transform: rotateY(32deg); }
+.brain-screen-page .geodesic-shell > i:nth-child(4) { transform: rotateY(-32deg); }
+
+.brain-screen-page .neural-cloud.attached .geodesic-shell {
+    border-color: rgba(68, 215, 208, 0.28);
+    box-shadow: 0 0 55px rgba(68, 215, 208, 0.12), inset 0 0 50px rgba(68, 215, 208, 0.08);
+}
+
+.brain-screen-page .cloud-core {
+    background: radial-gradient(circle, rgba(68, 215, 208, 0.2), rgba(8, 18, 19, 0.93) 67%);
+    border: 1px solid rgba(68, 215, 208, 0.33);
+    border-radius: 50%;
+    box-shadow: 0 0 22px rgba(68, 215, 208, 0.2);
+    color: var(--accent);
+    cursor: crosshair;
+    display: grid;
+    height: 54px;
+    left: 50%;
+    padding: 0;
+    place-items: center;
+    pointer-events: auto;
+    position: absolute;
+    top: 50%;
+    transform: translate3d(-50%, -50%, 0);
+    width: 54px;
+    z-index: 7;
+}
+
+.brain-screen-page .cloud-core svg { height: 22px; width: 22px; }
+
+.brain-screen-page .cloud-core > i {
+    animation: brain-spin 15s linear infinite;
+    border: 1px dashed rgba(68, 215, 208, 0.23);
+    border-radius: 50%;
+    inset: -8px;
+    position: absolute;
+}
+
+.brain-screen-page .neural-cloud.attached .cloud-core {
+    border-color: #d8ffff;
+    box-shadow: 0 0 12px #d8ffff, 0 0 32px rgba(68, 215, 208, 0.4);
+}
+
+.brain-screen-page .cloud-name {
+    background: rgba(6, 11, 12, 0.8);
+    border: 1px solid rgba(68, 215, 208, 0.12);
+    border-radius: 5px;
+    left: 50%;
+    padding: 6px 9px;
+    position: absolute;
+    text-align: center;
+    top: calc(100% + 18px);
+    transform: translateX(-50%);
+    width: max-content;
+    z-index: 8;
+}
+
+.brain-screen-page .cloud-name strong,
+.brain-screen-page .cloud-name span { display: block; }
+
+.brain-screen-page .cloud-name strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.brain-screen-page .cloud-name span {
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.brain-screen-page .neural-spoke {
+    height: 0;
+    left: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    transform: rotateY(var(--az)) rotateX(var(--el));
+    transform-style: preserve-3d;
+    width: 0;
+    z-index: 5;
+}
+
+.brain-screen-page .neural-thread {
+    background: linear-gradient(to bottom, rgba(68, 215, 208, 0.38), rgba(68, 215, 208, 0.035));
+    box-shadow: 0 0 4px rgba(68, 215, 208, 0.18);
+    height: var(--radius);
+    left: 0;
+    opacity: 0.55;
+    position: absolute;
+    top: 0;
+    transform: rotateX(90deg);
+    transform-origin: top;
+    width: 1px;
+}
+
+.brain-screen-page .neural-thread::after {
+    animation: brain-thread 2.8s ease-in-out var(--pulse-delay) infinite;
+    background: linear-gradient(transparent, var(--accent), transparent);
+    border-radius: 4px;
+    box-shadow: 0 0 7px var(--accent);
+    content: "";
+    height: 20%;
+    left: -1px;
+    position: absolute;
+    width: 3px;
+}
+
+.brain-screen-page .neural-object {
+    --node-color: #9eacad;
+    background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--node-color) 22%, transparent), rgba(7, 14, 15, 0.95) 66%);
+    border: 1px solid color-mix(in srgb, var(--node-color) 48%, transparent);
+    border-radius: 50%;
+    box-shadow: 0 0 14px color-mix(in srgb, var(--node-color) 14%, transparent);
+    color: var(--node-color);
+    cursor: pointer;
+    display: grid;
+    height: var(--node-size);
+    left: 0;
+    place-items: center;
+    pointer-events: auto;
+    position: absolute;
+    top: 0;
+    transform: translate3d(-50%, -50%, var(--radius));
+    transform-style: preserve-3d;
+    width: var(--node-size);
+}
+
+.brain-screen-page .neural-object.type-project { --node-color: #44d7d0; }
+.brain-screen-page .neural-object.type-topic { --node-color: #7e9fd4; }
+.brain-screen-page .neural-object.type-note { --node-color: #a5b0b2; }
+.brain-screen-page .neural-object.type-person { --node-color: #d5a66a; }
+.brain-screen-page .neural-object.type-bot { --node-color: #9f82d6; }
+
+.brain-screen-page .neural-object > span {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.brain-screen-page .neural-object > i {
+    border: 1px solid color-mix(in srgb, var(--node-color) 20%, transparent);
+    border-radius: 50%;
+    inset: -4px;
+    position: absolute;
+}
+
+.brain-screen-page .neural-object > b {
+    background: rgba(5, 10, 11, 0.78);
+    border: 1px solid rgba(123, 158, 158, 0.16);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    left: calc(100% + 8px);
+    max-width: 140px;
+    opacity: 0.8;
+    padding: 4px 6px;
+    position: absolute;
+    text-align: left;
+    width: max-content;
+}
+
+.brain-screen-page .neural-object > b small {
+    color: var(--node-color);
+    display: block;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.brain-screen-page .neural-object:hover > b,
+.brain-screen-page .neural-object.selected > b { opacity: 1; }
+
+.brain-screen-page .neural-object.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px var(--accent), 0 0 35px rgba(68, 215, 208, 0.28);
+    z-index: 8;
+}
+
+.brain-screen-page .neural-object.is-firing-read {
+    border-color: var(--accent);
+    box-shadow: 0 0 18px rgba(68, 215, 208, 0.55);
+    color: var(--accent);
+}
+
+.brain-screen-page .neural-object.is-firing-write {
+    border-color: var(--brain-write);
+    box-shadow: 0 0 18px rgba(227, 180, 95, 0.6);
+    color: var(--brain-write);
+}
+
+.brain-screen-page .neural-links {
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    transform-style: preserve-3d;
+}
+
+.brain-screen-page .neural-link {
+    height: 0;
+    left: 0;
+    position: absolute;
+    top: 0;
+    transform: translate3d(var(--x), var(--y), var(--z)) rotateY(var(--az)) rotateX(var(--el));
+    transform-style: preserve-3d;
+    width: 0;
+}
+
+.brain-screen-page .neural-link > i {
+    background: linear-gradient(to bottom, rgba(68, 215, 208, 0.5), rgba(68, 215, 208, 0.05));
+    height: var(--len);
+    left: -0.5px;
+    position: absolute;
+    top: 0;
+    transform: rotateX(90deg);
+    transform-origin: top center;
+    width: 1px;
+}
+
+.brain-screen-page .neural-link.is-firing > i {
+    background: linear-gradient(to bottom, var(--accent), rgba(68, 215, 208, 0.05));
+    box-shadow: 0 0 8px var(--accent);
+    width: 2px;
+}
+
+.brain-screen-page .neural-link.is-write > i {
+    background: linear-gradient(to bottom, var(--brain-write), rgba(227, 180, 95, 0.05));
+    box-shadow: 0 0 8px var(--brain-write);
+}
+
+.brain-screen-page .access-source {
+    animation: brain-source 2.2s ease-in-out;
+    background: rgba(7, 14, 15, 0.9);
+    border: 1px solid rgba(68, 215, 208, 0.2);
+    border-radius: 7px;
+    color: var(--accent);
+    left: calc(100% + 10px);
+    min-width: 120px;
+    padding: 6px 8px;
+    pointer-events: none;
+    position: absolute;
+    top: -6px;
+    z-index: 9;
+}
+
+.brain-screen-page .access-source strong,
+.brain-screen-page .access-source small { display: block; }
+
+.brain-screen-page .access-source strong {
+    color: var(--text-primary);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.brain-screen-page .access-source small {
+    color: var(--text-secondary);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.brain-screen-page .access-source.is-write {
+    border-color: rgba(227, 180, 95, 0.45);
+    color: var(--brain-write);
+}
+
+.brain-screen-page .is-focused .neural-object:not(.is-keep),
+.brain-screen-page .is-focused .neural-link:not(.is-keep) {
+    opacity: 0.16;
+}
+
+.brain-screen-page .brain-legend {
+    align-items: center;
+    background: rgba(7, 13, 14, 0.78);
+    border: 1px solid rgba(68, 215, 208, 0.11);
+    border-radius: 7px;
+    bottom: 16px;
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 11px;
+    gap: 12px;
+    left: 16px;
+    padding: 10px 12px;
+    position: absolute;
+    z-index: 7;
+}
+
+.brain-screen-page .brain-legend span {
+    align-items: center;
+    display: flex;
+    gap: 5px;
+}
+
+.brain-screen-page .brain-legend i,
+.brain-screen-page .node-panel section button > i {
+    border-radius: 50%;
+    display: block;
+    height: 8px;
+    width: 8px;
+}
+
+.brain-screen-page .type-project { background: #44d7d0; }
+.brain-screen-page .type-topic { background: #7e9fd4; }
+.brain-screen-page .type-note { background: #a5b0b2; }
+.brain-screen-page .type-person { background: #d5a66a; }
+.brain-screen-page .type-bot { background: #9f82d6; }
+
+.brain-screen-page .camera-dock {
+    align-items: center;
+    background: rgba(7, 13, 14, 0.9);
+    border: 1px solid rgba(68, 215, 208, 0.16);
+    border-radius: 9px;
+    bottom: 16px;
+    display: flex;
+    gap: 4px;
+    min-height: 46px;
+    padding: 5px;
+    position: absolute;
+    right: 50%;
+    transform: translateX(50%);
+    z-index: 15;
+}
+
+.brain-screen-page .camera-mode {
+    align-items: center;
+    border-right: 1px solid var(--border-soft, var(--surface-border));
+    color: var(--accent);
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 23px 1fr;
+    min-width: 180px;
+    padding: 0 10px 0 5px;
+}
+
+.brain-screen-page .camera-mode strong,
+.brain-screen-page .camera-mode small { display: block; }
+
+.brain-screen-page .camera-mode strong {
+    color: var(--text-primary);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+}
+
+.brain-screen-page .camera-mode small {
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.brain-screen-page .camera-dock > button,
+.brain-screen-page #brain-cloud-tabs button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    font-size: 12px;
+    gap: 5px;
+    height: 34px;
+    padding: 0 8px;
+    white-space: nowrap;
+}
+
+.brain-screen-page #brain-cloud-tabs {
+    display: flex;
+    gap: 4px;
+}
+
+.brain-screen-page #brain-cloud-tabs svg,
+.brain-screen-page .camera-dock > button svg {
+    height: 14px;
+    width: 14px;
+}
+
+.brain-screen-page .node-panel {
+    background: linear-gradient(180deg, rgba(14, 24, 25, 0.98), rgba(8, 13, 14, 0.98));
+    border-left: 1px solid var(--border-soft, var(--surface-border));
+    box-shadow: -18px 0 50px rgba(0, 0, 0, 0.16);
+    overflow-y: auto;
+    padding: 18px;
+    position: relative;
+}
+
+.brain-screen-page .node-panel::before {
+    background: linear-gradient(transparent, rgba(68, 215, 208, 0.45), transparent);
+    bottom: 0;
+    content: "";
+    left: 0;
+    position: absolute;
+    top: 0;
+    width: 1px;
+}
+
+.brain-screen-page .node-panel > header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+}
+
+.brain-screen-page .node-type {
+    background: var(--accent-soft);
+    border-radius: 99px;
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    padding: 5px 7px;
+    text-transform: uppercase;
+}
+
+.brain-screen-page .node-signal {
+    align-items: center;
+    color: var(--accent);
+    display: flex;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 11px;
+    font-weight: 500;
+    gap: 6px;
+    letter-spacing: 0.08em;
+}
+
+.brain-screen-page .node-signal.is-write { color: var(--brain-write); }
+
+.brain-screen-page .node-signal i {
+    animation: brain-blink 1.5s infinite;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    height: 8px;
+    width: 8px;
+}
+
+.brain-screen-page .node-signal.is-write i { background: var(--brain-write); }
+
+.brain-screen-page .node-mark {
+    align-items: center;
+    background: radial-gradient(circle, rgba(68, 215, 208, 0.17), rgba(68, 215, 208, 0.04));
+    border: 1px solid rgba(68, 215, 208, 0.2);
+    border-radius: 50%;
+    box-shadow: 0 0 24px rgba(68, 215, 208, 0.1);
+    color: var(--accent);
+    display: grid;
+    height: 54px;
+    margin-top: 28px;
+    place-items: center;
+    position: relative;
+    width: 54px;
+}
+
+.brain-screen-page .node-mark svg { height: 22px; width: 22px; }
+
+.brain-screen-page .node-mark > i {
+    animation: brain-spin 18s linear infinite;
+    border: 1px dashed rgba(68, 215, 208, 0.22);
+    border-radius: 50%;
+    inset: -6px;
+    position: absolute;
+}
+
+.brain-screen-page .node-mark.access-write {
+    border-color: rgba(227, 180, 95, 0.5);
+    color: var(--brain-write);
+}
+
+.brain-screen-page .node-panel h2 {
+    font-size: 20px;
+    letter-spacing: -0.03em;
+    margin: 15px 0 8px;
+}
+
+.brain-screen-page .node-panel > p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 0;
+}
+
+.brain-screen-page .io-readout {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 16px;
+}
+
+.brain-screen-page .io-readout > span {
+    align-items: center;
+    border: 1px solid var(--border-soft, var(--surface-border));
+    border-radius: 6px;
+    color: var(--text-secondary);
+    display: grid;
+    font-size: 11px;
+    grid-template-columns: 16px 1fr;
+    padding: 8px;
+}
+
+.brain-screen-page .io-readout svg {
+    color: var(--accent);
+    grid-row: 1 / 3;
+}
+
+.brain-screen-page .io-readout strong {
+    color: var(--text-primary);
+    display: block;
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 3px;
+}
+
+.brain-screen-page .activity-meter { margin-top: 18px; }
+
+.brain-screen-page .activity-meter > span {
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 12px;
+    justify-content: space-between;
+    margin-bottom: 7px;
+}
+
+.brain-screen-page .activity-meter strong {
+    color: var(--accent);
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.brain-screen-page .activity-meter .progress {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-radius: 99px;
+    height: 6px;
+    overflow: hidden;
+}
+
+.brain-screen-page .activity-meter .progress > i {
+    background: var(--accent);
+    display: block;
+    height: 100%;
+    width: 0;
+}
+
+.brain-screen-page .node-meta {
+    border-block: 1px solid var(--border-soft, var(--surface-border));
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    margin: 20px 0;
+    padding: 13px 0;
+}
+
+.brain-screen-page .node-meta span,
+.brain-screen-page .node-meta strong { display: block; }
+
+.brain-screen-page .node-meta span {
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.brain-screen-page .node-meta strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: 4px;
+}
+
+.brain-screen-page .node-panel .eyebrow {
+    color: var(--text-secondary);
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    margin-bottom: 8px;
+}
+
+.brain-screen-page .node-panel section button {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--border-soft, var(--surface-border));
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 8px 1fr 14px;
+    min-height: 44px;
+    text-align: left;
+    width: 100%;
+}
+
+.brain-screen-page .node-panel section button span { font-size: 13px; }
+
+.brain-screen-page .node-panel section button small {
+    color: var(--text-secondary);
+    display: block;
+    font-size: 11px;
+    margin-top: 3px;
+}
+
+.brain-screen-page .node-panel footer {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: 1fr 1fr;
+    margin-top: 24px;
+}
+
+.brain-screen-page .node-panel footer a,
+.brain-screen-page .node-panel footer button {
+    align-items: center;
+    border-radius: 7px;
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 600;
+    gap: 6px;
+    justify-content: center;
+    min-height: 36px;
+    padding: 0 8px;
+    text-decoration: none;
+}
+
+.brain-screen-page .node-panel footer a {
+    background: transparent;
+    border: 1px solid var(--border-soft, var(--surface-border));
+    color: var(--text-primary);
+}
+
+.brain-screen-page .node-panel footer button {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+}
+
+@media (max-width: 900px) {
+    .brain-screen-page { grid-template-columns: 1fr; }
+
+    .brain-screen-page .node-panel {
+        border: 1px solid var(--border-soft, var(--surface-border));
+        border-radius: 14px;
+        bottom: 12px;
+        left: 12px;
+        max-height: 42%;
+        position: absolute;
+        right: 12px;
+        z-index: 12;
+    }
+
+    .brain-screen-page .brain-toolbar.left {
+        flex-wrap: wrap;
+        left: 12px;
+        right: 12px;
+    }
+
+    .brain-screen-page .brain-search { flex: 1 0 100%; }
+
+    .brain-screen-page .brain-toolbar.right {
+        bottom: 210px;
+        top: auto;
+    }
+
+    .brain-screen-page .camera-dock {
+        max-width: calc(100% - 24px);
+        overflow-x: auto;
+    }
+}
+
+.brain-screen-page .brain-canvas.paused .neural-cloud,
+.brain-screen-page .brain-canvas.paused .geodesic-shell,
+.brain-screen-page .brain-canvas.paused .neural-thread::after,
+.brain-screen-page .brain-canvas.paused .scan-beam,
+.brain-screen-page .brain-canvas.paused .cloud-core > i,
+.brain-screen-page .brain-canvas.paused .brain-readout span i,
+.brain-screen-page .brain-canvas.paused .access-source,
+.brain-screen-page .brain-canvas.paused::before,
+.brain-screen-page .brain-canvas.paused ~ .node-panel .node-mark > i,
+.brain-screen-page .brain-canvas.paused ~ .node-panel .node-signal i {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brain-screen-page .neural-cloud,
+    .brain-screen-page .geodesic-shell,
+    .brain-screen-page .neural-thread::after,
+    .brain-screen-page .scan-beam,
+    .brain-screen-page .cloud-core > i,
+    .brain-screen-page .node-mark > i,
+    .brain-screen-page .brain-readout span i,
+    .brain-screen-page .node-signal i,
+    .brain-screen-page .access-source,
+    .brain-screen-page .brain-canvas::before,
+    .brain-screen-page .neural-world-inner {
+        animation: none;
+        transition: none;
+    }
+}
+
+@keyframes brain-spin { to { transform: rotate(360deg); } }
+@keyframes brain-blink { 50% { opacity: 0.25; } }
+@keyframes brain-drift { to { background-position: 22px 44px; } }
+@keyframes brain-scan {
+    0%, 12% { opacity: 0; transform: translateX(-110%); }
+    30%, 70% { opacity: 1; }
+    88%, 100% { opacity: 0; transform: translateX(560%); }
+}
+@keyframes brain-breathe {
+    0%, 100% { margin-top: 0; }
+    50% { margin-top: -7px; }
+}
+@keyframes brain-geo { to { transform: rotateX(360deg) rotateY(180deg); } }
+@keyframes brain-thread {
+    0%, 12% { opacity: 0; top: 0; }
+    28%, 72% { opacity: 1; }
+    100% { opacity: 0; top: 82%; }
+}
+@keyframes brain-source { 50% { transform: translateY(-6px); } }
+

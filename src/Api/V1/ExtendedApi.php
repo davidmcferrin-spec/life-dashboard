@@ -217,6 +217,10 @@ final class ExtendedApi
             return ['folder' => $this->svc->pages->renameFolder($u, self::id($p), (string) ($this->runner->body()['name'] ?? ''), $actor->kind, $actor->tool)];
         }, 200, true));
         $r->get('/api/v1/pages/graph', fn () => $this->run(fn (int $u) => $this->svc->pages->graph($u)));
+        $r->get('/api/v1/pages/graph/access', fn () => $this->run(fn (int $u) => [
+            'events'     => $this->svc->pages->graphAccess($u, (int) ($_GET['limit'] ?? 80)),
+            'window_sec' => 10,
+        ]));
         $r->get('/api/v1/pages/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'page' => $this->svc->pages->get($u, self::id($p)),
         ]));
