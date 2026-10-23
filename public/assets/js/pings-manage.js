@@ -15,6 +15,46 @@ function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function openModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) closeModal(modal);
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+const addModal = document.getElementById('ping-add-modal');
+if (addModal) bindModal(addModal);
+
 function statusChip(target) {
     if (target.is_up === true) {
         return `<span class="chip chip-ok">${esc(target.status_message || 'Up')}</span>`;
@@ -62,12 +102,29 @@ async function loadList() {
 
     el.querySelectorAll('.ping-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this target?')) return;
-            await api(`/api/pings/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
-            loadList();
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete target',
+                    message: 'Delete this target?',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) return;
+                await api(`/api/pings/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
+                loadList();
+            } finally {
+                if (btn.isConnected) btn.dataset.confirming = '';
+            }
         });
     });
 }
+
+document.getElementById('ping-add-open')?.addEventListener('click', () => {
+    clearFieldError('ping-add-error');
+    openModal(addModal);
+});
 
 document.getElementById('ping-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -76,12 +133,14 @@ document.getElementById('ping-add-form')?.addEventListener('submit', async e => 
         label:  form.label.value.trim(),
         target: form.target.value.trim(),
     };
+    clearFieldError('ping-add-error');
     const { res, data } = await api('/api/pings/create', { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
-        alert(data.error || 'Could not add target.');
+        showFieldError('ping-add-error', data.error || 'Could not add target.');
         return;
     }
     form.reset();
+    closeModal(addModal);
     loadList();
 });
 

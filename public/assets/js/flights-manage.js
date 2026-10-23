@@ -15,6 +15,46 @@ function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function openModal(modal) {
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) return;
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) closeModal(modal);
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+const addModal = document.getElementById('flight-add-modal');
+if (addModal) bindModal(addModal);
+
 function fromLocalInputValue(val) {
     if (!val) return '';
     const d = new Date(val);
@@ -61,12 +101,29 @@ async function loadList() {
 
     el.querySelectorAll('.flight-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this watch?')) return;
-            await api(`/api/flights/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
-            loadList();
+            if (btn.dataset.confirming === '1') return;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete watch',
+                    message: 'Delete this watch?',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) return;
+                await api(`/api/flights/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
+                loadList();
+            } finally {
+                if (btn.isConnected) btn.dataset.confirming = '';
+            }
         });
     });
 }
+
+document.getElementById('flight-add-open')?.addEventListener('click', () => {
+    clearFieldError('flight-add-error');
+    openModal(addModal);
+});
 
 document.getElementById('flight-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
@@ -77,12 +134,14 @@ document.getElementById('flight-add-form')?.addEventListener('submit', async e =
         arrival_at: fd.get('arrival_at') ? fromLocalInputValue(fd.get('arrival_at')) : null,
         origin_icao: fd.get('origin_icao') || null,
     };
+    clearFieldError('flight-add-error');
     const { res, data } = await api('/api/flights/create', { method: 'POST', body: JSON.stringify(body) });
     if (!res.ok) {
-        alert(data.error || 'Could not add flight.');
+        showFieldError('flight-add-error', data.error || 'Could not add flight.');
         return;
     }
     e.target.reset();
+    closeModal(addModal);
     loadList();
 });
 
