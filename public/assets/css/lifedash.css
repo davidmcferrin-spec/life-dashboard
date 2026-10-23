@@ -8558,3 +8558,270 @@ html[data-theme="light"] .fin-card {
         transform: translateY(-2px);
     }
 }
+/* Brain map. Clouds, camera, and the node panel. Type stays 11px–32px. */
+.brain-graph-hud {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    left: 12px;
+    max-width: calc(100% - 320px);
+    position: absolute;
+    top: 12px;
+    z-index: 2;
+}
+
+.brain-graph-hud .brain-zoom {
+    left: auto;
+    max-width: none;
+    position: static;
+    top: auto;
+}
+
+.brain-graph-wrap .brain-zoom button,
+.brain-graph-wrap .brain-graph-attach {
+    align-items: center;
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--surface-border));
+    border-radius: var(--radius-control, 6px);
+    color: var(--text-primary);
+    display: inline-flex;
+    font-family: var(--font-sans, "IBM Plex Sans", sans-serif);
+    font-size: 13px;
+    font-weight: 500;
+    gap: 6px;
+    justify-content: center;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0 8px;
+}
+
+.brain-graph-wrap .brain-zoom button svg,
+.brain-graph-wrap .brain-graph-free svg {
+    display: block;
+    flex: none;
+    height: 16px;
+    width: 16px;
+}
+
+.brain-graph-wrap .brain-zoom button:hover,
+.brain-graph-wrap .brain-graph-attach:hover {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.brain-graph-wrap .brain-zoom button.is-active,
+.brain-graph-wrap .brain-graph-attach.is-active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+
+.brain-graph-wrap .brain-zoom button:focus-visible,
+.brain-graph-wrap .brain-graph-attach:focus-visible,
+.brain-graph-wrap .brain-graph-open:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.brain-graph-wrap .brain-zoom-label,
+.brain-graph-wrap .brain-zoom-label select {
+    color: var(--text-secondary);
+    font-family: var(--font-sans, "IBM Plex Sans", sans-serif);
+    font-size: 12px;
+}
+
+.brain-graph-camera {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.brain-graph-mode {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+}
+
+.brain-graph-mode strong {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.brain-graph-mode span,
+.brain-graph-readout {
+    color: var(--text-secondary);
+    font-size: 12px;
+    margin: 0;
+}
+
+.brain-graph-clusters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.brain-graph-attach {
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.brain-graph-wrap .brain-ticker,
+.brain-graph-wrap .brain-token,
+.brain-graph-wrap .brain-key,
+.brain-graph-wrap .brain-live {
+    font-family: var(--font-sans, "IBM Plex Sans", sans-serif);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+}
+
+.brain-graph-wrap .brain-live {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.brain-graph-wrap .brain-key .is-read {
+    border-top-color: var(--accent);
+}
+
+.brain-graph-wrap .brain-key .is-write {
+    background: var(--warn);
+}
+
+.brain-graph-wrap .brain-panel {
+    background: color-mix(in srgb, var(--surface-bg, var(--surface)) 92%, transparent);
+    border: 1px solid var(--border-soft, var(--surface-border));
+    border-radius: var(--radius-lg, 14px);
+    box-shadow: var(--shadow);
+    font-family: var(--font-sans, "IBM Plex Sans", sans-serif);
+    padding: 16px;
+    width: 280px;
+}
+
+.brain-graph-kicker {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    margin: 16px 0 0;
+    text-transform: uppercase;
+}
+
+.brain-graph-panel .brain-graph-kicker:first-child {
+    margin-top: 0;
+}
+
+.brain-graph-signal {
+    align-items: center;
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 12px;
+    font-weight: 600;
+    gap: 8px;
+    letter-spacing: 0.08em;
+    margin: 12px 0 0;
+    text-transform: uppercase;
+}
+
+.brain-graph-signal i {
+    background: var(--text-secondary);
+    border-radius: 50%;
+    display: block;
+    flex: none;
+    height: 8px;
+    width: 8px;
+}
+
+.brain-graph-signal.is-read {
+    color: var(--accent);
+}
+
+.brain-graph-signal.is-read i {
+    background: var(--accent);
+}
+
+.brain-graph-signal.is-write {
+    color: var(--warn);
+}
+
+.brain-graph-signal.is-write i {
+    background: var(--warn);
+}
+
+.brain-graph-wrap .brain-panel h2 {
+    color: var(--text-primary);
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin: 8px 0 0;
+}
+
+.brain-graph-wrap #brain-panel-copy {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 8px 0 0;
+}
+
+.brain-graph-wrap .brain-graph-open {
+    align-items: center;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-control, 6px);
+    color: var(--accent-ink);
+    display: inline-flex;
+    font-size: 13px;
+    font-weight: 600;
+    justify-content: center;
+    margin-top: 16px;
+    min-height: 32px;
+    padding: 0 12px;
+    text-decoration: none;
+    width: 100%;
+}
+
+.brain-graph-wrap .brain-graph-open:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    color: var(--accent-ink);
+}
+
+@media (max-width: 720px) {
+    .brain-graph-hud {
+        left: 8px;
+        max-width: calc(100% - 16px);
+        right: 8px;
+        top: 8px;
+    }
+
+    .brain-graph-wrap .brain-panel {
+        bottom: 8px;
+        left: 8px;
+        max-height: 34vh;
+        right: 8px;
+        top: auto;
+        width: auto;
+    }
+
+    .brain-graph-wrap .brain-ticker {
+        bottom: calc(34vh + 12px);
+        right: 8px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brain-graph-wrap .brain-zoom button,
+    .brain-graph-wrap .brain-graph-attach,
+    .brain-graph-wrap .brain-graph-open {
+        transition: none;
+    }
+}
+

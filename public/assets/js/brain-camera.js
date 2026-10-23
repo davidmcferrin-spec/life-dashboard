@@ -51,6 +51,21 @@
     }
 
     /**
+     * Park a layout-space point on a screen destination without changing zoom.
+     * wx/wy are the same pixels project() uses before the camera runs.
+     */
+    function focus(state, wx, wy, width, height, destX, destY) {
+        const cx = width / 2;
+        const cy = height / 2;
+        const k = state.k;
+        return {
+            k,
+            x: destX - cx - (wx - cx) * k,
+            y: destY - cy - (wy - cy) * k,
+        };
+    }
+
+    /**
      * Fit world-space points into a viewport rectangle on a canvas of width/height.
      * points are {x, y} in the same space project() uses at identity.
      */
@@ -114,6 +129,7 @@
         toScreen,
         zoomAt,
         panBy,
+        focus,
         fit,
         matrix,
         wheelFactor,
