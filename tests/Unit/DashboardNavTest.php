@@ -142,14 +142,14 @@ final class DashboardNavTest extends TestCase
         self::assertNotFalse($heroAt);
         self::assertNotFalse($formAt);
         self::assertNotFalse($endAt);
-        self::assertLessThan($gridAt, $heroAt);
-        self::assertLessThan($heroAt, $formAt);
-        self::assertLessThan($formAt, $endAt);
+        self::assertGreaterThan($gridAt, $heroAt);
+        self::assertGreaterThan($heroAt, $formAt);
+        self::assertGreaterThan($formAt, $endAt);
         foreach (['vitals', 'agenda', 'act-digest', 'act-pings', 'act-life'] as $hero) {
             $at = strpos($html, 'data-hero="' . $hero . '"');
             self::assertNotFalse($at);
-            self::assertLessThan($gridAt, $at);
-            self::assertLessThan($at, $endAt);
+            self::assertGreaterThan($gridAt, $at);
+            self::assertGreaterThan($at, $endAt);
         }
         self::assertStringNotContainsString('ov-layout', $html);
         self::assertStringContainsString('gs-no-move="true"', $html);
