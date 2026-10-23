@@ -844,32 +844,102 @@
         ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.market_value))}</div><div class="ld-meta">market value · unrealized ${esc(fmt.money(d.unrealized))}</div>${rows || emptyPanel('No positions', 'Import holdings to see them here.', 'Open investing', '/settings/investing')}`;
     }
 
+    const MEDIA_ICONS = ['music-2', 'file-text', 'chevron-right', 'terminal', 'message-square', 'command', 'play', 'pause', 'skip-back', 'skip-forward', 'external-link'];
+    const mediaIconSvg = Object.create(null);
+
+    function mediaSheet() {
+        if (document.querySelector('link[href*="/assets/css/widgets-media.css"]')) return;
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.id = 'ld-media-widgets-css';
+        const current = document.querySelector('link[href*="/assets/css/lifedash.css"]');
+        const href = current && current.getAttribute('href');
+        const version = href && href.match(/[?&]v=([^&]+)/);
+        link.href = '/assets/css/widgets-media.css' + (version ? '?v=' + encodeURIComponent(version[1]) : '');
+        document.head.appendChild(link);
+    }
+
+    function primeMediaIcons() {
+        MEDIA_ICONS.forEach((name) => {
+            fetch('/assets/vendor/lucide/' + name + '.svg', { credentials: 'same-origin' })
+                .then((res) => (res.ok ? res.text() : ''))
+                .then((text) => {
+                    if (text.indexOf('<svg') === -1) return;
+                    mediaIconSvg[name] = text;
+                    document.querySelectorAll('[data-ld-icon="' + name + '"]').forEach((el) => {
+                        el.innerHTML = text;
+                    });
+                })
+                .catch(() => {});
+        });
+    }
+
+    function mediaIcon(name) {
+        if (MEDIA_ICONS.indexOf(name) === -1) return '';
+        return '<span class="ld-mk-ico" data-ld-icon="' + name + '" aria-hidden="true">' + (mediaIconSvg[name] || '') + '</span>';
+    }
+
+    function mediaCssValue(name, fallback) {
+        const raw = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim() || fallback;
+        return raw.replace(/[<>"';{}]/g, '') || fallback;
+    }
+
+    primeMediaIcons();
+
     function pages(ctx) {
-        tools(ctx, '<a href="/brain" class="nav-link">Vault</a> <a href="/brain/graph" class="nav-link">Brain</a>');
-        const rows = (ctx.data.pages || []).map((p) =>
-            `<a class="ld-life-row" href="/brain?page=${p.id}"><span>${esc(p.title)}</span><span class="ld-meta">${esc(p.kind)}</span></a>`
-        ).join('');
-        ctx.body.innerHTML = rows || emptyPanel('The vault is empty', 'Write the first page to start the map.', 'Open the vault', '/brain');
+        mediaSheet();
+        tools(ctx, '<a href="/brain" class="nav-link ld-mk-tool">Vault</a> <a href="/brain/graph" class="nav-link ld-mk-tool">Brain</a>');
+        const rows = (ctx.data.pages || []).map((p) => {
+            const id = Number(p.id);
+            if (!Number.isFinite(id)) return '';
+            const when = p.updated_at ? String(p.updated_at).slice(0, 10) : '';
+            const meta = [p.kind || '', when].filter(Boolean).join(' · ');
+            return `<a href="/brain?page=${id}">${mediaIcon('file-text')}<span><strong>${esc(p.title)}</strong><small>${esc(meta)}</small></span>${mediaIcon('chevron-right')}</a>`;
+        }).join('');
+        ctx.body.innerHTML = `<div class="ld-mk ld-mk-knowledge">${rows || emptyPanel('The vault is empty', 'Write the first page to start the map.', 'Open the vault', '/brain')}</div>`;
     }
 
     function custom(ctx) {
-        const data = JSON.stringify({ metrics: ctx.data.metrics || [], today: ctx.data.today || '' }).replace(/</g, '\\u003c');
+        mediaSheet();
+        const metrics = (ctx.data && ctx.data.metrics) || [];
         const markup = (ctx.widget.config && ctx.widget.config.markup) || '';
-        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            html,body{margin:0;background:transparent;color:#d7e2f2;font:13px/1.45 ui-sans-serif,system-ui,sans-serif}
-            </style></head><body><script>window.__DATA__=${data};<\/script>${markup}</body></html>`;
+        if (!String(markup).trim()) {
+            ctx.body.innerHTML = emptyPanel('No markup yet', 'Add sandboxed markup in the widget settings.');
+            return;
+        }
+        const data = JSON.stringify({ metrics: metrics, today: (ctx.data && ctx.data.today) || '' }).replace(/</g, '\\u003c');
+        const text = mediaCssValue('--text', '#e8efef');
+        const muted = mediaCssValue('--text-muted', '#8b979e');
+        const accent = mediaCssValue('--accent', '#44d7d0');
+        const frameCss = "html,body{margin:0;background:transparent;color:" + text
+            + ";font:13px/1.45 'IBM Plex Sans',sans-serif}a{color:" + accent
+            + "}small{font-size:12px;color:" + muted + "}";
+        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${frameCss}</style></head><body><script>window.__DATA__=${data};<\/script>${markup}</body></html>`;
         const frame = document.createElement('iframe');
         frame.setAttribute('sandbox', 'allow-scripts');
         frame.setAttribute('referrerpolicy', 'no-referrer');
         frame.title = 'Custom widget';
-        frame.style.cssText = 'width:100%;height:100%;border:0;background:transparent;color-scheme:dark';
+        const theme = document.documentElement.getAttribute('data-theme') || '';
+        frame.style.colorScheme = theme === 'light' ? 'light' : 'dark';
         frame.srcdoc = doc;
-        ctx.body.replaceChildren(frame);
+        const countLabel = metrics.length === 1 ? '1 attached metric' : metrics.length + ' attached metrics';
+        const shell = document.createElement('div');
+        shell.className = 'ld-mk ld-mk-custom';
+        shell.innerHTML = `<div class="ld-mk-custom-bar">${mediaIcon('terminal')}<span><strong>${esc(countLabel)}</strong><small>Sandboxed markup</small></span></div>`;
+        shell.appendChild(frame);
+        ctx.body.replaceChildren(shell);
     }
 
     const carouselTimers = new WeakMap();
 
+    function carouselIcon(dataset) {
+        if (dataset === 'youtube') return 'play';
+        if (dataset === 'reddit') return 'message-square';
+        return 'command';
+    }
+
     function carousel(ctx) {
+        mediaSheet();
         const prev = carouselTimers.get(ctx.body);
         if (prev) clearInterval(prev);
         carouselTimers.delete(ctx.body);
@@ -877,7 +947,7 @@
         const d = ctx.data || {};
         const cards = d.cards || [];
         const noun = d.dataset === 'reddit' ? 'posts' : (d.dataset === 'x' ? 'posts' : 'videos');
-        tools(ctx, cards.length ? `<span class="ld-meta">${cards.length} ${noun}</span>` : '');
+        tools(ctx, cards.length ? `<span class="ld-mk-tool">${cards.length} ${noun}</span>` : '');
 
         if (!cards.length) {
             const errs = (d.errors || []).map((e) => `<p class="ld-error">${esc(e)}</p>`).join('');
@@ -886,26 +956,28 @@
         }
 
         const motion = d.motion === 'push' ? 'push' : 'wipe';
+        const mark = carouselIcon(d.dataset);
         const slides = cards.map((card, i) => {
-            const when = card.published_at ? esc(String(card.published_at).slice(0, 10)) : '';
+            const when = card.published_at ? String(card.published_at).slice(0, 10) : '';
             const thumb = card.thumb
                 ? `<img class="ld-card-thumb" alt="" referrerpolicy="no-referrer" src="${esc(card.thumb)}">`
                 : '';
+            const detail = [when, card.body || ''].filter(Boolean).join(' · ');
             return `<article class="ld-card${i === 0 ? ' is-on is-enter' : ''}" data-i="${i}">
-                <div class="ld-card-kicker"><span>${esc(card.source || '')}</span><span>${when}</span></div>
-                <a class="ld-card-title" href="${esc(card.url)}" target="_blank" rel="noopener noreferrer">${esc(card.title)}</a>
-                ${card.body ? `<p class="ld-card-body">${esc(card.body)}</p>` : ''}
+                <div class="ld-card-kicker"><span>${mediaIcon(mark)}Card ${i + 1} of ${cards.length}</span><span>${esc(card.source || '')}</span></div>
+                <a class="ld-card-title" href="${esc(card.url)}" target="_blank" rel="noopener noreferrer">${esc(card.title)}${mediaIcon('external-link')}</a>
+                ${detail ? `<p class="ld-card-body">${esc(detail)}</p>` : ''}
                 ${thumb}
             </article>`;
         }).join('');
         const dots = cards.length > 1 ? `<div class="ld-card-nav">
-            <button type="button" class="ld-icon-btn" data-step="-1" aria-label="Previous">‹</button>
+            <button type="button" class="ld-icon-btn" data-step="-1" aria-label="Previous">${mediaIcon('skip-back')}</button>
             <div class="ld-card-dots">${cards.map((_, i) => `<button type="button" class="ld-card-dot${i === 0 ? ' is-on' : ''}" data-go="${i}" aria-label="Show item ${i + 1}"></button>`).join('')}</div>
-            <button type="button" class="ld-icon-btn" data-step="1" aria-label="Next">›</button>
+            <button type="button" class="ld-icon-btn" data-step="1" aria-label="Next">${mediaIcon('skip-forward')}</button>
         </div>` : '';
         const errs = (d.errors || []).map((e) => `<p class="ld-error">${esc(e)}</p>`).join('');
-        ctx.body.innerHTML = `${errs}<div class="ld-carousel is-${motion}" tabindex="0">
-            <div class="ld-card-stack">${slides}</div>${dots}<div class="ld-carousel-bar"></div></div>`;
+        ctx.body.innerHTML = `${errs}<div class="ld-mk ld-mk-rotating"><div class="ld-carousel is-${motion}" tabindex="0">
+            <div class="ld-card-stack">${slides}</div>${dots}<div class="ld-carousel-bar"></div></div></div>`;
 
         const root = ctx.body.querySelector('.ld-carousel');
         if (!root || cards.length < 2) return;
@@ -966,22 +1038,22 @@
     }
 
     function redditFeed(ctx) {
-        tools(ctx, '<a href="/reddit" class="nav-link">Reader</a>');
+        mediaSheet();
+        tools(ctx, '<a href="/reddit" class="nav-link ld-mk-tool">Reader</a>');
         const posts = ctx.data.posts || [];
         if (!posts.length) {
             ctx.body.innerHTML = emptyPanel('No posts yet', ctx.data.empty || 'Nothing has been saved for this feed.');
             return;
         }
-        ctx.body.innerHTML = posts.map((post) => {
-            const meta = [
-                post.subreddit ? 'r/' + post.subreddit : '',
-                post.author ? 'u/' + post.author : '',
-                (post.score ?? 0) + ' pts',
-                (post.num_comments ?? 0) + ' comments',
-            ].filter(Boolean).join(' · ');
-            return `<a class="ld-life-row" href="${esc(post.permalink)}" target="_blank" rel="noopener noreferrer">
-                <span>${esc(post.title)}</span><span class="ld-meta">${esc(meta)}</span></a>`;
-        }).join('');
+        ctx.body.innerHTML = `<div class="ld-mk ld-mk-reader">${posts.map((post) => {
+            const sub = post.subreddit ? 'r/' + post.subreddit : '';
+            const who = [post.author ? 'u/' + post.author : '', (post.score ?? 0) + ' pts'].filter(Boolean).join(' · ');
+            const comments = Number(post.num_comments) === 1 ? '1 comment' : (post.num_comments ?? 0) + ' comments';
+            return `<a href="${esc(post.permalink)}" target="_blank" rel="noopener noreferrer">
+                <span class="ld-mk-sub">${esc(sub)}</span>
+                <span><strong>${esc(post.title)}</strong>${who ? `<small>${esc(who)}</small>` : ''}</span>
+                <small>${esc(comments)}</small>${mediaIcon('external-link')}</a>`;
+        }).join('')}</div>`;
     }
 
     function shopQty(item) {
@@ -1306,22 +1378,41 @@
     }
 
     function spotify(ctx) {
+        mediaSheet();
         const data = ctx.data || {};
         if (!data.connected) {
             ctx.body.innerHTML = emptyPanel('Spotify is not connected', 'Connect an account to show what is playing.', 'Connect Spotify', '/settings/spotify');
             return;
         }
         const now = data.now;
-        const playing = now && now.name
-            ? `<p class="ld-card-title">${esc(now.name)}</p><p class="ld-meta">${esc((now.artists || []).join(', '))}</p>`
-            : `<p class="ld-meta">${esc(data.now_error || 'Nothing playing')}</p>`;
-        const artists = (data.top_artists || []).map((row) => `${esc(row.name)} ${row.plays}`).join(' · ');
+        const title = now && now.name ? String(now.name) : '';
+        const artistsNow = now && Array.isArray(now.artists) ? now.artists.join(', ') : '';
+        const art = now && /^https:\/\//i.test(String(now.image_url || '')) ? String(now.image_url) : '';
+        const cover = art
+            ? `<img alt="" referrerpolicy="no-referrer" src="${esc(art)}">`
+            : mediaIcon('music-2');
+        const known = now && typeof now.is_playing === 'boolean';
+        const playing = !!(known && now.is_playing);
+        // Status glyph only. Playback controls stay on the floating player.
+        const transport = title && known
+            ? `<span class="ld-mk-transport">${mediaIcon(playing ? 'pause' : 'play')}</span>`
+            : '';
+        const stateLabel = !known || playing ? 'Now playing' : 'Paused';
+        const nowCopy = title
+            ? `<small>${stateLabel}</small><strong>${esc(title)}</strong><p>${esc(artistsNow)}</p>`
+            : `<p class="ld-mk-quiet">${esc(data.now_error || 'Nothing playing')}</p>`;
+        const artists = (data.top_artists || []).map((row) => esc(String(row.name || '') + ' ' + (row.plays ?? ''))).join(' · ');
+        const minutes = esc(String(data.minutes_today || 0)) + ' min today · ' + esc(String(data.minutes_week || 0)) + ' min this week';
         ctx.body.innerHTML = `
-            <div class="ld-spotify-card">
-                ${playing}
-                <p class="ld-meta">${data.minutes_today || 0} min today · ${data.minutes_week || 0} min this week</p>
-                ${artists ? `<p class="ld-meta">${artists}</p>` : ''}
-                <a class="ld-card-title" href="/spotify">Playlists</a>
+            <div class="ld-mk ld-mk-spotify">
+                <span class="ld-mk-cover">${cover}</span>
+                <span class="ld-mk-now">${nowCopy}</span>
+                ${transport}
+                <footer>
+                    <span>${minutes}</span>
+                    ${artists ? `<span class="ld-mk-artists">${artists}</span>` : ''}
+                </footer>
+                <a class="ld-mk-open" href="/spotify">Playlists ${mediaIcon('chevron-right')}</a>
             </div>`;
     }
 
