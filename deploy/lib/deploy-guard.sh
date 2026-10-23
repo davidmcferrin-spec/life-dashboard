@@ -187,6 +187,33 @@ lifedash_spotify_args() {
     fi
 }
 
+# Drain request files. systemd starts the service when a file appears and does
+# not start it again while one is still there, so a file written during a job
+# has to be taken by the same process before it drops the lock.
+lifedash_drain_spool() {
+    local dir=$1 callback=$2
+    local idle=0 processed=0 file
+    local -a files
+    shopt -s nullglob
+    while true; do
+        files=("$dir"/*.json)
+        if [[ ${#files[@]} -eq 0 ]]; then
+            if [[ $processed -eq 0 || $idle -eq 1 ]]; then
+                break
+            fi
+            idle=1
+            sleep 0.2
+            continue
+        fi
+        idle=0
+        processed=1
+        for file in "${files[@]}"; do
+            "$callback" "$file"
+        done
+    done
+    shopt -u nullglob
+}
+
 # Arguments for a queued digest fetch. A bare or system python is rejected.
 lifedash_digest_args() {
     local user_id=$1 python=$2
