@@ -20,12 +20,20 @@ final class DigestApi
     {
         $r->get('/api/v1/digest/items', fn () => $this->run(fn (int $u) => $this->svc->digest->items($u, [
             'product' => $_GET['product'] ?? null,
+            'topic'   => $_GET['topic'] ?? null,
             'since'   => $_GET['since'] ?? null,
             'unread'  => ($_GET['unread'] ?? '') === '1',
             'q'       => $_GET['q'] ?? null,
             'limit'   => $_GET['limit'] ?? 50,
             'offset'  => $_GET['offset'] ?? 0,
         ])));
+        $r->post('/api/v1/digest/items/{id}/topics', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $body = $this->runner->body();
+            return $this->svc->digest->tag($u, $this->entryId($p), (string) ($body['name'] ?? ''));
+        }, 200, true));
+        $r->post('/api/v1/digest/items/{id}/topics/{topicId}/remove', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            return $this->svc->digest->untag($u, $this->entryId($p), $this->topicId($p));
+        }, 200, true));
         $r->get('/api/v1/digest/compare', fn () => $this->run(fn (int $u) => $this->svc->digest->compare($u, [
             'product' => $_GET['product'] ?? null,
             'from_date' => $_GET['from_date'] ?? null,
@@ -91,6 +99,30 @@ final class DigestApi
         $id = $params['id'] ?? '';
         if (!ctype_digit($id) || (int) $id < 1) {
             throw ValidationException::withFields(['id' => 'Source id is required.']);
+        }
+        return (int) $id;
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    private function entryId(array $params): int
+    {
+        $id = $params['id'] ?? '';
+        if (!ctype_digit($id) || (int) $id < 1) {
+            throw ValidationException::withFields(['id' => 'Entry id is required.']);
+        }
+        return (int) $id;
+    }
+
+    /**
+     * @param array<string, string> $params
+     */
+    private function topicId(array $params): int
+    {
+        $id = $params['topicId'] ?? '';
+        if (!ctype_digit($id) || (int) $id < 1) {
+            throw ValidationException::withFields(['topic_id' => 'Topic id is required.']);
         }
         return (int) $id;
     }

@@ -9,6 +9,7 @@ use Dashboard\Digest\DigestService;
 use Dashboard\Digest\DigestVersion;
 use Dashboard\Settings\ServiceControl;
 use Dashboard\Support\ForbiddenException;
+use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
 final class DigestTest extends PgsqlTestCase
@@ -266,6 +267,85 @@ final class DigestTest extends PgsqlTestCase
         self::assertNull($found['items'][0]['published_on']);
         self::assertSame('found', $found['items'][0]['date_source']);
         self::assertNotNull($found['items'][0]['day']);
+    }
+
+    public function testTopicTagsFilterTheFeedAndSourceCountsStayReal(): void
+    {
+        $this->migrate();
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)',
+            ['digest4', 'digest4@example.com', 'h', 1]
+        );
+        $userId = (int) $this->db->lastInsertId();
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash, is_admin) VALUES (?, ?, ?, ?)',
+            ['digest5', 'digest5@example.com', 'h', 0]
+        );
+        $otherId = (int) $this->db->lastInsertId();
+        $digest = new DigestService($this->db);
+        $digest->ensureSeeded($userId);
+        $grok = $this->sourceId($userId, 'grok');
+        $bot = $this->sourceId($userId, 'grok_bot');
+        $shared = 'https://notes.example.com/shared-harbor';
+        $this->db->execute(
+            'INSERT INTO digest_entries (user_id, source_id, entry_key, title, published_on, url, summary, content_hash)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?, ?)',
+            [
+                $userId, $grok, 'shared-a', 'Harbor Lights', '2026-10-02', $shared, 'Sample Ensemble', hash('sha256', 'shared-a'),
+                $userId, $bot, 'shared-b', 'Harbor Lights copy', '2026-10-02', $shared, 'Sample Ensemble', hash('sha256', 'shared-b'),
+                $userId, $grok, 'solo', 'Solo note', '2026-10-03', 'https://notes.example.com/solo', 'Sample Ensemble', hash('sha256', 'solo'),
+            ]
+        );
+        $feed = $digest->items($userId, ['q' => 'Harbor']);
+        self::assertSame([], $feed['topics']);
+        self::assertCount(2, $feed['items']);
+        self::assertSame(2, $feed['items'][0]['source_count']);
+        self::assertSame(2, $feed['items'][1]['source_count']);
+        self::assertSame([], $feed['items'][0]['topics']);
+        $solo = $digest->items($userId, ['q' => 'Solo']);
+        self::assertSame(1, $solo['items'][0]['source_count']);
+
+        $entryId = 0;
+        foreach ($feed['items'] as $item) {
+            if ((int) $item['source_id'] === $grok) {
+                $entryId = (int) $item['id'];
+            }
+        }
+        self::assertGreaterThan(0, $entryId);
+        $tagged = $digest->tag($userId, $entryId, '  Harbor   Lights ');
+        self::assertSame('Harbor Lights', $tagged['topic']['label']);
+        self::assertSame('harbor lights', $tagged['topic']['slug']);
+        $again = $digest->tag($userId, $entryId, 'harbor lights');
+        self::assertSame($tagged['topic']['id'], $again['topic']['id']);
+        self::assertSame('Harbor Lights', $again['topic']['label']);
+        self::assertCount(1, $again['topics']);
+
+        $filtered = $digest->items($userId, ['topic' => 'Harbor Lights']);
+        self::assertCount(1, $filtered['items']);
+        self::assertSame($entryId, $filtered['items'][0]['id']);
+        self::assertSame('Harbor Lights', $filtered['items'][0]['topics'][0]['label']);
+        self::assertSame('Harbor Lights', $filtered['topics'][0]['label']);
+        self::assertSame([], $digest->items($userId, ['topic' => 'missing topic'])['items']);
+
+        try {
+            $digest->tag($userId, $entryId, '!!!');
+            self::fail('A topic needs a letter or number.');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('name', $e->fields());
+        }
+        try {
+            $digest->tag($otherId, $entryId, 'Sneaky');
+            self::fail('Another user cannot tag this entry.');
+        } catch (NotFoundException $e) {
+            self::assertSame('Entry not found.', $e->getMessage());
+        }
+
+        self::assertSame([], $digest->untag($userId, $entryId, (int) $tagged['topic']['id'])['topics']);
+        self::assertSame([], $digest->items($userId)['topics']);
+        $digest->tag($userId, $entryId, 'Harbor Lights');
+        $digest->remove($userId, $grok);
+        self::assertSame([], $digest->items($userId)['topics']);
+        self::assertSame(0, (int) $this->db->fetchScalar('SELECT COUNT(*) FROM digest_topics WHERE user_id = ?', [$userId]));
     }
 
     private function sourceId(int $userId, string $product): int

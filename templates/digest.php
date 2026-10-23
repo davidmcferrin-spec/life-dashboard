@@ -61,9 +61,10 @@ $digestIcon = static function (string $name): void {
     <div class="ld-digest-pane is-shown" data-digest-view="history">
         <div class="ld-digest-filters">
             <div class="ld-digest-filter-row">
-                <div class="ld-digest-chips" id="digest-products" aria-label="Source"></div>
+                <div class="ld-digest-chips" id="digest-topics" aria-label="Topics"></div>
                 <p class="ld-digest-checked" id="digest-checked">Not checked yet.</p>
             </div>
+            <div class="ld-digest-chips" id="digest-products" aria-label="Source"></div>
             <div class="ld-digest-chips" id="digest-group" aria-label="Grouping">
                 <button type="button" class="ld-digest-chip is-on" data-group="date">By date</button>
                 <button type="button" class="ld-digest-chip" data-group="source">By source</button>
@@ -135,6 +136,11 @@ $digestIcon = static function (string $name): void {
         </form>
     </section>
     <template id="digest-icon-chevron"><?php $digestIcon('chevron-down'); ?></template>
+    <template id="digest-icon-ellipsis"><?php $digestIcon('ellipsis'); ?></template>
+    <template id="digest-icon-history"><?php $digestIcon('history'); ?></template>
+    <template id="digest-icon-arrow"><?php $digestIcon('arrow-up-right'); ?></template>
+    <template id="digest-icon-compare"><?php $digestIcon('git-compare'); ?></template>
+    <template id="digest-icon-rss"><?php $digestIcon('rss'); ?></template>
 </div>
 </div>
 <script type="application/json" id="ld-band-items"><?= json_encode($bandItems, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
