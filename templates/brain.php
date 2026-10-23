@@ -1,6 +1,6 @@
 <?php
 /**
- * Knowledge vault — markdown editor, tree, backlinks, revisions.
+ * Knowledge vault — tree, note, and context.
  *
  * @var array<string, mixed> $user
  */
@@ -16,67 +16,99 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
-<?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Vault'; require __DIR__ . '/partials/page-heading.php'; ?>
 <div class="brain-shell" data-open-page="<?= (int) $openPage ?>">
-    <aside class="brain-side">
-        <div class="brain-side-bar">
-            <input id="brain-search" type="search" class="input w-full" placeholder="Search" autocomplete="off">
-            <button type="button" id="brain-folder" class="btn text-xs" title="New folder">Folder</button>
-            <button type="button" id="brain-new" class="btn text-xs" title="New page">+</button>
+    <button type="button" id="brain-tree-scrim" class="brain-tree-scrim" hidden aria-label="Close notes"></button>
+    <aside id="brain-tree-pane" class="brain-side brain-tree-pane">
+        <header class="brain-tree-head">
+            <div>
+                <p class="brain-kicker">Knowledge</p>
+                <h2 class="brain-tree-title">Vault</h2>
+            </div>
+            <div class="brain-tree-actions">
+                <button type="button" id="brain-folder" class="btn" title="New folder">Folder</button>
+                <button type="button" id="brain-new" class="btn" title="New note">New</button>
+            </div>
+        </header>
+        <div class="brain-search-field">
+            <span class="brain-search-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/search.svg'); ?></span>
+            <input id="brain-search" type="search" class="input" placeholder="Search notes" autocomplete="off" aria-label="Search notes">
         </div>
         <div id="brain-tree" class="brain-tree"></div>
         <?php // Inline the vendored files so their stroke stays currentColor. ?>
         <template id="brain-icon-chevron"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/chevron-right.svg'); ?></template>
         <template id="brain-icon-folder"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/folder.svg'); ?></template>
         <template id="brain-icon-file"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/file-text.svg'); ?></template>
+        <template id="brain-icon-link"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/link.svg'); ?></template>
+        <template id="brain-icon-tag"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/tag.svg'); ?></template>
+        <template id="brain-icon-list-tree"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/list-tree.svg'); ?></template>
+        <template id="brain-icon-x"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/x.svg'); ?></template>
     </aside>
     <section class="brain-stage is-preview">
-        <div class="brain-tabs">
-            <div>
-                <button type="button" data-brain-tab="edit" aria-pressed="false">Edit</button>
-                <button type="button" data-brain-tab="preview" class="is-active" aria-pressed="true">Preview</button>
+        <header class="brain-note-head">
+            <div class="brain-note-title">
+                <button type="button" id="brain-tree-toggle" class="brain-tree-toggle" aria-expanded="false" aria-controls="brain-tree-pane">
+                    <span class="brain-tree-toggle-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/panel-left.svg'); ?></span>
+                    <span>Notes</span>
+                </button>
+                <nav id="brain-crumbs" class="brain-crumbs" aria-label="Folder"></nav>
+                <input id="brain-title" class="brain-title" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
+                <p id="brain-status" class="brain-note-meta"></p>
             </div>
-            <div class="flex items-center gap-2">
-                <select id="brain-kind" class="input text-xs">
+            <div class="brain-note-actions">
+                <div class="brain-tabs" role="group" aria-label="Note view">
+                    <button type="button" data-brain-tab="preview" class="is-active" aria-pressed="true">Preview</button>
+                    <button type="button" data-brain-tab="edit" aria-pressed="false">Edit</button>
+                </div>
+                <select id="brain-kind" class="input" aria-label="Page kind">
                     <option value="note">Note</option>
                     <option value="daily">Daily</option>
                     <option value="project">Project</option>
                     <option value="reference">Reference</option>
                     <option value="review">Review</option>
                 </select>
-                <button type="button" id="brain-save" class="btn-primary text-xs">Save</button>
+                <label class="brain-move-label">Move
+                    <select id="brain-move" class="input" aria-label="Move page to folder"></select>
+                </label>
+                <button type="button" id="brain-save" class="btn-primary">Save</button>
+                <button type="button" id="brain-archive" class="btn">Archive</button>
             </div>
-        </div>
-        <input id="brain-title" class="brain-title" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
-        <div class="brain-crumbs-row">
-            <nav id="brain-crumbs" class="brain-crumbs" aria-label="Folder"></nav>
-            <label class="brain-move-label">Move
-                <select id="brain-move" class="input text-xs" aria-label="Move page to folder"></select>
-            </label>
-        </div>
+        </header>
         <div class="brain-split" id="brain-split" style="grid-template-columns: 1fr">
             <textarea id="brain-body" class="brain-editor" hidden placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
             <div id="brain-preview" class="brain-preview km"></div>
         </div>
         <pre id="brain-redline-view" class="brain-redline" hidden aria-label="Red-line of this version against the current page"></pre>
-        <p id="brain-status" class="ld-meta mt-2"></p>
     </section>
-    <aside class="brain-side">
-        <p class="brain-kicker">Links</p>
-        <div id="brain-links"></div>
-        <p class="brain-kicker mt-4">Backlinks</p>
-        <div id="brain-backlinks"></div>
-        <p class="brain-kicker mt-4">History</p>
-        <label class="brain-redline-toggle" for="brain-redline">
-            <input type="checkbox" id="brain-redline">
-            Red-line
-        </label>
-        <p id="brain-redline-summary" class="ld-meta" aria-live="polite"></p>
-        <div class="brain-rev-actions">
-            <button type="button" id="brain-rev-current" hidden>Current</button>
-            <button type="button" id="brain-rev-restore" hidden>Restore</button>
-        </div>
-        <ul id="brain-revs" class="brain-revs"></ul>
+    <aside class="brain-side brain-context" aria-label="Note context">
+        <section>
+            <p class="brain-kicker"><span class="brain-ctx-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/link.svg'); ?></span> Backlinks <span id="brain-back-count"></span></p>
+            <div id="brain-backlinks"></div>
+        </section>
+        <section>
+            <p class="brain-kicker"><span class="brain-ctx-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/tag.svg'); ?></span> Tags</p>
+            <div id="brain-tags" class="brain-chips"></div>
+        </section>
+        <section>
+            <p class="brain-kicker"><span class="brain-ctx-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/list-tree.svg'); ?></span> Outline</p>
+            <div id="brain-outline"></div>
+        </section>
+        <section>
+            <p class="brain-kicker">Links</p>
+            <div id="brain-links"></div>
+        </section>
+        <section>
+            <p class="brain-kicker">History</p>
+            <label class="brain-redline-toggle" for="brain-redline">
+                <input type="checkbox" id="brain-redline">
+                Red-line
+            </label>
+            <p id="brain-redline-summary" class="ld-meta" aria-live="polite"></p>
+            <div class="brain-rev-actions">
+                <button type="button" id="brain-rev-current" hidden>Current</button>
+                <button type="button" id="brain-rev-restore" hidden>Restore</button>
+            </div>
+            <ul id="brain-revs" class="brain-revs"></ul>
+        </section>
     </aside>
 </div>
 

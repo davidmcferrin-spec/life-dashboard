@@ -66,8 +66,146 @@
         statusEl.textContent = text || '';
     }
 
+    function optional(id) {
+        return typeof document.querySelector === 'function' ? document.querySelector('#' + id) : null;
+    }
+
+    function iconHtml(id) {
+        const source = optional(id);
+        return source && source.innerHTML ? source.innerHTML : '';
+    }
+
     function renderMarkdown(raw) {
         preview.innerHTML = window.BrainMarkdown.render(raw, pages);
+        if (typeof preview.querySelectorAll === 'function') {
+            preview.querySelectorAll('h2, h3, h4, h5, h6').forEach((node, index) => {
+                if (typeof node.setAttribute === 'function') node.setAttribute('id', 'brain-h-' + index);
+            });
+        }
+        paintTags(raw);
+        paintOutline(raw);
+    }
+
+    function addTag(tags, seen, name) {
+        const clean = String(name || '').replace(/^#/, '').trim();
+        if (!/^[A-Za-z][\w-]{0,40}$/.test(clean)) return;
+        const key = clean.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        tags.push(clean);
+    }
+
+    function tagsFrom(raw) {
+        const tags = [];
+        const seen = new Set();
+        const text = String(raw || '').replace(/\r\n/g, '\n');
+        const fm = text.match(/^---\n([\s\S]*?)\n---\n?/);
+        let body = text;
+        if (fm) {
+            body = text.slice(fm[0].length);
+            const inline = fm[1].match(/^tags:\s*(.+)$/m);
+            if (inline) inline[1].split(',').forEach((name) => addTag(tags, seen, name));
+            const list = fm[1].match(/^tags:\s*\n((?:[ \t]*-[ \t]+.+\n?)*)/m);
+            if (list) list[1].split('\n').forEach((line) => addTag(tags, seen, line.replace(/^[ \t]*-[ \t]+/, '')));
+        }
+        let fence = false;
+        body.split('\n').forEach((line) => {
+            if (/^```/.test(line)) {
+                fence = !fence;
+                return;
+            }
+            if (fence || /^#{1,6}\s/.test(line)) return;
+            const re = /(^|[\s(])#([A-Za-z][\w-]{0,40})\b/g;
+            let match;
+            while ((match = re.exec(line))) addTag(tags, seen, match[2]);
+        });
+        return tags;
+    }
+
+    function headingsOf(raw) {
+        const items = [];
+        let fence = false;
+        String(raw || '').replace(/\r\n/g, '\n').split('\n').forEach((line) => {
+            if (/^```/.test(line)) {
+                fence = !fence;
+                return;
+            }
+            if (fence) return;
+            const match = /^(#{2,6})\s+(.+)$/.exec(line);
+            if (!match) return;
+            const text = match[2].replace(/[`*_]/g, '').trim();
+            if (text) items.push({ level: match[1].length, text });
+        });
+        return items;
+    }
+
+    function paintTags(raw) {
+        const el = optional('brain-tags');
+        if (!el) return;
+        const tags = tagsFrom(raw);
+        el.innerHTML = tags.length
+            ? tags.map((tag) => `<span class="brain-chip">${esc(tag)}</span>`).join('')
+            : '<p class="ld-meta">No tags.</p>';
+    }
+
+    function paintOutline(raw) {
+        const el = optional('brain-outline');
+        if (!el) return;
+        const items = headingsOf(raw);
+        el.innerHTML = items.length
+            ? items.map((item, index) => `<button type="button" class="brain-outline" data-outline="${index}" data-level="${item.level}">${esc(item.text)}</button>`).join('')
+            : '<p class="ld-meta">No outline.</p>';
+    }
+
+    function paintBacklinks(links) {
+        const rows = links || [];
+        const count = optional('brain-back-count');
+        if (count) count.textContent = rows.length ? '· ' + rows.length : '';
+        const icon = iconHtml('brain-icon-link');
+        const chevron = iconHtml('brain-icon-chevron');
+        backsEl.innerHTML = rows.map((link) =>
+            `<a class="brain-back" href="/brain?page=${Number(link.id)}"><span class="brain-ctx-icon" aria-hidden="true">${icon}</span><span class="brain-tree-label">${esc(link.title)}</span><span class="brain-ctx-chevron" aria-hidden="true">${chevron}</span></a>`
+        ).join('') || '<p class="ld-meta">No backlinks.</p>';
+    }
+
+    function linksFromGraph(page, graph) {
+        if (!page || !graph || !Array.isArray(graph.edges) || !Array.isArray(graph.nodes)) return null;
+        const id = Number(page.id);
+        const titles = new Map();
+        graph.nodes.forEach((node) => titles.set(Number(node.id), node.title));
+        const rows = [];
+        const seen = new Set();
+        graph.edges.forEach((edge) => {
+            if (Number(edge.to) !== id) return;
+            const from = Number(edge.from);
+            if (!titles.has(from) || seen.has(from)) return;
+            seen.add(from);
+            rows.push({ id: from, title: titles.get(from) });
+        });
+        rows.sort((a, b) => String(a.title).localeCompare(String(b.title)));
+        return rows;
+    }
+
+    function refreshBacklinks(page) {
+        api.get('/pages/graph').then((graph) => {
+            if (!current || !page || current.id !== page.id) return;
+            const rows = linksFromGraph(page, graph);
+            if (rows) paintBacklinks(rows);
+        }).catch(() => {});
+    }
+
+    function noteMeta(page) {
+        if (!page || !page.updated_at) return '';
+        const day = fmt && fmt.monthDay ? fmt.monthDay(String(page.updated_at).slice(0, 10)) : String(page.updated_at).slice(0, 10);
+        return 'Updated ' + day;
+    }
+
+    function setTreeOpen(on) {
+        shell.classList.toggle('is-tree-open', on);
+        const toggle = optional('brain-tree-toggle');
+        const scrim = optional('brain-tree-scrim');
+        if (toggle) toggle.setAttribute('aria-expanded', on ? 'true' : 'false');
+        if (scrim) scrim.hidden = !on;
     }
 
     function flattenFolders(nodes, depth, out) {
@@ -271,6 +409,8 @@
         bodyEl.readOnly = false;
         kindEl.disabled = false;
         saveBtn.disabled = false;
+        const archiveBtn = optional('brain-archive');
+        if (archiveBtn) archiveBtn.disabled = !current;
         revCurrent.hidden = true;
         revRestore.hidden = true;
         redlineView.hidden = true;
@@ -293,6 +433,8 @@
         bodyEl.readOnly = true;
         kindEl.disabled = true;
         saveBtn.disabled = true;
+        const archiveBtn = optional('brain-archive');
+        if (archiveBtn) archiveBtn.disabled = true;
         revCurrent.hidden = false;
         revRestore.hidden = false;
         if (redlineBox.checked) {
@@ -336,9 +478,8 @@
         linksEl.innerHTML = (page && page.links || []).map((link) =>
             link.id ? `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>` : `<span class="brain-back km-missing">${esc(link.title)}</span>`
         ).join('') || '<p class="ld-meta">No outgoing links.</p>';
-        backsEl.innerHTML = (page && page.backlinks || []).map((link) =>
-            `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>`
-        ).join('') || '<p class="ld-meta">No backlinks.</p>';
+        paintBacklinks(page && page.backlinks || []);
+        if (page) refreshBacklinks(page);
         revsEl.innerHTML = (page && page.revisions || []).map((rev) =>
             `<li><button type="button" data-rev="${rev.version}" aria-pressed="false">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
         ).join('');
@@ -346,6 +487,7 @@
         if (page) treeCursor = 'page:' + page.id;
         renderTree();
         renderMarkdown(bodyEl.value);
+        setStatus(noteMeta(page));
         if (page) history.replaceState(null, '', '/brain?page=' + page.id);
     }
 
@@ -373,6 +515,7 @@
         const brief = pages.find((page) => page.id === res.page.id);
         if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, folder_id: res.page.folder_id, updated_at: res.page.updated_at });
         show(res.page);
+        setTreeOpen(false);
         // Opening a note starts in preview. Save and move keep the Edit toggle.
         if (opened) setView('preview');
     }
@@ -417,7 +560,10 @@
             return;
         }
         const btn = e.target.closest('[data-id]');
-        if (btn) openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
+        if (btn) {
+            setTreeOpen(false);
+            openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
+        }
     });
     // Space is handled here so the tree does not scroll the page.
     tree.addEventListener('keydown', (e) => {
@@ -523,7 +669,7 @@
             + '<div class="app-modal-panel surface">'
             + '<div class="flex items-center justify-between gap-2 mb-3">'
             + '<h2 id="brain-folder-title" class="section-title text-sm">New folder</h2>'
-            + '<button type="button" class="app-modal-close" data-close aria-label="Close">×</button>'
+            + '<button type="button" class="app-modal-close" data-close aria-label="Close">' + (iconHtml('brain-icon-x') || '') + '</button>'
             + '</div>'
             + '<form id="brain-folder-form" class="space-y-3">'
             + '<label class="block">'
@@ -569,6 +715,42 @@
 
     document.getElementById('brain-folder').addEventListener('click', openFolderDialog);
     document.getElementById('brain-save').addEventListener('click', () => save().catch((err) => setStatus(err.message)));
+    async function archiveCurrent() {
+        if (!current || !window.AppModal) return;
+        const ok = await window.AppModal.confirm({
+            title: 'Archive page',
+            message: 'Archive ' + (current.title || 'this page') + '? It leaves the vault list.',
+            confirmLabel: 'Archive',
+            danger: true,
+        });
+        if (!ok) return;
+        const id = current.id;
+        setStatus('Archiving…');
+        await api.post('/pages/' + id + '/archive', {});
+        current = null;
+        await loadList(document.getElementById('brain-search').value.trim());
+        if (pages[0]) await openPage(pages[0].id);
+        else show(null);
+        setStatus('Archived.');
+    }
+    const archiveBtn = optional('brain-archive');
+    if (archiveBtn) archiveBtn.addEventListener('click', () => archiveCurrent().catch((err) => setStatus(err.message)));
+    const treeToggle = optional('brain-tree-toggle');
+    if (treeToggle) treeToggle.addEventListener('click', () => setTreeOpen(!shell.classList.contains('is-tree-open')));
+    const treeScrim = optional('brain-tree-scrim');
+    if (treeScrim) treeScrim.addEventListener('click', () => setTreeOpen(false));
+    window.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && shell.classList.contains('is-tree-open')) setTreeOpen(false);
+    });
+    const outlineEl = optional('brain-outline');
+    if (outlineEl) {
+        outlineEl.addEventListener('click', (event) => {
+            const btn = event.target && event.target.closest ? event.target.closest('[data-outline]') : null;
+            if (!btn || typeof preview.querySelector !== 'function') return;
+            const node = preview.querySelector('#brain-h-' + btn.dataset.outline);
+            if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
+        });
+    }
     titleEl.addEventListener('input', () => { dirty = true; });
     bodyEl.addEventListener('input', () => { dirty = true; renderMarkdown(bodyEl.value); });
     document.querySelectorAll('[data-brain-tab]').forEach((btn) => {
