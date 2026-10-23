@@ -124,16 +124,19 @@ known = {
     "spotify-push",
     "ollama-pull",
     "ollama-remove",
+    "digest-check",
 }
 user_id = str(data.get("user_id") or "")
 playlist_id = str(data.get("playlist_id") or "")
 model = str(data.get("model") or "")
 if action not in known:
     raise SystemExit(2)
-if action.startswith("spotify-"):
+if action.startswith("spotify-") or action == "digest-check":
     if not user_id.isdigit() or int(user_id) < 1:
         raise SystemExit(2)
-    if playlist_id and (not playlist_id.isdigit() or int(playlist_id) < 1):
+    if action == "digest-check":
+        playlist_id = ""
+    elif playlist_id and (not playlist_id.isdigit() or int(playlist_id) < 1):
         raise SystemExit(2)
     model = ""
 elif action.startswith("ollama-"):
@@ -255,14 +258,32 @@ PY
                 log "ollama model change failed"
             fi
             ;;
+        digest-check)
+            python=/srv/lifedash/venv/bin/python
+            if [[ ! -x $python ]]; then
+                log "Python environment for digest fetch is not available to the web server"
+                return 0
+            fi
+            if ! args_text=$(lifedash_digest_args "$user_id" "$python"); then
+                log "rejected digest request"
+                return 0
+            fi
+            mapfile -t args <<< "$args_text"
+            if ! (
+                cd /srv/lifedash/app || exit 1
+                runuser -u lifedash -- env \
+                    LIFEDASH_ENV_FILE=/run/lifedash/app.env \
+                    PYTHONPATH=/srv/lifedash/app/services \
+                    PYTHONUNBUFFERED=1 \
+                    "${args[@]}"
+            ); then
+                log "digest fetch failed"
+            fi
+            ;;
         *)
             log "unknown action $action"
             ;;
     esac
 }
 
-shopt -s nullglob
-files=("$INCOMING"/*.json)
-for file in "${files[@]}"; do
-    run_one "$file"
-done
+lifedash_drain_spool "$INCOMING" run_one

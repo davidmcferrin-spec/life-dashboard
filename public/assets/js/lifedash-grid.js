@@ -1321,6 +1321,11 @@
             case 'vetted_agencies':
                 refreshTypes(['calls']);
                 break;
+            case 'digest_sources':
+            case 'digest_entries':
+            case 'digest_cursors':
+                refreshTypes(['digest']);
+                break;
             case 'spotify_account':
             case 'spotify_playlists':
             case 'spotify_playlist_tracks':

@@ -585,6 +585,7 @@ final class ExtendedApi
 
         $this->registerPantry($r);
         $this->registerOllama($r);
+        (new DigestApi($this->runner, $this->svc))->register($r);
     }
 
     private function registerOllama(Router $r): void

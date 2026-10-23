@@ -308,6 +308,7 @@ step "Scheduled jobs + backups (systemd timers)"
 install -m 0644 "$APP_DIR"/deploy/systemd/lifedash-job@.service "$APP_DIR"/deploy/systemd/lifedash-job-*.timer \
     "$APP_DIR"/deploy/systemd/lifedash-backup.service "$APP_DIR"/deploy/systemd/lifedash-backup.timer \
     "$APP_DIR"/deploy/systemd/lifedash-spotify.service "$APP_DIR"/deploy/systemd/lifedash-spotify.timer \
+    "$APP_DIR"/deploy/systemd/lifedash-digest.service "$APP_DIR"/deploy/systemd/lifedash-digest.timer \
     /etc/systemd/system/
 ln -sfn "$APP_DIR/deploy/bin/lifedash-backup" /usr/local/sbin/lifedash-backup
 ln -sfn "$APP_DIR/deploy/bin/lifedash-deploy" /usr/local/sbin/lifedash-deploy
@@ -319,6 +320,7 @@ for t in feeds flights packages pings stocks shares prune media reddit; do
 done
 systemctl enable --now lifedash-backup.timer >/dev/null
 systemctl enable --now lifedash-spotify.timer >/dev/null
+systemctl enable --now lifedash-digest.timer >/dev/null
 info "timers: $(systemctl list-timers 'lifedash-*' --no-legend | wc -l) active"
 
 # -----------------------------------------------------------------------------

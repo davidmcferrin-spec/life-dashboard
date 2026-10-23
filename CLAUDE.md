@@ -65,7 +65,7 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 **Local AI (Ollama)**
 - `setup.sh`, `provision.sh`, and `lifedash-deploy` install Ollama with the official installer when the binary is missing, bind it to `127.0.0.1:11434`, and start `lifedash-ollama-models.service` in the background. The timer retries after boot. The pull does not block deploy.
 - Hardware choice: `llama3.2:1b` under 8 GB RAM and under 4 GB VRAM, `llama3.2:3b` at 8 GB RAM or 4 GB VRAM, `qwen2.5:7b` at 16 GB RAM on CPU or 8 GB VRAM. Embeddings are always `nomic-embed-text`. NVIDIA and AMD are detected; otherwise CPU. The choice is logged.
-- Settings `/settings/ollama` stores the base URL, chat model, and embedding model in `ollama_settings` (migration `0036`). Test connection, installed models, and pull/remove go through the service spool. MCP: `ollama_status`, `ollama_list_models`, `ollama_generate`, `ollama_pull`, `ollama_remove`. Pull and remove need **Allow MCP updates**.
+- Settings `/settings/ollama` stores the base URL, chat model, and embedding model in `ollama_settings` (migration `0038`). Test connection, installed models, and pull/remove go through the service spool. MCP: `ollama_status`, `ollama_list_models`, `ollama_generate`, `ollama_pull`, `ollama_remove`. Pull and remove need **Allow MCP updates**.
 - Health warns when the service is installed but down, the API does not answer, a pull failed, a default model is missing, or the bind is not loopback. A machine without Ollama stays quiet.
 - [x] `/brain/graph` pans (drag, touch) and zooms (wheel, pinch, buttons) with fit and reset. Node clicks still open the page
 - [x] Dashboard AI presence sprite: accent-colored geometric core driven by bearer/MCP `audit_events` on the realtime channel. Names the token and tool, fades after ~30s, flies toward the matching widget. Settings → Dashboard toggle. Reduced motion is a still badge. The bubble has no notes or account numbers
@@ -84,6 +84,13 @@ L-phases are numbered separately from the legacy personal-dashboard Phases 1–8
 - `reddit_subs` / `reddit_posts` (migration `0012`) store title, author, score, comment count, url, permalink, created time, subreddit, flair, and a selftext snippet. Dedupe is `(user_id, external_id)`. Search indexes those rows as dataset `reddit`.
 - Fetch: `cron/fetch_reddit.php` on `lifedash-job-reddit.timer` (public JSON, or OAuth when `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` are set on Setup). User-Agent `REDDIT_USER_AGENT`. One request a second; a 429 stops the run.
 - Reader `/reddit` and widget `reddit_feed`. MCP: `list_tracked_subreddits`, `add_tracked_subreddit`, `remove_tracked_subreddit`, `get_reddit_posts`, `get_reddit_post_comments`. Scope area `reddit`.
+
+**Grok Digest**
+- Page `/digest` (top nav **Grok Digest**) and widget `digest`. Sources are rows in `digest_sources` (migration `0036`), seeded once per user from `services/lifedash/digest_seeds.json`. Add, disable, and remove from the page. No env list. Version keys and daily snapshots are migration `0037`.
+- `lifedash-digest.timer` every 2 hours runs `python -m lifedash.digest_sync tick`. **Check now** queues `digest-check` on the service spool. Prefer an advertised RSS/Atom feed; otherwise heading entries; otherwise a visible-text hash. A blocked or browser-only page is `needs_attention` on that source.
+- Unread is `digest_cursors.read_through_at`. Opening the page does not advance it. **Mark all read** does. An edited entry (`edited_at`) is unread again.
+- MCP: `list_digest_items`, `mark_digest_read`, `digest_sources`, `digest_check_now`, `digest_compare` (`digest:read` / `digest:write`). Bearer writes need **Allow MCP updates**. `digest_compare` takes a product plus either `from_date`/`to_date` or `from_version`/`to_version`.
+- Compare on `/digest`: a date range grouped by product, a version range in version order, and a redline of one source between two snapshot dates (`Knowledge\Redline`). Snapshots keep the normalized entry text. Retention is the preference `digest_snapshot_days`, default 180, set on the page.
 
 ## Conventions (life-dashboard)
 

@@ -1203,6 +1203,20 @@
             </div>`;
     }
 
+    function digest(ctx) {
+        tools(ctx, '<a href="/digest" class="nav-link">Digest</a>');
+        const data = ctx.data || {};
+        const count = Number(data.new_count || 0);
+        const rows = (data.items || []).slice(0, 3).map((item) => {
+            const badge = item.is_new ? '<span class="ld-digest-badge">New</span> ' : '';
+            return `<p class="ld-card-title">${badge}<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></p><p class="ld-meta">${esc(item.product_label || '')}</p>`;
+        }).join('');
+        ctx.body.innerHTML = `
+            <p class="ld-card-title">${count} new</p>
+            ${rows || '<p class="empty-state mono text-xs">No changelog entries yet.</p>'}
+            <a class="ld-card-title" href="/digest">Grok Digest</a>`;
+    }
+
     function spotify(ctx) {
         const data = ctx.data || {};
         if (!data.connected) {
@@ -1223,6 +1237,6 @@
             </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, custom };
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

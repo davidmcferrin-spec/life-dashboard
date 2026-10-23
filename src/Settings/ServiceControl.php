@@ -28,6 +28,7 @@ final class ServiceControl
         'spotify-push',
         'ollama-pull',
         'ollama-remove',
+        'digest-check',
     ];
 
     public function __construct(private readonly ?string $spoolDir = null) {}
@@ -66,7 +67,7 @@ final class ServiceControl
             }
             $payload[$key] = $value;
         }
-        if (str_starts_with($action, 'spotify-') && !isset($payload['user_id'])) {
+        if ((str_starts_with($action, 'spotify-') || $action === 'digest-check') && !isset($payload['user_id'])) {
             throw new \InvalidArgumentException('Unknown service action.');
         }
         if (str_starts_with($action, 'ollama-')) {

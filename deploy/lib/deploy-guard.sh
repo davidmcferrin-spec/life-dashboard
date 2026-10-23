@@ -128,7 +128,9 @@ lifedash_install_runtime_units() {
         lifedash-spotify.service \
         lifedash-spotify.timer \
         lifedash-ollama-models.service \
-        lifedash-ollama-models.timer
+        lifedash-ollama-models.timer \
+        lifedash-digest.service \
+        lifedash-digest.timer
     do
         src=$app/deploy/systemd/$unit
         [[ -f $src ]] || continue
@@ -149,6 +151,7 @@ lifedash_install_runtime_units() {
     systemctl enable --now lifedash-spotify.timer >/dev/null
     systemctl enable lifedash-ollama-models.timer >/dev/null
     systemctl start --no-block lifedash-ollama-models.timer >/dev/null || true
+    systemctl enable --now lifedash-digest.timer >/dev/null
     if [[ $action == install ]]; then
         systemctl enable --now cloudflared >/dev/null
     fi
@@ -188,6 +191,44 @@ lifedash_spotify_args() {
     if [[ -n $playlist_id ]]; then
         printf '%s\n' --playlist "$playlist_id"
     fi
+}
+
+# Drain request files. systemd starts the service when a file appears and does
+# not start it again while one is still there, so a file written during a job
+# has to be taken by the same process before it drops the lock.
+lifedash_drain_spool() {
+    local dir=$1 callback=$2
+    local idle=0 processed=0 file
+    local -a files
+    shopt -s nullglob
+    while true; do
+        files=("$dir"/*.json)
+        if [[ ${#files[@]} -eq 0 ]]; then
+            if [[ $processed -eq 0 || $idle -eq 1 ]]; then
+                break
+            fi
+            idle=1
+            sleep 0.2
+            continue
+        fi
+        idle=0
+        processed=1
+        for file in "${files[@]}"; do
+            "$callback" "$file"
+        done
+    done
+    shopt -u nullglob
+}
+
+# Arguments for a queued digest fetch. A bare or system python is rejected.
+lifedash_digest_args() {
+    local user_id=$1 python=$2
+    [[ $user_id =~ ^[1-9][0-9]*$ ]] || return 1
+    case $python in
+        */venv/bin/python) ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$python" -m lifedash.digest_sync check "$user_id"
 }
 
 # php-fpm must be able to create a request, and the path unit must be watching.

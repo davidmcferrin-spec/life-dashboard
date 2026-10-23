@@ -16,4 +16,31 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 [[ $(lifedash_cloudflared_action 0 1 0) == install ]] || fail "this app's installed unit is refreshed"
 [[ $(lifedash_cloudflared_action 0 0 0) == skip ]] || fail "nothing to install when no token and no unit"
 
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+printf '{}\n' > "$tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json"
+seen=0
+take() {
+    seen=$((seen + 1))
+    if [[ $seen -eq 1 ]]; then
+        printf '{}\n' > "$tmp/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.json"
+    fi
+    rm -f -- "$1"
+}
+lifedash_drain_spool "$tmp" take
+[[ $seen -eq 2 ]] || fail "a request written during a job was left in the spool"
+[[ -z $(find "$tmp" -name '*.json' -print) ]] || fail "spool was not emptied"
+
+mapfile -t digest_args < <(lifedash_digest_args 4 /tmp/app/venv/bin/python)
+[[ ${digest_args[0]} == /tmp/app/venv/bin/python ]] || fail "venv python was not selected"
+[[ ${digest_args[2]} == lifedash.digest_sync ]] || fail "digest module was not selected"
+[[ ${digest_args[3]} == check ]] || fail "digest check was not selected"
+[[ ${digest_args[4]} == 4 ]] || fail "user id was not passed"
+if lifedash_digest_args 0 /tmp/app/venv/bin/python >/dev/null; then
+    fail "user id 0 must be rejected"
+fi
+if lifedash_digest_args 4 python3 >/dev/null; then
+    fail "bare python3 must be rejected"
+fi
+
 echo "ok"

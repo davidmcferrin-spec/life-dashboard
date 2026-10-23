@@ -136,6 +136,12 @@ final class WidgetTypeRegistry
                     'clear_hours' => ['type' => 'int', 'label' => 'Clear bought items after (hours, 0 = keep)', 'min' => 0, 'max' => 168, 'default' => 24],
                 ],
             ],
+            'digest' => [
+                'label' => 'Grok Digest', 'category' => 'life', 'singleton' => false,
+                'description' => 'New changelog entries and the three latest notes.',
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [],
+            ],
             'pantry' => [
                 'label' => 'Pantry', 'category' => 'life', 'singleton' => false,
                 'description' => 'Counts by fridge, freezer, and pantry, plus items to use soon and anything below its par level.',
