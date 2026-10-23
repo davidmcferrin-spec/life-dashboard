@@ -121,6 +121,87 @@
         return clamp(factor, 0.82, 1.22);
     }
 
+    const MESH_MIN_ZOOM = 0.55;
+    const MESH_MAX_ZOOM = 1.8;
+    const MESH_ZOOM_STEP = 0.12;
+    const MESH_IDLE_DPS = 4;
+
+    function meshReset() {
+        return { x: 0, y: 0, zoom: 1, rx: -7, ry: -12 };
+    }
+
+    function meshClampZoom(zoom) {
+        return clamp(Number(zoom) || 0, MESH_MIN_ZOOM, MESH_MAX_ZOOM);
+    }
+
+    function meshZoomBy(state, delta) {
+        return {
+            x: state.x,
+            y: state.y,
+            rx: state.rx,
+            ry: state.ry,
+            zoom: meshClampZoom(state.zoom + delta),
+        };
+    }
+
+    function meshWheel(state, deltaY) {
+        return meshZoomBy(state, -Number(deltaY || 0) * 0.001);
+    }
+
+    function meshPan(state, dx, dy) {
+        return {
+            x: state.x + dx,
+            y: state.y + dy,
+            zoom: state.zoom,
+            rx: state.rx,
+            ry: state.ry,
+        };
+    }
+
+    function meshSpin(state, dx, dy) {
+        return {
+            x: state.x,
+            y: state.y,
+            zoom: state.zoom,
+            rx: clamp(state.rx - dy * 0.18, -48, 48),
+            ry: state.ry + dx * 0.24,
+        };
+    }
+
+    function meshIdle(state, dtMs, reduced) {
+        if (reduced) return state;
+        const dt = Number(dtMs);
+        if (!Number.isFinite(dt) || dt <= 0) return state;
+        return {
+            x: state.x,
+            y: state.y,
+            zoom: state.zoom,
+            rx: state.rx,
+            ry: state.ry + (dt / 1000) * MESH_IDLE_DPS,
+        };
+    }
+
+    function meshPinch(state, startZoom, startDist, dist) {
+        const base = startDist > 0 ? startDist : 1;
+        return {
+            x: state.x,
+            y: state.y,
+            rx: state.rx,
+            ry: state.ry,
+            zoom: meshClampZoom(startZoom * (dist / base)),
+        };
+    }
+
+    function meshFace(state, az, el) {
+        return {
+            x: 0,
+            y: 0,
+            zoom: state.zoom,
+            rx: clamp(-Number(el || 0), -48, 48),
+            ry: -Number(az || 0),
+        };
+    }
+
     return {
         MIN_K,
         MAX_K,
@@ -133,5 +214,16 @@
         fit,
         matrix,
         wheelFactor,
+        MESH_MIN_ZOOM,
+        MESH_MAX_ZOOM,
+        MESH_ZOOM_STEP,
+        meshReset,
+        meshZoomBy,
+        meshWheel,
+        meshPan,
+        meshSpin,
+        meshIdle,
+        meshPinch,
+        meshFace,
     };
 });

@@ -127,9 +127,48 @@ final class BrainMapTest extends TestCase
         ], $presented['tokens']);
     }
 
+    public function testSignalsKeepPageVerbAndDropTitles(): void
+    {
+        $signals = BrainActivity::signals([
+            [
+                'id' => 9, 'actor' => 'user', 'action' => 'GET', 'resource' => 'page:5',
+                'created_at' => '2026-10-15 03:10:02',
+                'detail' => ['title' => 'Secret title', 'verb' => 'read'],
+            ],
+            [
+                'id' => 8, 'actor' => 'ai', 'action' => 'POST', 'resource' => '/api/v1/pages/3',
+                'created_at' => '2026-10-15 03:09:00',
+                'detail' => ['token_id' => 2, 'token_name' => 'Grok', 'title' => 'Nope'],
+            ],
+            [
+                'id' => 7, 'actor' => 'system', 'action' => 'GET', 'resource' => 'page:1',
+                'detail' => [],
+            ],
+            [
+                'id' => 6, 'actor' => 'ai', 'action' => 'GET', 'resource' => '/api/v1/money/transactions',
+                'detail' => ['title' => 'Hidden'],
+            ],
+        ]);
+
+        self::assertCount(2, $signals);
+        self::assertSame(5, $signals[0]['page_id']);
+        self::assertSame('read', $signals[0]['verb']);
+        self::assertSame('user', $signals[0]['actor']);
+        self::assertSame('You', $signals[0]['source']);
+        self::assertSame(3, $signals[1]['page_id']);
+        self::assertSame('write', $signals[1]['verb']);
+        self::assertSame('Grok', $signals[1]['source']);
+        $json = json_encode($signals, JSON_THROW_ON_ERROR);
+        self::assertStringNotContainsString('Secret', $json);
+        self::assertStringNotContainsString('Nope', $json);
+        self::assertStringNotContainsString('Hidden', $json);
+        self::assertArrayNotHasKey('resource', $signals[0]);
+    }
+
     public function testGraphAndAuditReadsAreNotTraced(): void
     {
         self::assertTrue(ApiRunner::isMetaRead('/api/v1/pages/graph'));
+        self::assertTrue(ApiRunner::isMetaRead('/api/v1/pages/graph/access'));
         self::assertTrue(ApiRunner::isMetaRead('/api/v1/audit'));
         self::assertTrue(ApiRunner::isMetaRead('/api/v1/realtime/token'));
         self::assertFalse(ApiRunner::isMetaRead('/api/v1/pages/5'));

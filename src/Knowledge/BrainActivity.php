@@ -82,6 +82,38 @@ final class BrainActivity
     }
 
     /**
+     * Page access rows for the mesh. No titles, notes, or resource paths.
+     *
+     * @param list<array<string, mixed>> $events
+     * @return list<array{id: int, page_id: int, verb: string, actor: string, source: string, at: string}>
+     */
+    public static function signals(array $events): array
+    {
+        $out = [];
+        foreach ($events as $event) {
+            $actor = (string) ($event['actor'] ?? '');
+            if ($actor !== 'ai' && $actor !== 'user') {
+                continue;
+            }
+            $pageId = self::pageId(isset($event['resource']) ? (string) $event['resource'] : null);
+            if ($pageId === null) {
+                continue;
+            }
+            $detail = is_array($event['detail'] ?? null) ? $event['detail'] : [];
+            $tokenId = isset($detail['token_id']) ? (int) $detail['token_id'] : 0;
+            $out[] = [
+                'id'      => (int) ($event['id'] ?? 0),
+                'page_id' => $pageId,
+                'verb'    => self::verb($detail, (string) ($event['action'] ?? '')),
+                'actor'   => $actor,
+                'source'  => self::tokenName($actor, $tokenId, $detail),
+                'at'      => (string) ($event['created_at'] ?? ''),
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * @param array<string, mixed> $detail
      */
     private static function verb(array $detail, string $action): string
