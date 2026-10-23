@@ -84,11 +84,20 @@ final class MixtapeLibrary
     {
         $this->ensureDefaults($userId);
         $rows = $this->db->fetchAll(
-            'SELECT season, start_anchor, start_month, start_day, end_month, end_day
+            'SELECT season, start_anchor, start_month, start_day, end_month, end_day, allow_outside
              FROM spotify_season_windows WHERE user_id = ? ORDER BY season',
             [$userId]
         );
-        return ['seasons' => array_map($this->seasonRow(...), $rows)];
+        $usage = $this->seasonUsage($userId);
+        $seasons = [];
+        foreach ($rows as $row) {
+            $season = $this->seasonRow($row);
+            $counts = $usage[$season['season']] ?? ['track_count' => 0, 'playlist_count' => 0];
+            $season['track_count'] = $counts['track_count'];
+            $season['playlist_count'] = $counts['playlist_count'];
+            $seasons[] = $season;
+        }
+        return ['seasons' => $seasons];
     }
 
     /**
@@ -117,27 +126,38 @@ final class MixtapeLibrary
         if ($endMonth === null || $endDay === null) {
             throw ValidationException::withFields(['end_month' => 'Set an end month and day.']);
         }
+        $allowOutside = array_key_exists('allow_outside', $body) ? (self::outsideFlag($body['allow_outside']) ? 1 : 0) : null;
         $this->db->execute(
             'INSERT INTO spotify_season_windows
-                (user_id, season, start_anchor, start_month, start_day, end_month, end_day)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (user_id, season, start_anchor, start_month, start_day, end_month, end_day, allow_outside)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT (user_id, season) DO UPDATE SET
                 start_anchor = EXCLUDED.start_anchor,
                 start_month = EXCLUDED.start_month,
                 start_day = EXCLUDED.start_day,
                 end_month = EXCLUDED.end_month,
                 end_day = EXCLUDED.end_day,
+                allow_outside = COALESCE(?::smallint, spotify_season_windows.allow_outside),
                 updated_at = (now() AT TIME ZONE \'UTC\')',
-            [$userId, $season, $anchor, $startMonth, $startDay, $endMonth, $endDay]
+            [$userId, $season, $anchor, $startMonth, $startDay, $endMonth, $endDay, $allowOutside ?? 0, $allowOutside]
         );
-        return $this->seasonRow([
+        if ($allowOutside === null) {
+            $allowOutside = (int) $this->db->fetchScalar(
+                'SELECT allow_outside FROM spotify_season_windows WHERE user_id = ? AND season = ?',
+                [$userId, $season]
+            );
+        }
+        $saved = $this->seasonRow([
             'season' => $season,
             'start_anchor' => $anchor,
             'start_month' => $startMonth,
             'start_day' => $startDay,
             'end_month' => $endMonth,
             'end_day' => $endDay,
+            'allow_outside' => $allowOutside,
         ]);
+        $counts = $this->seasonUsage($userId)[$season] ?? ['track_count' => 0, 'playlist_count' => 0];
+        return $saved + $counts;
     }
 
     /**
@@ -174,6 +194,10 @@ final class MixtapeLibrary
         foreach ($meta as $track) {
             foreach ($track['season_tags'] as $tag) {
                 if (!isset($windows[$tag]) || in_array($tag, $allowed, true)) {
+                    continue;
+                }
+                // The season itself can open outside its dates. That is separate from a prompt allow-list.
+                if (!empty($windows[$tag]['allow_outside'])) {
                     continue;
                 }
                 if (!Mixtape::inWindow($windows[$tag], $today)) {
@@ -477,7 +501,52 @@ final class MixtapeLibrary
             'start_day' => $row['start_day'] !== null && $row['start_day'] !== '' ? (int) $row['start_day'] : null,
             'end_month' => (int) $row['end_month'],
             'end_day' => (int) $row['end_day'],
+            'allow_outside' => (int) ($row['allow_outside'] ?? 0) === 1,
         ];
+    }
+
+    /**
+     * Tracks and playlists that actually carry each season tag.
+     *
+     * @return array<string, array{track_count: int, playlist_count: int}>
+     */
+    private function seasonUsage(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT m.spotify_track_id, m.season_tags, pt.playlist_id
+             FROM spotify_track_meta m
+             LEFT JOIN spotify_tracks t
+               ON t.user_id = m.user_id AND t.spotify_id = m.spotify_track_id
+             LEFT JOIN spotify_playlist_tracks pt
+               ON pt.user_id = m.user_id AND pt.track_id = t.id
+             WHERE m.user_id = ?',
+            [$userId]
+        );
+        $tracks = [];
+        $playlists = [];
+        foreach ($rows as $row) {
+            $trackId = (string) $row['spotify_track_id'];
+            $playlistId = $row['playlist_id'] !== null && $row['playlist_id'] !== '' ? (int) $row['playlist_id'] : null;
+            foreach (self::jsonList($row['season_tags'] ?? '[]') as $tag) {
+                $tracks[$tag][$trackId] = true;
+                if ($playlistId !== null) {
+                    $playlists[$tag][$playlistId] = true;
+                }
+            }
+        }
+        $out = [];
+        foreach ($tracks as $tag => $ids) {
+            $out[$tag] = [
+                'track_count' => count($ids),
+                'playlist_count' => count($playlists[$tag] ?? []),
+            ];
+        }
+        return $out;
+    }
+
+    private static function outsideFlag(mixed $value): bool
+    {
+        return $value === true || $value === 1 || $value === '1' || $value === 'on';
     }
 
     /**
