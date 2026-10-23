@@ -19,6 +19,7 @@
         list:            $('#cloudpad-canvas-list'),
         count:           $('#cloudpad-canvas-count'),
         newBtn:          $('#cloudpad-new-canvas'),
+        newModal:        $('#cloudpad-new-canvas-modal'),
         newForm:         $('#cloudpad-new-canvas-form'),
         newName:         $('#cloudpad-new-canvas-name'),
         newCancel:       $('#cloudpad-new-canvas-cancel'),
@@ -27,6 +28,63 @@
         root:            $('#cloudpad-embed-root'),
         deleteBtn:       $('#cloudpad-embed-delete'),
     };
+
+    function openModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function bindModal(modal, onClose) {
+        if (!modal) return;
+        modal.addEventListener('click', (event) => {
+            if (event.target.closest('[data-close]')) {
+                if (onClose) onClose();
+                else closeModal(modal);
+            }
+        });
+    }
+
+    function clearFieldError(id) {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.textContent = '';
+        node.classList.add('hidden');
+    }
+
+    function showFieldError(id, message) {
+        const node = document.getElementById(id);
+        if (!node) {
+            alert(message);
+            return;
+        }
+        node.textContent = message;
+        node.classList.remove('hidden');
+    }
+
+    function showNewCanvasForm() {
+        clearFieldError('cloudpad-new-canvas-error');
+        el.newBtn?.classList.add('hidden');
+        if (el.newName) el.newName.value = '';
+        openModal(el.newModal);
+    }
+
+    function hideNewCanvasForm() {
+        closeModal(el.newModal);
+        clearFieldError('cloudpad-new-canvas-error');
+        el.newBtn?.classList.remove('hidden');
+        if (el.newName) el.newName.value = '';
+    }
+
+    bindModal(el.newModal, () => hideNewCanvasForm());
 
     function escHtml(str) {
         return String(str)
@@ -189,30 +247,24 @@
         }
     }
 
-    el.newBtn?.addEventListener('click', () => {
-        el.newForm?.classList.remove('hidden');
-        el.newBtn?.classList.add('hidden');
-        el.newName?.focus();
-    });
+    el.newBtn?.addEventListener('click', showNewCanvasForm);
 
     document.getElementById('cloudpad-empty-new')?.addEventListener('click', () => {
         el.newBtn?.click();
     });
 
-    el.newCancel?.addEventListener('click', () => {
-        el.newForm?.classList.add('hidden');
-        el.newBtn?.classList.remove('hidden');
-        if (el.newName) el.newName.value = '';
-    });
+    el.newCancel?.addEventListener('click', hideNewCanvasForm);
 
     el.newForm?.addEventListener('submit', async e => {
         e.preventDefault();
         const name = el.newName?.value.trim() || '';
         if (!name) return;
 
+        clearFieldError('cloudpad-new-canvas-error');
+
         const owned = canvases.filter(c => c.access === 'owner');
         if (owned.length >= maxCanvases) {
-            alert(`Maximum ${maxCanvases} canvases per user.`);
+            showFieldError('cloudpad-new-canvas-error', `Maximum ${maxCanvases} canvases per user.`);
             return;
         }
 
@@ -221,41 +273,54 @@
             body: JSON.stringify({ name }),
         });
         if (!res.ok) {
-            alert(data.error || 'Could not create canvas.');
+            showFieldError('cloudpad-new-canvas-error', data.error || 'Could not create canvas.');
             return;
         }
 
-        el.newForm?.classList.add('hidden');
-        el.newBtn?.classList.remove('hidden');
-        if (el.newName) el.newName.value = '';
+        hideNewCanvasForm();
 
         await loadList();
         await selectCanvas(data.canvas.id);
     });
 
+    let deleteBusy = false;
+
     el.deleteBtn?.addEventListener('click', async () => {
-        if (!activeCanvasId) return;
-        if (!confirm('Delete this canvas permanently?')) return;
+        if (!activeCanvasId || deleteBusy) return;
+        deleteBusy = true;
+        try {
+            const canvas = canvases.find(c => c.id === activeCanvasId);
+            const label = canvas && canvas.name ? `"${canvas.name}"` : 'this canvas';
+            const ok = await globalThis.AppModal.confirm({
+                title: 'Delete canvas',
+                message: `Delete ${label} permanently?`,
+                confirmLabel: 'Delete',
+                danger: true,
+            });
+            if (!ok) return;
 
-        const { res, data } = await api(`/api/cloudpad/${activeCanvasId}/delete`, {
-            method: 'POST',
-            body: '{}',
-        });
-        if (!res.ok) {
-            alert(data.error || 'Could not delete canvas.');
-            return;
-        }
+            const { res, data } = await api(`/api/cloudpad/${activeCanvasId}/delete`, {
+                method: 'POST',
+                body: '{}',
+            });
+            if (!res.ok) {
+                alert(data.error || 'Could not delete canvas.');
+                return;
+            }
 
-        window.CloudPad?.unmount();
-        activeCanvasId = 0;
-        await loadList();
+            window.CloudPad?.unmount();
+            activeCanvasId = 0;
+            await loadList();
 
-        if (canvases.length > 0) {
-            await selectCanvas(canvases[0].id);
-        } else {
-            setUrl(0);
-            el.editorWrap?.classList.add('hidden');
-            el.empty?.classList.remove('hidden');
+            if (canvases.length > 0) {
+                await selectCanvas(canvases[0].id);
+            } else {
+                setUrl(0);
+                el.editorWrap?.classList.add('hidden');
+                el.empty?.classList.remove('hidden');
+            }
+        } finally {
+            deleteBusy = false;
         }
     });
 
