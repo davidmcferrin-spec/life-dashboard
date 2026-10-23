@@ -18,13 +18,7 @@ if (!isset($themePref) && !empty($user['id'])) {
 <?php require __DIR__ . '/../partials/head.php'; ?>
 <body class="page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <a href="/" class="brand hover:text-accent">← Dashboard</a>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
-        <?php require __DIR__ . '/../partials/appearance-nav.php'; ?>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/../partials/app-shell-open.php'; ?>
 
 <main class="<?= e($settingsMainClass) ?>">
     <?php if ($flash): ?>

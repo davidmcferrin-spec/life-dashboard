@@ -218,7 +218,9 @@ html[data-starfield-pref="1"][data-theme="dark"] main {
     background: transparent;
 }
 
-html[data-starfield-pref="1"][data-theme="dark"] .chrome {
+html[data-starfield-pref="1"][data-theme="dark"] .chrome,
+html[data-starfield-pref="1"][data-theme="dark"] .app-sidebar,
+html[data-starfield-pref="1"][data-theme="dark"] .app-header {
     background: var(--bg);
 }
 

@@ -2061,3 +2061,311 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     font-size: 0.75rem;
 }
 
+/* -------------------------------------------------------
+   App shell. Sidebar 240px; below 700px it is an off-canvas drawer.
+   Header tools keep .nav-meta so they wrap instead of widening the page.
+   ------------------------------------------------------- */
+.app-shell {
+    display: flex;
+    align-items: stretch;
+    min-height: 100vh;
+    min-width: 0;
+}
+
+.app-sidebar {
+    background: var(--bg);
+    border-right: 1px solid var(--line);
+    box-sizing: border-box;
+    display: flex;
+    flex: 0 0 240px;
+    flex-direction: column;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    width: 240px;
+    z-index: 30;
+}
+
+.app-wordmark {
+    align-items: center;
+    color: var(--accent);
+    display: flex;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    gap: 8px;
+    letter-spacing: 0.12em;
+    min-height: 40px;
+    padding: 16px 16px 8px;
+    text-decoration: none;
+    text-transform: uppercase;
+}
+
+.app-wordmark:hover {
+    color: var(--accent-hover);
+}
+
+.app-mark {
+    background: var(--accent);
+    border-radius: var(--radius-full);
+    flex: 0 0 auto;
+    height: 8px;
+    width: 8px;
+}
+
+.app-sidebar-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 12px 12px;
+}
+
+.app-nav-group {
+    display: flex;
+    flex-direction: column;
+    margin-top: 16px;
+}
+
+.app-nav-label {
+    color: var(--text-label);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    margin: 0 8px 4px;
+    text-transform: uppercase;
+}
+
+.app-nav-link {
+    align-items: center;
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    display: flex;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    min-height: 40px;
+    padding: 8px 12px;
+    text-decoration: none;
+}
+
+.app-nav-link:hover {
+    background: var(--row-hover);
+    color: var(--text);
+}
+
+.app-nav-link.is-active {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.app-user {
+    border-top: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    gap: 12px;
+    padding: 16px;
+}
+
+.app-user-name {
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 20px;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.app-user .appearance-nav {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.app-user .theme-switch {
+    display: flex;
+    flex-wrap: wrap;
+    max-width: 100%;
+    width: 100%;
+}
+
+.app-user .theme-switch button {
+    flex: 1 1 40%;
+    min-width: 0;
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+}
+
+.app-signout {
+    justify-content: flex-start;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.app-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.app-header {
+    align-items: center;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    box-sizing: border-box;
+    display: flex;
+    gap: 12px;
+    min-height: 56px;
+    min-width: 0;
+    padding: 8px 24px;
+    position: sticky;
+    top: 0;
+    width: 100%;
+    z-index: 20;
+}
+
+.app-header > * {
+    min-width: 0;
+}
+
+.app-header-tools {
+    flex: 1 1 auto;
+    gap: 8px;
+}
+
+.app-nav-toggle {
+    align-items: center;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-control);
+    color: var(--text);
+    cursor: pointer;
+    display: none;
+    flex: 0 0 auto;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    gap: 8px;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 12px;
+}
+
+.app-nav-backdrop {
+    background: rgba(4, 7, 12, 0.72);
+    border: 0;
+    cursor: pointer;
+    inset: 0;
+    padding: 0;
+    position: fixed;
+    z-index: 35;
+}
+
+.app-nav-backdrop[hidden] {
+    display: none;
+}
+
+.app-content {
+    min-width: 0;
+}
+
+.app-cloudpad-tools {
+    align-items: center;
+    display: flex;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.app-cloudpad-name {
+    max-width: 14rem;
+    min-width: 0;
+}
+
+.app-cloudpad-back {
+    flex-shrink: 0;
+}
+
+.app-shell .page-heading + .brain-shell,
+.app-shell .page-heading + .brain-graph-wrap {
+    height: calc(100vh - 11.5rem);
+}
+
+.app-shell .brain-map-layer {
+    inset: 3.5rem 0 0 240px;
+}
+
+body.cloudpad-page {
+    overflow: hidden;
+}
+
+body.cloudpad-page .app-shell {
+    flex: 1 1 auto;
+    height: 100vh;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body.cloudpad-page .app-main,
+body.cloudpad-page .app-content {
+    min-height: 0;
+}
+
+body.cloudpad-page .app-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.app-shell .focus-clock-main {
+    min-height: calc(100vh - 4rem);
+}
+
+@media (max-width: 699px) {
+    .app-nav-toggle {
+        display: inline-flex;
+    }
+
+    .app-sidebar {
+        position: fixed;
+        left: 0;
+        max-width: calc(100vw - 48px);
+        top: 0;
+        transform: translateX(-100%);
+        z-index: 40;
+    }
+
+    .app-sidebar.is-open {
+        transform: translateX(0);
+    }
+
+    .app-header {
+        padding: 8px 16px;
+    }
+
+    body.app-nav-open {
+        overflow: hidden;
+    }
+
+    .app-shell .brain-map-layer {
+        inset: 3.5rem 0 0 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-sidebar {
+        transition: none;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .app-sidebar {
+        transition: transform 160ms ease;
+    }
+}
+

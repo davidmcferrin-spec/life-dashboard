@@ -16,14 +16,7 @@ $pageTitle     = 'Todo Lists';
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <a href="/" class="brand hover:text-accent">← Dashboard</a>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <a href="/settings/todos" class="nav-link mono text-xs">Manage lists</a>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="max-w-3xl mx-auto px-4 py-8 space-y-4">
     <header>
@@ -67,6 +60,7 @@ $pageTitle     = 'Todo Lists';
         </form>
     </section>
 </main>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/todo-due.js?v=<?= e($assetVer) ?>"></script>

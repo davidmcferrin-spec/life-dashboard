@@ -11,13 +11,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-4 py-3">
-    <a href="/" class="brand hover:text-accent">← Dashboard</a>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="mx-auto px-4 py-6 space-y-4" id="pantry-app">
     <header>
@@ -36,6 +30,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
     <p id="pantry-error" class="ld-error hidden"></p>
     <div id="pantry-body"></div>
 </main>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>

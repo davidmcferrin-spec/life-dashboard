@@ -19,22 +19,7 @@ $canvasId      = (int) ($canvasId ?? 0);
 <link rel="stylesheet" href="/assets/css/cloudpad.css?v=<?= e($assetVer) ?>">
 <body class="page cloudpad-page min-h-screen">
 
-<nav class="chrome cloudpad-nav flex flex-wrap items-center justify-between gap-2 px-4 py-2">
-    <div class="flex items-center gap-3 min-w-0">
-        <a href="/settings/clipboards?tab=cloudpad&amp;canvas=<?= (int) $canvasId ?>" class="brand hover:text-accent flex-shrink-0">← CloudPad</a>
-        <input type="text" id="cloudpad-canvas-name" class="input mono text-sm max-w-[14rem] min-w-0" maxlength="128" title="Canvas name">
-    </div>
-    <div class="flex flex-wrap items-center gap-2">
-        <span id="cloudpad-save-status" class="text-faint mono text-xs">Loading…</span>
-        <button type="button" id="cloudpad-save-now" class="btn text-xs" title="Save now (Ctrl+S)">Save</button>
-        <button type="button" id="cloudpad-fit-content" class="btn text-xs" title="Fit content">Fit</button>
-        <button type="button" id="cloudpad-export-png" class="btn text-xs">PNG</button>
-        <button type="button" id="cloudpad-save-files" class="btn text-xs">Save to Files</button>
-        <button type="button" id="cloudpad-sharing-toggle" class="btn text-xs hidden">Sharing</button>
-        <?php require __DIR__ . '/../partials/appearance-nav.php'; ?>
-        <a href="/logout" class="nav-link nav-link-danger text-xs">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/../partials/app-shell-open.php'; ?>
 
 <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'CloudPad'; require __DIR__ . '/../partials/page-heading.php'; ?>
 
@@ -85,6 +70,7 @@ $canvasId      = (int) ($canvasId ?? 0);
     window.EXCALIDRAW_ASSET_PATH = '/assets/';
     window.CLOUDPAD_CANVAS_ID = <?= json_encode($canvasId, JSON_THROW_ON_ERROR) ?>;
 </script>
+<?php require __DIR__ . '/../partials/app-shell-close.php'; ?>
 <script src="/assets/js/cloudpad-canvas.bundle.js?v=<?= e($assetVer) ?>" defer></script>
 </body>
 </html>

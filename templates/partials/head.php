@@ -31,7 +31,7 @@ $jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
 $jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261023k';
+$assetVer = '20261023l';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>
@@ -76,7 +76,11 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     </script>
     <link rel="stylesheet" href="/assets/css/tailwind.css?v=<?= e($assetVer) ?>">
     <link rel="stylesheet" href="/assets/css/dashboard.css?v=<?= e($assetVer) ?>">
+    <?php if (!$themeLocalOnly): ?>
+    <link rel="stylesheet" href="/assets/css/lifedash.css?v=<?= e($assetVer) ?>">
+    <?php endif; ?>
     <?php foreach ($extraStyles as $sheet): ?>
+    <?php if (str_contains($sheet, '/assets/css/lifedash.css')) { continue; } ?>
     <link rel="stylesheet" href="<?= e($sheet) ?>?v=<?= e($assetVer) ?>">
     <?php endforeach; ?>
     <?php if (!$themeLocalOnly): ?>
@@ -89,6 +93,7 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     <script src="/assets/js/app-modal.js?v=<?= e($assetVer) ?>" defer></script>
     <script src="/assets/js/theme.js?v=<?= e($assetVer) ?>" defer></script>
     <?php if (!$themeLocalOnly): ?>
+    <script src="/assets/js/app-shell.js?v=<?= e($assetVer) ?>" defer></script>
     <script src="/assets/js/starfield.js?v=<?= e($assetVer) ?>" defer></script>
     <?php endif; ?>
     <?php if (!$themeLocalOnly && !empty($user['id'])): ?>
