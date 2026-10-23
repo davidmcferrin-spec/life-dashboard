@@ -537,6 +537,7 @@ try {
                 <input type="date" id="todo-widget-due" class="input w-full mt-1 text-sm">
             </label>
             <p class="text-faint mono text-xs">Notes and links: <a href="/todos" class="link">full todo page →</a></p>
+            <p id="todo-widget-add-error" class="ld-field-error hidden" role="alert"></p>
             <div class="flex flex-wrap gap-2">
                 <button type="submit" class="btn-primary text-sm">Add</button>
                 <button type="button" id="todo-widget-add-cancel" class="btn text-sm">Cancel</button>
@@ -580,6 +581,7 @@ try {
                     <option value="">Unassigned</option>
                 </select>
             </label>
+            <p id="todo-widget-edit-error" class="ld-field-error hidden" role="alert"></p>
             <div class="flex flex-wrap gap-2 pt-1">
                 <button type="submit" class="btn-primary text-sm">Save</button>
                 <button type="button" id="todo-widget-edit-cancel" class="btn text-sm">Cancel</button>

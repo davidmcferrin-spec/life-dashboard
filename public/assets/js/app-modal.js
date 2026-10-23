@@ -5,6 +5,10 @@
  * those ancestors. An inert parent would freeze the dialog itself.
  * Escape clicks the dialog's own close control so its existing handler
  * still runs (scroll lock, remove-on-close, and the rest).
+ *
+ * AppModal.confirm is for a yes/no choice that has no markup of its own.
+ * Cancel, Escape, and the backdrop resolve false. The confirm button
+ * resolves true.
  */
 'use strict';
 
@@ -223,4 +227,100 @@
     } else {
         boot();
     }
+
+    let confirmSeq = 0;
+
+    function confirmDialog(options) {
+        const opts = options || {};
+        const title = opts.title ? String(opts.title) : 'Confirm';
+        const message = opts.message ? String(opts.message) : '';
+        const confirmLabel = opts.confirmLabel ? String(opts.confirmLabel) : 'Confirm';
+        const cancelLabel = opts.cancelLabel ? String(opts.cancelLabel) : 'Cancel';
+        const danger = !!opts.danger;
+        const titleId = 'app-modal-confirm-title-' + (++confirmSeq);
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const modal = document.createElement('div');
+            modal.className = 'app-modal';
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('aria-labelledby', titleId);
+
+            const backdrop = document.createElement('div');
+            backdrop.className = 'app-modal-backdrop';
+            backdrop.setAttribute('data-close', '');
+            backdrop.setAttribute('aria-hidden', 'true');
+
+            const panel = document.createElement('div');
+            panel.className = 'app-modal-panel surface';
+
+            const head = document.createElement('div');
+            head.className = 'flex items-center justify-between gap-2 mb-3';
+
+            const heading = document.createElement('h3');
+            heading.id = titleId;
+            heading.className = 'section-title text-sm';
+            heading.textContent = title;
+
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'app-modal-close';
+            close.setAttribute('data-close', '');
+            close.setAttribute('aria-label', 'Close');
+            close.textContent = '×';
+
+            const body = document.createElement('p');
+            body.className = 'text-sm mb-4';
+            body.textContent = message;
+
+            const actions = document.createElement('div');
+            actions.className = 'flex flex-wrap gap-2';
+
+            const ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = (danger ? 'btn-danger' : 'btn-primary') + ' text-sm';
+            ok.textContent = confirmLabel;
+
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'btn text-sm';
+            cancel.setAttribute('data-close', '');
+            cancel.textContent = cancelLabel;
+
+            function finish(value) {
+                if (settled) return;
+                settled = true;
+                modal.classList.add('hidden');
+                modal.remove();
+                if (!document.querySelector('.app-modal:not(.hidden)')) {
+                    document.body.classList.remove('app-modal-open');
+                }
+                resolve(value);
+            }
+
+            ok.addEventListener('click', () => finish(true));
+            modal.addEventListener('click', (event) => {
+                const target = event.target;
+                if (target && typeof target.closest === 'function' && target.closest('[data-close]')) {
+                    finish(false);
+                }
+            });
+
+            head.appendChild(heading);
+            head.appendChild(close);
+            actions.appendChild(ok);
+            actions.appendChild(cancel);
+            panel.appendChild(head);
+            panel.appendChild(body);
+            panel.appendChild(actions);
+            modal.appendChild(backdrop);
+            modal.appendChild(panel);
+
+            document.body.classList.add('app-modal-open');
+            document.body.appendChild(modal);
+        });
+    }
+
+    globalThis.AppModal = { confirm: confirmDialog };
 })();

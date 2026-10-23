@@ -318,13 +318,16 @@ function createDom() {
         return event;
     }
 
+    let api = null;
+
     function load() {
-        const sandbox = { document, MutationObserver, console };
+        const sandbox = { document, MutationObserver, console, Promise };
         vm.createContext(sandbox);
         vm.runInContext(script, sandbox);
+        api = sandbox.AppModal;
     }
 
-    return { document, body, h, keydown, load, flush: () => Promise.resolve() };
+    return { document, body, h, keydown, load, flush: () => Promise.resolve(), api: () => api };
 }
 
 test('the shared modal script is loaded from the document head', () => {
@@ -464,6 +467,60 @@ test('a dialog with no field focuses its title, and removing it restores focus',
     assert.equal(modal.isConnected, false);
     assert.equal(main.hasAttribute('inert'), false);
     assert.equal(dom.document.activeElement, opener);
+});
+
+test('confirm opens the shared dialog and cancel resolves false', async () => {
+    const dom = createDom();
+    const opener = dom.h('button', { id: 'remove-widget' }, []);
+    const page = dom.h('div', { id: 'page' }, [opener]);
+    dom.body.appendChild(page);
+    await dom.flush();
+    dom.load();
+    opener.focus();
+
+    let result = null;
+    const pending = dom.api().confirm({
+        title: 'Remove widget',
+        message: 'Remove Habits?',
+        confirmLabel: 'Remove',
+        danger: true,
+    });
+    pending.then((value) => { result = value; });
+    await dom.flush();
+
+    const modal = dom.document.querySelector('.app-modal');
+    assert.ok(modal);
+    assert.equal(modal.classList.contains('hidden'), false);
+    assert.equal(page.hasAttribute('inert'), true);
+    assert.equal(modal.querySelector('h3').textContent, 'Remove widget');
+    assert.equal(modal.querySelector('p').textContent, 'Remove Habits?');
+    assert.equal(modal.querySelector('.btn-danger').textContent, 'Remove');
+    assert.equal(dom.document.activeElement, modal.querySelector('h3'));
+
+    const escape = dom.keydown('Escape');
+    assert.equal(escape.defaultPrevented, true);
+    await pending;
+    await dom.flush();
+    assert.equal(result, false);
+    assert.equal(modal.isConnected, false);
+    assert.equal(page.hasAttribute('inert'), false);
+    assert.equal(dom.document.activeElement, opener);
+});
+
+test('confirm resolves true from the confirm button', async () => {
+    const dom = createDom();
+    const opener = dom.h('button', { id: 'remove-widget' }, []);
+    dom.body.appendChild(dom.h('div', { id: 'page' }, [opener]));
+    await dom.flush();
+    dom.load();
+    opener.focus();
+
+    const pending = dom.api().confirm({ title: 'Remove widget', message: 'Remove Calls?', confirmLabel: 'Remove' });
+    await dom.flush();
+    dom.document.querySelector('.btn-primary').click();
+    assert.equal(await pending, true);
+    await dom.flush();
+    assert.equal(dom.document.querySelector('.app-modal'), null);
 });
 
 test('a dialog already on screen does not inert the page', async () => {
