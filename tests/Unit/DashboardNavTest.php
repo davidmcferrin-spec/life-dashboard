@@ -28,7 +28,9 @@ final class DashboardNavTest extends TestCase
             "['Flights', '/flights']",
             "['Packages', '/settings/packages']",
             'class="app-settings-pin',
+            'class="app-settings-cog"',
             'app-settings-label">Settings</span>',
+            'M9.56 2.2A10.1',
             'href="/logout"',
             'data-player-toggle',
             'id="live-date"',
@@ -37,6 +39,7 @@ final class DashboardNavTest extends TestCase
         ] as $needle) {
             self::assertStringContainsString($needle, $html);
         }
+        self::assertStringNotContainsString('M12 3.2v2.2', $html);
     }
 
     public function testPhoneDrawerDoesNotStretchTheHeader(): void

@@ -103,8 +103,10 @@ if ($shellUserName === '') {
     </nav>
     <a class="app-settings-pin<?= $shellSettingsActive ? ' is-active' : '' ?>" href="/settings"<?= $shellSettingsActive ? ' aria-current="page"' : '' ?>>
         <svg class="app-settings-cog" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.75"/>
-            <path fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.5 5.5l1.6 1.6M16.9 16.9l1.6 1.6M18.5 5.5l-1.6 1.6M7.1 16.9l-1.6 1.6"/>
+            <g fill="none" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="2.6"/>
+                <path d="M9.56 2.2A10.1 10.1 0 0 1 14.44 2.2L13.62 5.5A6.7 6.7 0 0 1 16.82 7.35L19.27 4.98A10.1 10.1 0 0 1 21.71 9.22L18.44 10.15A6.7 6.7 0 0 1 18.44 13.85L21.71 14.78A10.1 10.1 0 0 1 19.27 19.02L16.82 16.65A6.7 6.7 0 0 1 13.62 18.5L14.44 21.8A10.1 10.1 0 0 1 9.56 21.8L10.38 18.5A6.7 6.7 0 0 1 7.18 16.65L4.73 19.02A10.1 10.1 0 0 1 2.29 14.78L5.56 13.85A6.7 6.7 0 0 1 5.56 10.15L2.29 9.22A10.1 10.1 0 0 1 4.73 4.98L7.18 7.35A6.7 6.7 0 0 1 10.38 5.5L9.56 2.2Z"/>
+            </g>
         </svg>
         <span class="app-settings-label">Settings</span>
     </a>
