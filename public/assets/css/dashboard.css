@@ -46,152 +46,129 @@
     font-display: swap;
     src: url('/assets/fonts/jetbrains-mono-latin-500.woff2') format('woff2');
 }
-@font-face {
-    font-family: 'Rajdhani';
-    font-style: normal;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/assets/fonts/rajdhani-latin-500.woff2') format('woff2');
-}
-@font-face {
-    font-family: 'Rajdhani';
-    font-style: normal;
-    font-weight: 600;
-    font-display: swap;
-    src: url('/assets/fonts/rajdhani-latin-600.woff2') format('woff2');
-}
-@font-face {
-    font-family: 'Rajdhani';
-    font-style: normal;
-    font-weight: 700;
-    font-display: swap;
-    src: url('/assets/fonts/rajdhani-latin-700.woff2') format('woff2');
-}
-@font-face {
-    font-family: 'Orbitron';
-    font-style: normal;
-    font-weight: 500;
-    font-display: swap;
-    src: url('/assets/fonts/orbitron-latin-500.woff2') format('woff2');
-}
-@font-face {
-    font-family: 'Orbitron';
-    font-style: normal;
-    font-weight: 600;
-    font-display: swap;
-    src: url('/assets/fonts/orbitron-latin-600.woff2') format('woff2');
-}
 
 /* -------------------------------------------------------
    Theme tokens
+   One teal, 12px cards, 1px lines. JARVIS and Dark share the
+   near-black canvas. Light is the light canvas. Auto resolves
+   to one of those, so it keeps the teal.
    ------------------------------------------------------- */
+
+:root {
+    --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    --radius-sm: 8px;
+    --radius-control: 10px;
+    --radius: 12px;
+    --radius-full: 999px;
+    --elev-dialog: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
 
 html[data-theme="light"] {
     color-scheme: light;
-    --page-bg: #f4f4f5;
-    --page-text: #18181b;
-    --chrome-border: #e4e4e7;
-    --surface-bg: #ffffff;
-    --surface-border: #e4e4e7;
-    --surface-hover: #d4d4d8;
-    --text-primary: #18181b;
-    --text-secondary: #52525b;
-    --text-muted: #71717a;
-    --text-faint: #a1a1aa;
-    --accent: #2563eb;
-    --accent-hover: #1d4ed8;
-    --accent-soft: rgba(37, 99, 235, 0.08);
-    --accent-border: rgba(37, 99, 235, 0.35);
+    --bg: #f6f5f2;
+    --bg-elev: #ffffff;
+    --page-bg: var(--bg);
+    --page-text: #16181d;
+    --text: #16181d;
+    --chrome-border: rgba(16, 20, 28, 0.10);
+    --line: rgba(16, 20, 28, 0.10);
+    --surface-bg: var(--bg-elev);
+    --surface: var(--surface-bg);
+    --surface-border: var(--line);
+    --surface-hover: #e4e2db;
+    --text-primary: var(--text);
+    --text-secondary: #3e4650;
+    --text-dim: #3e4650;
+    --text-muted: #5c6570;
+    --text-faint: #5c6570;
+    --text-label: #5c6570;
+    --accent: #0f766e;
+    --accent-hover: #0e6a63;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(15, 118, 110, 0.10);
+    --accent-border: rgba(15, 118, 110, 0.35);
     --input-bg: #ffffff;
-    --input-border: #d4d4d8;
-    --input-placeholder: #a1a1aa;
-    --focus-ring: rgba(37, 99, 235, 0.2);
+    --input-border: rgba(16, 20, 28, 0.16);
+    --input-placeholder: var(--text-label);
+    --focus-ring: rgba(15, 118, 110, 0.28);
     --shadow-focus: rgba(0, 0, 0, 0.06);
-    --danger: #dc2626;
-    --danger-soft: rgba(220, 38, 38, 0.08);
-    --warn: #d97706;
-    --warn-soft: rgba(217, 119, 6, 0.1);
-    --ok: #16a34a;
-    --ok-soft: rgba(22, 163, 74, 0.1);
-    --scroll-track: #f4f4f5;
-    --scroll-thumb: #d4d4d8;
-    --scroll-thumb-hover: #a1a1aa;
-    --row-hover: rgba(0, 0, 0, 0.04);
-    --editor-bg: #fafafa;
-    --nav-active-bg: rgba(37, 99, 235, 0.08);
+    --danger: #b42318;
+    --danger-soft: rgba(180, 35, 24, 0.08);
+    --warn: #b45309;
+    --warn-soft: rgba(180, 83, 9, 0.10);
+    --ok: #067647;
+    --ok-ink: #ffffff;
+    --ok-soft: rgba(6, 118, 71, 0.10);
+    --scroll-track: var(--bg);
+    --scroll-thumb: #d4d0c8;
+    --scroll-thumb-hover: #5c6570;
+    --row-hover: rgba(16, 20, 28, 0.04);
+    --editor-bg: #fbfaf7;
+    --nav-active-bg: rgba(15, 118, 110, 0.10);
     --player-bg: #ffffff;
 }
 
-html[data-theme="dark"] {
-    color-scheme: dark;
-    --page-bg: #070707;
-    --page-text: #fafafa;
-    --chrome-border: #27272a;
-    --surface-bg: rgba(42, 42, 55, 0.78);
-    --surface-border: #27272a;
-    --surface-hover: #3f3f46;
-    --text-primary: #fafafa;
-    --text-secondary: #d4d4d8;
-    --text-muted: #a1a1aa;
-    --text-faint: #71717a;
-    --accent: #3b82f6;
-    --accent-hover: #60a5fa;
-    --accent-soft: rgba(59, 130, 246, 0.12);
-    --accent-border: rgba(59, 130, 246, 0.4);
-    --input-bg: #18181b;
-    --input-border: #3f3f46;
-    --input-placeholder: #71717a;
-    --focus-ring: rgba(59, 130, 246, 0.25);
-    --shadow-focus: rgba(0, 0, 0, 0.35);
-    --danger: #f87171;
-    --danger-soft: rgba(248, 113, 113, 0.1);
-    --warn: #fbbf24;
-    --warn-soft: rgba(251, 191, 36, 0.12);
-    --ok: #4ade80;
-    --ok-soft: rgba(74, 222, 128, 0.12);
-    --scroll-track: #09090b;
-    --scroll-thumb: #3f3f46;
-    --scroll-thumb-hover: #52525b;
-    --row-hover: rgba(255, 255, 255, 0.04);
-    --editor-bg: #0c0c0e;
-    --nav-active-bg: rgba(59, 130, 246, 0.12);
-    --player-bg: #18181b;
-}
-
+html[data-theme="dark"],
 html[data-theme="jarvis"] {
     color-scheme: dark;
-    --page-bg: transparent;
-    --page-text: #e7f6ff;
-    --chrome-border: rgba(var(--hud-rgb), 0.32);
-    --surface-bg: rgba(8, 16, 32, 0.58);
-    --surface-border: rgba(var(--hud-rgb), 0.42);
-    --surface-hover: rgba(var(--hud-rgb), 0.55);
-    --text-primary: #f3fbff;
-    --text-secondary: #c5e4f2;
-    --text-muted: #8eb4c9;
-    --text-faint: #6d90a6;
-    --accent: var(--hud-accent);
-    --accent-hover: var(--hud-bright);
-    --accent-soft: rgba(var(--hud-rgb), 0.14);
-    --accent-border: rgba(var(--hud-rgb), 0.55);
-    --input-bg: rgba(5, 12, 24, 0.82);
-    --input-border: rgba(var(--hud-rgb), 0.32);
-    --input-placeholder: #6d90a6;
-    --focus-ring: rgba(var(--hud-rgb), 0.28);
+    --bg: #07080c;
+    --bg-elev: #10141c;
+    --page-bg: var(--bg);
+    --page-text: #f4f7f8;
+    --text: #f4f7f8;
+    --chrome-border: rgba(255, 255, 255, 0.08);
+    --line: rgba(255, 255, 255, 0.08);
+    --surface-bg: var(--bg-elev);
+    --surface: var(--surface-bg);
+    --surface-border: var(--line);
+    --surface-hover: #242b38;
+    --text-primary: var(--text);
+    --text-secondary: #b7c2c7;
+    --text-dim: #b7c2c7;
+    --text-muted: #8b979e;
+    --text-faint: #8b979e;
+    --text-label: #8b979e;
+    --accent: #1aa6a6;
+    --accent-hover: #2cadad;
+    --accent-ink: #06201f;
+    --accent-soft: rgba(26, 166, 166, 0.14);
+    --accent-border: rgba(26, 166, 166, 0.40);
+    --input-bg: #0c1018;
+    --input-border: rgba(255, 255, 255, 0.16);
+    --input-placeholder: var(--text-label);
+    --focus-ring: rgba(26, 166, 166, 0.28);
     --shadow-focus: rgba(0, 0, 0, 0.45);
-    --danger: #ff5d73;
-    --danger-soft: rgba(255, 93, 115, 0.12);
-    --warn: #f0c14d;
-    --warn-soft: rgba(240, 193, 77, 0.14);
-    --ok: #3dffb0;
-    --ok-soft: rgba(61, 255, 176, 0.12);
-    --scroll-track: #050814;
-    --scroll-thumb: rgba(var(--hud-rgb), 0.35);
-    --scroll-thumb-hover: rgba(var(--hud-rgb), 0.6);
-    --row-hover: rgba(var(--hud-rgb), 0.08);
-    --editor-bg: rgba(4, 10, 22, 0.88);
-    --nav-active-bg: rgba(var(--hud-rgb), 0.14);
-    --player-bg: #081020;
+    --danger: #f07178;
+    --danger-soft: rgba(240, 113, 120, 0.12);
+    --warn: #fbbf24;
+    --warn-soft: rgba(251, 191, 36, 0.12);
+    --ok: #3dd68c;
+    --ok-ink: #06201f;
+    --ok-soft: rgba(61, 214, 140, 0.12);
+    --scroll-track: var(--bg);
+    --scroll-thumb: #3a4250;
+    --scroll-thumb-hover: #8b979e;
+    --row-hover: rgba(255, 255, 255, 0.04);
+    --editor-bg: #0c1018;
+    --nav-active-bg: rgba(26, 166, 166, 0.14);
+    --player-bg: #10141c;
+}
+
+html[data-theme="dark"] {
+    --player-bg: #10141c;
+}
+
+/* A saved JARVIS accent still tints links and gauges. The canvas stays near-black. */
+html[data-theme="jarvis"] {
+    --player-bg: #10141c;
+    --accent: var(--hud-accent, #1aa6a6);
+    --accent-hover: var(--hud-bright, #2cadad);
+    --accent-ink: var(--hud-ink, #06201f);
+    --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+    --accent-border: color-mix(in srgb, var(--accent) 40%, transparent);
+    --focus-ring: color-mix(in srgb, var(--accent) 28%, transparent);
+    --nav-active-bg: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /* -------------------------------------------------------
@@ -201,7 +178,7 @@ html[data-theme="jarvis"] {
 body.page {
     background-color: var(--page-bg);
     color: var(--page-text);
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-family: var(--font-sans);
     min-height: 100vh;
 }
 
@@ -220,7 +197,7 @@ body.page {
 }
 
 html[data-starfield-pref="1"][data-theme="dark"] {
-    background-color: #030308;
+    background-color: var(--bg);
 }
 
 html[data-starfield-pref="1"][data-theme="dark"] body.page {
@@ -233,18 +210,12 @@ html[data-starfield-pref="1"][data-theme="dark"] main {
 }
 
 html[data-starfield-pref="1"][data-theme="dark"] .chrome {
-    background: rgba(9, 9, 11, 0.82);
-    backdrop-filter: blur(10px);
+    background: var(--bg);
 }
 
-html[data-starfield-pref="1"][data-theme="dark"] .surface {
-    background: rgba(42, 42, 55, 0.78);
-    backdrop-filter: blur(8px);
-}
-
+html[data-starfield-pref="1"][data-theme="dark"] .surface,
 html[data-starfield-pref="1"][data-theme="dark"] .search-input {
-    background: rgba(42, 42, 55, 0.85);
-    backdrop-filter: blur(6px);
+    background: var(--surface-bg);
 }
 
 input[type="checkbox"],
@@ -259,11 +230,11 @@ input[type="radio"] {
 .border-chrome { border-color: var(--chrome-border); }
 .box-subtle {
     border: 1px solid var(--surface-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius);
 }
 
 .mono {
-    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    font-family: var(--font-mono);
 }
 
 .chrome {
@@ -272,7 +243,7 @@ input[type="radio"] {
 
 .brand {
     color: var(--accent);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.12em;
     text-transform: uppercase;
@@ -280,7 +251,7 @@ input[type="radio"] {
 
 .nav-meta {
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
 }
 
@@ -312,7 +283,7 @@ input[type="radio"] {
 .surface {
     background: var(--surface-bg);
     border: 1px solid var(--surface-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius);
 }
 
 .surface:hover {
@@ -321,7 +292,7 @@ input[type="radio"] {
 
 .section-title {
     color: var(--text-muted);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -404,7 +375,7 @@ input[type="radio"] {
 .input {
     background: var(--input-bg);
     border: 1px solid var(--input-border);
-    border-radius: 0.375rem;
+    border-radius: var(--radius-control);
     color: var(--text-primary);
     font-size: 0.875rem;
     padding: 0.375rem 0.75rem;
@@ -450,13 +421,13 @@ select.input {
 .btn-primary {
     background: var(--accent);
     border-color: var(--accent);
-    color: #fff;
+    color: var(--accent-ink);
 }
 
 .btn-primary:hover {
     background: var(--accent-hover);
     border-color: var(--accent-hover);
-    color: #fff;
+    color: var(--accent-ink);
 }
 
 .btn-danger {
@@ -528,8 +499,8 @@ select.input {
 
 .settings-nav-group-label {
     color: var(--text-faint);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.65rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
@@ -926,7 +897,8 @@ body.app-modal-open {
     max-height: min(90vh, 32rem);
     overflow-y: auto;
     padding: 1.25rem;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+    border-radius: var(--radius);
+    box-shadow: var(--elev-dialog);
 }
 
 .app-modal-close {
@@ -1058,58 +1030,17 @@ html[data-theme="dark"] .feed-tag-8 { border-color: rgba(129, 140, 248, 0.35); c
 html[data-theme="dark"] .feed-tag-9 { border-color: rgba(163, 230, 53, 0.35); color: #a3e635; }
 html[data-theme="dark"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35); color: #f472b6; }
 
-/* Same 11 source hues as Dark, brightened for the glass panel and
-   tinted toward the user's HUD accent so badges stay distinct from chrome. */
-html[data-theme="jarvis"] .feed-tag {
-    background: color-mix(in srgb, currentColor 16%, transparent);
-    box-shadow: 0 0 10px color-mix(in srgb, currentColor 34%, transparent);
-    text-shadow: 0 0 8px color-mix(in srgb, currentColor 50%, transparent);
-}
-
-html[data-theme="jarvis"] .feed-tag-0 {
-    color: color-mix(in srgb, #93c5fd 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #60a5fa 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-1 {
-    color: color-mix(in srgb, #c4b5fd 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #a78bfa 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-2 {
-    color: color-mix(in srgb, #86efac 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #4ade80 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-3 {
-    color: color-mix(in srgb, #fdba74 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #fb923c 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-4 {
-    color: color-mix(in srgb, #67e8f9 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #22d3ee 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-5 {
-    color: color-mix(in srgb, #fda4af 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #fb7185 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-6 {
-    color: color-mix(in srgb, #fde047 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #facc15 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-7 {
-    color: color-mix(in srgb, #5eead4 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #2dd4bf 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-8 {
-    color: color-mix(in srgb, #a5b4fc 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #818cf8 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-9 {
-    color: color-mix(in srgb, #d9f99d 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #a3e635 58%, var(--hud-accent, var(--accent)));
-}
-html[data-theme="jarvis"] .feed-tag-10 {
-    color: color-mix(in srgb, #f9a8d4 82%, var(--hud-accent, var(--accent)));
-    border-color: color-mix(in srgb, #f472b6 58%, var(--hud-accent, var(--accent)));
-}
+html[data-theme="jarvis"] .feed-tag-0 { border-color: rgba(59, 130, 246, 0.35); color: #60a5fa; }
+html[data-theme="jarvis"] .feed-tag-1 { border-color: rgba(167, 139, 250, 0.35); color: #a78bfa; }
+html[data-theme="jarvis"] .feed-tag-2 { border-color: rgba(74, 222, 128, 0.35); color: #4ade80; }
+html[data-theme="jarvis"] .feed-tag-3 { border-color: rgba(251, 146, 60, 0.35); color: #fb923c; }
+html[data-theme="jarvis"] .feed-tag-4 { border-color: rgba(34, 211, 238, 0.35); color: #22d3ee; }
+html[data-theme="jarvis"] .feed-tag-5 { border-color: rgba(251, 113, 133, 0.35); color: #fb7185; }
+html[data-theme="jarvis"] .feed-tag-6 { border-color: rgba(250, 204, 21, 0.35); color: #facc15; }
+html[data-theme="jarvis"] .feed-tag-7 { border-color: rgba(45, 212, 191, 0.35); color: #2dd4bf; }
+html[data-theme="jarvis"] .feed-tag-8 { border-color: rgba(129, 140, 248, 0.35); color: #818cf8; }
+html[data-theme="jarvis"] .feed-tag-9 { border-color: rgba(163, 230, 53, 0.35); color: #a3e635; }
+html[data-theme="jarvis"] .feed-tag-10 { border-color: rgba(244, 114, 182, 0.35); color: #f472b6; }
 
 /* News feed filters */
 .news-filter-bar {
@@ -1155,7 +1086,7 @@ html[data-theme="jarvis"] .feed-tag-10 {
 .search-input {
     background: var(--input-bg);
     border: 1px solid var(--input-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-control);
     caret-color: var(--accent);
     color: var(--text-primary);
     font-size: 1rem;
@@ -1184,7 +1115,7 @@ html[data-theme="jarvis"] .feed-tag-10 {
 .local-hit {
     background: var(--surface-bg);
     border: 1px solid var(--surface-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius);
     color: inherit;
     display: flex;
     flex-direction: column;
@@ -1212,8 +1143,8 @@ html[data-theme="jarvis"] .feed-tag-10 {
 }
 
 .search-input:focus {
-    border-color: var(--accent-border);
-    box-shadow: 0 0 0 2px var(--focus-ring), 0 4px 20px var(--shadow-focus);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--focus-ring);
     outline: none;
 }
 
@@ -1244,7 +1175,7 @@ html[data-theme="jarvis"] .feed-tag-10 {
     border-radius: 0.375rem;
     box-shadow: 0 4px 12px var(--shadow-focus);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     line-height: 1.45;
     color: var(--text-muted);
     text-align: left;
@@ -1278,7 +1209,7 @@ html[data-theme="jarvis"] .feed-tag-10 {
     border-radius: 0.25rem;
     color: var(--accent);
     font-family: 'JetBrains Mono', monospace;
-    font-size: 0.625rem;
+    font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     cursor: pointer;
@@ -1485,193 +1416,6 @@ html[data-theme="jarvis"] .feed-tag-10 {
     filter: none;
 }
 
-html[data-theme="dark"] #weather-widget img {
-    filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.15));
-}
-
-/* -------------------------------------------------------
-   JARVIS — holographic glass HUD
-   Accent channels (--hud-*) are set per user on <html>.
-   ------------------------------------------------------- */
-
-html[data-theme="jarvis"] {
-    background-color: #040712;
-}
-
-html[data-theme="jarvis"] body.page {
-    background-color: transparent;
-    position: relative;
-    z-index: 0;
-}
-
-html[data-theme="jarvis"] body.page::before {
-    content: "";
-    position: fixed;
-    inset: -8%;
-    z-index: -1;
-    pointer-events: none;
-    background-color: #040712;
-    background-image:
-        radial-gradient(circle at 16% 10%, rgba(var(--hud-rgb), 0.16), transparent 34%),
-        radial-gradient(circle at 84% 6%, rgba(var(--hud-rgb), 0.09), transparent 28%),
-        radial-gradient(circle at 70% 88%, rgba(var(--hud-rgb), 0.07), transparent 26%),
-        linear-gradient(rgba(var(--hud-rgb), 0.05) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(var(--hud-rgb), 0.05) 1px, transparent 1px);
-    background-size: auto, auto, auto, 56px 56px, 56px 56px;
-    animation: hud-drift 32s linear infinite;
-}
-
-html[data-theme="jarvis"] body.page::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    z-index: 40;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-        to bottom,
-        rgba(255, 255, 255, 0.025) 0,
-        rgba(255, 255, 255, 0.025) 1px,
-        transparent 1px,
-        transparent 4px
-    );
-    opacity: 0.45;
-}
-
-@keyframes hud-drift {
-    from { transform: translate3d(0, 0, 0); }
-    to { transform: translate3d(-56px, -56px, 0); }
-}
-
-@keyframes hud-enter {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: none; }
-}
-
-@keyframes hud-fade {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
-
-html[data-theme="jarvis"] .chrome {
-    background: rgba(4, 10, 22, 0.72);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    box-shadow: 0 0 22px rgba(var(--hud-rgb), 0.12);
-}
-
-html[data-theme="jarvis"] .brand {
-    font-family: 'Orbitron', 'Rajdhani', sans-serif;
-    color: var(--hud-accent);
-    text-shadow: 0 0 12px rgba(var(--hud-rgb), 0.65);
-    letter-spacing: 0.18em;
-}
-
-html[data-theme="jarvis"] h1,
-html[data-theme="jarvis"] h2,
-html[data-theme="jarvis"] h3,
-html[data-theme="jarvis"] .section-title,
-html[data-theme="jarvis"] .ld-w-title {
-    font-family: 'Rajdhani', 'IBM Plex Sans', sans-serif;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-}
-
-html[data-theme="jarvis"] .surface,
-html[data-theme="jarvis"] #timezone-bar,
-html[data-theme="jarvis"] .search-input {
-    position: relative;
-    background: rgba(8, 18, 36, 0.55);
-    border-color: rgba(var(--hud-rgb), 0.4);
-    box-shadow:
-        0 0 18px rgba(var(--hud-rgb), 0.08),
-        inset 0 0 24px rgba(var(--hud-rgb), 0.04);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-}
-
-html[data-theme="jarvis"] .surface::before,
-html[data-theme="jarvis"] #timezone-bar::before {
-    content: "";
-    position: absolute;
-    inset: 5px;
-    pointer-events: none;
-    background:
-        linear-gradient(var(--hud-accent), var(--hud-accent)) left top / 12px 1px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) left top / 1px 12px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) right top / 12px 1px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) right top / 1px 12px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) left bottom / 12px 1px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) left bottom / 1px 12px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) right bottom / 12px 1px no-repeat,
-        linear-gradient(var(--hud-accent), var(--hud-accent)) right bottom / 1px 12px no-repeat;
-    filter: drop-shadow(0 0 3px rgba(var(--hud-rgb), 0.8));
-}
-
-html[data-theme="jarvis"] #timezone-bar {
-    padding: 0.85rem 1.4rem 0.7rem;
-    border-width: 1px;
-    border-style: solid;
-    border-radius: 0.35rem;
-}
-
-html[data-theme="jarvis"] #timezone-bar::after {
-    content: "";
-    position: absolute;
-    left: 16px;
-    right: 16px;
-    top: 5px;
-    height: 5px;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-        90deg,
-        rgba(var(--hud-rgb), 0.75) 0 1px,
-        transparent 1px 9px
-    );
-}
-
-html[data-theme="jarvis"] .clock-label {
-    font-family: 'Rajdhani', sans-serif;
-    color: var(--hud-dim);
-    letter-spacing: 0.28em;
-}
-
-html[data-theme="jarvis"] .clock-time {
-    font-family: 'Orbitron', 'Rajdhani', sans-serif;
-    font-size: 1.35rem;
-    font-weight: 500;
-    letter-spacing: 0.08em;
-    color: var(--hud-accent);
-    text-shadow: 0 0 12px rgba(var(--hud-rgb), 0.75);
-}
-
-html[data-theme="jarvis"] .clock-ampm {
-    font-family: 'Rajdhani', sans-serif;
-    color: var(--hud-bright);
-    letter-spacing: 0.14em;
-}
-
-html[data-theme="jarvis"] .btn-primary {
-    color: var(--hud-ink);
-    box-shadow: 0 0 16px rgba(var(--hud-rgb), 0.35);
-}
-
-html[data-theme="jarvis"] .theme-switch button.is-active {
-    color: var(--hud-accent);
-    text-shadow: 0 0 8px rgba(var(--hud-rgb), 0.7);
-}
-
-html[data-theme="jarvis"] main .surface:not(.ld-w) {
-    animation: hud-enter 0.5s ease both;
-}
-
-html[data-theme="jarvis"] .grid-stack-item {
-    animation: hud-fade 0.45s ease both;
-}
-
-html[data-theme="jarvis"] #weather-widget img {
-    filter: drop-shadow(0 0 8px rgba(var(--hud-rgb), 0.35));
-}
-
 .jarvis-accent label {
     display: flex;
     flex-direction: column;
@@ -1694,24 +1438,14 @@ html[data-theme="jarvis"] #weather-widget img {
 .jarvis-swatch {
     width: 1.35rem;
     height: 1.35rem;
-    border-radius: 999px;
-    background: var(--hud-accent);
-    box-shadow: 0 0 10px rgba(var(--hud-rgb), 0.85);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--line);
+    background: var(--accent);
     align-self: center;
 }
 
 @media (max-width: 700px) {
-    html[data-theme="jarvis"] .clock-time { font-size: 1rem; }
-    html[data-theme="jarvis"] #timezone-bar { gap: 0.75rem; padding: 0.7rem 0.6rem; }
     .theme-switch button { padding: 0.25rem 0.32rem; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    html[data-theme="jarvis"] body.page::before,
-    html[data-theme="jarvis"] main .surface:not(.ld-w),
-    html[data-theme="jarvis"] .grid-stack-item {
-        animation: none;
-    }
 }
 
 /* Wide and ultrawide: header, search and clocks use the viewport. The widget
@@ -1735,8 +1469,6 @@ html[data-theme="jarvis"] #weather-widget img {
     .clock-label { font-size: clamp(0.8rem, 0.5vw, 1rem); }
     .clock-time { font-size: clamp(1.4rem, 1.15vw, 2.15rem); }
     .clock-ampm { font-size: clamp(0.8rem, 0.5vw, 1.05rem); }
-    html[data-theme="jarvis"] .clock-time { font-size: clamp(1.6rem, 1.35vw, 2.5rem); }
-    html[data-theme="jarvis"] .clock-label { font-size: clamp(0.8rem, 0.5vw, 1rem); }
     #search-form,
     #local-search { max-width: min(72rem, 46vw); }
     .search-input {

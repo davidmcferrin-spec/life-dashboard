@@ -223,7 +223,7 @@ final class PreferenceService
 
     public function getJarvisAccent(int $userId): string
     {
-        return JarvisAccent::normalize($this->get($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::DEFAULT));
+        return JarvisAccent::calm($this->get($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::DEFAULT) ?? '');
     }
 
     public function setJarvisAccent(int $userId, string $hex): void
@@ -232,7 +232,7 @@ final class PreferenceService
             throw new \InvalidArgumentException('Invalid accent color.');
         }
 
-        $this->set($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::normalize($hex));
+        $this->set($userId, self::KEY_JARVIS_ACCENT, JarvisAccent::calm($hex));
     }
 
     public function getClockFormat(int $userId): string

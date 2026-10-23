@@ -4,7 +4,7 @@
  *
  * @var string $pageTitle
  * @var string $themePref jarvis|light|dark|system
- * @var string $jarvisAccent #rrggbb HUD accent (JARVIS glows, edges, gauges)
+ * @var string $jarvisAccent #rrggbb JARVIS accent (links and gauges; default is the shared teal)
  * @var bool   $starfieldPref Starfield background in dark mode (per-user)
  * @var bool   $themeLocalOnly Use localStorage instead of server pref (login page)
  * @var list<string> $extraStyles Page-specific stylesheet paths under /assets (optional)
@@ -31,7 +31,7 @@ $jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
 $jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261023e';
+$assetVer = '20261023f';
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>

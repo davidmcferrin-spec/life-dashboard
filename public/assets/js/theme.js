@@ -5,7 +5,8 @@
 
 const THEME_STORAGE_KEY = 'dashboard_theme';
 const VALID_PREFS = ['jarvis', 'light', 'dark', 'system'];
-const ACCENT_DEFAULT = '#00e5ff';
+const ACCENT_DEFAULT = '#1aa6a6';
+const ACCENT_LEGACY = '#00e5ff';
 
 function isLocalOnly() {
     return document.documentElement.getAttribute('data-theme-local') === '1';
@@ -201,6 +202,26 @@ function accentLuminance(channels) {
     return 0.2126 * lin(channels.r) + 0.7152 * lin(channels.g) + 0.0722 * lin(channels.b);
 }
 
+function contrastRatio(hexA, hexB) {
+    const hi = Math.max(accentLuminance(hexToRgb(hexA)), accentLuminance(hexToRgb(hexB)));
+    const lo = Math.min(accentLuminance(hexToRgb(hexA)), accentLuminance(hexToRgb(hexB)));
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+function accentInk(hex) {
+    const dark = '#06201f';
+    const light = '#f4f7f8';
+    return contrastRatio(hex, dark) >= contrastRatio(hex, light) ? dark : light;
+}
+
+function calmAccent(hex) {
+    const color = parseHex(hex);
+    if (!color || color === ACCENT_LEGACY) {
+        return ACCENT_DEFAULT;
+    }
+    return color;
+}
+
 function applyAccent(hex) {
     const color = parseHex(hex);
     if (!color) {
@@ -217,7 +238,7 @@ function applyAccent(hex) {
         g: mixChannel(rgb.g, 12, 0.45),
         b: mixChannel(rgb.b, 24, 0.45),
     });
-    const ink = accentLuminance(rgb) > 0.55 ? '#061018' : '#f4fbff';
+    const ink = accentInk(color);
     const root = document.documentElement;
     root.style.setProperty('--hud-accent', color);
     root.style.setProperty('--hud-rgb', rgb.r + ',' + rgb.g + ',' + rgb.b);
@@ -287,7 +308,7 @@ function bindAccentControls() {
     const reset = document.getElementById('jarvis-accent-reset');
 
     const push = (hex, save) => {
-        const color = applyAccent(hex);
+        const color = applyAccent(calmAccent(hex));
         if (!color) {
             return;
         }

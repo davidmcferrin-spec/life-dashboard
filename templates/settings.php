@@ -57,7 +57,7 @@ require __DIR__ . '/settings/_shell-top.php';
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="text-faint text-xs mono">JARVIS is the holographic default. Light, Dark, and System stay available here and on the nav switcher. System follows your device. Starfield is a Dark-mode extra on the dashboard nav.</p>
+                        <p class="text-faint text-xs mono">JARVIS and Dark share the near-black canvas. Light keeps the light canvas. System follows your device and the same teal. Starfield is a Dark-mode extra on the dashboard nav.</p>
 
                         <div id="jarvis-accent" class="jarvis-accent mt-4">
                             <h3 class="section-title mb-2">JARVIS accent</h3>
@@ -82,10 +82,10 @@ require __DIR__ . '/settings/_shell-top.php';
                                     Hex
                                     <input class="input mono" id="jarvis-accent-hex" name="jarvis_accent" value="<?= e($jarvisAccent) ?>" maxlength="7" spellcheck="false" autocomplete="off" aria-label="Accent hex">
                                 </label>
-                                <button type="button" class="btn text-xs" id="jarvis-accent-reset">Reset to cyan</button>
+                                <button type="button" class="btn text-xs" id="jarvis-accent-reset">Reset</button>
                                 <span class="jarvis-swatch" aria-hidden="true"></span>
                             </div>
-                            <p class="text-faint text-xs mono mt-2">Edges, glows, and gauges follow this color while JARVIS is on. The preview updates as you drag. Saving stores it on this account.</p>
+                            <p class="text-faint text-xs mono mt-2">JARVIS links and gauges use this color. It starts as the shared teal. Light and Dark keep the teal that reads on their canvas.</p>
                         </div>
                     </div>
 
