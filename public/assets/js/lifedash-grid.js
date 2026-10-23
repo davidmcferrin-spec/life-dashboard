@@ -15,8 +15,7 @@
  *     Inside a breakpoint the column count stays put, so a window resize
  *     only grows columns until the cap, then only the side margins change.
  *     A phone reorder is saved as a 12-column flow of the desktop widths,
- *     never as a 1-column layout. Under 700px Edit layout still works and
- *     saves that same 12-column flow.
+ *     never as a 1-column layout. Under 700px layout editing stays off.
  *     The search box sits above this grid. It is not a widget.
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
@@ -458,7 +457,14 @@
     // -----------------------------------------------------------------
     const editBtn = document.getElementById('ld-edit');
 
+    function syncPhoneEdit() {
+        const phone = grid.getColumn() === 1;
+        editBtn.disabled = phone;
+        if (phone && editing) setEditing(false);
+    }
+
     function setEditing(on) {
+        if (on && grid.getColumn() === 1) return;
         editing = on;
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
@@ -1975,6 +1981,7 @@
         if (cols !== 1) commitPositions();
         applyGridCap(grid.getColumn());
         projectedCols = grid.getColumn();
+        syncPhoneEdit();
         // Content is already on screen, so fit in this turn. One paint, one move.
         if (animate) runFit();
         else requestAnimationFrame(() => grid.setAnimation(true));
