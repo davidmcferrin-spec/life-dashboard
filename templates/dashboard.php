@@ -125,15 +125,14 @@ $timezones = [
         <div class="ld-search-row">
             <form id="search-form" method="GET" target="_blank" class="ov-composer ld-search-box" action="https://www.google.com/search">
                 <label class="ov-sr" for="search-input">How can I assist you?</label>
-                <svg class="ov-command" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 8l4 4-4 4M13 16h5"/>
-                </svg>
+                <span class="ov-command" aria-hidden="true"><?php
+                    // Inline the vendored file so its stroke stays currentColor.
+                    readfile(__DIR__ . '/../public/assets/vendor/lucide/terminal.svg');
+                ?></span>
                 <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
-                <button type="submit" class="ov-send btn-primary" aria-label="Send">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M13 6l6 6-6 6"/>
-                    </svg>
-                </button>
+                <button type="submit" class="ov-send btn-primary" aria-label="Send"><?php
+                    readfile(__DIR__ . '/../public/assets/vendor/lucide/arrow-right.svg');
+                ?></button>
             </form>
             <div class="seg-group ov-engines">
                 <?php foreach ($searchEngines as $key => $engine): ?>

@@ -2580,6 +2580,12 @@ body.cloudpad-page .app-content {
     transform: translateY(-50%);
 }
 
+.ov-command svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
 #search-form.ov-composer .ov-send {
     height: 40px;
     min-height: 40px;
@@ -2589,6 +2595,12 @@ body.cloudpad-page .app-content {
     top: 50%;
     transform: translateY(-50%);
     width: 40px;
+}
+
+#search-form.ov-composer .ov-send svg {
+    display: block;
+    height: 18px;
+    width: 18px;
 }
 
 .ov-engines {
