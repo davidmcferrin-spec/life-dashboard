@@ -336,14 +336,66 @@
         moveCurrent(moveEl.value).catch((err) => setStatus(err.message));
     });
     document.getElementById('brain-new').addEventListener('click', () => show(null));
-    document.getElementById('brain-folder').addEventListener('click', () => {
-        const name = window.prompt('Folder name');
-        if (!name) return;
-        api.post('/pages/folders', { name: name.trim(), parent_id: activeFolder })
-            .then(() => loadList(document.getElementById('brain-search').value.trim()))
-            .then(() => setStatus('Folder created.'))
-            .catch((err) => setStatus(err.message));
-    });
+    function openFolderDialog() {
+        if (document.getElementById('brain-folder-modal')) return;
+
+        let settled = false;
+        const modal = document.createElement('div');
+        modal.id = 'brain-folder-modal';
+        modal.className = 'app-modal';
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        modal.setAttribute('aria-labelledby', 'brain-folder-title');
+        modal.innerHTML = ''
+            + '<div class="app-modal-backdrop" data-close aria-hidden="true"></div>'
+            + '<div class="app-modal-panel surface">'
+            + '<div class="flex items-center justify-between gap-2 mb-3">'
+            + '<h2 id="brain-folder-title" class="section-title text-sm">New folder</h2>'
+            + '<button type="button" class="app-modal-close" data-close aria-label="Close">×</button>'
+            + '</div>'
+            + '<form id="brain-folder-form" class="space-y-3">'
+            + '<label class="block">'
+            + '<span class="mono text-xs text-faint">Folder name</span>'
+            + '<input type="text" id="brain-folder-name" class="input w-full mt-1 text-sm" autocomplete="off">'
+            + '</label>'
+            + '<div class="flex flex-wrap gap-2">'
+            + '<button type="submit" class="btn-primary text-sm">Create</button>'
+            + '<button type="button" class="btn text-sm" data-close>Cancel</button>'
+            + '</div>'
+            + '</form>'
+            + '</div>';
+
+        function finish(name) {
+            if (settled) return;
+            settled = true;
+            modal.classList.add('hidden');
+            modal.remove();
+            if (!document.querySelector('.app-modal:not(.hidden)')) {
+                document.body.classList.remove('app-modal-open');
+            }
+            if (!name) return;
+            api.post('/pages/folders', { name: name.trim(), parent_id: activeFolder })
+                .then(() => loadList(document.getElementById('brain-search').value.trim()))
+                .then(() => setStatus('Folder created.'))
+                .catch((err) => setStatus(err.message));
+        }
+
+        modal.querySelector('#brain-folder-form').addEventListener('submit', (event) => {
+            event.preventDefault();
+            finish(modal.querySelector('#brain-folder-name').value);
+        });
+        modal.addEventListener('click', (event) => {
+            const target = event.target;
+            if (target && typeof target.closest === 'function' && target.closest('[data-close]')) {
+                finish('');
+            }
+        });
+
+        document.body.classList.add('app-modal-open');
+        document.body.appendChild(modal);
+    }
+
+    document.getElementById('brain-folder').addEventListener('click', openFolderDialog);
     document.getElementById('brain-save').addEventListener('click', () => save().catch((err) => setStatus(err.message)));
     titleEl.addEventListener('input', () => { dirty = true; });
     bodyEl.addEventListener('input', () => { dirty = true; renderMarkdown(bodyEl.value); });

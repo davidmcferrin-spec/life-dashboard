@@ -191,10 +191,23 @@ function initAlarmSounds() {
         window.FocusClockAlarm?.previewSound(getSelectedAlarmSound());
     });
 
-    document.getElementById('focus-clock-alarm-delete')?.addEventListener('click', (e) => {
+    document.getElementById('focus-clock-alarm-delete')?.addEventListener('click', async (e) => {
         e.preventDefault();
-        if (!confirm('Remove this alarm sound?')) return;
-        deleteSelectedAlarmSound();
+        const btn = e.currentTarget;
+        if (btn.dataset.confirming === '1') return;
+        btn.dataset.confirming = '1';
+        try {
+            const ok = await globalThis.AppModal.confirm({
+                title: 'Remove alarm sound',
+                message: 'Remove this alarm sound?',
+                confirmLabel: 'Remove',
+                danger: true,
+            });
+            if (!ok) return;
+            await deleteSelectedAlarmSound();
+        } finally {
+            if (btn.isConnected) btn.dataset.confirming = '';
+        }
     });
 }
 
