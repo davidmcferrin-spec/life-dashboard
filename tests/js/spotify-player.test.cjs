@@ -121,3 +121,52 @@ test('collapsed player keeps transport and a compact volume control', () => {
     assert.match(css, /\.sp-controls svg\.sp-fill \{[^}]*fill:\s*currentColor/);
     assert.match(css, /\.sp-controls \.sp-play \{[^}]*2\.65rem/);
 });
+
+function mediaBlock(source, marker) {
+    const at = source.indexOf(marker);
+    assert.ok(at >= 0, marker);
+    const start = source.lastIndexOf('@media', at);
+    const brace = source.indexOf('{', start);
+    let depth = 0;
+    for (let i = brace; i < source.length; i++) {
+        if (source[i] === '{') depth++;
+        else if (source[i] === '}') {
+            depth--;
+            if (depth === 0) return source.slice(start, i + 1);
+        }
+    }
+    throw new Error('unclosed media');
+}
+
+test('a phone can open the queue from the player it actually shows', () => {
+    const repeatAt = js.indexOf('data-cmd="repeat"');
+    const queueAt = js.indexOf('class="sp-queue-compact" data-queue aria-label="Queue" title="Queue"');
+    const volAt = js.indexOf('sp-vol-pop sp-mini-only');
+    assert.ok(repeatAt >= 0 && queueAt > repeatAt && volAt > queueAt);
+    assert.match(js, /\$\{icon\('queue'\)\}/);
+    assert.match(js, /class="sp-expanded-only" data-queue>Queue</);
+    assert.equal(js.includes('sp-queue-compact sp-expanded-only'), false);
+    assert.equal(js.includes('sp-queue-compact sp-mini-only'), false);
+    assert.match(js, /button\.dataset\.queue !== undefined/);
+    assert.match(js, /await openQueue\(\)/);
+    assert.match(js, /modal\.id = 'sp-queue-modal'/);
+    assert.match(js, /class="app-modal-close" data-close aria-label="Close"/);
+    assert.match(css, /\.sp-player \.sp-queue-compact \{\s*display:\s*none/);
+    const phone = mediaBlock(css, '.sp-player:not(.is-min) .sp-expanded-only[data-queue]');
+    assert.match(phone, /@media \(max-width: 700px\)/);
+    assert.match(phone, /\.sp-player \.sp-controls \.sp-queue-compact \{\s*display:\s*inline-flex/);
+    assert.match(phone, /\.sp-player:not\(\.is-min\) \.sp-expanded-only\[data-queue\] \{\s*display:\s*none/);
+    assert.equal(/\.sp-player:not\(\.is-min\) \[data-queue\] \{\s*display:\s*none/.test(phone), false);
+    assert.match(phone, /#sp-queue-modal \{[^}]*env\(safe-area-inset-top, 0px\)/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*box-sizing:\s*border-box/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*width:\s*100%/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*max-width:\s*100%/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*max-height:\s*calc\(100vh - 1rem\)/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*max-height:\s*calc\(100dvh - env\(safe-area-inset-top, 0px\)/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-panel \{[^}]*overflow:\s*hidden/);
+    assert.match(phone, /#sp-queue-modal \.sp-queue-head \{[^}]*flex:\s*none/);
+    assert.match(phone, /#sp-queue-modal \.sp-queue-list \{[^}]*overflow-y:\s*auto/);
+    assert.match(phone, /#sp-queue-modal \.sp-queue-list \{[^}]*min-height:\s*0/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-close \{[^}]*width:\s*2\.75rem/);
+    assert.match(phone, /#sp-queue-modal \.app-modal-close \{[^}]*height:\s*2\.75rem/);
+});
