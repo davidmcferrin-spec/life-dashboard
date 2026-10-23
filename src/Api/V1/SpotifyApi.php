@@ -7,8 +7,11 @@ namespace Dashboard\Api\V1;
 use Dashboard\DB\Database;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Router\Router;
+use Dashboard\Spotify\MusicLibrary;
 use Dashboard\Spotify\SpotifyAccess;
+use Dashboard\Spotify\SpotifyAccount;
 use Dashboard\Spotify\SpotifyException;
+use Dashboard\Spotify\SpotifyHttp;
 use Dashboard\Spotify\SpotifyLibrary;
 use Dashboard\Spotify\SpotifyService;
 use Dashboard\Support\ForbiddenException;
@@ -35,6 +38,9 @@ final class SpotifyApi
             $u,
             self::metaUris($_GET['uris'] ?? ''),
         )));
+        $r->get('/api/v1/spotify/library/notes', fn () => $this->run(fn (int $u) => $this->catalog()->notes($u, self::metaUris($_GET['uris'] ?? ''))));
+        $r->get('/api/v1/spotify/library/drawer', fn () => $this->run(fn (int $u) => $this->catalog()->drawer($u, (string) ($_GET['uri'] ?? ''))));
+        $r->get('/api/v1/spotify/library/activity', fn () => $this->run(fn (int $u) => $this->catalog()->activity($u)));
         $r->get('/api/v1/spotify/seasons', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->seasons($u)));
         $r->get('/api/v1/spotify/seasons/active', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->active($u, $this->svc()->library()->clock())));
         $r->get('/api/v1/spotify/search', fn () => $this->run(fn (int $u) => $this->svc()->playback()->search(
@@ -120,6 +126,27 @@ final class SpotifyApi
             $this->svc()->library()->mixtape()->assertPending($u, $playlistId, $this->svc()->library()->clock());
             return $this->svc()->sync()->push($u, $playlistId);
         }, 200, true));
+        $r->post('/api/v1/spotify/library/genres', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            return $this->catalog()->addGenre($u, (string) ($body['uri'] ?? ''), $body['genre'] ?? '');
+        }, 200, true));
+        $r->post('/api/v1/spotify/library/season', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            return $this->catalog()->setSeason($u, $this->trackList(), $body['season'] ?? '');
+        }, 200, true));
+        $r->post('/api/v1/spotify/library/playlist', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $playlistId = $body['playlist_id'] ?? 0;
+            if (!is_numeric($playlistId)) {
+                throw ValidationException::withFields(['playlist_id' => 'Choose a playlist.']);
+            }
+            $tracks = is_array($body['tracks'] ?? null) ? $body['tracks'] : [];
+            return $this->catalog()->addToPlaylist($u, $this->trackList(), (int) $playlistId, $this->by(), $tracks);
+        }, 200, true));
+        $r->post('/api/v1/spotify/library/reanalyze', fn () => $this->run(fn (int $u) => $this->catalog()->reanalyze($u, $this->trackList()), 200, true));
+        $r->post('/api/v1/spotify/library/undo', fn () => $this->run(function (int $u): array {
+            return $this->catalog()->undo($u, (int) ($this->runner->body()['id'] ?? 0));
+        }, 200, true));
         $r->post('/api/v1/spotify/tracks/meta', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->saveMany(
             $u,
             is_array($this->runner->body()['tracks'] ?? null) ? $this->runner->body()['tracks'] : [],
@@ -167,6 +194,13 @@ final class SpotifyApi
                 return $this->svc()->playback()->command($u, $action, $body);
             }, 200, true));
         }
+    }
+
+    private function catalog(): MusicLibrary
+    {
+        $db = Database::getInstance();
+        $http = new SpotifyHttp();
+        return new MusicLibrary($db, new SpotifyAccount($db, $http), $http, $this->svc()->library());
     }
 
     private function svc(): SpotifyService
