@@ -2009,6 +2009,8 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     border-color: transparent;
 }
 .ld-digest-diff { max-height: 24rem; overflow: auto; white-space: pre-wrap; }
+/* The band is the dashboard top row: GridStack column percents, plus the cell gutter. */
+#digest-band { box-sizing: border-box; min-width: 0; }
 .ld-digest-filters { display: flex; flex-direction: column; gap: 0.55rem; }
 /* A blank status is not a row, so the column gap is the space under the search. */
 #digest-status:empty { display: none; }
