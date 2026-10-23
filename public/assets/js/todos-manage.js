@@ -19,8 +19,62 @@ function esc(s) {
         .replace(/"/g, '&quot;');
 }
 
+function openModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal) {
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) {
+            closeModal(modal);
+        }
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) {
+        return;
+    }
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
 let manageLists = [];
 let shareListId = null;
+
+const addModal = document.getElementById('todo-list-add-modal');
+const renameModal = document.getElementById('todo-rename-modal');
+if (addModal) {
+    bindModal(addModal);
+}
+if (renameModal) {
+    bindModal(renameModal);
+}
 
 function listCard(list) {
     const counts = list.counts || {};
@@ -44,19 +98,26 @@ function listCard(list) {
                         <input type="checkbox" class="todo-pin" data-id="${list.id}"${list.pin_to_dashboard ? ' checked' : ''}>
                         Dashboard tab
                     </label>
+                    <button type="button" class="todo-rename-btn link text-xs" data-id="${list.id}" data-name="${esc(list.name)}">Rename</button>
                     <button type="button" class="todo-share-btn link text-xs" data-id="${list.id}" data-name="${esc(list.name)}">Share</button>
                     <button type="button" class="todo-delete-list btn-danger text-xs" data-id="${list.id}">Delete</button>
                     ` : ''}
                 </div>
             </div>
-            ${list.is_owner ? `
-            <form class="todo-rename-form flex gap-2 mt-3" data-id="${list.id}">
-                <input type="text" name="name" value="${esc(list.name)}" maxlength="128" class="input mono text-xs flex-1">
-                <button type="submit" class="btn text-xs">Rename</button>
-            </form>
-            ` : ''}
         </div>
     `;
+}
+
+function openRename(id, name) {
+    const input = document.getElementById('todo-rename-input');
+    const idInput = document.getElementById('todo-rename-id');
+    if (!renameModal || !input || !idInput) {
+        return;
+    }
+    clearFieldError('todo-rename-error');
+    idInput.value = String(id);
+    input.value = name;
+    openModal(renameModal);
 }
 
 async function loadLists() {
@@ -75,7 +136,7 @@ async function loadLists() {
     if (manageLists.length === 0) {
         el.innerHTML = window.DashboardEmpty.html({
             title: 'No lists yet',
-            body: 'Add a list in the form on this page.',
+            body: 'Add one with Add list.',
             actionLabel: 'Todo lists',
             actionHref: '/todos',
         });
@@ -95,48 +156,48 @@ async function loadLists() {
                     return;
                 }
             }
-            const { res, body } = await api(`/api/todos/${id}/update`, {
+            const { res, data } = await api(`/api/todos/${id}/update`, {
                 method: 'POST',
                 body: JSON.stringify({ pin_to_dashboard: box.checked }),
             });
             if (!res.ok) {
                 box.checked = !box.checked;
-                alert(body.error || 'Could not update dashboard tab.');
+                alert(data.error || 'Could not update dashboard tab.');
             }
         });
     });
 
-    el.querySelectorAll('.todo-rename-form').forEach(form => {
-        form.addEventListener('submit', async e => {
-            e.preventDefault();
-            const id = form.dataset.id;
-            const name = form.name.value.trim();
-            if (name === '') {
-                return;
-            }
-            const { res, body } = await api(`/api/todos/${id}/update`, {
-                method: 'POST',
-                body: JSON.stringify({ name }),
-            });
-            if (!res.ok) {
-                alert(body.error || 'Could not rename list.');
-                return;
-            }
-            loadLists();
-        });
+    el.querySelectorAll('.todo-rename-btn').forEach(btn => {
+        btn.addEventListener('click', () => openRename(btn.dataset.id, btn.dataset.name || ''));
     });
 
     el.querySelectorAll('.todo-delete-list').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this list and all its tasks?')) {
+            if (btn.dataset.confirming === '1') {
                 return;
             }
-            await api(`/api/todos/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
-            if (shareListId === parseInt(btn.dataset.id, 10)) {
-                document.getElementById('todo-share-panel')?.classList.add('hidden');
-                shareListId = null;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete list',
+                    message: 'Delete this list and all its tasks?',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) {
+                    return;
+                }
+                await api(`/api/todos/${btn.dataset.id}/delete`, { method: 'POST', body: '{}' });
+                if (shareListId === parseInt(btn.dataset.id, 10)) {
+                    document.getElementById('todo-share-panel')?.classList.add('hidden');
+                    shareListId = null;
+                }
+                loadLists();
+            } finally {
+                if (btn.isConnected) {
+                    btn.dataset.confirming = '';
+                }
             }
-            loadLists();
         });
     });
 
@@ -193,6 +254,11 @@ async function loadShares(listId) {
     });
 }
 
+document.getElementById('todo-list-add-open')?.addEventListener('click', () => {
+    clearFieldError('todo-list-add-error');
+    openModal(addModal);
+});
+
 document.getElementById('todo-list-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
@@ -200,15 +266,37 @@ document.getElementById('todo-list-add-form')?.addEventListener('submit', async 
     if (name === '') {
         return;
     }
+    clearFieldError('todo-list-add-error');
     const { res, data } = await api('/api/todos/create', {
         method: 'POST',
         body: JSON.stringify({ name }),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not add list.');
+        showFieldError('todo-list-add-error', data.error || 'Could not add list.');
         return;
     }
     form.reset();
+    closeModal(addModal);
+    loadLists();
+});
+
+document.getElementById('todo-rename-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('todo-rename-id')?.value;
+    const name = document.getElementById('todo-rename-input')?.value.trim() ?? '';
+    if (!id || name === '') {
+        return;
+    }
+    clearFieldError('todo-rename-error');
+    const { res, data } = await api(`/api/todos/${id}/update`, {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+    });
+    if (!res.ok) {
+        showFieldError('todo-rename-error', data.error || 'Could not rename list.');
+        return;
+    }
+    closeModal(renameModal);
     loadLists();
 });
 

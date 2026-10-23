@@ -19,16 +19,52 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <form id="todo-list-add-form" class="surface p-4 space-y-3 mb-4">
-                <h2 class="section-title">Add list</h2>
-                <div class="flex flex-wrap gap-2 items-end">
-                    <label class="block flex-1 min-w-[12rem]">
-                        <span class="mono text-xs text-faint">Name</span>
-                        <input type="text" name="name" required placeholder="Projects" maxlength="128" class="input w-full mt-1">
-                    </label>
-                    <button type="submit" class="btn-primary">Add list</button>
+            <p class="mb-4">
+                <button type="button" id="todo-list-add-open" class="btn-primary">Add list</button>
+            </p>
+
+            <div id="todo-list-add-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="todo-list-add-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="todo-list-add-title" class="section-title text-sm">Add list</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="todo-list-add-form" class="space-y-3">
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Name</span>
+                            <input type="text" name="name" required placeholder="Projects" maxlength="128" class="input w-full mt-1">
+                        </label>
+                        <p id="todo-list-add-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary">Add list</button>
+                            <button type="button" class="btn" data-close>Cancel</button>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
+
+            <div id="todo-rename-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="todo-rename-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="todo-rename-title" class="section-title text-sm">Rename list</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="todo-rename-form" class="space-y-3">
+                        <input type="hidden" id="todo-rename-id" name="list_id" value="">
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Name</span>
+                            <input type="text" id="todo-rename-input" name="name" maxlength="128" class="input mono text-xs w-full mt-1">
+                        </label>
+                        <p id="todo-rename-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Rename</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
             <div id="todo-manage-lists" class="space-y-3 mb-6">
                 <p class="empty-state mono text-xs">Loading…</p>
@@ -66,5 +102,5 @@ require __DIR__ . '/_shell-top.php';
             </p>
 
 <?php
-$settingsScripts = ['/assets/js/todos-manage.js'];
+$settingsScripts = ['/assets/js/todos-manage.js?v=' . $assetVer];
 require __DIR__ . '/_shell-bottom.php';
