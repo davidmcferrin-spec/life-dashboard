@@ -36,7 +36,7 @@ require __DIR__ . '/_shell-top.php';
     <div class="app-modal-panel surface ld-modal-wide">
         <div class="flex items-center justify-between gap-2 mb-3">
             <h2 id="setup-modal-title" class="section-title text-sm">Configure</h2>
-            <button type="button" class="app-modal-close" data-setup-close aria-label="Close">×</button>
+            <button type="button" class="app-modal-close" data-lucide-x data-setup-close aria-label="Close"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/x.svg'); ?></button>
         </div>
         <form id="setup-form" class="space-y-3" novalidate>
             <div id="setup-fields" class="space-y-3"></div>

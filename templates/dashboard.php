@@ -256,7 +256,7 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
     <div class="app-modal-panel surface">
         <div class="flex items-center justify-between gap-2 mb-3">
             <h3 id="todo-widget-add-title" class="section-title text-sm">Add task</h3>
-            <button type="button" id="todo-widget-add-close" class="app-modal-close" aria-label="Close">×</button>
+            <button type="button" id="todo-widget-add-close" class="app-modal-close" data-lucide-x aria-label="Close"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/x.svg'); ?></button>
         </div>
         <form id="todo-widget-add-form" class="space-y-3">
             <label class="block">
@@ -282,7 +282,7 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
     <div class="app-modal-panel surface max-w-lg w-full">
         <div class="flex items-center justify-between gap-2 mb-3">
             <h3 id="todo-widget-edit-title" class="section-title text-sm">Edit task</h3>
-            <button type="button" id="todo-widget-edit-close" class="app-modal-close" aria-label="Close">×</button>
+            <button type="button" id="todo-widget-edit-close" class="app-modal-close" data-lucide-x aria-label="Close"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/x.svg'); ?></button>
         </div>
         <form id="todo-widget-edit-form" class="space-y-3">
             <input type="hidden" id="todo-widget-edit-id" value="">
