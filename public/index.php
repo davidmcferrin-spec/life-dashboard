@@ -200,6 +200,11 @@ $router->get('/todos', function () use ($auth): void {
     require VIEWS_DIR . '/todos.php';
 });
 
+$router->get('/digest', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/digest.php';
+});
+
 $router->get('/pantry', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/pantry.php';

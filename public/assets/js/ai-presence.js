@@ -18,6 +18,7 @@
         Investing: ['portfolio'],
         Vault: ['pages'],
         Reddit: ['reddit_feed', 'reddit'],
+        Digest: ['digest'],
         Todos: ['legacy.todos'],
         Life: ['life'],
         Habits: ['habits', 'mood', 'streak'],

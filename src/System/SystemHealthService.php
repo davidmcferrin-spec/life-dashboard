@@ -62,6 +62,12 @@ class SystemHealthService
             'staleMinutes'  => 30,
             'scheduleHint'  => 'About every 10 min',
         ],
+        'digest' => [
+            'label'         => 'Grok Digest',
+            'log'           => 'digest.log',
+            'staleMinutes'  => 180,
+            'scheduleHint'  => 'Every 2 hours',
+        ],
         'shares' => [
             'label'         => 'Share link purge',
             'log'           => 'shares.log',

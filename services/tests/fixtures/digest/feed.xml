@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<rss version="2.0">
+<channel>
+<title>Harbor</title>
+<item>
+<title>Harbor Notes 1.2</title>
+<link>https://notes.example.com/harbor</link>
+<pubDate>Fri, 02 Oct 2026 12:00:00 GMT</pubDate>
+<description>Sample Ensemble added a quiet bridge.</description>
+<guid>harbor-1</guid>
+</item>
+<item>
+<title>Harbor Notes 1.2</title>
+<link>https://notes.example.com/harbor</link>
+<pubDate>Fri, 02 Oct 2026 12:00:00 GMT</pubDate>
+<description>Sample Ensemble added a quiet bridge.</description>
+<guid>harbor-1</guid>
+</item>
+</channel>
+</rss>

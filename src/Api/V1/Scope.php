@@ -22,7 +22,7 @@ final class Scope
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
-        'spotify',
+        'spotify', 'digest',
     ];
 
     public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
@@ -39,6 +39,8 @@ final class Scope
 
     public const SPOTIFY_ENTITIES = ['spotify'];
 
+    public const DIGEST_ENTITIES = ['digest'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -50,6 +52,7 @@ final class Scope
         'call', 'contact', 'vetted_agency',
         'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component',
         'spotify',
+        'digest',
         'deploy',
     ];
 
@@ -199,6 +202,9 @@ final class Scope
         }
         if (self::allows($granted, 'spotify:read')) {
             $allow = array_merge($allow, self::SPOTIFY_ENTITIES);
+        }
+        if (self::allows($granted, 'digest:read')) {
+            $allow = array_merge($allow, self::DIGEST_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

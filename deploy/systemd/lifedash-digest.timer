@@ -1,0 +1,12 @@
+[Unit]
+Description=life-dashboard Grok Digest timer
+
+[Timer]
+OnCalendar=*-*-* 00/2:10:00
+Unit=lifedash-digest.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

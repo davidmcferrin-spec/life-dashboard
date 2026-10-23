@@ -1709,6 +1709,63 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 TOOLS.extend(SPOTIFY_TOOLS)
+TOOLS.extend([
+    {
+        "name": "list_digest_items",
+        "description": "Changelog entries, newest first. Filter by product (cursor_ide, grok_bot, grok, grok_build), since (YYYY-MM-DD), unread true, or q.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "product": {"type": "string"},
+                "since": {"type": "string"},
+                "unread": {"type": "boolean"},
+                "q": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "mark_digest_read",
+        "description": "Mark every digest entry read through now. Needs Allow MCP updates.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "digest_sources",
+        "description": "List, add, or disable a digest source. action is list, add, or disable. add needs product, label, and url. disable needs source_id. Add and disable need Allow MCP updates.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string"},
+                "product": {"type": "string"},
+                "label": {"type": "string"},
+                "url": {"type": "string"},
+                "source_id": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "digest_check_now",
+        "description": "Queue a digest fetch. It does not run inside this request. Needs Allow MCP updates.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "digest_compare",
+        "description": "Entries between two dates or two versions. Pass from_date and to_date (YYYY-MM-DD), or from_version and to_version. product is cursor_ide, grok_bot, grok, or grok_build. A version compare needs a product. Dates can omit product to include every product.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "product": {"type": "string"},
+                "from_date": {"type": "string"},
+                "to_date": {"type": "string"},
+                "from_version": {"type": "string"},
+                "to_version": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+])
 
 
 def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
@@ -2229,6 +2286,39 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_spotify(name, args)
     if mapped is not None:
         return mapped
+    if name == "list_digest_items":
+        query = {}
+        if args.get("product"):
+            query["product"] = args["product"]
+        if args.get("since"):
+            query["since"] = args["since"]
+        if args.get("q"):
+            query["q"] = args["q"]
+        if args.get("unread") is True:
+            query["unread"] = "1"
+        if args.get("limit"):
+            query["limit"] = int(args["limit"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/digest/items" + suffix, None
+    if name == "mark_digest_read":
+        if args:
+            raise ValueError("mark_digest_read takes no arguments.")
+        return "POST", "/api/v1/digest/read", {}
+    if name == "digest_sources":
+        action = str(args.get("action") or "list")
+        if action == "list":
+            return "GET", "/api/v1/digest/sources", None
+        if action == "add":
+            return "POST", "/api/v1/digest/sources", _pick(args, ("product", "label", "url"))
+        if action == "disable":
+            return "POST", f"/api/v1/digest/sources/{int(args['source_id'])}/disable", {}
+        raise ValueError("action must be list, add, or disable.")
+    if name == "digest_check_now":
+        if args:
+            raise ValueError("digest_check_now takes no arguments.")
+        return "POST", "/api/v1/digest/check", {}
+    if name == "digest_compare":
+        return "GET", "/api/v1/digest/compare" + _query(args, ("product", "from_date", "to_date", "from_version", "to_version")), None
     raise ValueError(f"Unknown tool {name}")
 
 
@@ -2266,7 +2356,7 @@ class RequestLimiter:
 OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
-    "shopping", "calls", "pantry", "spotify",
+    "shopping", "calls", "pantry", "spotify", "digest",
 )
 
 
