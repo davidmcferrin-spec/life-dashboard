@@ -25,6 +25,7 @@ from urllib.request import Request, urlopen
 from . import __version__
 from .config import Config
 from .log import setup as setup_logging
+from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
 from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
 
 LOG = logging.getLogger("lifedash.mcp")
@@ -1709,6 +1710,7 @@ TOOLS: list[dict[str, Any]] = [
 ]
 
 TOOLS.extend(SPOTIFY_TOOLS)
+TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -2286,6 +2288,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_spotify(name, args)
     if mapped is not None:
         return mapped
+    mapped = resolve_ollama(name, args)
+    if mapped is not None:
+        return mapped
     if name == "list_digest_items":
         query = {}
         if args.get("product"):
@@ -2356,7 +2361,7 @@ class RequestLimiter:
 OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
-    "shopping", "calls", "pantry", "spotify", "digest",
+    "shopping", "calls", "pantry", "spotify", "ollama", "digest",
 )
 
 

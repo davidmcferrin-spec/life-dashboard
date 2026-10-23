@@ -30,6 +30,7 @@ final class AgentPresence
         ['Stocks', ['/stock']],
         ['Clipboards', ['/clipboard']],
         ['Search', ['/search']],
+        ['Local AI', ['/ollama', 'ollama_']],
     ];
 
     /**

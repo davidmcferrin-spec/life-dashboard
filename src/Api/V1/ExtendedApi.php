@@ -8,6 +8,7 @@ use Dashboard\Auth\OAuthClientEndpoint;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Auth\PgOAuthStore;
 use Dashboard\Deploy\DeployService;
+use Dashboard\Ollama\OllamaService;
 use Dashboard\Pantry\MealBuilder;
 use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Router\Router;
@@ -583,7 +584,53 @@ final class ExtendedApi
         ], 200, true));
 
         $this->registerPantry($r);
+        $this->registerOllama($r);
         (new DigestApi($this->runner, $this->svc))->register($r);
+    }
+
+    private function registerOllama(Router $r): void
+    {
+        $ollama = fn (): OllamaService => new OllamaService($this->svc->db);
+        $r->get('/api/v1/ollama/status', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+
+            return $ollama()->view();
+        }));
+        $r->get('/api/v1/ollama/models', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+
+            return $ollama()->modelList();
+        }));
+        $r->post('/api/v1/ollama/settings', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+            $this->assertOllamaWrite();
+
+            return ['settings' => $ollama()->save($this->runner->body())];
+        }, 200, true));
+        $r->post('/api/v1/ollama/test', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+
+            return $ollama()->test();
+        }, 200, true, 'ollama:read'));
+        $r->post('/api/v1/ollama/generate', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+            $b = $this->runner->body();
+            $model = isset($b['model']) ? (string) $b['model'] : null;
+
+            return $ollama()->generate((string) ($b['prompt'] ?? ''), $model);
+        }, 200, true, 'ollama:read'));
+        $r->post('/api/v1/ollama/pull', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+            $this->assertOllamaWrite();
+
+            return $ollama()->queue('ollama-pull', (string) ($this->runner->body()['model'] ?? ''));
+        }, 202, true));
+        $r->post('/api/v1/ollama/remove', fn () => $this->run(function (int $u) use ($ollama): array {
+            $this->assertOllamaAdmin($u);
+            $this->assertOllamaWrite();
+
+            return $ollama()->queue('ollama-remove', (string) ($this->runner->body()['model'] ?? ''));
+        }, 202, true));
     }
 
     private function registerPantry(Router $r): void
@@ -863,6 +910,22 @@ final class ExtendedApi
         if (!MealBuilder::mcpWriteAllowed($this->deploy()->mcpUpdatesEnabled(), $this->runner->tokenId())) {
             throw new ForbiddenException(DeployService::MCP_DISABLED);
         }
+    }
+
+    private function assertOllamaAdmin(int $userId): void
+    {
+        if ($this->runner->grantedScopes() !== null) {
+            return;
+        }
+        $flag = $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
+        if ((int) $flag !== 1) {
+            throw new ForbiddenException('Local AI settings require an admin session.');
+        }
+    }
+
+    private function assertOllamaWrite(): void
+    {
+        OllamaService::assertChange($this->runner->tokenId(), $this->deploy()->mcpUpdatesEnabled());
     }
 
     private function assertSystemAdmin(int $userId): void

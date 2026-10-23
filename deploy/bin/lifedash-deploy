@@ -112,6 +112,9 @@ install -m 0644 "$APP_DIR/deploy/systemd/lifedash-deploy.service" \
 # Spool, service path, Spotify timer, and cloudflared (only when this app owns it).
 lifedash_install_runtime_units "$APP_DIR" lifedash
 
+log "ollama"
+"$APP_DIR/deploy/bin/lifedash-ollama-ensure"
+
 log "record revision"
 lifedash_write_revision "$APP_DIR" || die "could not record the deployed revision"
 

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Dashboard\Search;
 
-use Dashboard\Config;
 use Dashboard\DB\Database;
 use Dashboard\Knowledge\Vectors;
+use Dashboard\Ollama\OllamaClient;
+use Dashboard\Ollama\OllamaSettings;
 use Dashboard\Support\HttpClient;
 
 /**
@@ -267,9 +268,6 @@ final class SearchIndex
 
     private function embedMissing(int $userId): void
     {
-        if (Config::maybe('OLLAMA_URL') === null) {
-            return;
-        }
         $rows = $this->db->fetchAll(
             'SELECT id, title, body FROM search_chunks WHERE user_id = ? AND embedding IS NULL ORDER BY id DESC LIMIT 8',
             [$userId]
@@ -291,26 +289,12 @@ final class SearchIndex
      */
     private function embed(string $text): ?array
     {
-        $base = Config::maybe('OLLAMA_URL');
-        if ($base === null || trim($text) === '') {
+        if (trim($text) === '') {
             return null;
         }
-        $model = Config::get('OLLAMA_EMBED_MODEL', 'nomic-embed-text');
-        try {
-            $http = $this->http ?? new HttpClient();
-            $res = $http->requestJson(
-                'POST',
-                rtrim($base, '/') . '/api/embeddings',
-                json_encode(['model' => $model, 'prompt' => $text], JSON_THROW_ON_ERROR),
-                ['Content-Type' => 'application/json', 'Accept' => 'application/json'],
-                8
-            );
-        } catch (\Throwable $e) {
-            error_log('[Dashboard][search] embedding skipped: ' . $e->getMessage());
-            return null;
-        }
-        $vec = is_array($res) ? ($res['embedding'] ?? ($res['embeddings'][0] ?? null)) : null;
-        return is_array($vec) && $vec !== [] ? $vec : null;
+        $target = OllamaSettings::effective((new OllamaSettings($this->db))->get(), null);
+
+        return (new OllamaClient())->embeddings($target['base_url'], $target['embed_model'], $text, 8);
     }
 
     private function plain(string $text, int $max): string

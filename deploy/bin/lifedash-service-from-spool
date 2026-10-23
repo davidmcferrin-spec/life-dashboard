@@ -96,7 +96,7 @@ leave_existing() {
 }
 
 run_one() {
-    local file=$1 base id action token parsed user_id playlist_id python args_text
+    local file=$1 base id action token parsed user_id playlist_id model python args_text
     local -a args
     base=$(basename "$file")
     [[ $base =~ ^[0-9a-f]{32}\.json$ ]] || {
@@ -107,6 +107,7 @@ run_one() {
     id=${base%.json}
     if ! parsed=$(python3 - "$file" << 'PY'
 import json
+import re
 import sys
 
 data = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -121,10 +122,13 @@ known = {
     "tunnel-clear",
     "spotify-pull",
     "spotify-push",
+    "ollama-pull",
+    "ollama-remove",
     "digest-check",
 }
 user_id = str(data.get("user_id") or "")
 playlist_id = str(data.get("playlist_id") or "")
+model = str(data.get("model") or "")
 if action not in known:
     raise SystemExit(2)
 if action.startswith("spotify-") or action == "digest-check":
@@ -134,10 +138,17 @@ if action.startswith("spotify-") or action == "digest-check":
         playlist_id = ""
     elif playlist_id and (not playlist_id.isdigit() or int(playlist_id) < 1):
         raise SystemExit(2)
+    model = ""
+elif action.startswith("ollama-"):
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,79}", model) is None:
+        raise SystemExit(2)
+    user_id = ""
+    playlist_id = ""
 else:
     user_id = ""
     playlist_id = ""
-sys.stdout.write("\n".join([action, token, user_id, playlist_id, "END"]))
+    model = ""
+sys.stdout.write("\n".join([action, token, user_id, playlist_id, model, "END"]))
 PY
     ); then
         log "rejected $id"
@@ -151,6 +162,8 @@ PY
     user_id=${rest%%$'\n'*}
     rest=${rest#*$'\n'}
     playlist_id=${rest%%$'\n'*}
+    rest=${rest#*$'\n'}
+    model=${rest%%$'\n'*}
     rm -f -- "$file"
     case "$action" in
         restart-mcp)
@@ -219,6 +232,30 @@ PY
                     "${args[@]}"
             ); then
                 log "spotify sync failed"
+            fi
+            ;;
+        ollama-pull | ollama-remove)
+            python=/srv/lifedash/venv/bin/python
+            if [[ ! -x $python ]]; then
+                log "Python environment for Ollama is not available to the web server"
+                return 0
+            fi
+            if ! args_text=$(lifedash_ollama_args "$action" "$model" "$python"); then
+                log "rejected ollama request"
+                return 0
+            fi
+            mapfile -t args <<< "$args_text"
+            if ! (
+                cd /srv/lifedash/app || exit 1
+                runuser -u lifedash -- env \
+                    LIFEDASH_OLLAMA_DIR=/var/lib/lifedash/ollama \
+                    LIFEDASH_OLLAMA_LOG=/srv/lifedash/app/storage/logs/ollama.log \
+                    LIFEDASH_ENV_FILE=/run/lifedash/app.env \
+                    PYTHONPATH=/srv/lifedash/app/services \
+                    PYTHONUNBUFFERED=1 \
+                    "${args[@]}"
+            ); then
+                log "ollama model change failed"
             fi
             ;;
         digest-check)

@@ -1,0 +1,13 @@
+# After boot, pull again if the last deploy was interrupted. The service
+# skips a model that is already installed, and a second run waits on the lock.
+
+[Unit]
+Description=Retry the Ollama model pull after boot
+
+[Timer]
+OnBootSec=2min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

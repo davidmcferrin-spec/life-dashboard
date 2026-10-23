@@ -442,6 +442,12 @@ $router->post('/api/settings/tunnel', function () use ($auth, $db): void {
     }
 });
 
+$router->get('/settings/ollama', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $ollama = (new \Dashboard\Ollama\OllamaService($db))->view();
+    require VIEWS_DIR . '/settings/ollama.php';
+});
+
 $router->get('/settings/system', function () use ($auth, $db): void {
     $user         = $auth->requireAdmin();
     $health       = new SystemHealthService();
