@@ -189,13 +189,4 @@ final class SecretFieldTest extends TestCase
 
         return $html;
     }
-
-    private function assetVersion(): string
-    {
-        $head = file_get_contents(ROOT_DIR . '/templates/partials/head.php');
-        self::assertIsString($head);
-        self::assertSame(1, preg_match('/\$assetVer = \'([^\']+)\';/', $head, $match));
-
-        return $match[1];
-    }
 }
