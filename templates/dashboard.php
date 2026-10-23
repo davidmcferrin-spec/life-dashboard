@@ -79,6 +79,28 @@ $timezones = [
     ['label' => 'PT', 'tz' => 'America/Los_Angeles'],
 ];
 
+$ldIconHtml = static function (string $name): string {
+    $path = __DIR__ . '/../public/assets/vendor/lucide/' . $name . '.svg';
+    if (!is_file($path)) {
+        return '';
+    }
+
+    return (string) file_get_contents($path);
+};
+
+$ldMenuItem = static function (string $action, string $icon, string $label, bool $on = false, bool $danger = false) use ($ldIconHtml): string {
+    $class = 'ld-menu-item' . ($danger ? ' ld-danger' : '') . ($on ? ' is-on' : '');
+    $lock = $action === 'lock-height' || $action === 'lock-place';
+    $icons = $lock
+        ? '<span class="ld-ico ld-ico-open">' . $ldIconHtml('lock-keyhole-open') . '</span><span class="ld-ico ld-ico-shut">' . $ldIconHtml('lock-keyhole') . '</span>'
+        : '<span class="ld-ico">' . $ldIconHtml($icon) . '</span>';
+    $pressed = $lock ? ' aria-pressed="' . ($on ? 'true' : 'false') . '"' : '';
+
+    return '<button type="button" class="' . $class . '" role="menuitem" data-action="' . e($action) . '"' . $pressed
+        . ' title="' . e($label) . '" aria-label="' . e($label) . '">' . $icons
+        . '<span class="ld-menu-label">' . e($label) . '</span></button>';
+};
+
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen" data-ai-presence="<?= $showAiPresence ? '1' : '0' ?>">
@@ -122,39 +144,44 @@ $timezones = [
          are ordinary widgets in the grid below.
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
-        <div class="ld-search-row">
-            <form id="search-form" method="GET" target="_blank" class="ov-composer ld-search-box" action="https://www.google.com/search">
-                <label class="ov-sr" for="search-input">How can I assist you?</label>
-                <span class="ov-command" aria-hidden="true"><?php
-                    // Inline the vendored file so its stroke stays currentColor.
-                    readfile(__DIR__ . '/../public/assets/vendor/lucide/terminal.svg');
-                ?></span>
-                <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
-                <button type="submit" class="ov-send btn-primary" aria-label="Send"><?php
-                    readfile(__DIR__ . '/../public/assets/vendor/lucide/arrow-right.svg');
-                ?></button>
-            </form>
-            <div class="seg-group ov-engines">
-                <?php foreach ($searchEngines as $key => $engine): ?>
-                <button
-                    type="button"
-                    class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
-                    data-engine="<?= e($key) ?>"
-                    data-url="<?= e($engine['url']) ?>"
-                    data-param="<?= e($engine['param']) ?>"
-                >
-                    <?= e($engine['label']) ?>
-                </button>
-                <?php endforeach; ?>
-            </div>
-            <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
-        </div>
+        <?php foreach (['ellipsis', 'grip-vertical', 'lock-keyhole', 'lock-keyhole-open', 'maximize-2', 'pencil', 'plus', 'sliders-horizontal', 'trash-2'] as $ldIconName): ?>
+        <template id="ld-ico-<?= e($ldIconName) ?>"><?= $ldIconHtml($ldIconName) ?></template>
+        <?php endforeach; ?>
         <div class="ld-toolbar">
             <span id="ld-status" class="text-faint text-xs mono" aria-live="polite"></span>
             <div class="ld-toolbar-actions">
-                <button type="button" id="ld-add" class="btn text-xs ld-edit-only">+ Add widget</button>
-                <button type="button" id="ld-edit" class="btn text-xs" aria-pressed="false">Edit layout</button>
+                <button type="button" id="ld-add" class="btn text-xs ld-edit-only"><span class="ld-ico"><?= $ldIconHtml('plus') ?></span> Add widget</button>
+                <button type="button" id="ld-edit" class="btn text-xs" aria-pressed="false"><span class="ld-edit-icon ld-ico"><?= $ldIconHtml('pencil') ?></span><span class="ld-edit-label">Edit layout</span></button>
             </div>
+        </div>
+        <div class="ld-search-row">
+            <div class="ld-search-shell">
+                <form id="search-form" method="GET" target="_blank" class="ov-composer ld-search-box" action="https://www.google.com/search">
+                    <label class="ov-sr" for="search-input">How can I assist you?</label>
+                    <span class="ov-command" aria-hidden="true"><?php
+                        // Inline the vendored file so its stroke stays currentColor.
+                        readfile(__DIR__ . '/../public/assets/vendor/lucide/terminal.svg');
+                    ?></span>
+                    <input type="text" id="search-input" name="q" placeholder="How can I assist you?" autofocus class="search-input" autocomplete="off">
+                    <button type="submit" class="ov-send btn-primary" aria-label="Send"><?php
+                        readfile(__DIR__ . '/../public/assets/vendor/lucide/arrow-right.svg');
+                    ?></button>
+                </form>
+                <div class="seg-group ov-engines">
+                    <?php foreach ($searchEngines as $key => $engine): ?>
+                    <button
+                        type="button"
+                        class="search-engine-btn seg-btn <?= $key === $searchEngine ? 'seg-btn-active' : '' ?>"
+                        data-engine="<?= e($key) ?>"
+                        data-url="<?= e($engine['url']) ?>"
+                        data-param="<?= e($engine['param']) ?>"
+                    >
+                        <?= e($engine['label']) ?>
+                    </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
         </div>
 
         <?php if ($widgets === []): ?>
@@ -181,20 +208,33 @@ $timezones = [
                  data-widget-type="<?= e($w['type']) ?>">
                 <div class="grid-stack-item-content surface ld-w <?= $legacyKey !== null ? 'ld-w-legacy' : 'ld-w-native' ?>">
                     <div class="ld-fit">
+                    <?php
+                        $heightOn = !empty($w['height_locked']);
+                        $placeOn = !empty($w['placement_locked']);
+                        $locked = $heightOn || $placeOn;
+                    ?>
                     <div class="ld-edit-bar ld-edit-only">
-                        <span class="ld-drag" title="Drag to move" aria-hidden="true">⋮⋮</span>
-                        <button type="button" class="ld-icon-btn<?= !empty($w['placement_locked']) ? ' is-on' : '' ?>" data-action="lock" title="<?= !empty($w['placement_locked']) ? 'Unlock size and position' : 'Lock size and position' ?>" aria-label="<?= !empty($w['placement_locked']) ? 'Unlock size and position' : 'Lock size and position' ?>" aria-pressed="<?= !empty($w['placement_locked']) ? 'true' : 'false' ?>"><?= !empty($w['placement_locked']) ? 'Locked' : 'Lock' ?></button>
-                        <button type="button" class="ld-icon-btn" data-action="fit" title="Size to content" aria-label="Size to content">Fit</button>
-                        <?php if ($legacyKey === null): ?>
-                        <button type="button" class="ld-icon-btn" data-action="configure" title="Configure" aria-label="Configure widget">⚙</button>
-                        <?php endif; ?>
-                        <button type="button" class="ld-icon-btn ld-danger" data-action="remove" title="Remove" aria-label="Remove widget">✕</button>
+                        <span class="ld-drag" title="Drag to move" aria-hidden="true"><?= $ldIconHtml('grip-vertical') ?></span>
+                        <div class="ld-menu">
+                            <button type="button" class="ld-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Widget menu"><?= $ldIconHtml('ellipsis') ?></button>
+                            <div class="ld-menu-panel" role="menu" hidden>
+                                <?php if ($legacyKey === null) {
+                                    echo $ldMenuItem('configure', 'sliders-horizontal', 'Settings');
+                                } ?>
+                                <?= $ldMenuItem('lock-height', 'lock-keyhole-open', $heightOn ? 'Unlock height' : 'Lock height', $heightOn) ?>
+                                <?= $ldMenuItem('lock-place', 'lock-keyhole-open', $placeOn ? 'Unlock place' : 'Lock place', $placeOn) ?>
+                                <?= $ldMenuItem('fit', 'maximize-2', 'Fit to content') ?>
+                                <?= $ldMenuItem('remove', 'trash-2', 'Remove', false, true) ?>
+                            </div>
+                        </div>
                     </div>
                     <?php if ($partial !== null): ?>
+                    <span class="ld-lock-badge"<?= $locked ? '' : ' hidden' ?> aria-label="Locked"><?= $ldIconHtml('lock-keyhole') ?></span>
                     <div class="ld-w-scroll"><?php require $partial; ?></div>
                     <?php else: ?>
                     <div class="ld-w-head dashboard-widget-head">
                         <h2 class="section-title ld-w-title"><?= e($w['title'] ?? $w['label']) ?></h2>
+                        <span class="ld-lock-badge"<?= $locked ? '' : ' hidden' ?> aria-label="Locked"><?= $ldIconHtml('lock-keyhole') ?></span>
                         <div class="ld-w-tools"></div>
                     </div>
                     <div class="ld-w-body"><div class="empty-state mono text-xs">Loading…</div></div>

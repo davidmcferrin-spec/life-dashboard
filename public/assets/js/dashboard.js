@@ -390,3 +390,90 @@ function initWeather() {
 document.getElementById('weather-refresh')?.addEventListener('click', initWeather);
 initWeather();
 
+// -------------------------------------------------------
+// Widget menu (edit mode). Actions themselves stay in lifedash-grid.js.
+// -------------------------------------------------------
+
+function closeWidgetMenus() {
+    document.querySelectorAll('.ld-menu.is-open').forEach((menu) => {
+        menu.classList.remove('is-open');
+        const trigger = menu.querySelector('.ld-menu-trigger');
+        const panel = menu.querySelector('.ld-menu-panel');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        if (panel) panel.hidden = true;
+    });
+}
+
+function openWidgetMenu(menu) {
+    const trigger = menu.querySelector('.ld-menu-trigger');
+    const panel = menu.querySelector('.ld-menu-panel');
+    if (!trigger || !panel) return;
+    menu.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+    panel.hidden = false;
+    const rect = trigger.getBoundingClientRect();
+    const height = panel.offsetHeight;
+    let top = rect.bottom + 4;
+    if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - 4 - height);
+    panel.style.position = 'fixed';
+    panel.style.top = Math.round(top) + 'px';
+    panel.style.right = Math.round(window.innerWidth - rect.right) + 'px';
+    panel.style.left = 'auto';
+    panel.style.zIndex = '80';
+    panel.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+}
+
+function eventElement(event) {
+    const node = event.target;
+    if (node instanceof Element) return node;
+    return node && node.parentElement ? node.parentElement : null;
+}
+
+document.addEventListener('click', (event) => {
+    const target = eventElement(event);
+    if (!target) return;
+    const trigger = target.closest('.ld-menu-trigger');
+    if (trigger) {
+        const menu = trigger.closest('.ld-menu');
+        const wasOpen = menu.classList.contains('is-open');
+        closeWidgetMenus();
+        if (!wasOpen) openWidgetMenu(menu);
+        event.preventDefault();
+        return;
+    }
+    if (target.closest('.ld-menu-panel')) {
+        if (target.closest('[data-action]')) closeWidgetMenus();
+        return;
+    }
+    closeWidgetMenus();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        if (!document.querySelector('.ld-menu.is-open')) return;
+        closeWidgetMenus();
+        event.stopPropagation();
+        return;
+    }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const panel = document.querySelector('.ld-menu.is-open .ld-menu-panel');
+    if (!panel) return;
+    const items = [...panel.querySelectorAll('[role="menuitem"]')];
+    if (!items.length) return;
+    let index = items.indexOf(document.activeElement);
+    if (event.key === 'ArrowDown') index = index < 0 ? 0 : (index + 1) % items.length;
+    else index = index < 0 ? items.length - 1 : (index - 1 + items.length) % items.length;
+    items[index].focus();
+    event.preventDefault();
+}, true);
+
+window.addEventListener('resize', closeWidgetMenus);
+window.addEventListener('scroll', closeWidgetMenus, true);
+
+const widgetBoard = document.querySelector('.ld-board');
+if (widgetBoard) {
+    new MutationObserver(() => {
+        if (!widgetBoard.classList.contains('ld-editing')) closeWidgetMenus();
+    }).observe(widgetBoard, { attributes: true, attributeFilter: ['class'] });
+}
+
