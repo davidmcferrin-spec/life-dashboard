@@ -1421,6 +1421,28 @@ $router->get('/settings/agents', function () use ($auth, $db): void {
     require VIEWS_DIR . '/settings/agents.php';
 });
 
+// One server-wide key. The page shows the mask, not the secret.
+$router->get('/settings/grok', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $grok = (new \Dashboard\Settings\GrokConnection($db))->view();
+    require VIEWS_DIR . '/settings/grok.php';
+});
+
+$router->post('/settings/grok', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAdmin();
+    try {
+        (new \Dashboard\Settings\GrokConnection($db))->save([
+            'api_url'    => (string) ($_POST['api_url'] ?? ''),
+            'api_secret' => (string) ($_POST['api_secret'] ?? ''),
+        ], (int) $user['id']);
+        $_SESSION['settings_flash'] = 'Grok connection saved.';
+    } catch (\InvalidArgumentException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/grok');
+});
+
 $router->get('/settings/pantry', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings/pantry.php';
