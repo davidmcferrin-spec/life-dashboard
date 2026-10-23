@@ -27,6 +27,67 @@ function linkHost(url) {
     }
 }
 
+function openModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.remove('hidden');
+    document.body.classList.add('app-modal-open');
+}
+
+function closeModal(modal) {
+    if (!modal) {
+        return;
+    }
+    modal.classList.add('hidden');
+    if (!document.querySelector('.app-modal:not(.hidden)')) {
+        document.body.classList.remove('app-modal-open');
+    }
+}
+
+function bindModal(modal, onClose) {
+    if (!modal) {
+        return;
+    }
+    modal.addEventListener('click', (event) => {
+        if (event.target.closest('[data-close]')) {
+            if (onClose) {
+                onClose();
+            } else {
+                closeModal(modal);
+            }
+        }
+    });
+}
+
+function clearFieldError(id) {
+    const el = document.getElementById(id);
+    if (!el) {
+        return;
+    }
+    el.textContent = '';
+    el.classList.add('hidden');
+}
+
+function showFieldError(id, message) {
+    const el = document.getElementById(id);
+    if (!el) {
+        alert(message);
+        return;
+    }
+    el.textContent = message;
+    el.classList.remove('hidden');
+}
+
+const folderAddModal = document.getElementById('bm-folder-add-modal');
+const linkAddModal = document.getElementById('bm-link-add-modal');
+const folderRenameModal = document.getElementById('bm-folder-rename-modal');
+const editModal = document.getElementById('bm-edit-modal');
+bindModal(folderAddModal);
+bindModal(linkAddModal);
+bindModal(folderRenameModal);
+bindModal(editModal, () => closeEdit());
+
 const faviconClient = () => window.BookmarkFaviconClient;
 const FAVICON_MAX_BYTES = () => faviconClient()?.FAVICON_MAX_BYTES ?? 1048576;
 
@@ -144,7 +205,7 @@ function render() {
     if (bmFolders.length === 0 && bmUnfiled.length === 0) {
         root.innerHTML = window.DashboardEmpty.html({
             title: 'No bookmarks yet',
-            body: 'Add a folder or a link in the form above.',
+            body: 'Add a folder or a link.',
             actionLabel: 'Bookmarks',
             actionHref: '/settings/bookmarks',
         });
@@ -189,46 +250,41 @@ function bindListEvents() {
     });
 
     document.querySelectorAll('.bm-folder-rename').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const name = prompt('Folder name:', btn.dataset.name || '');
-            if (name === null) {
-                return;
-            }
-            const trimmed = name.trim();
-            if (trimmed === '') {
-                return;
-            }
-            let icon = btn.dataset.icon || '';
-            const iconInput = prompt('Folder icon (optional emoji/text):', icon);
-            if (iconInput !== null) {
-                icon = iconInput.trim();
-            }
-            const { res, data } = await api(`/api/bookmarks/folders/${btn.dataset.id}/update`, {
-                method: 'POST',
-                body: JSON.stringify({ name: trimmed, icon: icon || null }),
-            });
-            if (!res.ok) {
-                alert(data.error || 'Could not rename folder.');
-                return;
-            }
-            load();
+        btn.addEventListener('click', () => {
+            openFolderRename(btn.dataset.id, btn.dataset.name || '', btn.dataset.icon || '');
         });
     });
 
     document.querySelectorAll('.bm-folder-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
-            if (!confirm('Delete this folder? Links inside become unfiled.')) {
+            if (btn.dataset.confirming === '1') {
                 return;
             }
-            const { res, data } = await api(`/api/bookmarks/folders/${btn.dataset.id}/delete`, {
-                method: 'POST',
-                body: '{}',
-            });
-            if (!res.ok) {
-                alert(data.error || 'Could not delete folder.');
-                return;
+            btn.dataset.confirming = '1';
+            try {
+                const ok = await globalThis.AppModal.confirm({
+                    title: 'Delete folder',
+                    message: 'Delete this folder? Links inside become unfiled.',
+                    confirmLabel: 'Delete',
+                    danger: true,
+                });
+                if (!ok) {
+                    return;
+                }
+                const { res, data } = await api(`/api/bookmarks/folders/${btn.dataset.id}/delete`, {
+                    method: 'POST',
+                    body: '{}',
+                });
+                if (!res.ok) {
+                    alert(data.error || 'Could not delete folder.');
+                    return;
+                }
+                load();
+            } finally {
+                if (btn.isConnected) {
+                    btn.dataset.confirming = '';
+                }
             }
-            load();
         });
     });
 
@@ -321,6 +377,20 @@ async function showExternalIconPreview(pageUrl, bookmarkId) {
     }
 }
 
+function openFolderRename(id, name, icon) {
+    const idInput = document.getElementById('bm-folder-rename-id');
+    const nameInput = document.getElementById('bm-folder-rename-name');
+    const iconInput = document.getElementById('bm-folder-rename-icon');
+    if (!folderRenameModal || !idInput || !nameInput || !iconInput) {
+        return;
+    }
+    clearFieldError('bm-folder-rename-error');
+    idInput.value = String(id);
+    nameInput.value = name;
+    iconInput.value = icon;
+    openModal(folderRenameModal);
+}
+
 function openEdit(id) {
     const bm = findBookmark(id);
     if (!bm) {
@@ -328,9 +398,8 @@ function openEdit(id) {
     }
 
     editingId = id;
-    const modal = document.getElementById('bm-edit-modal');
-    modal?.classList.remove('hidden');
-    document.body.classList.add('app-modal-open');
+    clearFieldError('bm-edit-error');
+    openModal(editModal);
 
     document.getElementById('bm-edit-id').value = String(id);
     document.getElementById('bm-edit-title').value = bm.title;
@@ -348,8 +417,7 @@ function openEdit(id) {
 
 function closeEdit() {
     editingId = null;
-    document.getElementById('bm-edit-modal')?.classList.add('hidden');
-    document.body.classList.remove('app-modal-open');
+    closeModal(editModal);
 }
 
 async function load(options = {}) {
@@ -379,9 +447,15 @@ async function load(options = {}) {
     }
 }
 
+document.getElementById('bm-folder-add-open')?.addEventListener('click', () => {
+    clearFieldError('bm-folder-add-error');
+    openModal(folderAddModal);
+});
+
 document.getElementById('bm-folder-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
+    clearFieldError('bm-folder-add-error');
     const { res, data } = await api('/api/bookmarks/folders/create', {
         method: 'POST',
         body: JSON.stringify({
@@ -390,35 +464,44 @@ document.getElementById('bm-folder-add-form')?.addEventListener('submit', async 
         }),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not create folder.');
+        showFieldError('bm-folder-add-error', data.error || 'Could not create folder.');
         return;
     }
     form.reset();
+    closeModal(folderAddModal);
     load();
+});
+
+document.getElementById('bm-link-add-open')?.addEventListener('click', () => {
+    clearFieldError('bm-link-add-error');
+    openModal(linkAddModal);
 });
 
 document.getElementById('bm-link-add-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const form = e.target;
+    const title = form.title.value.trim();
+    const pageUrl = form.url.value.trim();
     const folderRaw = form.folder_id.value;
     const fetchIcon = document.getElementById('bm-add-fetch-icon')?.checked ?? true;
+    clearFieldError('bm-link-add-error');
     const { res, data } = await api('/api/bookmarks/create', {
         method: 'POST',
         body: JSON.stringify({
-            title: form.title.value.trim(),
-            url: form.url.value.trim(),
+            title,
+            url: pageUrl,
             folder_id: folderRaw === '' ? null : parseInt(folderRaw, 10),
             fetch_favicon: fetchIcon,
         }),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not add link.');
+        showFieldError('bm-link-add-error', data.error || 'Could not add link.');
         return;
     }
 
-    const pageUrl = form.url.value.trim();
     form.title.value = '';
     form.url.value = '';
+    closeModal(linkAddModal);
 
     if (fetchIcon && data.bookmark && faviconClient()) {
         if (data.favicon_client_fallback || !data.bookmark.has_favicon) {
@@ -433,32 +516,56 @@ document.getElementById('bm-link-add-form')?.addEventListener('submit', async e 
     load();
 });
 
+document.getElementById('bm-folder-rename-form')?.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = document.getElementById('bm-folder-rename-id')?.value;
+    const name = document.getElementById('bm-folder-rename-name')?.value.trim() ?? '';
+    const icon = document.getElementById('bm-folder-rename-icon')?.value.trim() ?? '';
+    if (name === '') {
+        closeModal(folderRenameModal);
+        return;
+    }
+    if (!id) {
+        return;
+    }
+    clearFieldError('bm-folder-rename-error');
+    const { res, data } = await api(`/api/bookmarks/folders/${id}/update`, {
+        method: 'POST',
+        body: JSON.stringify({ name, icon: icon || null }),
+    });
+    if (!res.ok) {
+        showFieldError('bm-folder-rename-error', data.error || 'Could not rename folder.');
+        return;
+    }
+    closeModal(folderRenameModal);
+    load();
+});
+
 document.getElementById('bm-edit-form')?.addEventListener('submit', async e => {
     e.preventDefault();
     const id = document.getElementById('bm-edit-id')?.value;
+    const title = document.getElementById('bm-edit-title')?.value.trim() ?? '';
+    const url = document.getElementById('bm-edit-url')?.value.trim() ?? '';
     if (!id) {
         return;
     }
     const folderRaw = document.getElementById('bm-edit-folder-select')?.value ?? '';
+    clearFieldError('bm-edit-error');
     const { res, data } = await api(`/api/bookmarks/${id}/update`, {
         method: 'POST',
         body: JSON.stringify({
-            title: document.getElementById('bm-edit-title')?.value.trim(),
-            url: document.getElementById('bm-edit-url')?.value.trim(),
+            title,
+            url,
             folder_id: folderRaw === '' ? null : parseInt(folderRaw, 10),
         }),
     });
     if (!res.ok) {
-        alert(data.error || 'Could not save link.');
+        showFieldError('bm-edit-error', data.error || 'Could not save link.');
         return;
     }
     closeEdit();
     load();
 });
-
-document.getElementById('bm-edit-cancel')?.addEventListener('click', closeEdit);
-document.getElementById('bm-modal-close')?.addEventListener('click', closeEdit);
-document.getElementById('bm-edit-backdrop')?.addEventListener('click', closeEdit);
 
 document.getElementById('bm-fetch-icon')?.addEventListener('click', async () => {
     const id = document.getElementById('bm-edit-id')?.value;
@@ -581,24 +688,40 @@ document.getElementById('bm-icon-file')?.addEventListener('change', async e => {
     load();
 });
 
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && editingId !== null) {
-        closeEdit();
-    }
-});
-
 document.getElementById('bm-edit-delete')?.addEventListener('click', async () => {
     const id = document.getElementById('bm-edit-id')?.value;
-    if (!id || !confirm('Delete this link?')) {
+    const btn = document.getElementById('bm-edit-delete');
+    if (!id) {
         return;
     }
-    const { res, data } = await api(`/api/bookmarks/${id}/delete`, { method: 'POST', body: '{}' });
-    if (!res.ok) {
-        alert(data.error || 'Could not delete link.');
+    if (btn?.dataset.confirming === '1') {
         return;
     }
-    closeEdit();
-    load();
+    if (btn) {
+        btn.dataset.confirming = '1';
+    }
+    try {
+        const ok = await globalThis.AppModal.confirm({
+            title: 'Delete link',
+            message: 'Delete this link?',
+            confirmLabel: 'Delete',
+            danger: true,
+        });
+        if (!ok) {
+            return;
+        }
+        const { res, data } = await api(`/api/bookmarks/${id}/delete`, { method: 'POST', body: '{}' });
+        if (!res.ok) {
+            alert(data.error || 'Could not delete link.');
+            return;
+        }
+        closeEdit();
+        load();
+    } finally {
+        if (btn?.isConnected) {
+            btn.dataset.confirming = '';
+        }
+    }
 });
 
 load();

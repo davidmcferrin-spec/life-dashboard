@@ -32,54 +32,108 @@ require __DIR__ . '/_shell-top.php';
             </details>
 
             <div class="flex flex-wrap gap-2 mb-4">
-                <form id="bm-folder-add-form" class="flex flex-wrap gap-2 items-end flex-1 min-w-[14rem]">
-                    <label class="block flex-1 min-w-[8rem]">
-                        <span class="mono text-xs text-faint">New folder</span>
-                        <input type="text" name="name" required placeholder="Work" maxlength="128" class="input w-full mt-1 text-sm">
-                    </label>
-                    <label class="block w-16">
-                        <span class="mono text-xs text-faint">Icon</span>
-                        <input type="text" name="icon" placeholder="📁" maxlength="16" class="input w-full mt-1 text-sm text-center">
-                    </label>
-                    <button type="submit" class="btn text-sm">Add folder</button>
-                </form>
+                <button type="button" id="bm-folder-add-open" class="btn text-sm">Add folder</button>
+                <button type="button" id="bm-link-add-open" class="btn-primary text-sm">Add link</button>
             </div>
-
-            <form id="bm-link-add-form" class="surface p-4 mb-4">
-                <h2 class="section-title mb-3">Add link</h2>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="block">
-                        <span class="mono text-xs text-faint">Title</span>
-                        <input type="text" name="title" required placeholder="GitHub" maxlength="255" class="input w-full mt-1 text-sm">
-                    </label>
-                    <label class="block">
-                        <span class="mono text-xs text-faint">URL</span>
-                        <input type="text" name="url" required placeholder="https://github.com" maxlength="512" class="input mono w-full mt-1 text-sm">
-                    </label>
-                    <label class="block sm:col-span-2">
-                        <span class="mono text-xs text-faint">Folder</span>
-                        <select name="folder_id" id="bm-add-folder-select" class="input mono w-full mt-1 text-sm max-w-xs">
-                            <option value="">Unfiled</option>
-                        </select>
-                    </label>
-                    <label class="flex items-center gap-2 sm:col-span-2 cursor-pointer text-sm text-muted">
-                        <input type="checkbox" name="fetch_favicon" id="bm-add-fetch-icon" value="1" checked>
-                        Fetch site icon automatically
-                    </label>
-                </div>
-                <button type="submit" class="btn-primary mt-3 text-sm">Add link</button>
-            </form>
 
             <div id="bm-manage-root" class="space-y-3">
                 <p class="empty-state mono text-xs">Loading…</p>
             </div>
 
-            <div id="bm-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bm-edit-modal-title">
-                <div class="app-modal-backdrop" id="bm-edit-backdrop" aria-hidden="true"></div>
+            <div id="bm-folder-add-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bm-folder-add-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
                 <div class="app-modal-panel surface">
                     <div class="flex items-center justify-between gap-2 mb-3">
-                        <h2 id="bm-edit-modal-title" class="section-title">Edit link</h2>
-                        <button type="button" id="bm-modal-close" class="app-modal-close" aria-label="Close">×</button>
+                        <h2 id="bm-folder-add-title" class="section-title text-sm">Add folder</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="bm-folder-add-form" class="space-y-3">
+                        <label class="block">
+                            <span class="mono text-xs text-faint">New folder</span>
+                            <input type="text" name="name" required placeholder="Work" maxlength="128" class="input w-full mt-1 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Icon</span>
+                            <input type="text" name="icon" placeholder="📁" maxlength="16" class="input w-full mt-1 text-sm">
+                        </label>
+                        <p id="bm-folder-add-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn text-sm">Add folder</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="bm-link-add-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bm-link-add-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface ld-modal-wide">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="bm-link-add-title" class="section-title text-sm">Add link</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="bm-link-add-form" class="space-y-3">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <label class="block">
+                                <span class="mono text-xs text-faint">Title</span>
+                                <input type="text" name="title" required placeholder="GitHub" maxlength="255" class="input w-full mt-1 text-sm">
+                            </label>
+                            <label class="block">
+                                <span class="mono text-xs text-faint">URL</span>
+                                <input type="text" name="url" required placeholder="https://github.com" maxlength="512" class="input mono w-full mt-1 text-sm">
+                            </label>
+                            <label class="block sm:col-span-2">
+                                <span class="mono text-xs text-faint">Folder</span>
+                                <select name="folder_id" id="bm-add-folder-select" class="input mono w-full mt-1 text-sm max-w-xs">
+                                    <option value="">Unfiled</option>
+                                </select>
+                            </label>
+                            <label class="flex items-center gap-2 sm:col-span-2 cursor-pointer text-sm text-muted">
+                                <input type="checkbox" name="fetch_favicon" id="bm-add-fetch-icon" value="1" checked>
+                                Fetch site icon automatically
+                            </label>
+                        </div>
+                        <p id="bm-link-add-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Add link</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="bm-folder-rename-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bm-folder-rename-title">
+                <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="bm-folder-rename-title" class="section-title text-sm">Rename folder</h2>
+                        <button type="button" class="app-modal-close" data-close aria-label="Close">×</button>
+                    </div>
+                    <form id="bm-folder-rename-form" class="space-y-3">
+                        <input type="hidden" id="bm-folder-rename-id" value="">
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Folder name</span>
+                            <input type="text" id="bm-folder-rename-name" maxlength="128" class="input w-full mt-1 text-sm">
+                        </label>
+                        <label class="block">
+                            <span class="mono text-xs text-faint">Folder icon (optional emoji/text)</span>
+                            <input type="text" id="bm-folder-rename-icon" maxlength="64" class="input w-full mt-1 text-sm">
+                        </label>
+                        <p id="bm-folder-rename-error" class="ld-field-error hidden" role="alert"></p>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="submit" class="btn-primary text-sm">Rename</button>
+                            <button type="button" class="btn text-sm" data-close>Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="bm-edit-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="bm-edit-modal-title">
+                <div class="app-modal-backdrop" id="bm-edit-backdrop" data-close aria-hidden="true"></div>
+                <div class="app-modal-panel surface">
+                    <div class="flex items-center justify-between gap-2 mb-3">
+                        <h2 id="bm-edit-modal-title" class="section-title text-sm">Edit link</h2>
+                        <button type="button" id="bm-modal-close" class="app-modal-close" data-close aria-label="Close">×</button>
                     </div>
                     <form id="bm-edit-form" class="space-y-3">
                         <input type="hidden" name="id" id="bm-edit-id">
@@ -113,9 +167,10 @@ require __DIR__ . '/_shell-top.php';
                         </div>
                         <p id="bm-icon-candidates" class="text-faint mono text-xs hidden"></p>
                         <p class="text-faint mono text-xs">When automatic fetch fails (often CORS on local sites), open the icon URL, save the image, then Upload. Bookmarklet works on the full page.</p>
+                        <p id="bm-edit-error" class="ld-field-error hidden" role="alert"></p>
                         <div class="flex flex-wrap gap-2 pt-1">
                             <button type="submit" class="btn-primary text-sm">Save</button>
-                            <button type="button" id="bm-edit-cancel" class="btn text-sm">Cancel</button>
+                            <button type="button" id="bm-edit-cancel" class="btn text-sm" data-close>Cancel</button>
                             <button type="button" id="bm-edit-delete" class="btn-danger text-sm ml-auto">Delete link</button>
                         </div>
                     </form>
@@ -125,6 +180,6 @@ require __DIR__ . '/_shell-top.php';
 <?php
 $settingsScripts = [
     '/assets/js/bookmark-favicon-client.js',
-    '/assets/js/bookmarks-manage.js',
+    '/assets/js/bookmarks-manage.js?v=' . $assetVer,
 ];
 require __DIR__ . '/_shell-bottom.php';
