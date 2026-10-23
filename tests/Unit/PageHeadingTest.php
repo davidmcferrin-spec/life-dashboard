@@ -11,7 +11,6 @@ final class PageHeadingTest extends TestCase
     public function testNamedPagesUseTheEyebrowAndTitle(): void
     {
         $cases = [
-            'dashboard.php' => 'Personal intelligence system',
             'login.php' => 'Dashboard',
             'clock.php' => 'Clock',
             'settings/system.php' => 'System health',
@@ -28,5 +27,19 @@ final class PageHeadingTest extends TestCase
         self::assertIsString($login);
         self::assertStringNotContainsString('Personal Dashboard', $login);
         self::assertStringContainsString("pageHeading = 'Sign in'", $login);
+    }
+
+    public function testDashboardDropsThePageHeadingAndTimezoneBar(): void
+    {
+        $html = file_get_contents(VIEWS_DIR . '/dashboard.php');
+        self::assertIsString($html);
+        self::assertStringNotContainsString('page-heading.php', $html);
+        self::assertStringNotContainsString('timezone-bar', $html);
+        self::assertStringContainsString('id="search-form"', $html);
+
+        $clock = file_get_contents(VIEWS_DIR . '/clock.php');
+        self::assertIsString($clock);
+        self::assertStringContainsString('page-heading.php', $clock);
+        self::assertStringContainsString('Clock', $clock);
     }
 }

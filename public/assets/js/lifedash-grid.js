@@ -15,7 +15,8 @@
  *     Inside a breakpoint the column count stays put, so a window resize
  *     only grows columns until the cap, then only the side margins change.
  *     A phone reorder is saved as a 12-column flow of the desktop widths,
- *     never as a 1-column layout. Under 700px layout editing stays off.
+ *     never as a 1-column layout. Under 700px Edit layout still works and
+ *     saves that same 12-column flow.
  *     The search box sits above this grid. It is not a widget.
  *   - A drag or resize on 18 or 24 columns is saved for that width only;
  *     the 12-column x/y/w stay put.
@@ -253,6 +254,14 @@
             queued: false,
         };
         widgets.set(widget.id, entry);
+        el.querySelectorAll('.ld-w-icon[data-ld-icon]').forEach((slot) => {
+            if (slot.innerHTML.trim() || !window.LD.catalog) return;
+            const name = slot.dataset.ldIcon;
+            if (!name) return;
+            window.LD.catalog.iconMarkup(name).then((svg) => {
+                if (svg && slot.isConnected && !slot.innerHTML.trim()) slot.innerHTML = svg;
+            });
+        });
         applyPin(entry);
         if (entry.body) {
             paintSkeleton(entry.body);
@@ -366,8 +375,8 @@
 
     function editBarHtml() {
         return `
-                <div class="ld-edit-bar ld-edit-only">
-                    <span class="ld-drag" title="Drag to move" aria-hidden="true">${ldIcon('grip-vertical')}</span>
+                <div class="ld-edit-bar">
+                    <span class="ld-drag ld-edit-only" title="Drag to move" aria-hidden="true">${ldIcon('grip-vertical')}</span>
                     <div class="ld-menu">
                         <button type="button" class="ld-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Widget menu">${ldIcon('ellipsis')}</button>
                         <div class="ld-menu-panel" role="menu" hidden>
@@ -387,7 +396,7 @@
                 <div class="ld-fit">
                 ${editBarHtml()}
                 <div class="ld-w-head dashboard-widget-head">
-                    <h2 class="section-title ld-w-title">${esc(w.title || w.label)}</h2>
+                    <h2 class="section-title ld-w-title"><span class="ld-w-icon" data-ld-icon="${esc(w.icon || '')}" aria-hidden="true">${ldIcon(w.icon || '')}</span>${esc(w.title || w.label)}</h2>
                     <span class="ld-lock-badge" hidden aria-label="Locked">${ldIcon('lock-keyhole')}</span>
                     <div class="ld-w-tools"></div>
                 </div>
@@ -430,6 +439,18 @@
         if (ro && entry.body) ro.unobserve(entry.body);
         widgets.delete(id);
         grid.removeWidget(entry.el, true, false);
+        if (widgets.size === 0) showEmptyBoard();
+    }
+
+    function showEmptyBoard() {
+        if (document.getElementById('ld-empty')) return;
+        const tpl = document.getElementById('ld-empty-tpl');
+        if (!tpl) return;
+        const card = document.createElement('div');
+        card.id = 'ld-empty';
+        card.className = 'ld-empty-board';
+        card.innerHTML = tpl.innerHTML;
+        gridEl.before(card);
     }
 
     // -----------------------------------------------------------------
@@ -437,14 +458,7 @@
     // -----------------------------------------------------------------
     const editBtn = document.getElementById('ld-edit');
 
-    function syncPhoneEdit() {
-        const phone = grid.getColumn() === 1;
-        editBtn.disabled = phone;
-        if (phone && editing) setEditing(false);
-    }
-
     function setEditing(on) {
-        if (on && grid.getColumn() === 1) return;
         editing = on;
         boardEl.classList.toggle('ld-editing', on);
         grid.setStatic(!on);
@@ -460,6 +474,10 @@
             scheduleFit();
         }
     }
+
+    boardEl.addEventListener('click', (e) => {
+        if (e.target.closest('.ld-empty-add')) document.getElementById('ld-add')?.click();
+    });
 
     editBtn.addEventListener('click', () => setEditing(!editing));
     document.addEventListener('keydown', (e) => {
@@ -1076,7 +1094,7 @@
             return;
         }
         const btn = e.target.closest('[data-action]');
-        if (!btn || !editing) return;
+        if (!btn) return;
         const id = Number(btn.closest('.grid-stack-item')?.dataset.widgetId);
         if (!widgets.has(id)) return;
 
@@ -1276,8 +1294,9 @@
         try {
             const all = await types();
             if (gen !== catalogGen) return;
+            const iconNameOf = (t) => (t && t.icon) || catalog.iconOf(t.type);
             if (!catalogIcons) {
-                const names = [...new Set(all.map((t) => catalog.iconOf(t.type)))];
+                const names = [...new Set(all.map(iconNameOf))];
                 const pack = {};
                 await Promise.all(names.map(async (name) => { pack[name] = await catalog.iconMarkup(name); }));
                 if (gen !== catalogGen) return;
@@ -1299,7 +1318,7 @@
             list.innerHTML = groups.map((group) => {
                 const items = group.items.map((t) => {
                     const taken = !!(t.singleton && present.has(t.type));
-                    const icon = catalogIcons[catalog.iconOf(t.type)] || '';
+                    const icon = catalogIcons[iconNameOf(t)] || '';
                     const desc = taken ? 'Already on the dashboard' : (t.description || '');
                     return `<button type="button" class="ld-catalog-item" data-type="${esc(t.type)}" ${taken ? 'disabled' : ''}>
                         <span class="ld-catalog-icon" aria-hidden="true">${icon}</span>
@@ -1402,13 +1421,67 @@
                         value = [widget.config.metric_id];
                     }
                     return fieldHtml(name, f, value, ms);
-                }).join('');
+                }).join('')
+                + (widget ? lockChrome(widget) : '');
             if (t.type === 'goal') bindGoalLogFields(ms, widget ? widget.config : {});
             form.querySelector('input, select')?.focus();
         } catch (e) {
             fieldsEl.innerHTML = `<p class="ld-error">${esc(e.message)}</p>`;
         }
     }
+
+    function lockChrome(widget) {
+        const entry = widgets.get(widget.id);
+        const height = !!(entry && entry.widget.height_locked);
+        const place = !!(entry && entry.widget.placement_locked);
+        const toggle = (kind, on, label) => `<div class="ld-setting-row"><span>${label}</span><button type="button" class="ld-toggle" data-lock="${kind}" aria-pressed="${on ? 'true' : 'false'}">${on ? 'On' : 'Off'}</button></div>`;
+        return toggle('height', height, 'Lock height')
+            + toggle('place', place, 'Lock place')
+            + `<div class="ld-state-preview">
+                <span class="ld-state-preview-label">State preview</span>
+                <div class="ld-state-preview-modes">
+                    <button type="button" data-preview="loading">Loading</button>
+                    <button type="button" data-preview="empty">Empty</button>
+                    <button type="button" data-preview="error">Error</button>
+                    <button type="button" data-preview="setup">Setup</button>
+                </div>
+                <div class="ld-state-preview-stage"></div>
+            </div>`;
+    }
+
+    function previewChrome(kind) {
+        const stage = document.querySelector('#ld-config-fields .ld-state-preview-stage');
+        if (!stage) return;
+        if (kind === 'loading') {
+            stage.innerHTML = skeletonHtml();
+            return;
+        }
+        const copy = {
+            empty: { title: 'Nothing here yet', body: 'New data will appear here.' },
+            error: { title: 'Could not load this widget', body: 'Something went wrong.', retry: '' },
+            setup: { title: 'Setup required', body: 'Connect a data source in Settings.', href: '/settings', label: 'Open Settings' },
+        };
+        stage.innerHTML = stateHtml(kind, copy[kind] || copy.empty);
+        fillStateIcon(stage, kind);
+    }
+
+    document.getElementById('ld-config-fields')?.addEventListener('click', (e) => {
+        const lock = e.target.closest('[data-lock]');
+        if (lock && configTarget && configTarget.widget) {
+            const entry = widgets.get(configTarget.widget.id);
+            if (!entry) return;
+            if (lock.dataset.lock === 'height') entry.widget.height_locked = entry.widget.height_locked ? 0 : 1;
+            else entry.widget.placement_locked = entry.widget.placement_locked ? 0 : 1;
+            applyPin(entry);
+            persistPin(entry);
+            const on = lock.dataset.lock === 'height' ? !!entry.widget.height_locked : !!entry.widget.placement_locked;
+            lock.setAttribute('aria-pressed', on ? 'true' : 'false');
+            lock.textContent = on ? 'On' : 'Off';
+            return;
+        }
+        const preview = e.target.closest('[data-preview]');
+        if (preview) previewChrome(preview.dataset.preview);
+    });
 
     function fieldHtml(name, f, value, ms, placeholder) {
         const id = `ld-f-${name}`;
@@ -1902,7 +1975,6 @@
         if (cols !== 1) commitPositions();
         applyGridCap(grid.getColumn());
         projectedCols = grid.getColumn();
-        syncPhoneEdit();
         // Content is already on screen, so fit in this turn. One paint, one move.
         if (animate) runFit();
         else requestAnimationFrame(() => grid.setAnimation(true));

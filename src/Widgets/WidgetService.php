@@ -54,6 +54,8 @@ final class WidgetService
     private const SEEDED_PREF = 'dashboard_grid_seeded';
     /** One-time: close a hero-sized hole at the top, then add the overview widgets. */
     public const OVERVIEW_PREF = 'overview_widgets_v1';
+
+    public const BOARD_CARDS_PREF = 'board_cards_v1';
     /**
      * Default spots in one full-width row under the search box.
      * The block is 4 rows tall, so existing cards shift down once and sit against it.
@@ -1173,6 +1175,32 @@ final class WidgetService
     }
 
     /**
+     * Once per user: append assistant, clock, and features under the cards
+     * already on the board. A second run does not move anything.
+     */
+    public function ensureBoardCards(int $userId): void
+    {
+        $prefs = new PreferenceService($this->db);
+        if ($prefs->get($userId, self::BOARD_CARDS_PREF) === '1') {
+            return;
+        }
+
+        $this->db->transaction(function (Database $db) use ($userId, $prefs): void {
+            $db->fetchScalar('SELECT pg_advisory_xact_lock(?, ?)', [0x4c47, $userId]);
+            if ($prefs->get($userId, self::BOARD_CARDS_PREF) === '1') {
+                return;
+            }
+            $have = array_fill_keys(array_column($this->list($userId), 'type'), true);
+            foreach (['assistant', 'clock', 'features'] as $type) {
+                if (!isset($have[$type])) {
+                    $this->create($userId, $type, null, [], null, 'system');
+                }
+            }
+            $prefs->set($userId, self::BOARD_CARDS_PREF, '1');
+        });
+    }
+
+    /**
      * Legacy visible widgets in their saved order, packed 4 per row on a 12-col grid,
      * with habits and a 3-column mood on top and clipboards/news full width below.
      *
@@ -1240,6 +1268,7 @@ final class WidgetService
             'placement_locked' => (int) ($row['placement_locked'] ?? 0),
             'min_w'         => (int) ($def['min']['w'] ?? 1),
             'min_h'       => (int) ($def['min']['h'] ?? 1),
+            'icon'        => $def !== null ? WidgetTypeRegistry::icon($type) : 'layout-dashboard',
             'created_by'  => (string) $row['created_by'],
             'updated_at'  => (string) $row['updated_at'],
         ];

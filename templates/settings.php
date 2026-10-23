@@ -91,7 +91,7 @@ require __DIR__ . '/settings/_shell-top.php';
                         </div>
                     </div>
 
-                    <h2 class="settings-section">Timezone bar</h2>
+                    <h2 class="settings-section">Clock</h2>
                     <div class="settings-field">
                         <span class="settings-label" id="clock-format-label">Clock format</span>
                         <div class="settings-seg" role="radiogroup" aria-labelledby="clock-format-label">
@@ -103,7 +103,7 @@ require __DIR__ . '/settings/_shell-top.php';
                             </label>
                             <?php endforeach; ?>
                         </div>
-                        <p class="settings-help">Applies to the timezone bar on the dashboard. Hover a clock to see sync offset. Press <kbd class="mono">Alt+J</kbd> on the dashboard to jam time from the server.</p>
+                        <p class="settings-help">Applies to the clock widget on the dashboard. Hover a clock to see sync offset. Press <kbd class="mono">Alt+J</kbd> on the dashboard to jam time from the server.</p>
                     </div>
                     <div class="settings-field">
                         <label class="settings-check">

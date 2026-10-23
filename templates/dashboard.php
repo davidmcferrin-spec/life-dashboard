@@ -23,8 +23,6 @@ $userId      = (int) $user['id'];
 
 $searchEngine     = $prefService->getSearchEngine($userId);
 $themePref        = $prefService->getTheme($userId);
-$clockFormat         = $prefService->getClockFormat($userId);
-$showBroadcastWeek   = $prefService->getShowBroadcastWeek($userId);
 $showBookmarkIcons   = $prefService->getShowBookmarkIcons($userId);
 $gridMaxWidth        = $prefService->getGridMaxWidth($userId);
 $showAiPresence      = $prefService->getAiPresence($userId);
@@ -42,6 +40,7 @@ $lifedash = Services::fromDatabase($db);
 $lifedash->widgets->ensureSeeded($userId);
 $lifedash->widgets->ensureCompactRow($userId);
 $lifedash->widgets->ensureOverviewWidgets($userId);
+$lifedash->widgets->ensureBoardCards($userId);
 $widgets     = $lifedash->widgets->list($userId);
 $wideLayouts = $lifedash->widgets->breakpointLayouts($userId);
 $onBoard  = array_fill_keys(array_column($widgets, 'type'), true);
@@ -68,16 +67,6 @@ $unfiledBookmarks = $db->fetchAll(
     'SELECT * FROM bookmarks WHERE user_id = ? AND folder_id IS NULL ORDER BY sort_order ASC, title ASC',
     [(int) $user['id']]
 );
-
-// -------------------------------------------------------
-// Timezones
-// -------------------------------------------------------
-$timezones = [
-    ['label' => 'ET', 'tz' => 'America/New_York'],
-    ['label' => 'CT', 'tz' => 'America/Chicago'],
-    ['label' => 'MT', 'tz' => 'America/Denver'],
-    ['label' => 'PT', 'tz' => 'America/Los_Angeles'],
-];
 
 $ldIconHtml = static function (string $name): string {
     $path = __DIR__ . '/../public/assets/vendor/lucide/' . $name . '.svg';
@@ -109,48 +98,18 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
 
 <main class="dash-main mx-auto py-6 space-y-6">
 
-    <?php $pageEyebrow = 'Personal intelligence system'; $pageHeading = 'Dashboard'; require __DIR__ . '/partials/page-heading.php'; ?>
-
-    <!-- -------------------------------------------------------
-         TIMEZONE BAR
-         ------------------------------------------------------- -->
-    <div class="timezone-block flex flex-col items-center gap-2">
-        <section id="timezone-bar" class="flex justify-center gap-8" data-clock-format="<?= e($clockFormat) ?>">
-            <?php foreach ($timezones as $tz): ?>
-            <div class="clock-cell text-center">
-                <div class="clock-label mb-0.5"><?= e($tz['label']) ?></div>
-                <div class="clock-hover">
-                    <div class="clock-time clock" data-tz="<?= e($tz['tz']) ?>" tabindex="0">--:--</div>
-                    <div class="clock-popover" role="tooltip" aria-hidden="true">
-                        <div class="clock-popover-offset"></div>
-                        <div class="clock-popover-jam"></div>
-                        <button type="button" class="clock-jam-btn">Jam (Alt+J)</button>
-                    </div>
-                </div>
-                <div class="clock-ampm ampm" data-tz="<?= e($tz['tz']) ?>"></div>
-            </div>
-            <?php endforeach; ?>
-        </section>
-        <?php if ($showBroadcastWeek): ?>
-        <div id="broadcast-week-line" class="broadcast-week-line text-center" aria-live="polite">
-            <p class="broadcast-week-primary text-muted text-sm"></p>
-            <p class="broadcast-week-detail text-faint text-xs mono mt-0.5"></p>
-        </div>
-        <?php endif; ?>
-    </div>
-
     <!-- -------------------------------------------------------
          Search stays fixed and centered. Vitals, agenda, and quick actions
          are ordinary widgets in the grid below.
          ------------------------------------------------------- -->
     <section class="ld-board" aria-label="Dashboard widgets">
-        <?php foreach (['ellipsis', 'grip-vertical', 'lock-keyhole', 'lock-keyhole-open', 'maximize-2', 'pencil', 'plus', 'sliders-horizontal', 'trash-2'] as $ldIconName): ?>
+        <?php foreach (['ellipsis', 'grip-vertical', 'lock-keyhole', 'lock-keyhole-open', 'maximize-2', 'pencil', 'plus', 'sliders-horizontal', 'trash-2', 'brain', 'shield-check', 'mic', 'arrow-up-right', 'layout-dashboard', 'clock-3', 'bookmark', 'sun', 'calendar-days', 'sparkles', 'command'] as $ldIconName): ?>
         <template id="ld-ico-<?= e($ldIconName) ?>"><?= $ldIconHtml($ldIconName) ?></template>
         <?php endforeach; ?>
         <div class="ld-toolbar">
             <span id="ld-status" class="text-faint text-xs mono" aria-live="polite"></span>
             <div class="ld-toolbar-actions">
-                <button type="button" id="ld-add" class="btn text-xs ld-edit-only"><span class="ld-ico"><?= $ldIconHtml('plus') ?></span> Add widget</button>
+                <button type="button" id="ld-add" class="btn text-xs"><span class="ld-ico"><?= $ldIconHtml('plus') ?></span> Add widget</button>
                 <button type="button" id="ld-edit" class="btn text-xs" aria-pressed="false"><span class="ld-edit-icon ld-ico"><?= $ldIconHtml('pencil') ?></span><span class="ld-edit-label">Edit layout</span></button>
             </div>
         </div>
@@ -184,10 +143,19 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
             <div id="local-search" class="local-search hidden ov-results" aria-live="polite"></div>
         </div>
 
+        <template id="ld-empty-tpl">
+            <span class="ld-empty-icon" aria-hidden="true"><?= $ldIconHtml('layout-dashboard') ?></span>
+            <h2 class="ld-empty-title">Your board is empty</h2>
+            <p class="ld-empty-copy">Add widgets from the catalog to build your command center.</p>
+            <button type="button" class="btn ld-empty-add">Add widget</button>
+        </template>
         <?php if ($widgets === []): ?>
-        <p id="ld-empty" class="empty-state mono text-xs py-6 text-center">
-            No widgets yet. Choose <span class="text-secondary">Edit layout → + Add widget</span>.
-        </p>
+        <div id="ld-empty" class="ld-empty-board">
+            <span class="ld-empty-icon" aria-hidden="true"><?= $ldIconHtml('layout-dashboard') ?></span>
+            <h2 class="ld-empty-title">Your board is empty</h2>
+            <p class="ld-empty-copy">Add widgets from the catalog to build your command center.</p>
+            <button type="button" class="btn ld-empty-add" id="ld-empty-add">Add widget</button>
+        </div>
         <?php endif; ?>
 
         <div id="ld-grid" class="grid-stack dashboard-widgets ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
@@ -213,14 +181,15 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
                         $placeOn = !empty($w['placement_locked']);
                         $locked = $heightOn || $placeOn;
                     ?>
-                    <div class="ld-edit-bar ld-edit-only">
-                        <span class="ld-drag" title="Drag to move" aria-hidden="true"><?= $ldIconHtml('grip-vertical') ?></span>
+                    <div class="ld-edit-bar">
+                        <?php if ($legacyKey !== null && $w['type'] !== 'legacy.news' && $w['type'] !== 'legacy.clipboards'): ?>
+                        <span class="ld-bar-icon" aria-hidden="true"><?= $ldIconHtml(WidgetTypeRegistry::icon($w['type'])) ?></span>
+                        <?php endif; ?>
+                        <span class="ld-drag ld-edit-only" title="Drag to move" aria-hidden="true"><?= $ldIconHtml('grip-vertical') ?></span>
                         <div class="ld-menu">
                             <button type="button" class="ld-menu-trigger" aria-haspopup="menu" aria-expanded="false" aria-label="Widget menu"><?= $ldIconHtml('ellipsis') ?></button>
                             <div class="ld-menu-panel" role="menu" hidden>
-                                <?php if ($legacyKey === null) {
-                                    echo $ldMenuItem('configure', 'sliders-horizontal', 'Settings');
-                                } ?>
+                                <?= $ldMenuItem('configure', 'sliders-horizontal', 'Settings') ?>
                                 <?= $ldMenuItem('lock-height', 'lock-keyhole-open', $heightOn ? 'Unlock height' : 'Lock height', $heightOn) ?>
                                 <?= $ldMenuItem('lock-place', 'lock-keyhole-open', $placeOn ? 'Unlock place' : 'Lock place', $placeOn) ?>
                                 <?= $ldMenuItem('fit', 'maximize-2', 'Fit to content') ?>
@@ -233,7 +202,7 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
                     <div class="ld-w-scroll"><?php require $partial; ?></div>
                     <?php else: ?>
                     <div class="ld-w-head dashboard-widget-head">
-                        <h2 class="section-title ld-w-title"><?= e($w['title'] ?? $w['label']) ?></h2>
+                        <h2 class="section-title ld-w-title"><span class="ld-w-icon" aria-hidden="true"><?= $ldIconHtml(WidgetTypeRegistry::icon($w['type'])) ?></span><?= e($w['title'] ?? $w['label']) ?></h2>
                         <span class="ld-lock-badge"<?= $locked ? '' : ' hidden' ?> aria-label="Locked"><?= $ldIconHtml('lock-keyhole') ?></span>
                         <div class="ld-w-tools"></div>
                     </div>
@@ -335,8 +304,8 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
     var hint = 'How can I assist you?';
     var show = function () { input.placeholder = hint; };
     show();
-    document.querySelectorAll('.search-engine-btn').forEach(function (btn) {
-        btn.addEventListener('click', show);
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('.search-engine-btn')) show();
     });
 })();
 </script>
@@ -357,6 +326,7 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
 <script src="/assets/vendor/gridstack-12.6.0/gridstack-all.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-renderers.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/lifedash-board.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-grid.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
 <?php if ($showAiPresence): ?>

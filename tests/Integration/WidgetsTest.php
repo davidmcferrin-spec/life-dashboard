@@ -291,4 +291,32 @@ final class WidgetsTest extends PgsqlTestCase
         self::assertSame([0, 9, 4], [$weatherAfter['x'], $weatherAfter['y'], $weatherAfter['w']], 'a later reload does not grow the gap');
         self::assertSame([4, 4], [$todosAfter['x'], $todosAfter['y']]);
     }
+
+    public function testBoardCardsSeedOnceAndAssistantStatusIsReal(): void
+    {
+        $weather = $this->svc->widgets->create($this->user, 'legacy.weather', null, [], ['x' => 2, 'y' => 3, 'w' => 3, 'h' => 3]);
+        $this->svc->widgets->ensureBoardCards($this->user);
+        $this->svc->widgets->ensureBoardCards($this->user);
+
+        $list = $this->svc->widgets->list($this->user);
+        $byType = [];
+        foreach ($list as $row) {
+            $byType[$row['type']] = $row;
+        }
+        self::assertArrayHasKey('assistant', $byType);
+        self::assertArrayHasKey('clock', $byType);
+        self::assertArrayHasKey('features', $byType);
+        self::assertCount(1, array_filter($list, static fn (array $row): bool => $row['type'] === 'assistant'));
+        $kept = $this->svc->widgets->get($this->user, $weather['id']);
+        self::assertSame([2, 3, 3], [$kept['x'], $kept['y'], $kept['w']]);
+
+        $data = $this->svc->widgetData->forWidget($this->user, $byType['assistant']['id']);
+        self::assertSame('Nothing is scheduled.', $data['status']);
+        self::assertStringNotContainsString('All systems are calm', $data['status']);
+        self::assertStringNotContainsString('42 minutes', $data['status']);
+        $labels = array_column($data['engines'], 'label');
+        self::assertSame(['Local', 'Google', 'DDG', 'Bing', 'Grok', 'Claude'], $labels);
+        self::assertTrue($data['engines'][0]['local']);
+        self::assertFalse($data['engines'][1]['local']);
+    }
 }

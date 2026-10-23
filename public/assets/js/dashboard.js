@@ -117,11 +117,11 @@ function isEditableTarget(el) {
 }
 
 function initClockJam() {
-    $$('.clock-jam-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            performJam();
-        });
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.clock-jam-btn');
+        if (!btn) return;
+        e.stopPropagation();
+        performJam();
     });
 
     document.addEventListener('keydown', (e) => {
@@ -242,8 +242,10 @@ function applyEngine(engineKey) {
     }).catch(() => {}); // non-critical
 }
 
-$$('.search-engine-btn').forEach(btn => {
-    btn.addEventListener('click', () => applyEngine(btn.dataset.engine));
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.search-engine-btn');
+    if (!btn || !btn.dataset.engine) return;
+    applyEngine(btn.dataset.engine);
 });
 
 applyEngine(getActiveEngine());
@@ -391,7 +393,7 @@ document.getElementById('weather-refresh')?.addEventListener('click', initWeathe
 initWeather();
 
 // -------------------------------------------------------
-// Widget menu (edit mode). Actions themselves stay in lifedash-grid.js.
+// Widget menu. Actions themselves stay in lifedash-grid.js.
 // -------------------------------------------------------
 
 function closeWidgetMenus() {
