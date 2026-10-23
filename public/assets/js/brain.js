@@ -37,14 +37,27 @@
     let didExpand = false;
     const expanded = new Set();
     const split = document.getElementById('brain-split');
-    preview.hidden = true;
-    stage.classList.remove('is-preview');
-    split.style.gridTemplateColumns = '1fr';
     try {
         redlineBox.checked = localStorage.getItem(REDLINE_KEY) === '1';
     } catch (err) {
         redlineBox.checked = false;
     }
+
+    function setView(mode) {
+        const previewing = mode === 'preview';
+        document.querySelectorAll('[data-brain-tab]').forEach((item) => {
+            const on = item.dataset.brainTab === mode;
+            item.classList.toggle('is-active', on);
+            item.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        bodyEl.hidden = previewing;
+        preview.hidden = !previewing;
+        stage.classList.toggle('is-preview', previewing);
+        split.style.gridTemplateColumns = '1fr';
+        if (previewing) renderMarkdown(bodyEl.value);
+    }
+
+    setView('preview');
 
     function setStatus(text) {
         statusEl.textContent = text || '';
@@ -243,9 +256,12 @@
 
     async function openPage(id) {
         const res = await api.get('/pages/' + id);
+        const opened = !current || current.id !== res.page.id;
         const brief = pages.find((page) => page.id === res.page.id);
         if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, folder_id: res.page.folder_id, updated_at: res.page.updated_at });
         show(res.page);
+        // Opening a note starts in preview. Save and move keep the Edit toggle.
+        if (opened) setView('preview');
     }
 
     async function save() {
@@ -400,15 +416,7 @@
     titleEl.addEventListener('input', () => { dirty = true; });
     bodyEl.addEventListener('input', () => { dirty = true; renderMarkdown(bodyEl.value); });
     document.querySelectorAll('[data-brain-tab]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const previewing = btn.dataset.brainTab === 'preview';
-            document.querySelectorAll('[data-brain-tab]').forEach((item) => item.classList.toggle('is-active', item === btn));
-            bodyEl.hidden = previewing;
-            preview.hidden = !previewing;
-            stage.classList.toggle('is-preview', previewing);
-            split.style.gridTemplateColumns = '1fr';
-            if (previewing) renderMarkdown(bodyEl.value);
-        });
+        btn.addEventListener('click', () => setView(btn.dataset.brainTab));
     });
     async function viewRevision(version) {
         if (!current) return;

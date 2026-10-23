@@ -26,11 +26,11 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         </div>
         <div id="brain-tree" class="brain-tree"></div>
     </aside>
-    <section class="brain-stage">
+    <section class="brain-stage is-preview">
         <div class="brain-tabs">
             <div>
-                <button type="button" data-brain-tab="edit" class="is-active">Edit</button>
-                <button type="button" data-brain-tab="preview">Preview</button>
+                <button type="button" data-brain-tab="edit" aria-pressed="false">Edit</button>
+                <button type="button" data-brain-tab="preview" class="is-active" aria-pressed="true">Preview</button>
             </div>
             <div class="flex items-center gap-2">
                 <select id="brain-kind" class="input text-xs">
@@ -50,9 +50,9 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                 <select id="brain-move" class="input text-xs" aria-label="Move page to folder"></select>
             </label>
         </div>
-        <div class="brain-split" id="brain-split">
-            <textarea id="brain-body" class="brain-editor" placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
-            <div id="brain-preview" class="brain-preview km" hidden></div>
+        <div class="brain-split" id="brain-split" style="grid-template-columns: 1fr">
+            <textarea id="brain-body" class="brain-editor" hidden placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
+            <div id="brain-preview" class="brain-preview km"></div>
         </div>
         <pre id="brain-redline-view" class="brain-redline" hidden aria-label="Red-line of this version against the current page"></pre>
         <p id="brain-status" class="ld-meta mt-2"></p>
