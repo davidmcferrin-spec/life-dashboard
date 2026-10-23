@@ -30,7 +30,7 @@ final class DashboardNavTest extends TestCase
             'class="app-settings-pin',
             'class="app-settings-cog"',
             'app-settings-label">Settings</span>',
-            'M9.56 2.2A10.1',
+            'vendor/lucide/settings.svg',
             'href="/logout"',
             'data-player-toggle',
             'id="live-date"',
@@ -40,6 +40,16 @@ final class DashboardNavTest extends TestCase
             self::assertStringContainsString($needle, $html);
         }
         self::assertStringNotContainsString('M12 3.2v2.2', $html);
+        self::assertStringNotContainsString('M9.56 2.2A10.1', $html);
+
+        $gear = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/settings.svg');
+        self::assertIsString($gear);
+        self::assertStringContainsString('class="lucide lucide-settings"', $gear);
+        self::assertStringContainsString('M9.671 4.136a2.34', $gear);
+        self::assertStringContainsString('stroke="currentColor"', $gear);
+        self::assertStringContainsString('stroke-width="2"', $gear);
+        self::assertStringContainsString('lucide-static v1.61.0 - ISC', $gear);
+        self::assertStringNotContainsString('M9.56 2.2A10.1', $gear);
     }
 
     public function testPhoneDrawerDoesNotStretchTheHeader(): void
