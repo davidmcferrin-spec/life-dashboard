@@ -80,6 +80,30 @@ function spotifyDeviceIcon(type) {
     return '<svg viewBox="0 0 16 16" aria-hidden="true">' + shape + '</svg>';
 }
 
+// Long enough to choose a playlist and press Play; a quiet picker should not keep a stale choice.
+const SPOTIFY_PICK_HOLD_MS = 30000;
+
+function spotifyHoldId(id, at, now, limit, ids) {
+    if (id == null || id === '') return '';
+    const key = String(id);
+    if (!Number.isFinite(Number(at)) || now - Number(at) > limit) return '';
+    if (ids && ids.indexOf(key) === -1) return '';
+    return key;
+}
+
+function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
+    // An open picker keeps its node, options, and value so a poll cannot close it or clear the choice.
+    if (!select || open) return;
+    const next = value == null ? '' : String(value);
+    if (select.dataset.options !== optionKey) {
+        select.innerHTML = optionsHtml;
+        select.dataset.options = optionKey;
+        select.value = next;
+        return;
+    }
+    if (select.value !== next) select.value = next;
+}
+
 (function () {
     const STORE = 'ld_spotify_player';
     const PLAYER_NAME = 'Life Dashboard';
@@ -220,50 +244,248 @@ function spotifyDeviceIcon(type) {
         return (devices || []).filter(function (device) { return device.is_active; })[0] || null;
     }
 
-    function render(config, now, devices, playlists) {
-        const el = shell();
-        view = { now: now || null, devices: devices || [], playlists: playlists || [] };
-        if (!config.connected) {
-            el.classList.remove('is-min');
-            el.innerHTML = '<a class="sp-pill" href="/settings/spotify">Connect Spotify</a>';
-            clamp(el);
+    let playlistHoldId = '';
+    let playlistHoldAt = 0;
+    let deviceHoldId = '';
+    let deviceHoldAt = 0;
+
+    function notePick(kind, value) {
+        const id = value == null ? '' : String(value);
+        const at = id ? Date.now() : 0;
+        if (kind === 'device') {
+            deviceHoldId = id;
+            deviceHoldAt = at;
             return;
         }
-        playing = !!(now && now.is_playing);
-        if (now) {
-            shuffleOn = !!now.shuffle;
-            if (now.repeat === 'off' || now.repeat === 'context' || now.repeat === 'track') {
-                repeatMode = now.repeat;
-            }
+        playlistHoldId = id;
+        playlistHoldAt = at;
+    }
+
+    function touchPick(kind) {
+        if (kind === 'device') {
+            if (deviceHoldId) deviceHoldAt = Date.now();
+            return;
         }
-        const collapsed = state.min === true;
+        if (playlistHoldId) playlistHoldAt = Date.now();
+    }
+
+    function playlistIds(playlists) {
+        return (playlists || []).filter(function (row) { return row.spotify_id; }).map(function (row) {
+            return String(row.id);
+        });
+    }
+
+    function heldPlaylistId(playlists) {
+        const next = spotifyHoldId(playlistHoldId, playlistHoldAt, Date.now(), SPOTIFY_PICK_HOLD_MS, playlistIds(playlists));
+        if (playlistHoldId && !next) {
+            playlistHoldId = '';
+            playlistHoldAt = 0;
+        }
+        return next;
+    }
+
+    function heldDeviceId(devices) {
+        const ids = (devices || []).map(function (device) { return String(device.id); });
+        const next = spotifyHoldId(deviceHoldId, deviceHoldAt, Date.now(), SPOTIFY_PICK_HOLD_MS, ids);
+        if (deviceHoldId && !next) {
+            deviceHoldId = '';
+            deviceHoldAt = 0;
+        }
+        return next;
+    }
+
+    function playlistOptionKey(playlists) {
+        return JSON.stringify((playlists || []).filter(function (row) { return row.spotify_id; }).map(function (row) {
+            return [Number(row.id), String(row.name || '')];
+        }).sort(function (a, b) { return a[0] - b[0]; }));
+    }
+
+    function deviceOptionKey(devices) {
+        return JSON.stringify((devices || []).map(function (device) {
+            return [String(device.id), String(device.type || ''), String(device.name || '')];
+        }).sort(function (a, b) {
+            return a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0);
+        }));
+    }
+
+    function playlistOptionsHtml(playlists, selectedId) {
+        return (playlists || []).filter(function (row) { return row.spotify_id; }).map(function (row) {
+            const id = String(row.id);
+            const selected = selectedId && id === String(selectedId) ? ' selected' : '';
+            return '<option value="' + id + '"' + selected + '>' + escapeHtml(spotifyClip(row.name, 42)) + '</option>';
+        }).join('');
+    }
+
+    function deviceOptionsHtml(devices, selectedId) {
+        return (devices || []).map(function (device) {
+            const id = String(device.id);
+            const selected = selectedId && id === String(selectedId) ? ' selected' : '';
+            return '<option value="' + escapeHtml(device.id) + '"' + selected + '>' + escapeHtml(spotifyDeviceLabel(device)) + '</option>';
+        }).join('');
+    }
+
+    function pickerOpen(select) {
+        return !!(select && document.activeElement === select);
+    }
+
+    function paintArt(el, now) {
+        const art = el.querySelector('.sp-art');
+        if (!art) return;
+        const url = now && now.image_url ? String(now.image_url) : '';
+        if ((art.dataset.url || '') === url) return;
+        art.outerHTML = url
+            ? '<img class="sp-art" alt="" data-url="' + escapeHtml(url) + '" src="' + escapeHtml(url) + '">'
+            : '<div class="sp-art" data-url=""></div>';
+    }
+
+    function paintIconButton(button, name, label) {
+        if (!button) return;
+        if (label != null) {
+            button.setAttribute('aria-label', label);
+            button.setAttribute('title', label);
+        }
+        if (button.dataset.icon !== name) {
+            button.dataset.icon = name;
+            button.innerHTML = icon(name);
+        }
+    }
+
+    function patchLive(el, now, devices, collapsed, volume, volumeFocused) {
         el.classList.toggle('is-min', collapsed);
-        const art = now && now.image_url ? '<img class="sp-art" alt="" src="' + escapeHtml(now.image_url) + '">' : '<div class="sp-art"></div>';
+        const toggleLabel = collapsed ? 'Expand player' : 'Collapse player';
+        const collapse = el.querySelector('[data-collapse]');
+        if (collapse) {
+            collapse.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
+            collapse.setAttribute('aria-label', toggleLabel);
+            collapse.setAttribute('title', toggleLabel);
+            paintIconButton(collapse, collapsed ? 'chevron-up' : 'chevron', null);
+        }
+        paintArt(el, now);
+        const title = el.querySelector('.sp-title');
+        const artists = el.querySelector('.sp-artists');
+        const titleText = now && now.name ? String(now.name) : 'Nothing playing';
+        const artistText = now && now.artists ? now.artists.join(', ') : '';
+        if (title && title.textContent !== titleText) title.textContent = titleText;
+        if (artists && artists.textContent !== artistText) artists.textContent = artistText;
+        const seek = el.querySelector('[data-seek]');
+        if (seek && document.activeElement !== seek) {
+            const max = now && now.duration_ms ? String(now.duration_ms) : '0';
+            const value = now && now.progress_ms ? String(now.progress_ms) : '0';
+            if (seek.max !== max) seek.max = max;
+            if (seek.value !== value) seek.value = value;
+        }
+        const shuffle = el.querySelector('[data-cmd="shuffle"]');
+        if (shuffle) {
+            shuffle.classList.toggle('is-on', shuffleOn);
+            shuffle.setAttribute('aria-pressed', shuffleOn ? 'true' : 'false');
+        }
+        const playName = playing ? 'pause' : 'play';
+        const play = el.querySelector('.sp-play');
+        if (play) {
+            play.dataset.cmd = playName;
+            paintIconButton(play, playName, playing ? 'Pause' : 'Play');
+        }
+        const repeatText = repeatMode === 'track' ? 'Repeat track' : (repeatMode === 'context' ? 'Repeat playlist' : 'Repeat off');
+        const repeat = el.querySelector('[data-cmd="repeat"]');
+        if (repeat) {
+            repeat.classList.toggle('is-on', repeatMode !== 'off');
+            repeat.setAttribute('aria-pressed', repeatMode === 'off' ? 'false' : 'true');
+            paintIconButton(repeat, repeatMode === 'track' ? 'repeat-one' : 'repeat', repeatText);
+        }
+        const muteLabel = volume > 0 ? 'Mute' : 'Unmute';
+        const mute = el.querySelector('[data-mute]');
+        if (mute) {
+            mute.setAttribute('aria-pressed', volume > 0 ? 'false' : 'true');
+            paintIconButton(mute, volume > 0 ? 'speaker' : 'speaker-off', muteLabel);
+        }
+        if (!volumeFocused) {
+            el.querySelectorAll('[data-volume]').forEach(function (slider) {
+                if (slider.value !== String(volume)) slider.value = String(volume);
+            });
+        }
+        const active = activeDevice(devices);
+        const deviceLine = !devices || !devices.length
+            ? 'Device'
+            : (active ? 'Active: ' + active.type + ' · ' + active.name : 'No device is active.');
+        const line = el.querySelector('[data-device-line]');
+        const lineText = spotifyClip(deviceLine, 48);
+        if (line && line.textContent !== lineText) line.textContent = lineText;
+        const head = el.querySelector('[data-device-head]');
+        if (!head) return;
+        const iconWrap = head.querySelector('.sp-device-icon');
+        if (active) {
+            const mark = spotifyDeviceIcon(active.type);
+            if (!iconWrap) {
+                head.insertAdjacentHTML('afterbegin', '<span class="sp-device-icon" data-type="' + escapeHtml(active.type || '') + '" aria-hidden="true">' + mark + '</span>');
+            } else if (iconWrap.dataset.type !== String(active.type || '')) {
+                iconWrap.dataset.type = String(active.type || '');
+                iconWrap.innerHTML = mark;
+            }
+        } else if (iconWrap) {
+            iconWrap.remove();
+        }
+    }
+
+    function paintPlaylistSelect(el, playlists, playlistKey, chosenId) {
+        const select = el.querySelector('[data-playlist]');
+        if (!select) return;
+        const options = '<option value="">Choose</option>' + playlistOptionsHtml(playlists, chosenId);
+        spotifySyncSelect(select, pickerOpen(select), playlistKey, options, chosenId);
+    }
+
+    function paintDeviceLabels(select, devices) {
+        if (!select || pickerOpen(select) || !select.options) return;
+        const labels = {};
+        (devices || []).forEach(function (device) {
+            labels[String(device.id)] = spotifyDeviceLabel(device);
+        });
+        Array.prototype.forEach.call(select.options, function (option) {
+            const label = labels[option.value];
+            if (!label || option.text === label) return;
+            option.text = label;
+        });
+    }
+
+    function paintDeviceSelect(el, devices, deviceKey, chosenId) {
+        const slot = el.querySelector('[data-device-slot]');
+        if (!slot) return;
+        const select = slot.querySelector('[data-device]');
+        if (pickerOpen(select)) return;
+        if (devices && devices.length) {
+            const options = '<option value="">Choose a device</option>' + deviceOptionsHtml(devices, chosenId);
+            if (!select) {
+                slot.innerHTML = '<select data-device aria-label="Device">' + options + '</select>';
+                const created = slot.querySelector('[data-device]');
+                created.dataset.options = deviceKey;
+                if (created.value !== chosenId) created.value = chosenId;
+                return;
+            }
+            spotifySyncSelect(select, false, deviceKey, options, chosenId);
+            paintDeviceLabels(select, devices);
+            if (select.value !== chosenId) select.value = chosenId;
+            return;
+        }
+        if (select) {
+            slot.innerHTML = '<p class="sp-note">No devices are available. Open Spotify, then refresh.</p>';
+        }
+    }
+
+    function writeShell(el, now, devices, playlists, collapsed, volume, playlistId, chosenDevice) {
+        const art = now && now.image_url
+            ? '<img class="sp-art" alt="" data-url="' + escapeHtml(now.image_url) + '" src="' + escapeHtml(now.image_url) + '">'
+            : '<div class="sp-art" data-url=""></div>';
         const title = now && now.name ? escapeHtml(now.name) : 'Nothing playing';
         const artists = now && now.artists ? escapeHtml(now.artists.join(', ')) : '';
         const active = activeDevice(devices);
-        const reported = active && active.volume_percent != null ? active.volume_percent : volumeLevel;
-        const volumeFocused = document.activeElement && el.contains(document.activeElement) && document.activeElement.matches('[data-volume]');
-        if (!volumeFocused) {
-            volumeLevel = reported;
-            if (reported > 0) mutedFrom = reported;
-        }
-        const volume = volumeLevel;
-        const deviceOptions = (devices || []).map(function (device) {
-            return '<option value="' + escapeHtml(device.id) + '"' + (device.is_active ? ' selected' : '') + '>' + escapeHtml(spotifyDeviceLabel(device)) + '</option>';
-        }).join('');
-        const playlistOptions = (playlists || []).filter(function (row) { return row.spotify_id; }).map(function (row) {
-            return '<option value="' + row.id + '">' + escapeHtml(spotifyClip(row.name, 42)) + '</option>';
-        }).join('');
         const deviceLine = !devices || !devices.length
             ? 'Device'
             : (active ? 'Active: ' + active.type + ' · ' + active.name : 'No device is active.');
         const deviceMark = active
-            ? '<span class="sp-device-icon" aria-hidden="true">' + spotifyDeviceIcon(active.type) + '</span>'
+            ? '<span class="sp-device-icon" data-type="' + escapeHtml(active.type || '') + '" aria-hidden="true">' + spotifyDeviceIcon(active.type) + '</span>'
             : '';
         const deviceControl = !devices || !devices.length
             ? '<p class="sp-note">No devices are available. Open Spotify, then refresh.</p>'
-            : '<select data-device aria-label="Device"><option value="">Choose a device</option>' + deviceOptions + '</select>';
+            : '<select data-device aria-label="Device"><option value="">Choose a device</option>' + deviceOptionsHtml(devices, chosenDevice) + '</select>';
         const playName = playing ? 'pause' : 'play';
         const repeatText = repeatMode === 'track' ? 'Repeat track' : (repeatMode === 'context' ? 'Repeat playlist' : 'Repeat off');
         const toggleLabel = collapsed ? 'Expand player' : 'Collapse player';
@@ -299,23 +521,77 @@ function spotifyDeviceIcon(type) {
             </div>
             <label class="sp-volume sp-expanded-only">Vol <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume"></label>
             <div class="sp-field sp-expanded-only">
-                <div class="sp-field-head">
-                    ${deviceMark}<span>${escapeHtml(spotifyClip(deviceLine, 48))}</span>
+                <div class="sp-field-head" data-device-head>
+                    ${deviceMark}<span data-device-line>${escapeHtml(spotifyClip(deviceLine, 48))}</span>
                     <button type="button" data-refresh-devices>Refresh</button>
                 </div>
-                ${deviceControl}
+                <div data-device-slot>${deviceControl}</div>
             </div>
             <div class="sp-field sp-expanded-only">
                 <div class="sp-field-head"><span>Playlist</span></div>
                 <div class="sp-field-row">
-                    <select data-playlist aria-label="Playlist"><option value="">Choose</option>${playlistOptions}</select>
+                    <select data-playlist aria-label="Playlist"><option value="">Choose</option>${playlistOptionsHtml(playlists, playlistId)}</select>
                     <button type="button" data-play-list>Play</button>
                 </div>
             </div>
             <button type="button" class="sp-expanded-only" data-queue>Queue</button>
             <p class="sp-sdk-note"${sdkNote ? '' : ' hidden'}></p>`;
+    }
+
+    function render(config, now, devices, playlists) {
+        const el = shell();
+        view = { now: now || null, devices: devices || [], playlists: playlists || [] };
+        if (!config.connected) {
+            el.classList.remove('is-min');
+            el.innerHTML = '<a class="sp-pill" href="/settings/spotify">Connect Spotify</a>';
+            clamp(el);
+            return;
+        }
+        playing = !!(now && now.is_playing);
+        if (now) {
+            shuffleOn = !!now.shuffle;
+            if (now.repeat === 'off' || now.repeat === 'context' || now.repeat === 'track') {
+                repeatMode = now.repeat;
+            }
+        }
+        const collapsed = state.min === true;
+        const active = activeDevice(devices);
+        const reported = active && active.volume_percent != null ? active.volume_percent : volumeLevel;
+        const volumeFocused = document.activeElement && el.contains(document.activeElement) && document.activeElement.matches('[data-volume]');
+        if (!volumeFocused) {
+            volumeLevel = reported;
+            if (reported > 0) mutedFrom = reported;
+        }
+        const volume = volumeLevel;
+        const playlistKey = playlistOptionKey(playlists);
+        const deviceKey = deviceOptionKey(devices);
+        const playlistId = heldPlaylistId(playlists);
+        const chosenDevice = heldDeviceId(devices) || (active ? String(active.id) : '');
+        const playlistSelect = el.querySelector('[data-playlist]');
+        const deviceSelect = el.querySelector('[data-device]');
+        if (playlistSelect && (pickerOpen(playlistSelect) || pickerOpen(deviceSelect))) {
+            return;
+        }
+        if (!playlistSelect) {
+            el.classList.toggle('is-min', collapsed);
+            writeShell(el, now, devices, playlists, collapsed, volume, playlistId, chosenDevice);
+            const createdPlaylist = el.querySelector('[data-playlist]');
+            const createdDevice = el.querySelector('[data-device]');
+            if (createdPlaylist) {
+                createdPlaylist.dataset.options = playlistKey;
+                if (createdPlaylist.value !== playlistId) createdPlaylist.value = playlistId;
+            }
+            if (createdDevice) {
+                createdDevice.dataset.options = deviceKey;
+                if (createdDevice.value !== chosenDevice) createdDevice.value = chosenDevice;
+            }
+        } else {
+            patchLive(el, now, devices, collapsed, volume, volumeFocused);
+            paintPlaylistSelect(el, playlists, playlistKey, playlistId);
+            paintDeviceSelect(el, devices, deviceKey, chosenDevice);
+        }
         paintNote(el);
-        clamp(el);
+        if (!pickerOpen(el.querySelector('[data-playlist]')) && !pickerOpen(el.querySelector('[data-device]'))) clamp(el);
     }
 
     function escapeHtml(value) {
@@ -339,12 +615,12 @@ function spotifyDeviceIcon(type) {
         try {
             devices = (await api('GET', '/spotify/devices')).devices || [];
         } catch (err) {
-            devices = [];
+            devices = view.devices || [];
         }
         try {
             playlists = (await api('GET', '/spotify/playlists')).playlists || [];
         } catch (err) {
-            playlists = [];
+            playlists = view.playlists || [];
         }
         const host = document.getElementById('sp-player');
         if (!force && document.activeElement && host && host.contains(document.activeElement) && document.activeElement.matches('input, select')) {
@@ -453,6 +729,7 @@ function spotifyDeviceIcon(type) {
             try {
                 if (button.dataset.cmd === 'play') {
                     await command('play', deviceId ? { device_id: deviceId } : {});
+                    notePick('device', '');
                 } else if (button.dataset.cmd) {
                     const map = { pause: 'pause', next: 'next', previous: 'previous', shuffle: 'shuffle', repeat: 'repeat' };
                     const action = map[button.dataset.cmd];
@@ -466,6 +743,9 @@ function spotifyDeviceIcon(type) {
                     const select = el.querySelector('[data-playlist]');
                     if (select && select.value) {
                         await command('play', { playlist_id: Number(select.value), device_id: deviceId || undefined });
+                        notePick('playlist', '');
+                        notePick('device', '');
+                        select.value = '';
                     }
                 } else if (button.dataset.queue !== undefined) {
                     await openQueue();
@@ -525,13 +805,25 @@ function spotifyDeviceIcon(type) {
                         mute.setAttribute('aria-pressed', level > 0 ? 'false' : 'true');
                     }
                     return;
-                } else if (event.target.matches('[data-device]') && event.target.value) {
-                    await command('transfer', { device_id: event.target.value });
+                } else if (event.target.matches('[data-playlist]')) {
+                    notePick('playlist', event.target.value);
+                    return;
+                } else if (event.target.matches('[data-device]')) {
+                    notePick('device', event.target.value);
+                    if (event.target.value) await command('transfer', { device_id: event.target.value });
                 }
             } catch (err) {
                 showCommandError(err);
             }
             window.setTimeout(function () { refresh(config, true); }, 400);
+        });
+        el.addEventListener('focusin', function (event) {
+            if (event.target.matches('[data-playlist]')) touchPick('playlist');
+            else if (event.target.matches('[data-device]')) touchPick('device');
+        });
+        el.addEventListener('pointerdown', function (event) {
+            if (event.target.matches('[data-playlist]')) touchPick('playlist');
+            else if (event.target.matches('[data-device]')) touchPick('device');
         });
         el.addEventListener('pointerdown', function (event) {
             const handle = event.target.closest('[data-drag]');
