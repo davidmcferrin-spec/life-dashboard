@@ -7,7 +7,8 @@ namespace Dashboard\Mcp;
 /**
  * Whether direct http://<host>:8765 is still accepted, and which hop a call used.
  * A server_flags row named mcp_plain_http overrides MCP_ALLOW_PLAIN_HTTP.
- * A missing row leaves the config value in place. The listen address does not move.
+ * A missing row leaves the config value in place. lifedash-mcp polls the row
+ * and drops 0.0.0.0 when the switch is off, keeping 127.0.0.1.
  */
 final class PlainHttp
 {

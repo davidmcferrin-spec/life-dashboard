@@ -57,11 +57,14 @@ require __DIR__ . '/_shell-top.php';
                     </label>
                     <p id="plain-http-source" class="text-muted text-xs">Effective: <?= e($plainSource) ?></p>
                     <p class="text-muted text-xs">
-                        Off rejects a direct <span class="mono">http://&lt;ip&gt;:8765</span> call with 403 and names
-                        <?= $mcpPublic !== '' ? '<span class="mono">' . e($mcpPublic) . '</span>' : 'the HTTPS URL (set the MCP URL on Settings → Setup)' ?>.
-                        The listen address does not change, and the MCP service does not need a restart.
-                        To close the LAN port as well, set MCP bind to loopback on Settings → Setup and use Restart MCP service.
-                        After that, a LAN client is refused before it can see the 403. The tunnel still dials <span class="mono">127.0.0.1:8765</span>.
+                        Off stops the public listener on <span class="mono">0.0.0.0:<?= e((string) $mcpPort) ?></span>.
+                        The running service keeps <span class="mono">127.0.0.1:<?= e((string) $mcpPort) ?></span>
+                        for the HTTPS proxy and the tunnel. Saving applies that without a restart.
+                        <?php if ($mcpPublic !== ''): ?>
+                            Clients should use <span class="mono"><?= e($mcpPublic) ?></span>.
+                        <?php else: ?>
+                            Set the MCP URL on Settings → Setup so clients know the HTTPS address.
+                        <?php endif; ?>
                     </p>
                     <button type="submit" class="btn text-sm">Save</button>
                 </form>
