@@ -169,17 +169,17 @@
 }
 
 .focus-clock-time.font-dseg7 {
-    font-family: 'DSEG7-Classic', 'IBM Plex Mono', monospace;
+    font-family: 'DSEG7-Classic', var(--font-mono);
     letter-spacing: 0.08em;
     font-weight: normal;
 }
 
 .focus-clock-time.font-inconsolata {
-    font-family: 'Inconsolata', 'IBM Plex Mono', monospace;
+    font-family: 'Inconsolata', var(--font-mono);
 }
 
 .focus-clock-time.font-space_mono {
-    font-family: 'Space Mono', 'IBM Plex Mono', monospace;
+    font-family: 'Space Mono', var(--font-mono);
 }
 
 .focus-clock-time.font-ibm_plex_mono {
@@ -187,7 +187,7 @@
 }
 
 .focus-clock-time.font-source_code_pro {
-    font-family: 'Source Code Pro', 'IBM Plex Mono', monospace;
+    font-family: 'Source Code Pro', var(--font-mono);
 }
 
 .focus-clock-time .fc-ampm {

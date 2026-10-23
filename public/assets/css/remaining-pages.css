@@ -5,23 +5,23 @@
  */
 
 @font-face {
-    font-family: 'IBM Plex Mono';
+    font-family: 'DM Mono';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: url('/assets/fonts/ibm-plex-mono-latin-400.woff2') format('woff2');
+    src: url('/assets/fonts/dm-mono/DMMono-Regular.ttf') format('truetype');
 }
 
 @font-face {
-    font-family: 'IBM Plex Mono';
+    font-family: 'DM Mono';
     font-style: normal;
-    font-weight: 600;
+    font-weight: 500;
     font-display: swap;
-    src: url('/assets/fonts/ibm-plex-mono-latin-600.woff2') format('woff2');
+    src: url('/assets/fonts/dm-mono/DMMono-Medium.ttf') format('truetype');
 }
 
 .ld-shell-page {
-    --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --font-mono: 'DM Mono', ui-monospace, monospace;
 }
 
 .ld-shell-page .page-heading {

@@ -925,7 +925,7 @@
         const muted = mediaCssValue('--text-muted', '#8b979e');
         const accent = mediaCssValue('--accent', '#44d7d0');
         const frameCss = "html,body{margin:0;background:transparent;color:" + text
-            + ";font:13px/1.45 'IBM Plex Sans',sans-serif}a{color:" + accent
+            + ";font:13px/1.45 'Inter',sans-serif}a{color:" + accent
             + "}small{font-size:12px;color:" + muted + "}";
         const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>${frameCss}</style></head><body><script>window.__DATA__=${data};<\/script>${markup}</body></html>`;
         const frame = document.createElement('iframe');
