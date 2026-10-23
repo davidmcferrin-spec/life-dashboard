@@ -16,8 +16,17 @@ ITEM_UNREADABLE = "Spotify reported tracks, but none of them could be read."
 ITEM_FAILED = "Spotify did not return this playlist's tracks."
 
 
-def partition_playlists(local: dict[str, str], remote: list[dict]) -> dict[str, list[str]]:
-    """local maps spotify id to snapshot id. Drafts (no spotify id) are not included."""
+def partition_playlists(
+    local: dict[str, str],
+    remote: list[dict],
+    counts: dict[str, int] | None = None,
+) -> dict[str, list[str]]:
+    """local maps spotify id to snapshot id. Drafts (no spotify id) are not included.
+
+    counts maps the same id to the number of tracks stored locally. A push writes
+    the new snapshot before those tracks exist, so a matching snapshot with a
+    different count still needs a pull.
+    """
     seen: set[str] = set()
     refresh: list[str] = []
     for item in remote:
@@ -25,8 +34,8 @@ def partition_playlists(local: dict[str, str], remote: list[dict]) -> dict[str, 
         if not sid or sid in seen:
             continue
         seen.add(sid)
-        snap = str(item.get("snapshot_id") or "")
-        if sid not in local or local.get(sid) != snap:
+        count = None if counts is None else counts.get(sid)
+        if sid not in local or playlist_needs_pull(local.get(sid, ""), item, count):
             refresh.append(sid)
     removed = [sid for sid in local if sid not in seen]
     return {"refresh": refresh, "removed": removed}
@@ -234,6 +243,43 @@ def playlist_total(remote: dict) -> int | None:
         block = remote.get(key)
         if isinstance(block, dict) and isinstance(block.get("total"), int):
             return int(block["total"])
+    return None
+
+
+def playlist_needs_pull(local_snapshot: str, remote: dict, local_count: int | None = None) -> bool:
+    """True when the snapshot moved, or the stored track count does not match Spotify."""
+    if str(local_snapshot or "") != str(remote.get("snapshot_id") or ""):
+        return True
+    if local_count is None:
+        return False
+    total = playlist_total(remote)
+    if total is None:
+        return False
+    return int(local_count) != total
+
+
+def page_items(data: object) -> list[dict]:
+    """A playlist page is items[]. The playlist object nests that page at items.items."""
+    if not isinstance(data, dict):
+        return []
+    block = data.get("items")
+    if isinstance(block, dict):
+        block = block.get("items")
+    if not isinstance(block, list):
+        return []
+    return [item for item in block if isinstance(item, dict)]
+
+
+def page_next(data: object) -> str | None:
+    if not isinstance(data, dict):
+        return None
+    block = data.get("items")
+    source = data
+    if isinstance(block, dict) and isinstance(block.get("items"), list):
+        source = block
+    nxt = source.get("next")
+    if isinstance(nxt, str) and nxt != "":
+        return nxt
     return None
 
 

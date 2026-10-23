@@ -224,8 +224,4 @@ PY
     esac
 }
 
-shopt -s nullglob
-files=("$INCOMING"/*.json)
-for file in "${files[@]}"; do
-    run_one "$file"
-done
+lifedash_drain_spool "$INCOMING" run_one

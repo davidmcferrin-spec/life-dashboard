@@ -18,9 +18,12 @@ from lifedash.spotify_plan import (
     item_sync_result,
     needs_refresh,
     new_plays,
+    page_items,
+    page_next,
     partition_playlists,
     plan_push,
     playlist_item_object,
+    playlist_needs_pull,
     playlist_total,
 )
 
@@ -45,6 +48,17 @@ def test_partition_refreshes_changed_and_new_playlists_only():
 def test_partition_marks_missing_remote_playlists():
     result = partition_playlists({"aaa": "snap-1"}, [{"id": "zzz", "snapshot_id": "s"}])
     assert result == {"refresh": ["zzz"], "removed": ["aaa"]}
+
+
+def test_partition_refreshes_a_matching_snapshot_when_the_track_count_differs():
+    local = {"aaa": "snap-1"}
+    remote = [{"id": "aaa", "snapshot_id": "snap-1", "items": {"total": 35}}]
+    assert partition_playlists(local, remote)["refresh"] == []
+    assert partition_playlists(local, remote, {"aaa": 35})["refresh"] == []
+    assert partition_playlists(local, remote, {"aaa": 0})["refresh"] == ["aaa"]
+    assert playlist_needs_pull("snap-1", remote[0], 0) is True
+    assert playlist_needs_pull("snap-1", remote[0], 35) is False
+    assert playlist_needs_pull("snap-0", remote[0], 35) is True
 
 
 def test_token_refresh_window():
@@ -168,6 +182,18 @@ def test_playlist_total_reads_items_or_tracks():
     assert playlist_item_object({"track": {"id": "def"}})["id"] == "def"
 
 
+def test_page_items_reads_a_flat_page_and_a_nested_playlist():
+    flat = {"items": [{"item": {"id": "abc"}}], "next": "https://api.spotify.com/v1/next", "total": 2}
+    nested = {"id": "pl", "items": {"total": 2, "next": None, "items": [{"item": {"id": "def"}}]}}
+    library = {"items": [{"id": "pl", "snapshot_id": "snap"}], "next": None}
+    assert page_items(flat) == [{"item": {"id": "abc"}}]
+    assert page_next(flat) == "https://api.spotify.com/v1/next"
+    assert page_items(nested) == [{"item": {"id": "def"}}]
+    assert page_next(nested) is None
+    assert page_items(library) == [{"id": "pl", "snapshot_id": "snap"}]
+    assert page_next(library) is None
+
+
 def test_item_sync_keeps_tracks_when_spotify_refuses_them():
     forbidden = item_sync_result(12, None, 403)
     assert forbidden["replace"] is False
@@ -266,3 +292,99 @@ def test_scrub_redacts_tokens():
     assert "abc.def" not in clean
     assert "=secret" not in clean
     assert "Bearer [redacted]" in clean
+
+
+class _Result:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchone(self):
+        return self.rows[0] if self.rows else None
+
+    def fetchall(self):
+        return list(self.rows)
+
+
+class _Conn:
+    def __init__(self, playlist):
+        self.playlist = playlist
+
+    def execute(self, sql, params=None):
+        text = " ".join(sql.split())
+        if text.startswith("SELECT id, spotify_id, snapshot_id"):
+            return _Result([self.playlist])
+        if "SELECT id, op, payload" in text:
+            return _Result([{"id": 7, "op": "add", "payload": {"uris": ["spotify:track:abc"]}}])
+        if "SELECT spotify_id FROM spotify_playlists" in text:
+            return _Result([{"spotify_id": self.playlist.get("spotify_id")}])
+        return _Result([])
+
+
+def _worker(conn, api):
+    from lifedash.spotify_sync import Worker
+
+    worker = Worker.__new__(Worker)
+    worker.conn = conn
+    worker._api = api
+    return worker
+
+
+def test_pull_one_stores_tracks_when_the_snapshot_already_matches():
+    remote = {"id": "pl", "snapshot_id": "snap", "items": {"total": 35}}
+    saved = []
+    worker = _worker(_Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap", "track_count": 0}), lambda *args, **kwargs: remote)
+    worker._save_remote_playlist = lambda user_id, playlist: saved.append(playlist) or 52
+    assert worker._pull_one(1, 52) == {"refreshed": 1, "removed": 0}
+    assert saved == [remote]
+
+
+def test_pull_one_skips_a_playlist_whose_tracks_are_already_stored():
+    remote = {"id": "pl", "snapshot_id": "snap", "items": {"total": 35}}
+    worker = _worker(_Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap", "track_count": 35}), lambda *args, **kwargs: remote)
+    worker._save_remote_playlist = lambda user_id, playlist: pytest.fail("stored tracks were fetched again")
+    assert worker._pull_one(1, 52) == {"refreshed": 0, "removed": 0}
+
+
+def test_push_reloads_tracks_after_a_successful_add():
+    worker = _worker(_Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap"}), lambda *args, **kwargs: {"snapshot_id": "snap", "id": "pl"})
+    reloaded = []
+    worker._reload_tracks = lambda user_id, playlist_id: reloaded.append((user_id, playlist_id))
+    assert worker._push_playlist(1, 52) == {"pushed": 1, "failed": 0}
+    assert reloaded == [(1, 52)]
+
+
+def test_items_follow_a_nested_playlist_page():
+    pages = {
+        "/playlists/pl/items?limit=50": {
+            "items": {
+                "total": 2,
+                "next": "https://api.spotify.com/v1/playlists/pl/items?offset=1",
+                "items": [{"item": {"id": "abc", "type": "track"}}],
+            }
+        },
+        "https://api.spotify.com/v1/playlists/pl/items?offset=1": {
+            "items": [{"item": {"id": "def", "type": "track"}}],
+            "next": None,
+        },
+    }
+
+    class Http:
+        def api(self, method, path, token, body=None, query=None):
+            return pages[path]
+
+    from lifedash.spotify_sync import Worker
+
+    worker = Worker.__new__(Worker)
+    worker.http = Http()
+    worker._token = lambda user_id, force=False: "tok"
+    rows = worker._items(1, "/playlists/pl/items?limit=50")
+    assert [row["item"]["id"] for row in rows] == ["abc", "def"]
+
+
+def test_reload_keeps_the_push_when_the_follow_up_read_fails():
+    def down(*args, **kwargs):
+        raise SpotifyHttpError("down", 502)
+
+    worker = _worker(_Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap"}), down)
+    worker._note = lambda message: None
+    worker._reload_tracks(1, 52)

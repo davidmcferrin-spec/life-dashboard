@@ -23,9 +23,12 @@ from .spotify_plan import (
     is_playlist_delete,
     item_sync_result,
     needs_refresh,
+    page_items,
+    page_next,
     partition_playlists,
     plan_push,
     playlist_item_object,
+    playlist_needs_pull,
     playlist_total,
 )
 
@@ -168,11 +171,12 @@ class Worker:
     def _pull_all(self, user_id: int) -> dict:
         remote = self._items(user_id, "/me/playlists?limit=50")
         local_rows = self.conn.execute(
-            "SELECT spotify_id, snapshot_id FROM spotify_playlists WHERE user_id = %s AND spotify_id IS NOT NULL",
+            "SELECT spotify_id, snapshot_id, track_count FROM spotify_playlists WHERE user_id = %s AND spotify_id IS NOT NULL",
             (user_id,),
         ).fetchall()
         local = {row["spotify_id"]: row["snapshot_id"] or "" for row in local_rows}
-        part = partition_playlists(local, remote)
+        counts = {row["spotify_id"]: int(row["track_count"] or 0) for row in local_rows}
+        part = partition_playlists(local, remote, counts)
         by_id = {item.get("id"): item for item in remote if item.get("id")}
         for sid in part["refresh"]:
             self._save_remote_playlist(user_id, by_id[sid])
@@ -193,7 +197,7 @@ class Worker:
 
     def _pull_one(self, user_id: int, playlist_id: int) -> dict:
         row = self.conn.execute(
-            "SELECT id, spotify_id, snapshot_id FROM spotify_playlists WHERE user_id = %s AND id = %s",
+            "SELECT id, spotify_id, snapshot_id, track_count FROM spotify_playlists WHERE user_id = %s AND id = %s",
             (user_id, playlist_id),
         ).fetchone()
         if row is None:
@@ -207,7 +211,7 @@ class Worker:
                 self._drop_remote(user_id, row["spotify_id"])
                 return {"refreshed": 0, "removed": 1}
             raise
-        if (remote.get("snapshot_id") or "") != (row["snapshot_id"] or ""):
+        if playlist_needs_pull(row["snapshot_id"] or "", remote, int(row["track_count"] or 0)):
             self._save_remote_playlist(user_id, remote)
             return {"refreshed": 1, "removed": 0}
         return {"refreshed": 0, "removed": 0}
@@ -470,11 +474,11 @@ class Worker:
                 (user_id, playlist_id),
             ).fetchone()
             if row is None:
-                return {"pushed": pushed, "failed": failed}
+                return self._pushed(user_id, playlist_id, pushed, failed)
             ops = self._ops(playlist_id)
             if not ops:
                 self._mark_clean(playlist_id)
-                return {"pushed": pushed, "failed": failed}
+                return self._pushed(user_id, playlist_id, pushed, failed)
             spotify_id = row["spotify_id"]
             remote_uris = self._local_uris(playlist_id)
             if spotify_id:
@@ -492,16 +496,36 @@ class Worker:
             created = self._apply_actions(user_id, playlist_id, actions)
             if created == "failed":
                 failed += 1
-                return {"pushed": pushed, "failed": failed}
+                return self._pushed(user_id, playlist_id, pushed, failed)
             if created == "created":
                 pushed += 1
                 continue
             if created == "stop":
-                return {"pushed": pushed + 1, "failed": failed}
+                return self._pushed(user_id, playlist_id, pushed + 1, failed)
             pushed += 1
             self._mark_clean(playlist_id)
-            return {"pushed": pushed, "failed": failed}
+            return self._pushed(user_id, playlist_id, pushed, failed)
+        return self._pushed(user_id, playlist_id, pushed, failed)
+
+    def _pushed(self, user_id: int, playlist_id: int, pushed: int, failed: int) -> dict:
+        if pushed > 0:
+            self._reload_tracks(user_id, playlist_id)
         return {"pushed": pushed, "failed": failed}
+
+    def _reload_tracks(self, user_id: int, playlist_id: int) -> None:
+        """A push stores the new snapshot and leaves the local track list behind."""
+        row = self.conn.execute(
+            "SELECT spotify_id FROM spotify_playlists WHERE user_id = %s AND id = %s",
+            (user_id, playlist_id),
+        ).fetchone()
+        if row is None or not row["spotify_id"]:
+            return
+        try:
+            remote = self._api(user_id, "GET", f"/playlists/{row['spotify_id']}")
+        except SpotifyHttpError as exc:
+            self._note(f"playlist {playlist_id} reload failed: {exc}")
+            return
+        self._save_remote_playlist(user_id, remote)
 
     def _apply_actions(self, user_id: int, playlist_id: int, actions: list[dict]) -> str:
         """Apply one change (the first change's actions). Returns created, pushed, failed, or stop."""
@@ -590,8 +614,8 @@ class Worker:
         pages = 0
         while url and pages < 50:
             data = self._api(user_id, "GET", url)
-            items.extend(item for item in data.get("items") or [] if isinstance(item, dict))
-            url = data.get("next")
+            items.extend(page_items(data))
+            url = page_next(data)
             pages += 1
         return items
 
