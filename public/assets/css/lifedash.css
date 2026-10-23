@@ -9418,3 +9418,95 @@ html[data-theme="light"] .flight-card {
     to { opacity: 1; transform: none; }
 }
 
+/* Vault editor: autosave status, note menu, and tree row actions. */
+.brain-saved { color: var(--ok); font-style: normal; }
+.brain-icon-btn {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    flex: none;
+    height: 28px;
+    justify-content: center;
+    padding: 0;
+    width: 28px;
+}
+.brain-icon-btn:hover,
+.brain-icon-btn[aria-expanded="true"] {
+    background: var(--row-hover);
+    color: var(--text-primary);
+}
+.brain-icon-btn svg { display: block; height: 16px; width: 16px; }
+.brain-search-field .brain-icon-btn { margin-right: 2px; }
+.brain-row-actions {
+    align-items: center;
+    display: none;
+    flex: none;
+    gap: 2px;
+    margin-left: auto;
+}
+.brain-row-actions .brain-icon-btn { height: 24px; width: 24px; }
+.brain-row-actions .brain-icon-btn svg { height: 14px; width: 14px; }
+.brain-tree-row:hover > .brain-row-actions,
+.brain-tree-row:focus-within > .brain-row-actions,
+.brain-tree-row:has(.is-open) > .brain-row-actions { display: flex; }
+.brain-note-menu,
+.brain-row-menu { position: relative; }
+.brain-menu-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 188px;
+    padding: 6px;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 30;
+}
+.brain-menu-panel[hidden] { display: none !important; }
+.brain-menu-item {
+    background: transparent;
+    border: 0;
+    border-radius: 5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font: inherit;
+    font-size: var(--fs-xs);
+    min-height: 32px;
+    padding: 0 8px;
+    text-align: left;
+    width: 100%;
+}
+.brain-menu-item:hover,
+.brain-menu-item:focus-visible { background: var(--row-hover); color: var(--text-primary); }
+.brain-menu-item.is-danger,
+.brain-menu-item.is-danger:hover,
+.brain-menu-item.is-danger:focus-visible { color: var(--danger); }
+.brain-menu-field {
+    color: var(--text-muted);
+    display: flex;
+    flex-direction: column;
+    font-size: var(--fs-2xs);
+    gap: 4px;
+    letter-spacing: 0.08em;
+    padding: 4px 4px 6px;
+    text-transform: uppercase;
+}
+.brain-menu-field .input {
+    font-size: var(--fs-xs);
+    height: 32px;
+    letter-spacing: 0;
+    min-height: 32px;
+    text-transform: none;
+}
+@media (hover: none) {
+    .brain-row-actions { display: flex; }
+}
+
