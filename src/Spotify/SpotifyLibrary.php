@@ -252,6 +252,101 @@ final class SpotifyLibrary
         return $this->playlist($userId, $id);
     }
 
+    /**
+     * A draft is removed now. An owned playlist on Spotify is staged until push.
+     *
+     * @return array<string, mixed>
+     */
+    public function deletePlaylist(int $userId, int $id, string $by): array
+    {
+        $row = $this->playlistRow($userId, $id);
+        $remote = $row['spotify_id'] !== null && (string) $row['spotify_id'] !== '';
+        if ($remote && (int) $row['is_owned'] !== 1) {
+            throw ValidationException::withFields(['playlist' => self::readOnlyMessage($row)]);
+        }
+        if (!$remote) {
+            $this->db->execute(
+                'UPDATE spotify_prompts SET target_playlist_id = NULL WHERE user_id = ? AND target_playlist_id = ?',
+                [$userId, $id]
+            );
+            $this->db->execute('DELETE FROM spotify_playlists WHERE id = ? AND user_id = ?', [$id, $userId]);
+            return ['deleted' => true, 'staged' => false, 'id' => $id];
+        }
+        $this->stageAndDirty($userId, $id, 'delete', [], $by);
+        return [
+            'deleted' => false,
+            'staged' => true,
+            'id' => $id,
+            'playlist' => $this->playlist($userId, $id)['playlist'],
+        ];
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tracks
+     */
+    public function rememberSaved(int $userId, array $tracks): void
+    {
+        foreach ($tracks as $track) {
+            if (!is_array($track)) {
+                continue;
+            }
+            $spotifyId = (string) ($track['id'] ?? '');
+            if (preg_match('/^[A-Za-z0-9]+$/', $spotifyId) !== 1) {
+                continue;
+            }
+            $name = trim((string) ($track['name'] ?? ''));
+            if ($name === '') {
+                $name = $spotifyId;
+            }
+            $trackId = (int) $this->db->fetchScalar(
+                'INSERT INTO spotify_tracks
+                    (user_id, spotify_id, name, artists, album, duration_ms, explicit, image_url)
+                 VALUES (?, ?, ?, ?::jsonb, ?, ?, ?, ?)
+                 ON CONFLICT (user_id, spotify_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    artists = EXCLUDED.artists,
+                    album = EXCLUDED.album,
+                    duration_ms = EXCLUDED.duration_ms,
+                    explicit = EXCLUDED.explicit,
+                    image_url = EXCLUDED.image_url,
+                    updated_at = (now() AT TIME ZONE \'UTC\')
+                 RETURNING id',
+                [
+                    $userId,
+                    $spotifyId,
+                    $name,
+                    json_encode(array_values(array_map('strval', is_array($track['artists'] ?? null) ? $track['artists'] : [])), JSON_THROW_ON_ERROR),
+                    isset($track['album']) ? (string) $track['album'] : null,
+                    (int) ($track['duration_ms'] ?? 0),
+                    !empty($track['explicit']) ? 1 : 0,
+                    isset($track['image_url']) ? (string) $track['image_url'] : null,
+                ]
+            );
+            $this->db->execute(
+                'INSERT INTO spotify_saved_tracks (user_id, track_id, added_at)
+                 VALUES (?, ?, (now() AT TIME ZONE \'UTC\'))
+                 ON CONFLICT (user_id, track_id) DO UPDATE SET added_at = EXCLUDED.added_at',
+                [$userId, $trackId]
+            );
+        }
+    }
+
+    /**
+     * @param list<string> $spotifyIds
+     */
+    public function forgetSaved(int $userId, array $spotifyIds): void
+    {
+        foreach ($spotifyIds as $spotifyId) {
+            $this->db->execute(
+                'DELETE FROM spotify_saved_tracks
+                 WHERE user_id = ? AND track_id = (
+                    SELECT id FROM spotify_tracks WHERE user_id = ? AND spotify_id = ?
+                 )',
+                [$userId, $userId, $spotifyId]
+            );
+        }
+    }
+
     public function discard(int $userId, ?int $playlistId): int
     {
         if ($playlistId !== null) {

@@ -16,6 +16,7 @@ final class SpotifyPlayerTest extends TestCase
         foreach (SpotifyAccount::PLAYBACK_SCOPES as $scope) {
             self::assertContains($scope, SpotifyAccount::SCOPES);
         }
+        self::assertContains('user-library-modify', SpotifyAccount::SCOPES);
     }
 
     public function testMissingPlaybackScopes(): void
@@ -56,6 +57,17 @@ final class SpotifyPlayerTest extends TestCase
     {
         $this->expectException(ValidationException::class);
         SpotifyPlayback::transferPayload([]);
+    }
+
+    public function testLibraryIdsAcceptTrackUrisAndRejectALongList(): void
+    {
+        self::assertSame(['abc', 'def'], SpotifyPlayback::libraryIds([
+            'spotify:track:abc',
+            'def',
+            'spotify:track:abc',
+        ]));
+        $this->expectException(ValidationException::class);
+        SpotifyPlayback::libraryIds(array_fill(0, 51, 'spotify:track:abc'));
     }
 
     public function testSearchAsksSpotifyForAtMostTen(): void

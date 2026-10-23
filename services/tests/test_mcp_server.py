@@ -306,8 +306,9 @@ def test_money_tools_resolve_onto_the_money_api():
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
         "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
-        "play", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
-        "add_to_queue", "transfer_playback",
+        "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
+        "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
+        "delete_spotify_playlist", "set_player_enabled",
     ):
         assert name in names
 
@@ -859,10 +860,11 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
         "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
-        "play", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
-        "add_to_queue", "transfer_playback",
+        "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
+        "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
+        "delete_spotify_playlist", "set_player_enabled",
     ]
-    assert len(spotify) == 39
+    assert len(spotify) == 45
     assert len(names) == len(set(names))
     for name in spotify:
         assert names.count(name) == 1
@@ -882,6 +884,22 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     assert (method, path, body) == ("POST", "/api/v1/spotify/playback/volume", {"volume_percent": 40, "device_id": "device1"})
     method, path, body = resolve("play", {"playlist_id": 8})
     assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {"playlist_id": 8})
+    method, path, body = resolve("play", {"device_id": "desk"})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {"device_id": "desk"})
+    method, path, body = resolve("resume", {})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {})
+    method, path, body = resolve("resume", {"device_id": "desk"})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playback/play", {"device_id": "desk"})
+    method, path, body = resolve("get_queue", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/queue", None)
+    method, path, body = resolve("save_tracks", {"uris": ["spotify:track:abc"]})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/saved", {"uris": ["spotify:track:abc"]})
+    method, path, body = resolve("remove_saved_tracks", {"uris": ["spotify:track:abc"]})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/saved/remove", {"uris": ["spotify:track:abc"]})
+    method, path, body = resolve("delete_spotify_playlist", {"playlist_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playlists/4/delete", {})
+    method, path, body = resolve("set_player_enabled", {"enabled": False})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/player", {"enabled": False})
     method, path, body = resolve("sync_spotify", {})
     assert (method, path, body) == ("POST", "/api/v1/spotify/sync", {})
     method, path, body = resolve("list_devices", {})

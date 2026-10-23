@@ -95,6 +95,17 @@ final class SpotifyApi
         $r->post('/api/v1/spotify/playlists/{id}/discard', fn (array $p) => $this->run(fn (int $u) => [
             'discarded' => $this->svc()->library()->discard($u, $this->id($p)),
         ], 200, true));
+        $r->post('/api/v1/spotify/playlists/{id}/delete', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->deletePlaylist($u, $this->id($p), $this->by()), 200, true));
+        $r->post('/api/v1/spotify/saved/remove', fn () => $this->run(function (int $u): array {
+            $changed = $this->svc()->playback()->library($u, $this->trackList(), false);
+            $this->svc()->library()->forgetSaved($u, $changed['ids']);
+            return ['removed' => $changed['ids']];
+        }, 200, true));
+        $r->post('/api/v1/spotify/saved', fn () => $this->run(function (int $u): array {
+            $changed = $this->svc()->playback()->library($u, $this->trackList(), true);
+            $this->svc()->library()->rememberSaved($u, $changed['tracks']);
+            return ['saved' => $changed['ids']];
+        }, 200, true));
         $r->post('/api/v1/spotify/push', fn () => $this->run(function (int $u): array {
             $playlistId = $this->playlistId();
             if ($playlistId !== null) {
@@ -189,6 +200,16 @@ final class SpotifyApi
             return null;
         }
         return trim($value);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function trackList(): array
+    {
+        $body = $this->runner->body();
+        $raw = $body['uris'] ?? $body['ids'] ?? null;
+        return is_array($raw) ? array_values($raw) : [];
     }
 
     private function playlistId(): ?int
