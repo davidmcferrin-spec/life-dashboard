@@ -1942,4 +1942,41 @@ html[data-theme="jarvis"] .ld-meal-row.is-on {
     border-color: transparent;
 }
 .ld-digest-diff { max-height: 24rem; overflow: auto; white-space: pre-wrap; }
+.ld-digest-filters { display: flex; flex-direction: column; gap: 0.55rem; }
+.ld-digest-feed { display: flex; flex-direction: column; gap: 0.65rem; }
+.ld-digest-group h2 {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    margin: 0.35rem 0;
+    text-transform: uppercase;
+}
+.ld-digest-item { padding: 0.75rem 0.9rem; }
+.ld-digest-head { align-items: center; display: flex; flex-wrap: wrap; gap: 0.35rem 0.5rem; }
+.ld-digest-date { color: var(--text-primary); font-size: 0.85rem; font-weight: 600; margin-left: auto; }
+.ld-digest-title { font-size: 1rem; line-height: 1.35; margin: 0.4rem 0 0.25rem; }
+.ld-digest-title a { color: inherit; }
+.ld-digest-brief { color: var(--text-muted); font-size: 0.92rem; line-height: 1.45; margin: 0; }
+.ld-digest-body { font-size: 0.9rem; line-height: 1.45; margin-top: 0.55rem; white-space: pre-wrap; }
+.ld-digest-toggle { margin-top: 0.45rem; }
+.ld-digest-fold { padding: 0.8rem 1rem; }
+.ld-digest-fold > summary { color: var(--text-primary); cursor: pointer; }
+.ld-digest-fold[open] > summary { margin-bottom: 0.75rem; }
+.ld-digest-add { display: grid; gap: 0.5rem; margin-top: 0.75rem; }
+.ld-digest-add .input, .ld-digest-add .btn { min-width: 0; width: 100%; }
+.ld-digest-blurb {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    display: -webkit-box;
+    margin: 0.15rem 0 0.35rem;
+    overflow: hidden;
+}
+@media (min-width: 800px) {
+    .ld-digest-add { align-items: center; grid-template-columns: minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(12rem, 2fr) auto; }
+    .ld-digest-add .btn { width: auto; }
+}
+@media (max-width: 700px) {
+    .ld-digest-date { margin-left: 0; }
+}
 

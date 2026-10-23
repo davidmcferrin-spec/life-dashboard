@@ -9,6 +9,7 @@ use Dashboard\Deploy\DeployService;
 use Dashboard\Knowledge\Redline;
 use Dashboard\Settings\ServiceControl;
 use Dashboard\Spotify\SpotifyAccess;
+use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
@@ -19,6 +20,8 @@ final class DigestService
     public const RETENTION_DEFAULT = 180;
 
     public const COMPARE_LIMIT = 300;
+
+    private ?Clock $clock = null;
 
     public function __construct(
         private readonly Database $db,
@@ -47,29 +50,35 @@ final class DigestService
         $unread = !empty($filter['unread']);
         $query = $this->search($filter['q'] ?? null);
         $limit = $this->limit($filter['limit'] ?? 50);
+        $offset = $this->offset($filter['offset'] ?? 0);
         $cursor = $this->cursor($userId);
         $rows = [];
         $found = $this->db->fetchAll(
-            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.first_seen_at, e.edited_at, e.version_text,
+            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
                     s.product, s.label AS source_label, s.id AS source_id
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id
              WHERE e.user_id = ?
                AND (? = 0 OR s.product = ?)
                AND (? = 0 OR (e.published_on IS NOT NULL AND e.published_on >= ?) OR (e.published_on IS NULL AND e.first_seen_at >= ?))
-               AND (? = 0 OR e.title ILIKE ? OR e.summary ILIKE ?)
+               AND (? = 0 OR e.title ILIKE ? OR e.summary ILIKE ? OR e.brief ILIKE ?)
                AND (? = 0 OR e.first_seen_at > ? OR (e.edited_at IS NOT NULL AND e.edited_at > ?))
              ORDER BY COALESCE(e.published_on, CAST(e.first_seen_at AS date)) DESC, e.first_seen_at DESC, e.id DESC
-             LIMIT ?',
+             LIMIT ? OFFSET ?',
             [
                 $userId,
                 $product === null ? 0 : 1, $product ?? '',
                 $since === null ? 0 : 1, $since ?? '1970-01-01', ($since ?? '1970-01-01') . ' 00:00:00',
-                $query === null ? 0 : 1, $query ?? '%', $query ?? '%',
+                $query === null ? 0 : 1, $query ?? '%', $query ?? '%', $query ?? '%',
                 ($unread && $cursor !== null) ? 1 : 0, $cursor ?? '1970-01-01 00:00:00', $cursor ?? '1970-01-01 00:00:00',
-                $limit,
+                $limit + 1,
+                $offset,
             ]
         );
+        $hasMore = count($found) > $limit;
+        if ($hasMore) {
+            array_pop($found);
+        }
         foreach ($found as $row) {
             $rows[] = $this->presentItem($row, $cursor);
         }
@@ -78,6 +87,8 @@ final class DigestService
             'new_count'       => $this->newCount($userId, $product),
             'read_through_at' => $this->stamp($cursor),
             'products'        => $this->products(),
+            'has_more'        => $hasMore,
+            'today'           => $this->clock()->today(),
         ];
     }
 
@@ -256,12 +267,16 @@ final class DigestService
         $first = (string) $row['first_seen_at'];
         $edited = $row['edited_at'] !== null ? (string) $row['edited_at'] : null;
         $isNew = $cursor === null || $first > $cursor || ($edited !== null && $edited > $cursor);
+        $body = (string) $row['summary'];
+        $stored = trim((string) ($row['brief'] ?? ''));
         return [
             'id'            => (int) $row['id'],
             'title'         => (string) $row['title'],
             'published_on'  => $row['published_on'] !== null ? (string) $row['published_on'] : null,
+            'day'           => $this->itemDay($row),
             'url'           => (string) $row['url'],
-            'summary'       => (string) $row['summary'],
+            'summary'       => $stored !== '' ? $stored : DigestBrief::excerpt($body),
+            'body'          => $body,
             'first_seen_at' => $this->stamp($first),
             'edited_at'     => $this->stamp($edited),
             'product'       => $product,
@@ -452,6 +467,40 @@ final class DigestService
         return min(200, $limit);
     }
 
+    private function offset(mixed $value): int
+    {
+        $offset = (int) $value;
+        if ($offset < 1) {
+            return 0;
+        }
+
+        return min(5000, $offset);
+    }
+
+    private function clock(): Clock
+    {
+        return $this->clock ??= Clock::fromConfig();
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function itemDay(array $row): ?string
+    {
+        if ($row['published_on'] !== null && (string) $row['published_on'] !== '') {
+            return (string) $row['published_on'];
+        }
+        $first = str_replace('T', ' ', (string) $row['first_seen_at']);
+        $first = rtrim($first, 'Z');
+        try {
+            $utc = new \DateTimeImmutable($first, new \DateTimeZone('UTC'));
+        } catch (\Exception) {
+            return null;
+        }
+
+        return $this->clock()->localDateOf($utc);
+    }
+
     private function stamp(?string $value): ?string
     {
         if ($value === null || $value === '') {
@@ -504,7 +553,7 @@ final class DigestService
             $args
         );
         $found = $this->db->fetchAll(
-            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.first_seen_at, e.edited_at, e.version_text,
+            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
                     s.product, s.label AS source_label, s.id AS source_id
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id
@@ -579,7 +628,7 @@ final class DigestService
             $args
         );
         $found = $this->db->fetchAll(
-            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.first_seen_at, e.edited_at, e.version_text,
+            'SELECT e.id, e.title, e.published_on, e.url, e.summary, e.brief, e.first_seen_at, e.edited_at, e.version_text,
                     s.product, s.label AS source_label, s.id AS source_id
              FROM digest_entries e
              JOIN digest_sources s ON s.id = e.source_id

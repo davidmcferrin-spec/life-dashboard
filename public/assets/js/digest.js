@@ -1,5 +1,5 @@
 /**
- * Grok Digest page: feed, filters, and source form.
+ * Grok Digest page: a short feed, with sources and compare folded away.
  */
 'use strict';
 
@@ -8,12 +8,16 @@
     const app = document.getElementById('digest-app');
     if (!app || !api) return;
 
+    const PAGE = 12;
+    const DATE_ORDER = ['Today', 'Yesterday', 'This week', 'Older'];
     const els = {
+        checked: document.getElementById('digest-checked'),
         count: document.getElementById('digest-count'),
         status: document.getElementById('digest-status'),
         error: document.getElementById('digest-error'),
         products: document.getElementById('digest-products'),
         feed: document.getElementById('digest-feed'),
+        more: document.getElementById('digest-more'),
         sources: document.getElementById('digest-sources'),
         q: document.getElementById('digest-q'),
         unread: document.getElementById('digest-unread'),
@@ -32,7 +36,14 @@
     let products = [];
     let sourceRows = [];
     let compareMode = 'date';
+    let group = 'date';
     let timer = null;
+    let items = [];
+    let hasMore = false;
+    let newCount = 0;
+    let today = '';
+    let loading = false;
+    const openIds = new Set();
 
     function showError(error) {
         const message = (error && error.message) || 'Request failed.';
@@ -49,17 +60,59 @@
         if (!value) return 'Not checked yet';
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) return value;
-        return date.toLocaleString();
+        return formatStamp(date);
     }
 
-    function query() {
+    function formatStamp(date) {
+        const tz = app.getAttribute('data-tz') || 'America/Chicago';
+        return new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(date);
+    }
+
+    function formatDay(iso) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+        if (!match) return '';
+        const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        return new Intl.DateTimeFormat('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: 'UTC',
+        }).format(date);
+    }
+
+    function shiftDay(iso, delta) {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+        if (!match) return '';
+        const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        date.setUTCDate(date.getUTCDate() + delta);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function bucket(day) {
+        if (!day || !today) return 'Older';
+        if (day === today) return 'Today';
+        if (day === shiftDay(today, -1)) return 'Yesterday';
+        const start = shiftDay(today, -6);
+        if (day >= start && day < today) return 'This week';
+        return 'Older';
+    }
+
+    function query(offset) {
         const params = new URLSearchParams();
         if (product) params.set('product', product);
         if (els.unread.checked) params.set('unread', '1');
         const q = els.q.value.trim();
         if (q) params.set('q', q);
-        const text = params.toString();
-        return text ? '?' + text : '';
+        params.set('limit', String(PAGE));
+        if (offset) params.set('offset', String(offset));
+        return '?' + params.toString();
     }
 
     function renderChips() {
@@ -73,27 +126,82 @@
         }
     }
 
-    function renderFeed(data) {
-        const count = Number(data.new_count || 0);
-        els.count.textContent = count === 1 ? '1 new entry' : count + ' new entries';
-        const items = data.items || [];
+    function card(item) {
+        const id = String(item.id);
+        const open = openIds.has(id);
+        const date = formatDay(item.day || item.published_on || '');
+        const badges = [
+            item.is_new ? '<span class="ld-digest-badge">Unread</span>' : '',
+            item.edited ? '<span class="ld-digest-badge">Edited</span>' : '',
+        ].filter(Boolean).join('');
+        const version = item.version ? `<span class="text-sm text-muted">${esc(item.version)}</span>` : '';
+        const source = item.source_label ? `<span class="text-sm text-muted">${esc(item.source_label)}</span>` : '';
+        const summary = item.summary || '';
+        const body = item.body || '';
+        const extra = body && body !== summary
+            ? `<button type="button" class="btn ld-digest-toggle" data-toggle-note="${esc(id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Hide note' : 'Show note'}</button><div class="ld-digest-body" id="digest-note-${esc(id)}"${open ? '' : ' hidden'}>${esc(body)}</div>`
+            : '';
+        return `<article class="surface ld-digest-item">
+            <div class="ld-digest-head">
+                <span class="ld-digest-badge">${esc(item.product_label || '')}</span>
+                ${source}
+                ${version}
+                ${badges}
+                ${date ? `<time class="ld-digest-date" datetime="${esc(item.day || item.published_on || '')}">${esc(date)}</time>` : ''}
+            </div>
+            <h2 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h2>
+            ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
+            ${extra}
+        </article>`;
+    }
+
+    function groupsFor(rows) {
+        if (group === 'source') {
+            const order = products.map((chip) => chip.label);
+            const buckets = {};
+            rows.forEach((item) => {
+                const name = item.product_label || 'Source';
+                buckets[name] = buckets[name] || [];
+                buckets[name].push(item);
+            });
+            return Object.keys(buckets).sort((a, b) => {
+                const ai = order.indexOf(a);
+                const bi = order.indexOf(b);
+                return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+            }).map((name) => ({ name: name, items: buckets[name] }));
+        }
+        const buckets = {};
+        rows.forEach((item) => {
+            const name = bucket(item.day || item.published_on || '');
+            buckets[name] = buckets[name] || [];
+            buckets[name].push(item);
+        });
+        return DATE_ORDER.filter((name) => buckets[name]).map((name) => ({ name: name, items: buckets[name] }));
+    }
+
+    function renderFeed() {
+        const noun = newCount === 1 ? '1 unread' : newCount + ' unread';
+        els.count.textContent = items.length ? noun + ' · ' + items.length + ' shown' : noun;
+        els.more.classList.toggle('hidden', !hasMore);
         if (!items.length) {
             els.feed.innerHTML = '<p class="empty-state mono text-xs">No matching entries.</p>';
             return;
         }
-        els.feed.innerHTML = items.map((item) => {
-            const badges = [
-                item.is_new ? '<span class="ld-digest-badge">New</span>' : '',
-                item.edited ? '<span class="ld-digest-badge">Edited</span>' : '',
-            ].filter(Boolean).join(' ');
-            const date = item.published_on || '';
-            return `<article class="surface p-3">
-                <p class="text-sm text-muted">${esc(item.product_label)} · ${esc(item.source_label)}${date ? ' · ' + esc(date) : ''}${item.version ? ' · ' + esc(item.version) : ''}</p>
-                <h2 class="text-primary text-base mt-1"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h2>
-                ${badges ? `<p class="mt-1">${badges}</p>` : ''}
-                ${item.summary ? `<p class="text-sm mt-2">${esc(item.summary)}</p>` : ''}
-            </article>`;
+        els.feed.innerHTML = groupsFor(items).map((section) => {
+            return `<section class="ld-digest-group"><h2>${esc(section.name)}</h2>${section.items.map(card).join('')}</section>`;
         }).join('');
+    }
+
+    function renderChecked(rows) {
+        let latest = 0;
+        (rows || []).forEach((source) => {
+            if (!source.last_checked_at) return;
+            const time = Date.parse(source.last_checked_at);
+            if (!Number.isNaN(time) && time > latest) latest = time;
+        });
+        els.checked.textContent = latest
+            ? 'Last checked ' + formatStamp(new Date(latest)) + '.'
+            : 'Not checked yet.';
     }
 
     function renderSources(data) {
@@ -101,12 +209,13 @@
         sourceRows = data.sources || [];
         renderChips();
         fillCompareSources();
+        renderChecked(sourceRows);
         if (els.retain && !els.retain.dataset.ready && data.retention_days) {
             els.retain.value = String(data.retention_days);
             els.retain.dataset.ready = '1';
         }
         const groups = {};
-        (data.sources || []).forEach((source) => {
+        sourceRows.forEach((source) => {
             const key = source.product_label || source.product;
             groups[key] = groups[key] || [];
             groups[key].push(source);
@@ -135,19 +244,28 @@
         }).join('');
     }
 
-    async function load() {
+    async function load(reset) {
+        if (loading) return;
+        loading = true;
         clearError();
+        const offset = reset ? 0 : items.length;
         try {
-            const [feed, sources] = await Promise.all([
-                api.get('/digest/items' + query()),
-                api.get('/digest/sources'),
-            ]);
-            products = feed.products || [];
+            const feedPromise = api.get('/digest/items' + query(offset));
+            const sourcePromise = reset ? api.get('/digest/sources') : Promise.resolve(null);
+            const [feed, sources] = await Promise.all([feedPromise, sourcePromise]);
+            today = feed.today || today;
+            newCount = Number(feed.new_count || 0);
+            hasMore = !!feed.has_more;
+            const batch = feed.items || [];
+            items = reset ? batch : items.concat(batch);
+            products = feed.products || products;
             renderChips();
-            renderFeed(feed);
-            renderSources(sources);
+            renderFeed();
+            if (sources) renderSources(sources);
         } catch (error) {
             showError(error);
+        } finally {
+            loading = false;
         }
     }
 
@@ -155,23 +273,51 @@
         const button = event.target.closest('[data-product]');
         if (!button) return;
         product = button.getAttribute('data-product') || '';
-        load();
+        load(true);
     });
-    els.unread.addEventListener('change', () => load());
+    document.getElementById('digest-group').addEventListener('click', (event) => {
+        const button = event.target.closest('[data-group]');
+        if (!button) return;
+        group = button.getAttribute('data-group') || 'date';
+        document.querySelectorAll('#digest-group [data-group]').forEach((chip) => {
+            chip.classList.toggle('is-on', chip === button);
+        });
+        renderFeed();
+    });
+    els.unread.addEventListener('change', () => load(true));
     document.getElementById('digest-search').addEventListener('submit', (event) => {
         event.preventDefault();
-        load();
+        load(true);
     });
     els.q.addEventListener('input', () => {
         clearTimeout(timer);
-        timer = setTimeout(load, 250);
+        timer = setTimeout(() => load(true), 250);
+    });
+    els.more.addEventListener('click', () => load(false));
+    els.feed.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-toggle-note]');
+        if (!button) return;
+        const id = button.getAttribute('data-toggle-note');
+        const note = document.getElementById('digest-note-' + id);
+        if (!note) return;
+        const open = note.hasAttribute('hidden');
+        if (open) {
+            note.removeAttribute('hidden');
+            openIds.add(id);
+            button.textContent = 'Hide note';
+        } else {
+            note.setAttribute('hidden', '');
+            openIds.delete(id);
+            button.textContent = 'Show note';
+        }
+        button.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
     document.getElementById('digest-read').addEventListener('click', async () => {
         clearError();
         try {
             await api.post('/digest/read', {});
             els.status.textContent = 'Marked read.';
-            await load();
+            await load(true);
         } catch (error) {
             showError(error);
         }
@@ -196,7 +342,7 @@
             });
             els.label.value = '';
             els.url.value = '';
-            await load();
+            await load(true);
         } catch (error) {
             showError(error);
         }
@@ -210,24 +356,15 @@
                 const id = toggle.getAttribute('data-toggle');
                 const action = toggle.getAttribute('data-action');
                 await api.post('/digest/sources/' + id + '/' + action, {});
-                await load();
+                await load(true);
             } else if (remove) {
                 await api.post('/digest/sources/' + remove.getAttribute('data-remove') + '/remove', {});
-                await load();
+                await load(true);
             }
         } catch (error) {
             showError(error);
         }
     });
-    function article(item) {
-        const date = item.published_on || '';
-        const version = item.version ? ' · ' + esc(item.version) : '';
-        return `<article class="surface p-3">
-            <p class="text-sm text-muted">${esc(item.product_label)} · ${esc(item.source_label)}${date ? ' · ' + esc(date) : ''}${version}</p>
-            <h3 class="text-primary text-base mt-1"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
-            ${item.summary ? `<p class="text-sm mt-2">${esc(item.summary)}</p>` : ''}
-        </article>`;
-    }
 
     function fillCompareSources() {
         const options = ['<option value="">All products</option>'].concat(products.map((chip) => {
@@ -278,21 +415,21 @@
                 : String(data.count) + noun;
             els.compareCount.textContent = line + ' from ' + data.from_version + ' to ' + data.to_version;
             els.compareOut.innerHTML = data.items.length
-                ? data.items.map(article).join('')
+                ? data.items.map(card).join('')
                 : '<p class="empty-state mono text-xs">No entries in that range.</p>';
             return;
         }
         const groups = data.groups || [];
         const noun = data.count === 1 ? ' entry' : ' entries';
         els.compareCount.textContent = data.count + noun + ' from ' + data.from + ' to ' + data.to
-            + (data.truncated ? '. Showing the first ' + groups.reduce((n, group) => n + group.items.length, 0) + '.' : '');
+            + (data.truncated ? '. Showing the first ' + groups.reduce((n, section) => n + section.items.length, 0) + '.' : '');
         if (!groups.length) {
             els.compareOut.innerHTML = '<p class="empty-state mono text-xs">No entries in that range.</p>';
             return;
         }
-        els.compareOut.innerHTML = groups.map((group) => {
-            const rows = (group.items || []).map(article).join('');
-            return `<section><h3 class="text-sm text-muted">${esc(group.product_label)} · ${group.count}</h3>${rows}</section>`;
+        els.compareOut.innerHTML = groups.map((section) => {
+            const rows = (section.items || []).map(card).join('');
+            return `<section class="ld-digest-group"><h2>${esc(section.product_label)} · ${section.count}</h2>${rows}</section>`;
         }).join('');
     }
 
@@ -355,12 +492,12 @@
         }
     });
 
-    window.addEventListener('lifedash:poll', () => load());
+    window.addEventListener('lifedash:poll', () => load(true));
     window.addEventListener('lifedash:event', (event) => {
         const table = event.detail && event.detail.table;
         if (table === 'digest_entries' || table === 'digest_sources' || table === 'digest_cursors') {
-            load();
+            load(true);
         }
     });
-    load();
+    load(true);
 })();

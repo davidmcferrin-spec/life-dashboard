@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import REPO_ROOT
+from .digest_brief import BRIEF_BUDGET, OllamaAsk, chat_target, plan_briefs
 from .digest_http import FetchResult, UrlRejected, fetch_with_backoff, urllib_transport
 from .digest_parse import content_hash, plan_changes, read_page, snapshot_text
 
@@ -105,10 +106,18 @@ def _attention(source: dict[str, Any], error: str, page: FetchResult) -> dict[st
 
 
 class DigestSync:
-    def __init__(self, conn: Any, fetch: Fetch | None = None, sleep: Callable[[float], None] | None = None) -> None:
+    def __init__(
+        self,
+        conn: Any,
+        fetch: Fetch | None = None,
+        sleep: Callable[[float], None] | None = None,
+        ask: OllamaAsk | None = None,
+    ) -> None:
         self.conn = conn
         self._transport = fetch
         self._sleep = sleep or (lambda seconds: __import__("time").sleep(seconds))
+        self._ask = ask
+        self._brief_left = BRIEF_BUDGET
 
     def tick(self) -> int:
         checked = 0
@@ -231,7 +240,8 @@ class DigestSync:
                     UPDATE digest_entries
                     SET title = %s, published_on = %s, url = %s, summary = %s,
                         content_hash = %s, version_text = %s, version_sort = %s,
-                        edited_at = (now() AT TIME ZONE 'UTC')
+                        edited_at = (now() AT TIME ZONE 'UTC'),
+                        brief = '', brief_kind = ''
                     WHERE source_id = %s AND entry_key = %s AND content_hash <> %s
                     """,
                     (
@@ -258,6 +268,40 @@ class DigestSync:
         detail = result.get("error") or result["status"]
         mode = result.get("parse_mode") or ""
         self._note(f"{label}: {detail}" + (f" ({mode}, {len(result['ops'])} changes)" if result["status"] == "ok" else ""))
+        self._fill_briefs(source_id)
+
+    def _fill_briefs(self, source_id: int) -> None:
+        rows = self.conn.execute(
+            """
+            SELECT id, title, summary FROM digest_entries
+            WHERE source_id = %s AND brief_kind = ''
+            ORDER BY id
+            """,
+            (source_id,),
+        ).fetchall()
+        if not rows:
+            return
+        if self._ask is None:
+            self._ask = self._ollama_ask()
+        updates, self._brief_left = plan_briefs(list(rows), self._ask, self._brief_left)
+        for entry_id, text, kind in updates:
+            self.conn.execute(
+                """
+                UPDATE digest_entries
+                SET brief = %s, brief_kind = %s
+                WHERE id = %s AND brief_kind = ''
+                """,
+                (text, kind, entry_id),
+            )
+
+    def _ollama_ask(self) -> OllamaAsk:
+        row = self.conn.execute(
+            "SELECT base_url, chat_model FROM ollama_settings WHERE id = 1"
+        ).fetchone()
+        base_url = str(row[0]) if row else ""
+        chat_model = str(row[1]) if row else ""
+        base, model = chat_target(base_url, chat_model, _plan_chat())
+        return OllamaAsk(base, model)
 
     def _save_snapshot(self, user_id: int, source_id: int, text: str) -> None:
         body = text[:200_000]
@@ -318,6 +362,18 @@ class DigestSync:
                 handle.write(line + "\n")
         except OSError:
             return
+
+
+def _plan_chat() -> str:
+    from .ollama_models import state_dir
+
+    path = state_dir() / "plan.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    model = data.get("chat_model") if isinstance(data, dict) else ""
+    return model if isinstance(model, str) else ""
 
 
 def main(argv: list[str] | None = None) -> None:
