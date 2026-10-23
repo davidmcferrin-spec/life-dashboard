@@ -27,6 +27,10 @@ final class SpotifyApi
         $r->get('/api/v1/spotify/playlists', fn () => $this->run(fn (int $u) => [
             'playlists' => $this->svc()->library()->playlists($u),
         ]));
+        $r->get('/api/v1/spotify/playlists/facets', fn () => $this->run(fn (int $u) => $this->svc()->library()->playlistFacets($u)));
+        $r->get('/api/v1/spotify/tracks/catalog', fn () => $this->run(fn (int $u) => [
+            'stale' => $this->svc()->library()->catalogStale($u)['stale'],
+        ]));
         $r->get('/api/v1/spotify/playlists/{id}', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->playlist($u, $this->id($p))));
         $r->get('/api/v1/spotify/playlists/{id}/changes', fn (array $p) => $this->run(fn (int $u) => [
             'changes' => $this->svc()->library()->changes($u, $this->id($p)),
@@ -119,6 +123,15 @@ final class SpotifyApi
             }
             $this->svc()->library()->mixtape()->assertPending($u, $playlistId, $this->svc()->library()->clock());
             return $this->svc()->sync()->push($u, $playlistId);
+        }, 200, true));
+        $r->post('/api/v1/spotify/tracks/catalog', fn () => $this->run(function (int $u): array {
+            $library = $this->svc()->library();
+            $queue = $library->catalogStale($u);
+            $fetched = $this->svc()->playback()->catalog($u, $queue['ids']);
+            $applied = $library->applyCatalog($u, $fetched['tracks']);
+            $applied['requested'] = count($queue['ids']);
+            $applied['stale'] = $library->catalogStale($u)['stale'];
+            return $applied;
         }, 200, true));
         $r->post('/api/v1/spotify/tracks/meta', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->saveMany(
             $u,

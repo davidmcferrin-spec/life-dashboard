@@ -77,6 +77,95 @@ final class SpotifyPlayback
         return ['track' => $tracks[0]];
     }
 
+    /** Spotify does not offer audio-features. Catalog refresh reads this path. */
+    public const CATALOG_PATH = '/tracks';
+
+    /**
+     * @param list<string> $ids
+     * @return array{ids: string}
+     */
+    public static function catalogQuery(array $ids): array
+    {
+        $clean = [];
+        foreach ($ids as $id) {
+            if (is_string($id) && preg_match('/^[A-Za-z0-9]+$/', $id) === 1) {
+                $clean[$id] = true;
+            }
+        }
+        $clean = array_keys($clean);
+        if (count($clean) > 50) {
+            throw ValidationException::withFields(['ids' => 'Refresh at most 50 tracks at once.']);
+        }
+        return ['ids' => implode(',', $clean)];
+    }
+
+    /**
+     * @param list<string> $ids
+     * @return array{tracks: list<array<string, mixed>>}
+     */
+    public function catalog(int $userId, array $ids): array
+    {
+        $query = self::catalogQuery($ids);
+        if ($query['ids'] === '') {
+            return ['tracks' => []];
+        }
+        $data = $this->account->call($userId, fn (string $token): array => $this->http->api(
+            'GET',
+            self::CATALOG_PATH,
+            $token,
+            null,
+            $query,
+        ));
+        $items = $data['tracks'] ?? [];
+        return ['tracks' => self::catalogRows(is_array($items) ? $items : [])];
+    }
+
+    /**
+     * Map a Spotify track payload onto stored catalog columns. Audio analysis fields are ignored.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function catalogRows(mixed $items): array
+    {
+        if (!is_array($items)) {
+            return [];
+        }
+        $out = [];
+        foreach ($items as $item) {
+            if (!is_array($item) || !is_string($item['id'] ?? null)) {
+                continue;
+            }
+            if (preg_match('/^[A-Za-z0-9]+$/', $item['id']) !== 1 || ($item['type'] ?? 'track') === 'episode') {
+                continue;
+            }
+            $artists = [];
+            foreach ($item['artists'] ?? [] as $artist) {
+                if (is_array($artist) && isset($artist['name']) && is_string($artist['name']) && $artist['name'] !== '') {
+                    $artists[] = $artist['name'];
+                }
+            }
+            $images = $item['album']['images'] ?? [];
+            $image = null;
+            if (is_array($images) && isset($images[0]['url']) && is_string($images[0]['url']) && str_starts_with($images[0]['url'], 'https://')) {
+                $image = $images[0]['url'];
+            }
+            $name = trim((string) ($item['name'] ?? ''));
+            $out[] = [
+                'id' => $item['id'],
+                'name' => $name !== '' ? $name : $item['id'],
+                'artists' => $artists,
+                'album' => isset($item['album']['name']) && is_string($item['album']['name']) ? $item['album']['name'] : null,
+                'duration_ms' => max(0, (int) ($item['duration_ms'] ?? 0)),
+                'explicit' => !empty($item['explicit']),
+                'popularity' => isset($item['popularity']) && is_numeric($item['popularity'])
+                    ? max(0, min(100, (int) $item['popularity']))
+                    : null,
+                'image_url' => $image,
+            ];
+        }
+        return $out;
+    }
+
     /**
      * @return array<string, mixed>
      */

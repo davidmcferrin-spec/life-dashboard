@@ -26,6 +26,13 @@
     let playlistQuery = '';
     let playlistView = 'grid';
     let playlistOwner = 'all';
+    let playlistSeason = 'all';
+    let playlistMood = 'all';
+    let playlistEnergy = 'all';
+    let playlistCreated = 'all';
+    let facets = {};
+    let catalogStale = 0;
+    let activeDevice = '';
     let libraryMode = 'saved';
     let libraryRows = [];
     let promptStamp = 0;
@@ -206,6 +213,45 @@
         if (actions) actions.hidden = !connected;
     }
 
+    function facetOf(row) {
+        const bag = facets && !Array.isArray(facets) ? facets : {};
+        return bag[String(row.id)] || null;
+    }
+
+    function energyMatch(facet, band) {
+        if (band === 'all') return true;
+        if (!facet || facet.energy_min === null || facet.energy_min === undefined) return false;
+        const bands = { low: [1, 3], mid: [4, 7], high: [8, 10] };
+        const range = bands[band];
+        if (!range) return true;
+        return Number(facet.energy_max) >= range[0] && Number(facet.energy_min) <= range[1];
+    }
+
+    function createdMatch(value, band) {
+        if (band === 'all') return true;
+        const text = String(value || '').trim();
+        if (!text) return false;
+        const iso = text.includes('T') ? text : text.replace(' ', 'T');
+        const dated = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : iso + 'Z';
+        const date = new Date(dated);
+        if (Number.isNaN(date.getTime())) return false;
+        const now = Date.now();
+        if (band === '7d') return now - date.getTime() <= 7 * 86400000;
+        if (band === '30d') return now - date.getTime() <= 30 * 86400000;
+        if (band === 'year') return date.getUTCFullYear() === new Date().getUTCFullYear();
+        return true;
+    }
+
+    function choiceOptions(values, current, allLabel) {
+        const tags = values.slice();
+        if (current !== 'all' && tags.indexOf(current) === -1) tags.push(current);
+        const options = ['<option value="all">' + esc(allLabel) + '</option>'];
+        tags.forEach((tag) => {
+            options.push('<option value="' + esc(tag) + '"' + (tag === current ? ' selected' : '') + '>' + esc(tag) + '</option>');
+        });
+        return options.join('');
+    }
+
     function visiblePlaylists() {
         const query = playlistQuery.trim().toLowerCase();
         return playlists.filter((row) => {
@@ -216,26 +262,49 @@
             if (playlistOwner === 'mine' && !row.is_owned) return false;
             if (playlistOwner === 'ai' && row.origin !== 'ai_created' && !row.managed_by_ai) return false;
             if (playlistOwner === 'followed' && (row.is_owned || !row.spotify_id)) return false;
+            const facet = facetOf(row);
+            if (playlistSeason !== 'all' && (!facet || (facet.seasons || []).indexOf(playlistSeason) === -1)) return false;
+            if (playlistMood !== 'all' && (!facet || (facet.moods || []).indexOf(playlistMood) === -1)) return false;
+            if (!energyMatch(facet, playlistEnergy)) return false;
+            if (!createdMatch(facet && facet.created_at, playlistCreated)) return false;
             return true;
         });
     }
 
     function playlistCard(row) {
+        const facet = facetOf(row);
         const bits = [row.track_count + ' tracks'];
         if (row.local_dirty) bits.push('staged');
         if (!row.spotify_id) bits.push('draft');
         if (row.owner_name) bits.push(row.owner_name);
+        const updated = when(row.last_synced_at || (facet && facet.created_at) || '');
+        if (updated) bits.push(updated);
         const mark = (row.origin === 'ai_created' || row.managed_by_ai) ? icon('bot') : '';
+        const season = facet && facet.season ? facet.season : 'No season';
+        const remote = spotifyUrl(row.spotify_id);
+        const play = row.spotify_id ? '<button type="button" data-play-playlist="' + row.id + '">Play</button>' : '';
+        const openRemote = remote ? '<a href="' + remote + '" target="_blank" rel="noopener noreferrer">Open in Spotify</a>' : '';
         return `
-            <a class="music-playlist is-${playlistView}" href="?tab=playlists&id=${row.id}">
-                ${cover(row.image_url, row.name)}
-                <span class="music-playlist-copy">
-                    <strong>${esc(row.name)}</strong>
-                    <small>${esc(bits.join(' · '))}</small>
-                    ${mark ? '<span class="music-owner">' + mark + '</span>' : ''}
-                </span>
-                ${row.sync_error ? '<span class="music-warn">' + esc(row.sync_error) + '</span>' : ''}
-            </a>`;
+            <article class="music-playlist is-${playlistView}">
+                <a class="music-playlist-open" href="?tab=playlists&id=${row.id}">
+                    ${cover(row.image_url, row.name)}
+                    <span class="music-playlist-copy">
+                        <strong>${esc(row.name)}</strong>
+                        <small>${esc(bits.join(' · '))}</small>
+                        ${mark ? '<span class="music-owner">' + mark + '</span>' : ''}
+                        ${row.sync_error ? '<span class="music-warn">' + esc(row.sync_error) + '</span>' : ''}
+                    </span>
+                </a>
+                <span class="music-pill">${icon('cloud-sun')} ${esc(season)}</span>
+                <details class="music-menu">
+                    <summary class="music-icon-btn" aria-label="${esc(row.name)} actions">${icon('ellipsis')}</summary>
+                    <div>
+                        ${play}
+                        ${openRemote}
+                        <a href="?tab=playlists&id=${row.id}">Open</a>
+                    </div>
+                </details>
+            </article>`;
     }
 
     function metaBits(meta) {
@@ -261,34 +330,69 @@
         return change.op;
     }
 
+    function equalizer(playing) {
+        // Heights are decoration. Whether the bars move follows the player.
+        const heights = [18, 34, 25, 46, 30, 52, 22, 41, 28, 49, 20, 36];
+        return '<span class="music-eq' + (playing ? ' is-on' : '') + '" aria-hidden="true">' + heights.map((height, index) => {
+            return '<i style="--h:' + height + ';animation-delay:' + (index * 0.08) + 's"></i>';
+        }).join('') + '</span>';
+    }
+
+    function spotifyTrackUrl(id) {
+        return id && /^[A-Za-z0-9]+$/.test(id) ? 'https://open.spotify.com/track/' + id : 'https://open.spotify.com';
+    }
+
+    function transport(now) {
+        const playing = !!(now && now.is_playing);
+        const shuffle = !!(now && now.shuffle);
+        const repeat = now && now.repeat ? now.repeat : 'off';
+        const repeatOn = repeat !== 'off';
+        return `<div class="music-transport">
+            <button type="button" class="music-icon-btn${shuffle ? ' is-on' : ''}" data-transport="shuffle" data-on="${shuffle ? '1' : '0'}" aria-pressed="${shuffle ? 'true' : 'false'}" aria-label="Shuffle">${icon('shuffle')}</button>
+            <button type="button" class="music-icon-btn" data-transport="previous" aria-label="Previous">${icon('skip-back')}</button>
+            <button type="button" class="music-play" data-transport="toggle" data-playing="${playing ? '1' : '0'}" aria-label="${playing ? 'Pause' : 'Play'}">${icon(playing ? 'pause' : 'play')}</button>
+            <button type="button" class="music-icon-btn" data-transport="next" aria-label="Next">${icon('skip-forward')}</button>
+            <button type="button" class="music-icon-btn${repeatOn ? ' is-on' : ''}" data-transport="repeat" data-mode="${esc(repeat)}" aria-pressed="${repeatOn ? 'true' : 'false'}" aria-label="Repeat ${esc(repeat)}">${icon('repeat')}</button>
+        </div>`;
+    }
+
     async function renderOverview() {
-        const [listRes, seasonRes, activeRes, nowRes, deviceRes] = await Promise.all([
+        const [listRes, seasonRes, activeRes, nowRes, deviceRes, facetRes, catalogRes] = await Promise.all([
             api.get('/spotify/playlists').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
             api.get('/spotify/seasons').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
             api.get('/spotify/seasons/active').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
             api.get('/spotify/player').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
             api.get('/spotify/devices').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
+            api.get('/spotify/playlists/facets').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
+            api.get('/spotify/tracks/catalog').then((value) => ({ ok: true, value: value })).catch((error) => ({ ok: false, error: error })),
         ]);
-        [listRes, seasonRes, activeRes, nowRes, deviceRes].forEach((result) => {
+        [listRes, seasonRes, activeRes, nowRes, deviceRes, facetRes, catalogRes].forEach((result) => {
             if (!result.ok) fail(result.error);
         });
         playlists = listRes.ok ? (listRes.value.playlists || []) : [];
         seasons = seasonRes.ok ? (seasonRes.value.seasons || []) : [];
         activeSeasons = activeRes.ok ? (activeRes.value.seasons || []) : [];
+        facets = facetRes.ok && facetRes.value.facets && !Array.isArray(facetRes.value.facets) ? facetRes.value.facets : {};
+        catalogStale = catalogRes.ok ? Number(catalogRes.value.stale || 0) : 0;
         const now = nowRes.ok ? nowRes.value.now : null;
         const devices = deviceRes.ok ? (deviceRes.value.devices || []) : null;
         const recent = playlists.slice().sort((a, b) => String(b.last_synced_at || '').localeCompare(String(a.last_synced_at || ''))).slice(0, 3);
         const aiRows = playlists.filter((row) => row.origin === 'ai_created' || row.managed_by_ai).slice(0, 6);
         const open = new Set(activeSeasons.map((row) => row.season));
+        const playing = !!(now && now.is_playing);
+        const staleLine = catalogStale > 0
+            ? catalogStale + ' stored tracks are older than a day'
+            : 'Names, art, and length from Spotify';
+        const listen = spotifyTrackUrl(now && now.id);
         panel.innerHTML = `
             <div class="music-hero">
-                <div class="music-hero-art">${now && safeUrl(now.image_url) ? '<img src="' + esc(safeUrl(now.image_url)) + '" alt="">' : icon('music-2')}</div>
+                <div class="music-hero-art">${now && safeUrl(now.image_url) ? '<img src="' + esc(safeUrl(now.image_url)) + '" alt="">' : icon('music-2')}${equalizer(playing)}</div>
                 <div class="music-hero-copy">
-                    <p class="music-kicker">${now && now.name ? (now.is_playing ? 'Now playing' : 'Paused') : 'Player'}</p>
+                    <p class="music-kicker">${now && now.name ? (playing ? 'Now playing' : 'Paused') : 'Player'}</p>
                     <h2>${esc(now && now.name ? now.name : 'Nothing is playing')}</h2>
-                    <p class="music-muted">${esc(now && now.name ? (artistsOf(now) + (now.album ? ' · ' + now.album : '')) : 'The floating player stays in charge of play and pause.')}</p>
+                    <p class="music-muted">${esc(now && now.name ? (artistsOf(now) + (now.album ? ' · ' + now.album : '')) : 'Playback uses the Spotify account already connected.')}</p>
                     ${now && now.duration_ms ? progressBar(now) : ''}
-                    ${now ? flags(now) : ''}
+                    ${transport(now)}
                 </div>
                 <div>${deviceBlock(devices, now)}</div>
             </div>
@@ -304,8 +408,8 @@
                     <header class="music-card-head"><div><p class="music-kicker">Music tools</p><h2 class="music-card-title">Quick actions</h2></div></header>
                     <div class="music-quick">
                         <a href="?tab=builder">${icon('wand-sparkles')}<span><strong>New mixtape</strong><small>Plan a sequence from seeds</small></span>${icon('chevron-right')}</a>
-                        <button type="button" data-sync>${icon('sparkles')}<span><strong>Sync library</strong><small>Pull playlists and saved tracks</small></span>${icon('chevron-right')}</button>
-                        <a href="/settings/spotify">${icon('settings')}<span><strong>Spotify settings</strong><small>Account, scopes, and the player</small></span>${icon('chevron-right')}</a>
+                        <button type="button" data-refresh-meta>${icon('refresh-cw')}<span><strong>Refresh metadata</strong><small>${esc(staleLine)}</small></span>${icon('chevron-right')}</button>
+                        <a href="${esc(listen)}" target="_blank" rel="noopener noreferrer">${icon('external-link')}<span><strong>Open in Spotify</strong><small>${now && now.name ? 'This track' : 'Web player'}</small></span>${icon('external-link')}</a>
                     </div>
                 </section>
                 <section class="music-card music-span">
@@ -339,40 +443,96 @@
     }
 
     function deviceBlock(devices, now) {
-        if (devices === null) return '<p class="music-muted">Devices unavailable.</p>';
-        if (!devices.length) {
-            return emptyBlock('No device', 'Open Spotify on a phone, computer, or speaker. Playback stays on the floating player.', '', '');
+        if (devices === null) {
+            activeDevice = '';
+            return '<p class="music-muted">Devices unavailable.</p>';
         }
-        const activeName = now && now.device ? now.device : '';
-        return `<p class="music-kicker">Playing on</p><ul class="music-devices">${devices.map((device) => {
-            const on = device.is_active || (activeName && device.name === activeName);
-            const volume = device.volume_percent === null || device.volume_percent === undefined ? '' : device.volume_percent + '%';
-            return `<li class="music-device${on ? ' is-on' : ''}">${icon(deviceIcon(device.type))}<span><strong>${esc(device.name || device.type || 'Device')}</strong><small>${esc(device.type || '')}${volume ? ' · ' + esc(volume) : ''}</small></span></li>`;
-        }).join('')}</ul>`;
+        if (!devices.length) {
+            activeDevice = '';
+            return emptyBlock('No device', 'Open Spotify on a phone, computer, or speaker.', '', '');
+        }
+        const active = devices.find((device) => device.is_active) || devices.find((device) => now && now.device && device.name === now.device) || null;
+        activeDevice = active && active.id ? active.id : '';
+        const volume = active && active.volume_percent !== null && active.volume_percent !== undefined
+            ? `<label class="music-volume">${icon('volume-2')}<input id="music-volume" type="range" min="0" max="100" value="${Number(active.volume_percent)}" data-device="${esc(active.id || '')}" aria-label="Volume"></label>`
+            : '<p class="music-muted">This device does not report volume.</p>';
+        const items = devices.map((device) => {
+            if (!device.id) return '';
+            const on = !!(active && device.id === active.id);
+            const level = device.volume_percent === null || device.volume_percent === undefined ? '' : device.volume_percent + '%';
+            return `<li><button type="button" class="music-device${on ? ' is-on' : ''}" data-transfer="${esc(device.id)}" aria-pressed="${on ? 'true' : 'false'}">${icon(deviceIcon(device.type))}<span><strong>${esc(device.name || device.type || 'Device')}</strong><small>${esc(device.type || '')}${level ? ' · ' + esc(level) : ''}</small></span>${on ? icon('check') : ''}</button></li>`;
+        }).join('');
+        return volume + '<p class="music-kicker">Playing on</p><ul class="music-devices">' + items + '</ul>';
     }
 
     function seasonList(rows, open) {
         if (!rows.length) return '<p class="music-muted">No season windows yet.</p>';
         return '<ul class="music-season-mini">' + rows.slice(0, 4).map((row) => {
             const start = row.start_anchor === 'thanksgiving' ? 'Thanksgiving' : ((row.start_month || '—') + '/' + (row.start_day || '—'));
-            return `<li><span class="music-season-symbol">${icon('sprout')}</span><span><strong>${esc(row.season)}</strong><small>${esc(start)} – ${row.end_month}/${row.end_day} · ${open.has(row.season) ? 'open' : 'closed'}</small></span></li>`;
+            const counts = (Number(row.track_count) || 0) + ' tracks';
+            return `<li><span class="music-season-symbol">${icon('cloud-sun')}</span><span><strong>${esc(row.season)}</strong><small>${esc(start)} – ${row.end_month}/${row.end_day} · ${esc(counts)} · ${open.has(row.season) ? 'open' : 'closed'}</small></span></li>`;
         }).join('') + '</ul>';
     }
 
+    function facetChoices() {
+        const seasonsFound = [];
+        const moodsFound = [];
+        playlists.forEach((row) => {
+            const facet = facetOf(row);
+            if (!facet) return;
+            (facet.seasons || []).forEach((tag) => {
+                if (seasonsFound.indexOf(tag) === -1) seasonsFound.push(tag);
+            });
+            (facet.moods || []).forEach((tag) => {
+                if (moodsFound.indexOf(tag) === -1) moodsFound.push(tag);
+            });
+        });
+        seasonsFound.sort();
+        moodsFound.sort();
+        return { seasons: seasonsFound, moods: moodsFound };
+    }
+
     async function renderPlaylistTab() {
-        const res = await api.get('/spotify/playlists');
+        const [res, facetRes] = await Promise.all([
+            api.get('/spotify/playlists'),
+            api.get('/spotify/playlists/facets'),
+        ]);
         playlists = res.playlists || [];
+        facets = facetRes.facets && !Array.isArray(facetRes.facets) ? facetRes.facets : {};
+        const choices = facetChoices();
         panel.innerHTML = `
             <div class="music-tools">
                 <label class="music-search">${icon('search')}
                     <input id="music-playlist-q" class="input" type="search" maxlength="200" placeholder="Search playlists" value="${esc(playlistQuery)}">
                 </label>
-                <label class="music-field">Owner
+                <label class="music-filter">Owner
                     <select id="music-playlist-owner" class="input">
-                        <option value="all">All</option>
-                        <option value="mine">Mine</option>
-                        <option value="ai">AI</option>
-                        <option value="followed">Followed</option>
+                        <option value="all"${playlistOwner === 'all' ? ' selected' : ''}>All</option>
+                        <option value="mine"${playlistOwner === 'mine' ? ' selected' : ''}>Mine</option>
+                        <option value="ai"${playlistOwner === 'ai' ? ' selected' : ''}>AI</option>
+                        <option value="followed"${playlistOwner === 'followed' ? ' selected' : ''}>Followed</option>
+                    </select>
+                </label>
+                <label class="music-filter">Season
+                    <select id="music-playlist-season" class="input">${choiceOptions(choices.seasons, playlistSeason, 'Any season')}</select>
+                </label>
+                <label class="music-filter">Mood
+                    <select id="music-playlist-mood" class="input">${choiceOptions(choices.moods, playlistMood, 'Any mood')}</select>
+                </label>
+                <label class="music-filter">Energy
+                    <select id="music-playlist-energy" class="input">
+                        <option value="all"${playlistEnergy === 'all' ? ' selected' : ''}>Any energy</option>
+                        <option value="low"${playlistEnergy === 'low' ? ' selected' : ''}>Low (1–3)</option>
+                        <option value="mid"${playlistEnergy === 'mid' ? ' selected' : ''}>Mid (4–7)</option>
+                        <option value="high"${playlistEnergy === 'high' ? ' selected' : ''}>High (8–10)</option>
+                    </select>
+                </label>
+                <label class="music-filter">Created
+                    <select id="music-playlist-created" class="input">
+                        <option value="all"${playlistCreated === 'all' ? ' selected' : ''}>Any time</option>
+                        <option value="7d"${playlistCreated === '7d' ? ' selected' : ''}>Last 7 days</option>
+                        <option value="30d"${playlistCreated === '30d' ? ' selected' : ''}>Last 30 days</option>
+                        <option value="year"${playlistCreated === 'year' ? ' selected' : ''}>This year</option>
                     </select>
                 </label>
                 <div class="music-segment">
@@ -381,8 +541,6 @@
                 </div>
             </div>
             <div id="music-playlist-results"></div>`;
-        const owner = document.getElementById('music-playlist-owner');
-        if (owner) owner.value = playlistOwner;
         paintPlaylists();
     }
 
@@ -432,12 +590,15 @@
                     <h2>${esc(playlist.name)}</h2>
                     <p class="music-muted">${esc(playlist.description || '')}</p>
                     <p class="music-chips"><span class="music-chip">${preview.length} in this order</span><span class="music-chip">${esc(durationLabel(ms))}</span>${playlist.owner_name ? '<span class="music-chip">' + esc(playlist.owner_name) + '</span>' : ''}</p>
+                    ${detailTags(preview)}
                     ${label ? '<p class="music-warn">' + esc(label) + '</p>' : ''}
                     ${playlist.sync_error ? '<p class="music-warn">' + esc(playlist.sync_error) + '</p>' : ''}
                 </div>
                 <div class="music-inline">
+                    ${canEdit ? '<button type="button" class="btn" data-edit-details>' + icon('pencil') + ' Edit details</button>' : ''}
+                    ${playlist.spotify_id ? '<button type="button" class="btn-primary" data-play-playlist="' + playlist.id + '">' + icon('play') + ' Play</button>' : ''}
                     <button type="button" class="btn" data-sync-one="${playlist.id}">Sync</button>
-                    ${canEdit ? '<button type="button" class="btn-primary" data-push="' + playlist.id + '">Push</button>' : ''}
+                    ${canEdit ? '<button type="button" class="btn" data-push="' + playlist.id + '">Push</button>' : ''}
                     ${canEdit ? '<button type="button" class="btn" data-discard="' + playlist.id + '">Discard</button>' : ''}
                     ${remote ? '<a class="btn" href="' + remote + '" target="_blank" rel="noopener noreferrer">Open in Spotify</a>' : ''}
                 </div>
@@ -446,14 +607,12 @@
                 <header class="music-card-head"><div><p class="music-kicker">Running order</p><h2 class="music-card-title">Energy arc</h2></div></header>
                 ${arcMarkup(preview.map((track) => track.meta ? track.meta.energy : null))}
             </section>
-            ${canEdit ? `<details class="music-details"><summary>Edit details</summary>
-                <form id="music-rename" class="music-form">
+            ${canEdit ? `<form id="music-rename" class="music-form" hidden>
                     <label class="music-field">Name <input name="name" class="input" maxlength="100" value="${esc(playlist.name)}"></label>
                     <label class="music-field">Description <input name="description" class="input" maxlength="300" value="${esc(playlist.description || '')}"></label>
                     <label class="music-check"><input type="checkbox" name="public" ${playlist.public ? 'checked' : ''}> Public</label>
                     <button type="submit" class="btn">Stage rename</button>
-                </form>
-            </details>` : ''}
+                </form>` : ''}
             ${changes ? '<ul class="music-diff">' + changes + '</ul>' : '<p class="music-muted">No staged changes.</p>'}
             ${canEdit ? `<form id="music-search" class="music-tools">
                 <label class="music-search">${icon('search')}<input name="q" class="input" maxlength="200" placeholder="Search Spotify to add a track"></label>
@@ -466,10 +625,42 @@
                     ${canEdit ? '<button type="button" class="btn" data-add="' + esc(hit.uri) + '" data-name="' + esc(hit.name) + '" data-artists="' + esc((hit.artists || []).join('|')) + '">Add</button>' : ''}
                 </span></li>`).join('') + '</ul>' : ''}
             <section class="music-card">
-                <header class="music-card-head"><div><p class="music-kicker">${canEdit ? 'Drag to reorder' : 'Tracks'}</p><h2 class="music-card-title">Track sequence</h2></div></header>
+                <header class="music-card-head"><div><p class="music-kicker">${canEdit ? 'Drag to reorder' : 'Tracks'}</p><h2 class="music-card-title">Track sequence</h2></div>${canEdit ? '<button type="button" class="btn" data-add-tracks>' + icon('plus') + ' Add tracks</button>' : ''}</header>
                 ${trackTable(preview, canEdit)}
             </section>
             ${aiPlaylist(playlist) ? promptBlock(playlist) : ''}`;
+    }
+
+    function detailTags(preview) {
+        const seasonsFound = [];
+        const moodsFound = [];
+        preview.forEach((track) => {
+            const meta = track.meta || {};
+            (meta.season_tags || []).forEach((tag) => {
+                if (seasonsFound.indexOf(tag) === -1) seasonsFound.push(tag);
+            });
+            (meta.mood_tags || []).forEach((tag) => {
+                if (moodsFound.indexOf(tag) === -1) moodsFound.push(tag);
+            });
+        });
+        const bits = seasonsFound.map((tag) => '<span class="music-pill">' + icon('cloud-sun') + ' ' + esc(tag) + '</span>');
+        moodsFound.forEach((tag) => bits.push('<span class="music-chip">' + esc(tag) + '</span>'));
+        return bits.length ? '<p class="music-tags">' + bits.join('') + '</p>' : '';
+    }
+
+    function trackMenu(track, canEdit) {
+        const remoteId = track.id && /^[A-Za-z0-9]+$/.test(track.id) ? track.id : '';
+        const openRemote = remoteId ? '<a href="https://open.spotify.com/track/' + remoteId + '" target="_blank" rel="noopener noreferrer">Open in Spotify</a>' : '';
+        const remove = canEdit ? '<button type="button" data-remove="' + esc(track.uri) + '">Remove</button>' : '';
+        return `<details class="music-menu">
+            <summary class="music-icon-btn" aria-label="${esc(track.name)} actions">${icon('ellipsis')}</summary>
+            <div>
+                <button type="button" data-play-uri="${esc(track.uri)}">Play</button>
+                <button type="button" data-meta="${esc(track.uri)}" data-meta-name="${esc(track.name)}" data-meta-artists="${esc(artistsOf(track))}">Notes</button>
+                ${openRemote}
+                ${remove}
+            </div>
+        </details>`;
     }
 
     function trackTable(preview, canEdit) {
@@ -477,22 +668,24 @@
         const rows = preview.map((track, index) => {
             const meta = track.meta || {};
             const move = canEdit ? `
-                <button type="button" class="music-drag" draggable="true" data-drag="${index}" aria-label="Drag to reorder">${icon('arrow-left-right')}</button>
+                <button type="button" class="music-drag" draggable="true" data-drag="${index}" aria-label="Drag to reorder">${icon('grip-vertical')}</button>
                 <button type="button" class="music-linkish" data-up="${index}">Up</button>
-                <button type="button" class="music-linkish" data-down="${index}">Down</button>
-                <button type="button" class="music-linkish" data-remove="${esc(track.uri)}">Remove</button>` : '';
+                <button type="button" class="music-linkish" data-down="${index}">Down</button>` : '';
+            const seasonsCell = meta.season_tags && meta.season_tags.length
+                ? meta.season_tags.map((tag) => '<span class="music-pill">' + icon('cloud-sun') + ' ' + esc(tag) + '</span>').join(' ')
+                : '—';
             return `<tr data-row="${index}">
                 <td>${move}</td>
                 <td>${String(index + 1).padStart(2, '0')}</td>
-                <td><strong>${esc(track.name)}</strong></td>
+                <td><button type="button" class="music-icon-btn" data-play-uri="${esc(track.uri)}" aria-label="Play ${esc(track.name)}">${icon('play')}</button> <strong>${esc(track.name)}</strong></td>
                 <td>${esc(artistsOf(track))}</td>
                 <td>${meta.bpm ? esc(meta.bpm) : '—'}</td>
                 <td>${esc(meta.camelot || meta.musical_key || '—')}</td>
                 <td class="music-energy-cell">${energyCell(meta.energy)}</td>
                 <td>${meta.mood_tags && meta.mood_tags.length ? '<span class="music-chip">' + esc(meta.mood_tags[0]) + '</span>' : '—'}</td>
-                <td>${meta.season_tags && meta.season_tags.length ? '<span class="music-chip">' + esc(meta.season_tags.join(', ')) + '</span>' : '—'}</td>
+                <td>${seasonsCell}</td>
                 <td>${clock(track.duration_ms)}</td>
-                <td><button type="button" class="music-linkish" data-meta="${esc(track.uri)}" data-meta-name="${esc(track.name)}" data-meta-artists="${esc(artistsOf(track))}">Notes</button></td>
+                <td>${trackMenu(track, canEdit)}</td>
             </tr>`;
         }).join('');
         return `<div class="music-table-wrap"><table class="music-table"><thead><tr><th></th><th>#</th><th>Title</th><th>Artist</th><th>BPM</th><th>Key</th><th>Energy</th><th>Mood</th><th>Season</th><th>Length</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -664,30 +857,30 @@
         panel.innerHTML = `
             <div class="music-season-strip">${months.map((label, index) => `<span class="${monthOn(index + 1) ? 'is-on' : ''}">${label}</span>`).join('')}</div>
             <header class="music-card-head">
-                <div><h2 class="music-card-title">Season windows</h2><p class="music-muted">A track tagged for a closed season is refused unless the prompt allows it.</p></div>
+                <div><h2 class="music-card-title">Season windows</h2><p class="music-muted">A track tagged for a closed season is refused unless that season allows it, or the prompt does.</p></div>
+                <button type="button" class="btn-primary" data-add-season>${icon('plus')} Add season</button>
             </header>
-            ${seasons.length ? '<div class="music-season-grid">' + seasons.map((row) => seasonCard(row, open.has(row.season))).join('') + '</div>' : '<p class="music-muted">No season windows yet.</p>'}
-            <form id="music-season-form" class="music-form music-card">
-                <h2 class="music-card-title">Save a window</h2>
-                <label class="music-field">Season <input name="season" class="input" maxlength="32" required placeholder="christmas"></label>
-                <label class="music-check"><input type="checkbox" name="thanksgiving"> Start on Thanksgiving</label>
-                <div class="music-split">
-                    <label class="music-field">Start month <input name="start_month" class="input" inputmode="numeric" maxlength="2"></label>
-                    <label class="music-field">Start day <input name="start_day" class="input" inputmode="numeric" maxlength="2"></label>
-                    <label class="music-field">End month <input name="end_month" class="input" inputmode="numeric" maxlength="2" required></label>
-                    <label class="music-field">End day <input name="end_day" class="input" inputmode="numeric" maxlength="2" required></label>
-                </div>
-                <button type="submit" class="btn-primary">Save window</button>
-            </form>`;
+            ${seasons.length ? '<div class="music-season-grid">' + seasons.map((row) => seasonCard(row, open.has(row.season))).join('') + '</div>' : '<p class="music-muted">No season windows yet.</p>'}`;
     }
 
     function seasonCard(row, isOpen) {
         const start = row.start_anchor === 'thanksgiving' ? 'Thanksgiving' : ((row.start_month || '—') + '/' + (row.start_day || '—'));
+        const counts = (Number(row.playlist_count) || 0) + ' playlists · ' + (Number(row.track_count) || 0) + ' tracks';
         return `<article class="music-season-card">
-            <header><span class="music-season-symbol">${icon('sprout')}</span><button type="button" class="music-linkish" data-season="${esc(row.season)}">Edit</button></header>
+            <header><span class="music-season-symbol">${icon('cloud-sun')}</span>
+                <details class="music-menu">
+                    <summary class="music-icon-btn" aria-label="${esc(row.season)} actions">${icon('ellipsis')}</summary>
+                    <div><button type="button" data-season="${esc(row.season)}">Edit window</button></div>
+                </details>
+            </header>
             <h3>${esc(row.season)}</h3>
             <div class="music-season-range"><span><small>Start</small>${esc(start)}</span><i></i><span><small>End</small>${row.end_month}/${row.end_day}</span></div>
-            <p>${isOpen ? 'Open today' : 'Closed today'}</p>
+            <p>${esc(counts)}</p>
+            <p class="music-muted">${isOpen ? 'Open today' : 'Closed today'}</p>
+            <footer class="music-season-foot">
+                <span>Allow outside window</span>
+                <button type="button" class="music-toggle${row.allow_outside ? ' is-on' : ''}" data-season-allow="${esc(row.season)}" aria-pressed="${row.allow_outside ? 'true' : 'false'}" aria-label="Allow ${esc(row.season)} outside its window"><i></i></button>
+            </footer>
         </article>`;
     }
 
@@ -810,17 +1003,45 @@
         form.elements.bpm.focus();
     }
 
-    function fillSeason(name) {
+    function openSeason(name) {
+        const modal = document.getElementById('music-season-modal');
         const form = document.getElementById('music-season-form');
-        const row = seasons.find((item) => item.season === name);
-        if (!form || !row) return;
-        form.elements.season.value = row.season;
-        form.elements.thanksgiving.checked = row.start_anchor === 'thanksgiving';
-        form.elements.start_month.value = row.start_month ?? '';
-        form.elements.start_day.value = row.start_day ?? '';
-        form.elements.end_month.value = row.end_month;
-        form.elements.end_day.value = row.end_day;
+        const title = document.getElementById('music-season-title');
+        if (!modal || !form) return;
+        if (name) {
+            const row = seasons.find((item) => item.season === name);
+            if (!row) return;
+            form.elements.season.value = row.season;
+            form.elements.thanksgiving.checked = row.start_anchor === 'thanksgiving';
+            form.elements.start_month.value = row.start_month ?? '';
+            form.elements.start_day.value = row.start_day ?? '';
+            form.elements.end_month.value = row.end_month;
+            form.elements.end_day.value = row.end_day;
+            form.elements.allow_outside.checked = !!row.allow_outside;
+            if (title) title.textContent = 'Edit season';
+        } else {
+            form.reset();
+            if (title) title.textContent = 'Add season';
+        }
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
         form.elements.season.focus();
+    }
+
+    function closeSeason() {
+        const modal = document.getElementById('music-season-modal');
+        if (modal) modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function fillSeason(name) {
+        openSeason(name);
+    }
+
+    function playbackBody() {
+        return activeDevice ? { device_id: activeDevice } : {};
     }
 
     function openNew() {
@@ -949,13 +1170,16 @@
                     start_anchor: thanksgiving ? 'thanksgiving' : '',
                     end_month: numberOrBlank(data.get('end_month')),
                     end_day: numberOrBlank(data.get('end_day')),
+                    allow_outside: data.get('allow_outside') === 'on',
                 };
                 if (!thanksgiving) {
                     body.start_month = numberOrBlank(data.get('start_month'));
                     body.start_day = numberOrBlank(data.get('start_day'));
                 }
                 await api.post('/spotify/seasons', body);
-                await renderSeasons();
+                closeSeason();
+                if (tab === 'seasons') await renderSeasons();
+                else if (tab === 'overview') await renderOverview();
                 ok('Season window saved.');
             } else if (form.id === 'music-meta-form') {
                 const data = new FormData(form);
@@ -1008,7 +1232,9 @@
 
     root.addEventListener('click', async (event) => {
         if (event.target.closest('[data-close-modal]')) {
-            closeNew();
+            const modal = event.target.closest('.app-modal');
+            if (modal && modal.id === 'music-season-modal') closeSeason();
+            else closeNew();
             return;
         }
         if (event.target.closest('[data-close-drawer]')) {
@@ -1109,6 +1335,72 @@
                 await api.post('/spotify/prompts/' + target.dataset.promptRemove + '/remove', {});
                 await reloadDetail();
                 ok('Prompt removed.');
+            } else if (target.dataset.addSeason !== undefined) {
+                openSeason('');
+            } else if (target.dataset.editDetails !== undefined) {
+                const form = document.getElementById('music-rename');
+                if (form) {
+                    form.hidden = false;
+                    if (form.elements.name) form.elements.name.focus();
+                }
+            } else if (target.dataset.addTracks !== undefined) {
+                const input = document.querySelector('#music-search input[name="q"]');
+                if (input) input.focus();
+            } else if (target.dataset.refreshMeta !== undefined) {
+                say('Refreshing metadata…');
+                const refreshed = await api.post('/spotify/tracks/catalog', {});
+                if (!refreshed.checked) ok('Stored tracks are already current.');
+                else ok('Updated ' + (refreshed.updated || 0) + ' of ' + refreshed.checked + ' tracks from Spotify.');
+                if (tab === 'overview') await renderOverview();
+            } else if (target.dataset.transport) {
+                const body = playbackBody();
+                const action = target.dataset.transport;
+                if (action === 'toggle') {
+                    await api.post('/spotify/playback/' + (target.dataset.playing === '1' ? 'pause' : 'play'), body);
+                } else if (action === 'shuffle') {
+                    body.state = target.dataset.on !== '1';
+                    await api.post('/spotify/playback/shuffle', body);
+                } else if (action === 'repeat') {
+                    const order = ['off', 'context', 'track'];
+                    const current = order.indexOf(target.dataset.mode || 'off');
+                    body.state = order[(current + 1) % order.length];
+                    await api.post('/spotify/playback/repeat', body);
+                } else {
+                    await api.post('/spotify/playback/' + action, body);
+                }
+                if (tab === 'overview') await renderOverview();
+            } else if (target.dataset.transfer) {
+                if (target.getAttribute('aria-pressed') === 'true') return;
+                await api.post('/spotify/playback/transfer', { device_id: target.dataset.transfer });
+                if (tab === 'overview') await renderOverview();
+            } else if (target.dataset.playUri) {
+                const body = playbackBody();
+                body.uris = [target.dataset.playUri];
+                await api.post('/spotify/playback/play', body);
+                ok('Playing.');
+            } else if (target.dataset.playPlaylist) {
+                const body = playbackBody();
+                body.playlist_id = Number(target.dataset.playPlaylist);
+                await api.post('/spotify/playback/play', body);
+                ok('Playing playlist.');
+            } else if (target.dataset.seasonAllow) {
+                const row = seasons.find((item) => item.season === target.dataset.seasonAllow);
+                if (!row) return;
+                const thanksgiving = row.start_anchor === 'thanksgiving';
+                const body = {
+                    season: row.season,
+                    start_anchor: thanksgiving ? 'thanksgiving' : '',
+                    end_month: row.end_month,
+                    end_day: row.end_day,
+                    allow_outside: !row.allow_outside,
+                };
+                if (!thanksgiving) {
+                    body.start_month = row.start_month;
+                    body.start_day = row.start_day;
+                }
+                await api.post('/spotify/seasons', body);
+                await renderSeasons();
+                ok(body.allow_outside ? 'Season can play outside its window.' : 'Season stays inside its window.');
             } else if (target.dataset.season) {
                 fillSeason(target.dataset.season);
             }
@@ -1126,8 +1418,32 @@
 
     root.addEventListener('change', (event) => {
         const input = event.target;
+        if (input && input.id === 'music-volume') {
+            const body = { volume_percent: Number(input.value) };
+            if (input.dataset.device) body.device_id = input.dataset.device;
+            api.post('/spotify/playback/volume', body).then(function () {
+                ok('Volume updated.');
+            }).catch(fail);
+            return;
+        }
         if (input && input.id === 'music-playlist-owner') {
             playlistOwner = input.value;
+            paintPlaylists();
+        }
+        if (input && input.id === 'music-playlist-season') {
+            playlistSeason = input.value;
+            paintPlaylists();
+        }
+        if (input && input.id === 'music-playlist-mood') {
+            playlistMood = input.value;
+            paintPlaylists();
+        }
+        if (input && input.id === 'music-playlist-energy') {
+            playlistEnergy = input.value;
+            paintPlaylists();
+        }
+        if (input && input.id === 'music-playlist-created') {
+            playlistCreated = input.value;
             paintPlaylists();
         }
         if (!(input instanceof HTMLInputElement) || input.name !== 'kind') return;
@@ -1175,8 +1491,8 @@
         if (tab === 'builder') return;
         const active = document.activeElement;
         if (active && root.contains(active) && active.matches('input, textarea, select')) return;
-        const modal = document.getElementById('music-new-modal');
-        if (modal && !modal.classList.contains('hidden')) return;
+        if (document.querySelector('#music-new-modal:not(.hidden), #music-season-modal:not(.hidden)')) return;
+        if (panel.querySelector('details[open]')) return;
         if (drawer && !drawer.hidden) return;
         window.clearTimeout(timer);
         timer = window.setTimeout(load, 400);
