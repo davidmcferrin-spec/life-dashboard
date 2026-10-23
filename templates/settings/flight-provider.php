@@ -18,7 +18,7 @@ if (!in_array($provider, ['opensky', 'flightaware'], true)) {
     $provider = 'opensky';
 }
 
-$secretHelp = static function (array $field): string {
+$flightSecretStatus = static function (array $field): string {
     $hint = (string) ($field['hint'] ?? '');
     if ($hint === '') {
         return 'Not set. Leave blank to keep it that way.';
@@ -64,22 +64,49 @@ require __DIR__ . '/_shell-top.php';
 
                 <div data-provider="opensky">
                     <div class="settings-field">
-                        <label class="settings-label" for="opensky-client-id">OpenSky client id</label>
-                        <input id="opensky-client-id" class="input w-full" type="password" name="opensky_client_id" autocomplete="off" spellcheck="false">
-                        <p class="settings-help"><?= e($secretHelp($byKey['OPENSKY_CLIENT_ID'] ?? [])) ?></p>
+                        <?php
+                        $secretId = 'opensky-client-id';
+                        $secretName = 'opensky_client_id';
+                        $secretLabel = 'OpenSky client id';
+                        $secretHint = (string) ($byKey['OPENSKY_CLIENT_ID']['hint'] ?? '');
+                        $secretValue = '';
+                        $secretPlaceholder = '';
+                        $secretAutocomplete = 'off';
+                        $secretHidden = false;
+                        require __DIR__ . '/../partials/secret-field.php';
+                        ?>
+                        <p class="settings-help"><?= e($flightSecretStatus($byKey['OPENSKY_CLIENT_ID'] ?? [])) ?></p>
                     </div>
                     <div class="settings-field">
-                        <label class="settings-label" for="opensky-client-secret">OpenSky client secret</label>
-                        <input id="opensky-client-secret" class="input w-full" type="password" name="opensky_client_secret" autocomplete="off" spellcheck="false">
-                        <p class="settings-help"><?= e($secretHelp($byKey['OPENSKY_CLIENT_SECRET'] ?? [])) ?></p>
+                        <?php
+                        $secretId = 'opensky-client-secret';
+                        $secretName = 'opensky_client_secret';
+                        $secretLabel = 'OpenSky client secret';
+                        $secretHint = (string) ($byKey['OPENSKY_CLIENT_SECRET']['hint'] ?? '');
+                        $secretValue = '';
+                        $secretPlaceholder = '';
+                        $secretAutocomplete = 'off';
+                        $secretHidden = false;
+                        require __DIR__ . '/../partials/secret-field.php';
+                        ?>
+                        <p class="settings-help"><?= e($flightSecretStatus($byKey['OPENSKY_CLIENT_SECRET'] ?? [])) ?></p>
                     </div>
                 </div>
 
                 <div data-provider="flightaware">
                     <div class="settings-field">
-                        <label class="settings-label" for="flightaware-key">FlightAware key</label>
-                        <input id="flightaware-key" class="input w-full" type="password" name="flightaware_key" autocomplete="off" spellcheck="false">
-                        <p class="settings-help"><?= e($secretHelp($byKey['FLIGHTAWARE_API_KEY'] ?? [])) ?></p>
+                        <?php
+                        $secretId = 'flightaware-key';
+                        $secretName = 'flightaware_key';
+                        $secretLabel = 'FlightAware key';
+                        $secretHint = (string) ($byKey['FLIGHTAWARE_API_KEY']['hint'] ?? '');
+                        $secretValue = '';
+                        $secretPlaceholder = '';
+                        $secretAutocomplete = 'off';
+                        $secretHidden = false;
+                        require __DIR__ . '/../partials/secret-field.php';
+                        ?>
+                        <p class="settings-help"><?= e($flightSecretStatus($byKey['FLIGHTAWARE_API_KEY'] ?? [])) ?></p>
                     </div>
                 </div>
             </form>
