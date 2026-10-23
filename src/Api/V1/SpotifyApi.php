@@ -131,8 +131,32 @@ final class SpotifyApi
             $body = $this->runner->body();
             $prompt = isset($body['prompt_id']) && $body['prompt_id'] !== '' ? (int) $body['prompt_id'] : null;
             $arc = isset($body['arc']) && is_array($body['arc']) ? $body['arc'] : null;
-            return $this->svc()->library()->mixtape()->plan($u, $body['uris'] ?? [], $prompt, $arc);
+            $options = [];
+            if (isset($body['locks']) && is_array($body['locks'])) {
+                $options['locks'] = $body['locks'];
+            }
+            if (array_key_exists('key_compat', $body)) {
+                $options['key'] = (bool) $body['key_compat'];
+            }
+            if (isset($body['target_ms']) && is_numeric($body['target_ms'])) {
+                $options['target_ms'] = (int) $body['target_ms'];
+            }
+            if (isset($body['durations']) && is_array($body['durations'])) {
+                $options['durations'] = $body['durations'];
+            }
+            if (isset($body['avoid']) && is_array($body['avoid'])) {
+                $options['avoid'] = $body['avoid'];
+            }
+            if (isset($body['slots']) && is_numeric($body['slots'])) {
+                $options['slots'] = (int) $body['slots'];
+            }
+            return $this->svc()->library()->mixtape()->plan($u, $body['uris'] ?? [], $prompt, $arc, $options);
         }, 200, false));
+        $r->get('/api/v1/spotify/mixtape/locks', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->locks($u)));
+        $r->post('/api/v1/spotify/mixtape/locks', fn () => $this->run(function (int $u): array {
+            $locks = $this->runner->body()['locks'] ?? [];
+            return $this->svc()->library()->mixtape()->saveLocks($u, is_array($locks) ? $locks : []);
+        }, 200, true));
         $r->post('/api/v1/spotify/sync', fn () => $this->run(fn (int $u) => $this->svc()->sync()->pull($u, $this->playlistId()), 200, true));
         $r->post('/api/v1/spotify/taste', fn () => $this->run(fn (int $u) => $this->svc()->library()->saveTaste($u, $this->runner->body()['profile'] ?? null), 200, true));
         $r->post('/api/v1/spotify/prompts', fn () => $this->run(fn (int $u) => [
