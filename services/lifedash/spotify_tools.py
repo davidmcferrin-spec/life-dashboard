@@ -36,7 +36,8 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "search_spotify",
-        "Live Spotify search for tracks, artists, or albums. " + TASTE + " Requires spotify:read.",
+        "Live Spotify search for tracks, artists, or albums. Spotify rejects a limit above 10, so this asks for 10. "
+        + TASTE + " Requires spotify:read.",
         {
             "q": {"type": "string"},
             "type": {"type": "string", "description": "track, artist, album, or a comma-separated mix. Default track."},
@@ -165,7 +166,9 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "add_spotify_prompt",
-        "Add a prompt for an AI playlist created here. target_playlist_id is refused for any other playlist. " + WRITE,
+        "Add a prompt for an AI playlist created here. target_playlist_id is refused for any other playlist. "
+        "arc is opener, build, peak, breather, and closer energies from 1 to 10. theme is the tone. "
+        "season_tags and allow_seasons name seasons such as christmas. " + WRITE,
         {
             "name": {"type": "string"},
             "prompt": {"type": "string"},
@@ -173,12 +176,17 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
             "refresh_schedule": {"type": "string"},
             "notes": {"type": "string"},
             "active": {"type": "boolean"},
+            "theme": {"type": "string"},
+            "arc": {"type": "object"},
+            "season_tags": {"type": "array", "items": {"type": "string"}},
+            "allow_seasons": {"type": "array", "items": {"type": "string"}},
         },
         ["name", "prompt"],
     ),
     _tool(
         "update_spotify_prompt",
-        "Update a prompt. target_playlist_id must be an AI playlist created here. " + WRITE,
+        "Update a prompt. target_playlist_id must be an AI playlist created here. "
+        "arc, theme, season_tags, and allow_seasons are stored with the prompt. " + WRITE,
         {
             "prompt_id": {"type": "integer"},
             "name": {"type": "string"},
@@ -187,8 +195,40 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
             "refresh_schedule": {"type": "string"},
             "notes": {"type": "string"},
             "active": {"type": "boolean"},
+            "theme": {"type": "string"},
+            "arc": {"type": "object"},
+            "season_tags": {"type": "array", "items": {"type": "string"}},
+            "allow_seasons": {"type": "array", "items": {"type": "string"}},
         },
         ["prompt_id"],
+    ),
+    _tool(
+        "set_track_metadata",
+        "Store BPM, key, Camelot code, energy 1-10, mood tags, and season tags for tracks. "
+        "source is manual or estimated. Spotify audio-features is unavailable, so label estimates. " + WRITE,
+        {"tracks": {"type": "array", "items": {"type": "object"}}},
+        ["tracks"],
+    ),
+    _tool(
+        "get_track_metadata",
+        "Read stored BPM, key, energy, mood, and season tags for spotify:track URIs. Requires spotify:read.",
+        {"uris": {"type": "array", "items": {"type": "string"}}},
+        ["uris"],
+    ),
+    _tool(
+        "list_active_seasons",
+        "Seasons whose window contains today. Christmas and holiday default to Thanksgiving through January 6. Requires spotify:read.",
+    ),
+    _tool(
+        "plan_mixtape",
+        "Order candidate track URIs along a prompt arc using stored energy, BPM, and Camelot codes. "
+        "Read-only: it does not stage or push. Missing metadata and rough transitions are flagged. Requires spotify:read.",
+        {
+            "uris": {"type": "array", "items": {"type": "string"}},
+            "prompt_id": {"type": "integer"},
+            "arc": {"type": "object"},
+        },
+        ["uris"],
     ),
     _tool(
         "remove_spotify_prompt",
@@ -386,12 +426,35 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
         _unknown(name, args, {"playlist_id"})
         return "POST", "/api/v1/spotify/sync", _optional_playlist(args)
     if name == "add_spotify_prompt":
-        _unknown(name, args, {"name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active"})
-        return "POST", "/api/v1/spotify/prompts", _pick(args, ("name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active"))
+        fields = ("name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active", "theme", "arc", "season_tags", "allow_seasons")
+        _unknown(name, args, set(fields))
+        return "POST", "/api/v1/spotify/prompts", _pick(args, fields)
     if name == "update_spotify_prompt":
-        _unknown(name, args, {"prompt_id", "name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active"})
+        fields = ("name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active", "theme", "arc", "season_tags", "allow_seasons")
+        _unknown(name, args, {"prompt_id", *fields})
         prompt_id = _id(args, "prompt_id")
-        return "POST", f"/api/v1/spotify/prompts/{prompt_id}/update", _pick(args, ("name", "prompt", "target_playlist_id", "refresh_schedule", "notes", "active"))
+        return "POST", f"/api/v1/spotify/prompts/{prompt_id}/update", _pick(args, fields)
+    if name == "set_track_metadata":
+        _unknown(name, args, {"tracks"})
+        tracks = args.get("tracks")
+        if not isinstance(tracks, list) or not tracks:
+            raise ValueError("tracks must be a list.")
+        return "POST", "/api/v1/spotify/tracks/meta", {"tracks": tracks}
+    if name == "get_track_metadata":
+        _unknown(name, args, {"uris"})
+        uris = _uri_list(args)
+        return "GET", "/api/v1/spotify/tracks/meta?" + urlencode({"uris": ",".join(uris)}), None
+    if name == "list_active_seasons":
+        _empty(name, args)
+        return "GET", "/api/v1/spotify/seasons/active", None
+    if name == "plan_mixtape":
+        _unknown(name, args, {"uris", "prompt_id", "arc"})
+        body: dict[str, Any] = {"uris": _uri_list(args)}
+        if args.get("prompt_id") is not None:
+            body["prompt_id"] = _id(args, "prompt_id")
+        if isinstance(args.get("arc"), dict):
+            body["arc"] = args["arc"]
+        return "POST", "/api/v1/spotify/mixtape/plan", body
     if name == "remove_spotify_prompt":
         return "POST", f"/api/v1/spotify/prompts/{_id(args, 'prompt_id')}/remove", {}
     if name == "mark_prompt_run":

@@ -31,6 +31,12 @@ final class SpotifyApi
         $r->get('/api/v1/spotify/playlists/{id}/changes', fn (array $p) => $this->run(fn (int $u) => [
             'changes' => $this->svc()->library()->changes($u, $this->id($p)),
         ]));
+        $r->get('/api/v1/spotify/tracks/meta', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->get(
+            $u,
+            self::metaUris($_GET['uris'] ?? ''),
+        )));
+        $r->get('/api/v1/spotify/seasons', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->seasons($u)));
+        $r->get('/api/v1/spotify/seasons/active', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->active($u, $this->svc()->library()->clock())));
         $r->get('/api/v1/spotify/search', fn () => $this->run(fn (int $u) => $this->svc()->playback()->search(
             $u,
             (string) ($_GET['q'] ?? ''),
@@ -111,8 +117,22 @@ final class SpotifyApi
             if ($playlistId !== null) {
                 $this->svc()->library()->assertEditable($u, $playlistId);
             }
+            $this->svc()->library()->mixtape()->assertPending($u, $playlistId, $this->svc()->library()->clock());
             return $this->svc()->sync()->push($u, $playlistId);
         }, 200, true));
+        $r->post('/api/v1/spotify/tracks/meta', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->saveMany(
+            $u,
+            is_array($this->runner->body()['tracks'] ?? null) ? $this->runner->body()['tracks'] : [],
+        ), 200, true));
+        $r->post('/api/v1/spotify/seasons', fn () => $this->run(fn (int $u) => [
+            'season' => $this->svc()->library()->mixtape()->saveSeason($u, $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/spotify/mixtape/plan', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $prompt = isset($body['prompt_id']) && $body['prompt_id'] !== '' ? (int) $body['prompt_id'] : null;
+            $arc = isset($body['arc']) && is_array($body['arc']) ? $body['arc'] : null;
+            return $this->svc()->library()->mixtape()->plan($u, $body['uris'] ?? [], $prompt, $arc);
+        }, 200, false));
         $r->post('/api/v1/spotify/sync', fn () => $this->run(fn (int $u) => $this->svc()->sync()->pull($u, $this->playlistId()), 200, true));
         $r->post('/api/v1/spotify/taste', fn () => $this->run(fn (int $u) => $this->svc()->library()->saveTaste($u, $this->runner->body()['profile'] ?? null), 200, true));
         $r->post('/api/v1/spotify/prompts', fn () => $this->run(fn (int $u) => [
@@ -191,6 +211,21 @@ final class SpotifyApi
             throw ValidationException::withFields(['id' => 'Expected an id.']);
         }
         return (int) $id;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function metaUris(mixed $raw): array
+    {
+        if (is_array($raw)) {
+            return array_values(array_map('strval', $raw));
+        }
+        $text = trim((string) $raw);
+        if ($text === '') {
+            return [];
+        }
+        return array_values(array_filter(array_map('trim', explode(',', $text)), static fn (string $uri): bool => $uri !== ''));
     }
 
     private function query(string $key): ?string

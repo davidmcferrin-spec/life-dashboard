@@ -12,7 +12,20 @@ use Dashboard\Support\ValidationException;
 /** Local Spotify library, staged edits, prompts, and taste. Push happens in Python. */
 final class SpotifyLibrary
 {
-    public function __construct(private readonly Database $db) {}
+    public function __construct(
+        private readonly Database $db,
+        private readonly ?Clock $clock = null,
+    ) {}
+
+    public function clock(): Clock
+    {
+        return $this->clock ?? Clock::fromConfig();
+    }
+
+    public function mixtape(): MixtapeLibrary
+    {
+        return new MixtapeLibrary($this->db);
+    }
 
     public static function actorLabel(string $kind, ?string $tool): string
     {
@@ -53,7 +66,7 @@ final class SpotifyLibrary
             'playlist' => $this->formatPlaylist($row),
             'tracks' => $tracks,
             'changes' => $changes,
-            'preview' => self::preview($tracks, $changes),
+            'preview' => $this->mixtape()->annotate($userId, self::preview($tracks, $changes)),
         ];
     }
 
@@ -193,6 +206,7 @@ final class SpotifyLibrary
     {
         $this->requireEditable($userId, $id);
         $list = self::uris($uris);
+        $this->mixtape()->assertAllowed($userId, $id, $list, $this->clock());
         $payload = ['uris' => $list];
         if ($position !== null && $position !== '') {
             $payload['position'] = self::nonNegative($position, 'position');
@@ -248,6 +262,7 @@ final class SpotifyLibrary
     {
         $this->requireEditable($userId, $id);
         $list = self::uris($uris, true);
+        $this->mixtape()->assertAllowed($userId, $id, $list, $this->clock());
         $this->stageAndDirty($userId, $id, 'replace', ['uris' => $list], $by);
         return $this->playlist($userId, $id);
     }
@@ -507,7 +522,8 @@ final class SpotifyLibrary
     public function prompts(int $userId): array
     {
         $rows = $this->db->fetchAll(
-            'SELECT id, name, prompt, target_playlist_id, refresh_schedule, last_run_at, notes, active
+            'SELECT id, name, prompt, target_playlist_id, refresh_schedule, last_run_at, notes, active,
+                    theme, arc, season_tags, allow_seasons
              FROM spotify_prompts WHERE user_id = ? ORDER BY name, id',
             [$userId]
         );
@@ -520,7 +536,8 @@ final class SpotifyLibrary
     public function prompt(int $userId, int $id): array
     {
         $row = $this->db->fetchOne(
-            'SELECT id, name, prompt, target_playlist_id, refresh_schedule, last_run_at, notes, active
+            'SELECT id, name, prompt, target_playlist_id, refresh_schedule, last_run_at, notes, active,
+                    theme, arc, season_tags, allow_seasons
              FROM spotify_prompts WHERE user_id = ? AND id = ?',
             [$userId, $id]
         );
@@ -553,19 +570,29 @@ final class SpotifyLibrary
             : ($existing['refresh_schedule'] ?? null);
         $notes = array_key_exists('notes', $body) ? self::notes($body['notes']) : ($existing['notes'] ?? null);
         $active = array_key_exists('active', $body) ? self::flag($body['active']) : (int) ($existing['active'] ?? 1);
+        $theme = array_key_exists('theme', $body) ? self::theme($body['theme']) : ($existing['theme'] ?? null);
+        $arc = array_key_exists('arc', $body) ? self::arcJson($body['arc']) : json_encode($existing['arc'] ?? Mixtape::ARC);
+        $seasonTags = array_key_exists('season_tags', $body)
+            ? json_encode(Mixtape::tags($body['season_tags'], 'season_tags'))
+            : json_encode($existing['season_tags'] ?? []);
+        $allow = array_key_exists('allow_seasons', $body)
+            ? json_encode(Mixtape::tags($body['allow_seasons'], 'allow_seasons'))
+            : json_encode($existing['allow_seasons'] ?? []);
         if ($id === null) {
             $id = (int) $this->db->fetchScalar(
-                'INSERT INTO spotify_prompts (user_id, name, prompt, target_playlist_id, refresh_schedule, notes, active)
-                 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-                [$userId, $name, $text, $target, $schedule, $notes, $active]
+                'INSERT INTO spotify_prompts
+                    (user_id, name, prompt, target_playlist_id, refresh_schedule, notes, active, theme, arc, season_tags, allow_seasons)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id',
+                [$userId, $name, $text, $target, $schedule, $notes, $active, $theme, $arc, $seasonTags, $allow]
             );
         } else {
             $this->db->execute(
                 'UPDATE spotify_prompts
                  SET name = ?, prompt = ?, target_playlist_id = ?, refresh_schedule = ?, notes = ?, active = ?,
+                     theme = ?, arc = ?::jsonb, season_tags = ?::jsonb, allow_seasons = ?::jsonb,
                      updated_at = (now() AT TIME ZONE \'UTC\')
                  WHERE user_id = ? AND id = ?',
-                [$name, $text, $target, $schedule, $notes, $active, $userId, $id]
+                [$name, $text, $target, $schedule, $notes, $active, $theme, $arc, $seasonTags, $allow, $userId, $id]
             );
         }
         return $this->prompt($userId, $id);
@@ -853,6 +880,10 @@ final class SpotifyLibrary
             'last_run_at' => $row['last_run_at'] !== null ? (string) $row['last_run_at'] : null,
             'notes' => $row['notes'] !== null ? (string) $row['notes'] : null,
             'active' => (int) $row['active'] === 1,
+            'theme' => isset($row['theme']) && $row['theme'] !== null ? (string) $row['theme'] : null,
+            'arc' => self::arcValue($row['arc'] ?? null),
+            'season_tags' => self::tagValue($row['season_tags'] ?? null),
+            'allow_seasons' => self::tagValue($row['allow_seasons'] ?? null),
         ];
     }
 
@@ -1046,5 +1077,56 @@ final class SpotifyLibrary
             throw ValidationException::withFields(['notes' => 'Notes must be 2000 characters or fewer.']);
         }
         return $text === '' ? null : $text;
+    }
+
+    private static function theme(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+        if (mb_strlen($text) > 500) {
+            throw ValidationException::withFields(['theme' => 'Theme must be 500 characters or fewer.']);
+        }
+        return $text === '' ? null : $text;
+    }
+
+    private static function arcJson(mixed $value): string
+    {
+        if ($value === null || $value === '') {
+            return json_encode(Mixtape::ARC, JSON_THROW_ON_ERROR);
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+        if (!is_array($value)) {
+            throw ValidationException::withFields(['arc' => 'Arc must list an energy for each section.']);
+        }
+        return json_encode(Mixtape::arc($value), JSON_THROW_ON_ERROR);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private static function arcValue(mixed $value): array
+    {
+        if (is_array($value)) {
+            return Mixtape::arc($value);
+        }
+        $decoded = json_decode((string) $value, true);
+        return Mixtape::arc(is_array($decoded) ? $decoded : []);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function tagValue(mixed $value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_map('strval', $value));
+        }
+        $decoded = json_decode((string) $value, true);
+        return is_array($decoded) ? array_values(array_map('strval', $decoded)) : [];
     }
 }

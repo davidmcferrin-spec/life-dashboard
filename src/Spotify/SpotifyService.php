@@ -31,7 +31,7 @@ final class SpotifyService
         return new self(
             $db,
             $account,
-            new SpotifyLibrary($db),
+            new SpotifyLibrary($db, $clock),
             new SpotifyPlayback($account, $http),
             new SyncBridge(),
             $clock,
