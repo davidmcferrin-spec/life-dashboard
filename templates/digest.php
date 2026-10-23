@@ -7,11 +7,22 @@
 
 use Dashboard\DB\Database;
 use Dashboard\Settings\PreferenceService;
+use Dashboard\Tracking\Services;
 
 $pageTitle = 'Grok Digest';
 $extraStyles = ['/assets/css/lifedash.css'];
 $digestTz = \Dashboard\Config::get('APP_TIMEZONE', 'America/Chicago');
-$gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidth((int) $user['id']);
+$digestDb = Database::getInstance();
+$gridMaxWidth = (new PreferenceService($digestDb))->getGridMaxWidth((int) $user['id']);
+$digestWidgets = Services::fromDatabase($digestDb)->widgets;
+$bandItems = array_map(static fn (array $w): array => [
+    'id' => (int) $w['id'],
+    'x' => (int) $w['x'],
+    'y' => (int) $w['y'],
+    'w' => (int) $w['w'],
+    'h' => (int) $w['h'],
+], $digestWidgets->list((int) $user['id']));
+$bandLayouts = $digestWidgets->breakpointLayouts((int) $user['id']);
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
@@ -25,7 +36,8 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
 </nav>
 
 <main class="dash-main mx-auto py-6 space-y-6" id="digest-app" data-tz="<?= e($digestTz) ?>">
-<div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>">
+<div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
+<div id="digest-band">
     <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
             <h1 class="text-primary text-xl font-medium">Grok Digest</h1>
@@ -50,9 +62,9 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
                 Unread only
             </label>
         </form>
+        <p id="digest-status" class="text-sm text-muted" role="status"></p>
+        <p id="digest-count" class="text-sm text-muted"></p>
     </div>
-    <p id="digest-status" class="text-sm text-muted" role="status"></p>
-    <p id="digest-count" class="text-sm text-muted"></p>
     <p id="digest-error" class="ld-error hidden"></p>
     <div id="digest-feed" class="ld-digest-feed"></div>
     <button type="button" class="btn hidden" id="digest-more">Load more</button>
@@ -111,10 +123,14 @@ $gridMaxWidth = (new PreferenceService(Database::getInstance()))->getGridMaxWidt
         </form>
     </details>
 </div>
+</div>
+<script type="application/json" id="ld-band-items"><?= json_encode($bandItems, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
+<script type="application/json" id="ld-band-layouts"><?= json_encode($bandLayouts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
 </main>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/lifedash-grid.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/digest.js?v=<?= e($assetVer) ?>"></script>
 </body>
