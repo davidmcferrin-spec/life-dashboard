@@ -104,6 +104,20 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     if (select.value !== next) select.value = next;
 }
 
+function spotifyClock(ms) {
+    const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return minutes + ':' + (seconds < 10 ? '0' : '') + seconds;
+}
+
+function spotifyTrackLine(now) {
+    const artists = now && now.artists && now.artists.length ? now.artists.join(', ') : '';
+    const album = now && now.album ? String(now.album) : '';
+    if (artists && album) return artists + ' · ' + album;
+    return artists || album;
+}
+
 (function () {
     const STORE = 'ld_spotify_player';
     const PLAYER_NAME = 'Life Dashboard';
@@ -120,20 +134,23 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     let volumeTimer = null;
     let volumeLevel = 50;
     let mutedFrom = 50;
-    let view = { now: null, devices: [], playlists: [] };
+    let view = { now: null, devices: [], playlists: [], queue: [] };
     let state = loadState();
+    const lucideMarkup = {};
 
     function loadState() {
         try {
             const raw = JSON.parse(localStorage.getItem(STORE) || '{}');
+            const x = Number(raw.x);
+            const y = Number(raw.y);
             return {
-                x: Number.isFinite(Number(raw.x)) ? Number(raw.x) : 16,
-                y: Number.isFinite(Number(raw.y)) ? Number(raw.y) : 16,
+                x: Number.isFinite(x) ? x : null,
+                y: Number.isFinite(y) ? y : null,
                 min: raw.min === true,
                 on: raw.on === true ? true : (raw.on === false ? false : null),
             };
         } catch (err) {
-            return { x: 16, y: 16, min: false, on: null };
+            return { x: null, y: null, min: false, on: null };
         }
     }
 
@@ -177,10 +194,13 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     function clamp(el) {
         el.classList.toggle('is-min', state.min);
         const margin = 8;
-        const width = el.offsetWidth || 280;
-        const height = el.offsetHeight || 48;
+        const inset = 18;
+        const width = el.offsetWidth || 390;
+        const height = el.offsetHeight || 62;
         const maxX = Math.max(margin, window.innerWidth - width - margin);
         const maxY = Math.max(margin, window.innerHeight - height - margin);
+        if (state.x == null) state.x = Math.max(margin, window.innerWidth - width - inset);
+        if (state.y == null) state.y = Math.max(margin, window.innerHeight - height - inset);
         state.x = Math.round(Math.min(maxX, Math.max(margin, state.x)));
         state.y = Math.round(Math.min(maxY, Math.max(margin, state.y)));
         // Inline edges override the narrow-screen dock so a saved position still moves.
@@ -190,15 +210,27 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         el.style.top = state.y + 'px';
     }
 
+    function loadLucideIcons() {
+        const names = ['chevron-up', 'chevron-down', 'volume-2', 'music-2', 'monitor'];
+        return Promise.all(names.map(function (name) {
+            return fetch('/assets/vendor/lucide/' + name + '.svg', { credentials: 'same-origin' })
+                .then(function (res) { return res.ok ? res.text() : ''; })
+                .then(function (text) {
+                    if (text) lucideMarkup[name] = text;
+                })
+                .catch(function () { /* the control label still names the button */ });
+        }));
+    }
+
     function icon(name) {
+        if (name === 'chevron-up' || name === 'chevron-down' || name === 'volume-2' || name === 'music-2' || name === 'monitor') {
+            return lucideMarkup[name] || '';
+        }
         const stroke = {
             previous: '<path d="M6 5v14"/><path d="M19 6 8 12l11 6z"/>',
             next: '<path d="M18 5v14"/><path d="M5 6l11 6-11 6z"/>',
             shuffle: '<path d="M4 7h3l10 10h3"/><path d="M14 7h6v6"/><path d="M4 17h3l4.2-4.2"/><path d="M14 17h6v-6"/>',
             repeat: '<path d="M17 3v5h-5"/><path d="M7 7h8a4 4 0 0 1 4 4v1"/><path d="M7 21v-5h5"/><path d="M17 17H9a4 4 0 0 1-4-4v-1"/>',
-            chevron: '<path d="M6 9l6 6 6-6"/>',
-            'chevron-up': '<path d="M6 15l6-6 6 6"/>',
-            speaker: '<path d="M4 10h3l4-3v10l-4-3H4z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5"/><path d="M17.2 7.2a6.5 6.5 0 0 1 0 9.6"/>',
             'speaker-off': '<path d="M4 10h3l4-3v10l-4-3H4z"/><path d="M16 10l4 4"/><path d="M20 10l-4 4"/>',
             queue: '<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>',
         };
@@ -216,7 +248,7 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     }
 
     function volumeIcon(level) {
-        return icon(level > 0 ? 'speaker' : 'speaker-off');
+        return icon(level > 0 ? 'volume-2' : 'speaker-off');
     }
 
     function paintNote(el) {
@@ -328,14 +360,19 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         return !!(select && document.activeElement === select);
     }
 
+    function artHtml(url) {
+        if (url) {
+            return '<img class="sp-art" alt="" data-url="' + escapeHtml(url) + '" src="' + escapeHtml(url) + '">';
+        }
+        return '<div class="sp-art" data-url="">' + icon('music-2') + '</div>';
+    }
+
     function paintArt(el, now) {
-        const art = el.querySelector('.sp-art');
-        if (!art) return;
         const url = now && now.image_url ? String(now.image_url) : '';
-        if ((art.dataset.url || '') === url) return;
-        art.outerHTML = url
-            ? '<img class="sp-art" alt="" data-url="' + escapeHtml(url) + '" src="' + escapeHtml(url) + '">'
-            : '<div class="sp-art" data-url=""></div>';
+        Array.prototype.slice.call(el.querySelectorAll('.sp-art')).forEach(function (art) {
+            if ((art.dataset.url || '') === url) return;
+            art.outerHTML = artHtml(url);
+        });
     }
 
     function paintIconButton(button, name, label) {
@@ -353,20 +390,29 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     function patchLive(el, now, devices, collapsed, volume, volumeFocused) {
         el.classList.toggle('is-min', collapsed);
         const toggleLabel = collapsed ? 'Expand player' : 'Collapse player';
-        const collapse = el.querySelector('[data-collapse]');
-        if (collapse) {
+        el.querySelectorAll('[data-collapse]').forEach(function (collapse) {
             collapse.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
             collapse.setAttribute('aria-label', toggleLabel);
             collapse.setAttribute('title', toggleLabel);
-            paintIconButton(collapse, collapsed ? 'chevron-up' : 'chevron', null);
-        }
+            if (collapse.dataset.collapse === 'chevron') {
+                paintIconButton(collapse, collapsed ? 'chevron-up' : 'chevron-down', null);
+            }
+        });
         paintArt(el, now);
-        const title = el.querySelector('.sp-title');
-        const artists = el.querySelector('.sp-artists');
         const titleText = now && now.name ? String(now.name) : 'Nothing playing';
-        const artistText = now && now.artists ? now.artists.join(', ') : '';
-        if (title && title.textContent !== titleText) title.textContent = titleText;
-        if (artists && artists.textContent !== artistText) artists.textContent = artistText;
+        const artistText = spotifyTrackLine(now);
+        el.querySelectorAll('.sp-title').forEach(function (title) {
+            if (title.textContent !== titleText) title.textContent = titleText;
+        });
+        el.querySelectorAll('.sp-artists').forEach(function (artists) {
+            if (artists.textContent !== artistText) artists.textContent = artistText;
+        });
+        const elapsed = el.querySelector('[data-elapsed]');
+        const duration = el.querySelector('[data-duration]');
+        const elapsedText = spotifyClock(now && now.progress_ms);
+        const durationText = spotifyClock(now && now.duration_ms);
+        if (elapsed && elapsed.textContent !== elapsedText) elapsed.textContent = elapsedText;
+        if (duration && duration.textContent !== durationText) duration.textContent = durationText;
         const seek = el.querySelector('[data-seek]');
         if (seek && document.activeElement !== seek) {
             const max = now && now.duration_ms ? String(now.duration_ms) : '0';
@@ -396,7 +442,7 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         const mute = el.querySelector('[data-mute]');
         if (mute) {
             mute.setAttribute('aria-pressed', volume > 0 ? 'false' : 'true');
-            paintIconButton(mute, volume > 0 ? 'speaker' : 'speaker-off', muteLabel);
+            paintIconButton(mute, volume > 0 ? 'volume-2' : 'speaker-off', muteLabel);
         }
         if (!volumeFocused) {
             el.querySelectorAll('[data-volume]').forEach(function (slider) {
@@ -471,11 +517,9 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     }
 
     function writeShell(el, now, devices, playlists, collapsed, volume, playlistId, chosenDevice) {
-        const art = now && now.image_url
-            ? '<img class="sp-art" alt="" data-url="' + escapeHtml(now.image_url) + '" src="' + escapeHtml(now.image_url) + '">'
-            : '<div class="sp-art" data-url=""></div>';
+        const art = artHtml(now && now.image_url ? String(now.image_url) : '');
         const title = now && now.name ? escapeHtml(now.name) : 'Nothing playing';
-        const artists = now && now.artists ? escapeHtml(now.artists.join(', ')) : '';
+        const artists = escapeHtml(spotifyTrackLine(now));
         const active = activeDevice(devices);
         const deviceLine = !devices || !devices.length
             ? 'Device'
@@ -490,57 +534,99 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         const repeatText = repeatMode === 'track' ? 'Repeat track' : (repeatMode === 'context' ? 'Repeat playlist' : 'Repeat off');
         const toggleLabel = collapsed ? 'Expand player' : 'Collapse player';
         const muteLabel = volume > 0 ? 'Mute' : 'Unmute';
+        const elapsed = spotifyClock(now && now.progress_ms);
+        const total = spotifyClock(now && now.duration_ms);
         el.innerHTML = `
-            <div class="sp-bar" data-drag>
-                <span class="sp-grip" aria-hidden="true"></span>
-                <strong class="sp-expanded-only">Player</strong>
-                <span class="sp-bar-gap"></span>
-                <button type="button" data-collapse aria-pressed="${collapsed ? 'true' : 'false'}" aria-label="${toggleLabel}" title="${toggleLabel}">${icon(collapsed ? 'chevron-up' : 'chevron')}</button>
-                <button type="button" data-reset>Reset</button>
-                <button type="button" data-player-off>Off</button>
-            </div>
-            <div class="sp-body">
-                ${art}
-                <div>
+            <div class="sp-stage sp-expanded-only">
+                <div class="sp-stage-top">
+                    <span class="sp-eyebrow">Now playing</span>
+                    <span class="sp-bar-gap"></span>
+                    <button type="button" data-reset>Reset</button>
+                    <button type="button" data-player-off>Off</button>
+                </div>
+                <div class="sp-stage-art">${art}</div>
+                <div class="sp-stage-meta">
                     <p class="sp-title">${title}</p>
                     <p class="sp-artists">${artists}</p>
-                    <input class="sp-seek" type="range" min="0" max="${now && now.duration_ms ? now.duration_ms : 0}" value="${now && now.progress_ms ? now.progress_ms : 0}" data-seek aria-label="Position">
+                    <div class="sp-progress">
+                        <input class="sp-seek" type="range" min="0" max="${now && now.duration_ms ? now.duration_ms : 0}" value="${now && now.progress_ms ? now.progress_ms : 0}" data-seek aria-label="Position">
+                        <span class="sp-times"><span data-elapsed>${elapsed}</span><span data-duration>${total}</span></span>
+                    </div>
+                </div>
+                <div class="sp-controls sp-transport-extra">
+                    <button type="button" data-cmd="shuffle" class="${shuffleOn ? 'is-on' : ''}" aria-pressed="${shuffleOn ? 'true' : 'false'}" aria-label="Shuffle" title="Shuffle">${icon('shuffle')}</button>
+                    <button type="button" data-cmd="repeat" class="${repeatMode === 'off' ? '' : 'is-on'}" aria-pressed="${repeatMode === 'off' ? 'false' : 'true'}" aria-label="${repeatText}" title="${repeatText}">${icon(repeatMode === 'track' ? 'repeat-one' : 'repeat')}</button>
+                </div>
+                <div class="sp-device sp-field">
+                    <div class="sp-field-head" data-device-head>
+                        ${deviceMark}<span class="sp-device-copy"><small class="sp-eyebrow">Playing on</small><span data-device-line>${escapeHtml(spotifyClip(deviceLine, 48))}</span></span>
+                        <button type="button" data-refresh-devices>Refresh</button>
+                    </div>
+                    <div data-device-slot>${deviceControl}</div>
+                </div>
+                <div class="sp-field">
+                    <div class="sp-field-head"><span class="sp-eyebrow">Playlist</span></div>
+                    <div class="sp-field-row">
+                        <select data-playlist aria-label="Playlist"><option value="">Choose</option>${playlistOptionsHtml(playlists, playlistId)}</select>
+                        <button type="button" data-play-list>Play</button>
+                    </div>
+                </div>
+                <div class="sp-up-next">
+                    <span class="sp-eyebrow">Up next</span>
+                    <ol data-up-next></ol>
+                </div>
+                <label class="sp-volume">Vol <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume"></label>
+                <button type="button" class="sp-expanded-only" data-queue>Queue</button>
+            </div>
+            <div class="sp-dock">
+                <button type="button" class="sp-grip" data-drag aria-label="Move music player" title="Drag to move"></button>
+                <button type="button" class="sp-art-btn" data-collapse="art">${art}</button>
+                <div class="sp-dock-meta">
+                    <p class="sp-title">${title}</p>
+                    <p class="sp-artists">${artists}</p>
+                </div>
+                <div class="sp-controls">
+                    <button type="button" data-cmd="previous" aria-label="Previous" title="Previous">${icon('previous')}</button>
+                    <button type="button" class="sp-play" data-cmd="${playName}" aria-label="${playing ? 'Pause' : 'Play'}" title="${playing ? 'Pause' : 'Play'}">${icon(playName)}</button>
+                    <button type="button" data-cmd="next" aria-label="Next" title="Next">${icon('next')}</button>
+                    <button type="button" class="sp-queue-compact" data-queue aria-label="Queue" title="Queue">${icon('queue')}</button>
+                    <div class="sp-vol-pop sp-mini-only">
+                        <button type="button" data-mute aria-pressed="${volume > 0 ? 'false' : 'true'}" aria-label="${muteLabel}" title="${muteLabel}">${volumeIcon(volume)}</button>
+                        <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume">
+                    </div>
+                </div>
+                <div class="sp-dock-more">
+                    <button type="button" data-devices aria-label="Choose device" title="Choose device">${icon('monitor')}</button>
+                    <button type="button" data-collapse="chevron" aria-pressed="${collapsed ? 'true' : 'false'}" aria-label="${toggleLabel}" title="${toggleLabel}">${icon(collapsed ? 'chevron-up' : 'chevron-down')}</button>
                 </div>
             </div>
-            <div class="sp-controls">
-                <button type="button" data-cmd="shuffle" class="${shuffleOn ? 'is-on' : ''}" aria-pressed="${shuffleOn ? 'true' : 'false'}" aria-label="Shuffle" title="Shuffle">${icon('shuffle')}</button>
-                <button type="button" data-cmd="previous" aria-label="Previous" title="Previous">${icon('previous')}</button>
-                <button type="button" class="sp-play" data-cmd="${playName}" aria-label="${playing ? 'Pause' : 'Play'}" title="${playing ? 'Pause' : 'Play'}">${icon(playName)}</button>
-                <button type="button" data-cmd="next" aria-label="Next" title="Next">${icon('next')}</button>
-                <button type="button" data-cmd="repeat" class="${repeatMode === 'off' ? '' : 'is-on'}" aria-pressed="${repeatMode === 'off' ? 'false' : 'true'}" aria-label="${repeatText}" title="${repeatText}">${icon(repeatMode === 'track' ? 'repeat-one' : 'repeat')}</button>
-                <button type="button" class="sp-queue-compact" data-queue aria-label="Queue" title="Queue">${icon('queue')}</button>
-                <div class="sp-vol-pop sp-mini-only">
-                    <button type="button" data-mute aria-pressed="${volume > 0 ? 'false' : 'true'}" aria-label="${muteLabel}" title="${muteLabel}">${volumeIcon(volume)}</button>
-                    <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume">
-                </div>
-            </div>
-            <label class="sp-volume sp-expanded-only">Vol <input type="range" min="0" max="100" value="${volume}" data-volume aria-label="Volume"></label>
-            <div class="sp-field sp-expanded-only">
-                <div class="sp-field-head" data-device-head>
-                    ${deviceMark}<span data-device-line>${escapeHtml(spotifyClip(deviceLine, 48))}</span>
-                    <button type="button" data-refresh-devices>Refresh</button>
-                </div>
-                <div data-device-slot>${deviceControl}</div>
-            </div>
-            <div class="sp-field sp-expanded-only">
-                <div class="sp-field-head"><span>Playlist</span></div>
-                <div class="sp-field-row">
-                    <select data-playlist aria-label="Playlist"><option value="">Choose</option>${playlistOptionsHtml(playlists, playlistId)}</select>
-                    <button type="button" data-play-list>Play</button>
-                </div>
-            </div>
-            <button type="button" class="sp-expanded-only" data-queue>Queue</button>
             <p class="sp-sdk-note"${sdkNote ? '' : ' hidden'}></p>`;
     }
 
-    function render(config, now, devices, playlists) {
+    function paintQueue(el, tracks) {
+        const list = el.querySelector('[data-up-next]');
+        if (!list) return;
+        const rows = tracks || [];
+        const key = rows.map(function (track) {
+            return String(track && track.id ? track.id : '') + ':' + String(track && track.duration_ms ? track.duration_ms : 0);
+        }).join('|');
+        if (list.dataset.key === key) return;
+        list.dataset.key = key;
+        if (!rows.length) {
+            list.innerHTML = '<li class="sp-note">Nothing is queued.</li>';
+            return;
+        }
+        list.innerHTML = rows.map(function (track, index) {
+            const who = track && track.artists ? track.artists.join(', ') : '';
+            const n = index < 9 ? '0' + (index + 1) : String(index + 1);
+            return '<li><span class="sp-q-index">' + n + '</span><p><strong>' + escapeHtml(track && track.name ? track.name : '') + '</strong><small>' + escapeHtml(who) + '</small></p><time>' + spotifyClock(track && track.duration_ms) + '</time></li>';
+        }).join('');
+    }
+
+    function render(config, now, devices, playlists, queue) {
         const el = shell();
-        view = { now: now || null, devices: devices || [], playlists: playlists || [] };
+        const nextQueue = queue === undefined ? (view.queue || []) : (queue || []);
+        view = { now: now || null, devices: devices || [], playlists: playlists || [], queue: nextQueue };
         if (!config.connected) {
             el.classList.remove('is-min');
             el.innerHTML = '<a class="sp-pill" href="/settings/spotify">Connect Spotify</a>';
@@ -590,6 +676,7 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
             paintPlaylistSelect(el, playlists, playlistKey, playlistId);
             paintDeviceSelect(el, devices, deviceKey, chosenDevice);
         }
+        paintQueue(el, view.queue);
         paintNote(el);
         if (!pickerOpen(el.querySelector('[data-playlist]')) && !pickerOpen(el.querySelector('[data-device]'))) clamp(el);
     }
@@ -622,11 +709,20 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         } catch (err) {
             playlists = view.playlists || [];
         }
+        let queue = view.queue || [];
+        if (!state.min) {
+            try {
+                queue = (await api('GET', '/spotify/queue')).queue || [];
+            } catch (err) {
+                queue = view.queue || [];
+            }
+        }
         const host = document.getElementById('sp-player');
         if (!force && document.activeElement && host && host.contains(document.activeElement) && document.activeElement.matches('input, select')) {
+            view.queue = queue;
             return;
         }
-        render(config, now, devices, playlists);
+        render(config, now, devices, playlists, queue);
     }
 
     async function command(name, body) {
@@ -705,17 +801,31 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
             const button = event.target.closest('button');
             if (!button) return;
             wakeSdk();
+            if (button.dataset.drag !== undefined) return;
             if (button.dataset.collapse !== undefined) {
                 state.min = !state.min;
                 saveState();
                 render(config, view.now, view.devices, view.playlists);
+                if (!state.min) refresh(config, true);
+                return;
+            }
+            if (button.dataset.devices !== undefined) {
+                if (state.min) {
+                    state.min = false;
+                    saveState();
+                    render(config, view.now, view.devices, view.playlists);
+                }
+                refresh(config, true).then(function () {
+                    const select = el.querySelector('[data-device]');
+                    if (select) select.focus();
+                });
                 return;
             }
             if (button.dataset.reset !== undefined) {
-                state.x = 16;
-                state.y = 16;
-                saveState();
+                state.x = null;
+                state.y = null;
                 clamp(el);
+                saveState();
                 return;
             }
             if (button.dataset.playerOff !== undefined) {
@@ -827,10 +937,13 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
         });
         el.addEventListener('pointerdown', function (event) {
             const handle = event.target.closest('[data-drag]');
-            if (!handle || event.target.closest('button')) return;
+            if (!handle) return;
+            const pressed = event.target.closest('button, a, input, select, label');
+            if (pressed && pressed !== handle) return;
             event.preventDefault();
             dragging = true;
             handle.classList.add('is-dragging');
+            el.classList.add('is-dragging');
             if (handle.setPointerCapture) {
                 try { handle.setPointerCapture(event.pointerId); } catch (err) { /* already released */ }
             }
@@ -849,6 +962,7 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
                 if (!dragging) return;
                 dragging = false;
                 handle.classList.remove('is-dragging');
+                el.classList.remove('is-dragging');
                 clamp(el);
                 saveState();
                 handle.removeEventListener('pointermove', move);
@@ -987,6 +1101,7 @@ function spotifySyncSelect(select, open, optionKey, optionsHtml, value) {
     }
 
     async function boot() {
+        await loadLucideIcons();
         try {
             config = await api('GET', '/spotify/player-config');
         } catch (err) {
