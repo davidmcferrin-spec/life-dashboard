@@ -1,5 +1,5 @@
 /**
- * Grok Digest page: a short feed, with sources and compare folded away.
+ * Grok Digest page: a compact feed. History, compare, and sources share one menu.
  */
 'use strict';
 
@@ -44,6 +44,8 @@
     let today = '';
     let loadGen = 0;
     const openIds = new Set();
+    const chevronNode = document.getElementById('digest-icon-chevron');
+    const chevronHtml = chevronNode ? chevronNode.innerHTML : '';
 
     function showError(error) {
         const message = (error && error.message) || 'Request failed.';
@@ -79,12 +81,9 @@
         const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
         if (!match) return '';
         const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
-        return new Intl.DateTimeFormat('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            timeZone: 'UTC',
-        }).format(date);
+        const options = { month: 'short', day: 'numeric', timeZone: 'UTC' };
+        if (!today || today.slice(0, 4) !== match[1]) options.year = 'numeric';
+        return new Intl.DateTimeFormat('en-US', options).format(date);
     }
 
     function shiftDay(iso, delta) {
@@ -136,24 +135,24 @@
             item.is_new ? '<span class="ld-digest-badge">Unread</span>' : '',
             item.edited ? '<span class="ld-digest-badge">Edited</span>' : '',
         ].filter(Boolean).join('');
-        const version = item.version ? `<span class="text-sm text-muted">${esc(item.version)}</span>` : '';
-        const source = item.source_label ? `<span class="text-sm text-muted">${esc(item.source_label)}</span>` : '';
+        const version = item.version ? `<span>${esc(item.version)}</span>` : '';
+        const source = item.source_label ? `<span>${esc(item.source_label)}</span>` : '';
         const summary = item.summary || '';
         const body = item.body || '';
         const extra = body && body !== summary
-            ? `<button type="button" class="btn ld-digest-toggle" data-toggle-note="${esc(id)}" aria-expanded="${open ? 'true' : 'false'}">${open ? 'Hide note' : 'Show note'}</button><div class="ld-digest-body" id="digest-note-${esc(id)}"${open ? '' : ' hidden'}>${esc(body)}</div>`
+            ? `<div class="ld-digest-body" id="digest-note-${esc(id)}"${open ? '' : ' hidden'}>${esc(body)}</div><button type="button" class="ld-digest-toggle" data-toggle-note="${esc(id)}" aria-expanded="${open ? 'true' : 'false'}"><span class="ld-digest-toggle-label">${open ? 'Collapse' : 'View analysis'}</span>${chevronHtml}</button>`
             : '';
-        return `<article class="surface ld-digest-item">
-            <div class="ld-digest-head">
-                <span class="ld-digest-badge">${esc(item.product_label || '')}</span>
-                ${source}
-                ${version}
-                ${badges}
-                ${date ? `<time class="ld-digest-date${found ? ' is-found' : ''}" datetime="${esc(dateIso)}">${found ? 'Found ' : ''}${esc(date)}</time>` : ''}
+        const when = date
+            ? `<time class="ld-digest-date${found ? ' is-found' : ''}" datetime="${esc(dateIso)}">${found ? 'Found ' : ''}${esc(date)}</time>`
+            : '<span class="ld-digest-date"></span>';
+        return `<article class="ld-digest-item${open ? ' is-open' : ''}">
+            ${when}
+            <div class="ld-digest-copy">
+                <p class="ld-digest-kicker"><span>${esc(item.product_label || '')}</span>${source}${version}${badges}</p>
+                <h3 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
+                ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
+                ${extra}
             </div>
-            <h3 class="ld-digest-title"><a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></h3>
-            ${summary ? `<p class="ld-digest-brief">${esc(summary)}</p>` : ''}
-            ${extra}
         </article>`;
     }
 
@@ -242,20 +241,20 @@
                     : (source.parse_mode ? esc(source.parse_mode) + ' · ' : '') + esc(when(source.last_checked_at));
                 const toggle = source.enabled ? 'Disable' : 'Enable';
                 const action = source.enabled ? 'disable' : 'enable';
-                return `<li class="py-2">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
+                return `<li class="ld-digest-source">
+                    <div class="ld-digest-source-row">
                         <div>
-                            <a href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.label)}</a>
-                            <p class="text-sm text-muted">${state}</p>
+                            <a class="ld-digest-source-link" href="${esc(source.url)}" target="_blank" rel="noopener">${esc(source.label)}</a>
+                            <p class="ld-digest-source-meta">${state}</p>
                         </div>
-                        <div class="flex gap-2">
+                        <div class="ld-digest-source-actions">
                             <button type="button" class="btn" data-toggle="${source.id}" data-action="${action}">${toggle}</button>
                             <button type="button" class="btn" data-remove="${source.id}">Remove</button>
                         </div>
                     </div>
                 </li>`;
             }).join('');
-            return `<div><h3 class="text-sm text-muted">${esc(name)}</h3><ul>${rows}</ul></div>`;
+            return `<div class="ld-digest-source-group"><h3 class="ld-digest-kicker">${esc(name)}</h3><ul class="ld-digest-source-list">${rows}</ul></div>`;
         }).join('');
     }
 
@@ -315,14 +314,18 @@
         const note = document.getElementById('digest-note-' + id);
         if (!note) return;
         const open = note.hasAttribute('hidden');
+        const label = button.querySelector('.ld-digest-toggle-label');
+        const article = button.closest('.ld-digest-item');
         if (open) {
             note.removeAttribute('hidden');
             openIds.add(id);
-            button.textContent = 'Hide note';
+            if (label) label.textContent = 'Collapse';
+            if (article) article.classList.add('is-open');
         } else {
             note.setAttribute('hidden', '');
             openIds.delete(id);
-            button.textContent = 'Show note';
+            if (label) label.textContent = 'View analysis';
+            if (article) article.classList.remove('is-open');
         }
         button.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
@@ -527,6 +530,58 @@
             showError(error);
         }
     });
+
+    const menuBtn = document.getElementById('digest-menu');
+    const menuPanel = document.getElementById('digest-menu-panel');
+
+    function showView(name) {
+        document.querySelectorAll('[data-digest-view]').forEach((el) => {
+            el.classList.toggle('is-shown', el.getAttribute('data-digest-view') === name);
+        });
+        document.querySelectorAll('[data-digest-panel]').forEach((btn) => {
+            if (btn.getAttribute('data-digest-panel') === name) btn.setAttribute('aria-current', 'true');
+            else btn.removeAttribute('aria-current');
+        });
+    }
+
+    function setMenu(open) {
+        if (!menuBtn || !menuPanel) return;
+        menuPanel.hidden = !open;
+        menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (!open) return;
+        const current = menuPanel.querySelector('[aria-current="true"]') || menuPanel.querySelector('[role="menuitem"]');
+        if (current) current.focus();
+    }
+
+    if (menuBtn && menuPanel) {
+        menuBtn.addEventListener('click', () => setMenu(menuPanel.hidden));
+        menuPanel.addEventListener('click', (event) => {
+            const item = event.target.closest('[data-digest-panel]');
+            if (!item) return;
+            showView(item.getAttribute('data-digest-panel') || 'history');
+            setMenu(false);
+            menuBtn.focus();
+        });
+        menuPanel.addEventListener('keydown', (event) => {
+            const items = Array.from(menuPanel.querySelectorAll('[role="menuitem"]'));
+            const index = items.indexOf(document.activeElement);
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+            event.preventDefault();
+            const step = event.key === 'ArrowDown' ? 1 : -1;
+            const next = items[(index + step + items.length) % items.length];
+            if (next) next.focus();
+        });
+        document.addEventListener('click', (event) => {
+            if (menuPanel.hidden) return;
+            if (menuBtn.contains(event.target) || menuPanel.contains(event.target)) return;
+            setMenu(false);
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || menuPanel.hidden) return;
+            setMenu(false);
+            menuBtn.focus();
+        });
+    }
 
     window.addEventListener('lifedash:poll', () => load(true));
     window.addEventListener('lifedash:event', (event) => {
