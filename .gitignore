@@ -25,3 +25,9 @@ storage/**
 !storage/.htaccess
 !storage/**/.gitkeep
 !storage/**/.htaccess
+
+# AI working notes stay local. Product docs stay in README.md and docs/.
+CLAUDE.md
+AGENTS.md
+.cursorrules
+.cursor/
