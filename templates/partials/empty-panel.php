@@ -10,6 +10,7 @@ $emptyHref = (string) ($emptyHref ?? '');
 $emptyButtonId = (string) ($emptyButtonId ?? '');
 ?>
 <div class="empty-panel">
+    <span class="empty-panel-mark" aria-hidden="true"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/info.svg'); ?></span>
     <p class="empty-panel-title"><?= e($emptyTitle) ?></p>
     <p class="empty-panel-body"><?= e($emptyBody) ?></p>
     <?php if ($emptyAction !== '' && $emptyHref !== ''): ?>

@@ -3850,3 +3850,562 @@ html.app-sidebar-rail .app-nav-group {
     }
 }
 
+/* -------------------------------------------------------
+   Shared controls
+   Readable scale (11–32px). One teal accent via --accent.
+   ------------------------------------------------------- */
+
+.btn,
+.btn-primary,
+.btn-danger,
+.btn-ghost,
+a.btn,
+a.btn-primary,
+a.btn-danger,
+a.btn-ghost {
+    border-radius: var(--radius-sm);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    gap: 8px;
+    line-height: 1.2;
+    min-height: 32px;
+    padding: 0 12px;
+    text-decoration: none;
+    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.btn svg,
+.btn-primary svg,
+.btn-danger svg,
+.btn-ghost svg {
+    display: block;
+    flex: 0 0 auto;
+    height: 15px;
+    width: 15px;
+}
+
+.btn {
+    background: var(--surface-raised);
+    border: 1px solid var(--input-border);
+    color: var(--text-secondary);
+}
+
+.btn:hover {
+    background: var(--surface-hover);
+    border-color: var(--input-border);
+    color: var(--text);
+}
+
+.btn-primary {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: var(--accent-ink);
+}
+
+.btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--accent) 18%, transparent);
+    color: var(--accent-ink);
+}
+
+.btn-danger {
+    background: var(--danger);
+    border: 1px solid var(--danger);
+    color: #fff;
+}
+
+html[data-theme="dark"] .btn-danger,
+html[data-theme="jarvis"] .btn-danger {
+    color: var(--accent-ink);
+}
+
+.btn-danger:hover {
+    background: var(--danger);
+    border-color: var(--danger);
+    filter: brightness(1.08);
+}
+
+html[data-theme="light"] .btn-danger:hover {
+    color: #fff;
+}
+
+html[data-theme="dark"] .btn-danger:hover,
+html[data-theme="jarvis"] .btn-danger:hover {
+    color: var(--accent-ink);
+}
+
+.btn-ghost {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+    background: var(--row-hover);
+    border-color: transparent;
+    color: var(--text);
+}
+
+.btn:disabled,
+.btn-primary:disabled,
+.btn-danger:disabled,
+.btn-ghost:disabled {
+    box-shadow: none;
+    cursor: default;
+    filter: none;
+    opacity: 0.35;
+}
+
+.btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-danger:focus-visible,
+.btn-ghost:focus-visible,
+.seg-btn:focus-visible,
+.input:focus-visible,
+.app-modal-close:focus-visible,
+.toast-dismiss:focus-visible,
+.secret-field-show:focus-visible,
+.secret-field-replace:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.input {
+    background: var(--surface);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    min-height: 32px;
+    padding: 0 12px;
+}
+
+.input:focus,
+.input:focus-visible {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    outline: none;
+}
+
+textarea.input {
+    line-height: 1.5;
+    padding: 8px 12px;
+}
+
+select.input {
+    color: var(--text);
+}
+
+.seg-group {
+    background: var(--bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    box-sizing: border-box;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    max-width: 100%;
+    padding: 3px;
+    width: fit-content;
+}
+
+.seg-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 12px;
+    font-weight: 500;
+    min-height: 32px;
+    padding: 0 12px;
+}
+
+.seg-btn:hover {
+    background: var(--surface-hover);
+    border-color: transparent;
+    color: var(--text);
+}
+
+.seg-btn-active,
+.seg-btn-active:hover {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent);
+}
+
+.chip {
+    align-items: center;
+    background: color-mix(in srgb, var(--bg-elev) 80%, transparent);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    display: inline-flex;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    line-height: 16px;
+    padding: 2px 8px;
+}
+
+.dashboard-widgets .chip {
+    font-size: 11px;
+    line-height: 16px;
+    padding: 2px 8px;
+}
+
+.chip-neutral {
+    background: var(--row-hover);
+    border-color: var(--border-soft);
+    color: var(--text-secondary);
+}
+
+.chip-ok {
+    background: var(--ok-soft);
+    border-color: color-mix(in srgb, var(--ok) 35%, transparent);
+    color: var(--ok);
+}
+
+.chip.active {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--accent);
+}
+
+.app-modal-backdrop {
+    background: rgba(2, 5, 6, 0.72);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}
+
+html[data-theme="light"] .app-modal-backdrop {
+    background: rgba(35, 50, 53, 0.35);
+}
+
+.app-modal-panel {
+    background: var(--surface-raised);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+}
+
+.app-modal-close,
+.app-modal-close:hover {
+    background: transparent;
+    border-radius: var(--radius-sm);
+    color: transparent;
+    height: 32px;
+    min-height: 32px;
+    min-width: 32px;
+    position: relative;
+    width: 32px;
+}
+
+.app-modal-close::before {
+    background: var(--text-secondary);
+    content: "";
+    height: 16px;
+    left: 50%;
+    -webkit-mask: url("/assets/vendor/lucide/x.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/x.svg") center / contain no-repeat;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+}
+
+.app-modal-close:hover {
+    background: var(--accent-soft);
+}
+
+.app-modal-close:hover::before {
+    background: var(--accent);
+}
+
+@keyframes modalIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.98);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .app-modal-panel {
+        animation: modalIn 0.2s ease;
+    }
+}
+
+.toast {
+    background: var(--surface-raised);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    gap: 12px;
+    padding: 12px 12px 12px 14px;
+}
+
+.toast-text {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.toast-icon {
+    background: var(--ok);
+    flex: 0 0 auto;
+    height: 16px;
+    -webkit-mask: url("/assets/vendor/lucide/circle-check.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/circle-check.svg") center / contain no-repeat;
+    width: 16px;
+}
+
+.toast-ok {
+    border-color: color-mix(in srgb, var(--ok) 45%, var(--input-border));
+}
+
+.toast-ok .toast-icon {
+    background: var(--ok);
+    -webkit-mask-image: url("/assets/vendor/lucide/circle-check.svg");
+    mask-image: url("/assets/vendor/lucide/circle-check.svg");
+}
+
+.toast-warn {
+    border-color: color-mix(in srgb, var(--warn) 45%, var(--input-border));
+}
+
+.toast-warn .toast-icon {
+    background: var(--warn);
+    -webkit-mask: url("/assets/vendor/lucide/triangle-alert.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/triangle-alert.svg") center / contain no-repeat;
+}
+
+.toast-danger,
+.toast-error {
+    border-color: color-mix(in srgb, var(--danger) 45%, var(--input-border));
+}
+
+.toast-danger .toast-icon,
+.toast-error .toast-icon {
+    background: var(--danger);
+    -webkit-mask: url("/assets/vendor/lucide/circle-alert.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/circle-alert.svg") center / contain no-repeat;
+}
+
+.toast-dismiss {
+    border-radius: var(--radius-sm);
+    color: transparent;
+    font-size: 16px;
+    height: 32px;
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0;
+    position: relative;
+    width: 32px;
+}
+
+.toast-dismiss::before {
+    background: var(--text-muted);
+    content: "";
+    height: 14px;
+    left: 50%;
+    -webkit-mask: url("/assets/vendor/lucide/x.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/x.svg") center / contain no-repeat;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 14px;
+}
+
+.toast-dismiss:hover::before {
+    background: var(--text);
+}
+
+.empty-panel {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    gap: 0;
+    max-width: none;
+    padding: 8px 0 4px;
+    text-align: center;
+}
+
+.empty-panel-mark {
+    align-items: center;
+    background: var(--accent-soft);
+    border-radius: 50%;
+    color: var(--accent);
+    display: grid;
+    height: 46px;
+    justify-items: center;
+    place-items: center;
+    width: 46px;
+}
+
+.empty-panel-mark svg {
+    display: block;
+    height: 18px;
+    width: 18px;
+}
+
+.empty-panel-mark:empty::before {
+    background: currentColor;
+    content: "";
+    height: 18px;
+    -webkit-mask: url("/assets/vendor/lucide/info.svg") center / contain no-repeat;
+    mask: url("/assets/vendor/lucide/info.svg") center / contain no-repeat;
+    width: 18px;
+}
+
+.empty-panel-title {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin: 12px 0 0;
+}
+
+.empty-panel-body {
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 8px 0 0;
+    max-width: 36rem;
+}
+
+.empty-panel .btn,
+.empty-panel .btn-primary,
+.empty-panel .btn-danger {
+    margin-top: 16px;
+}
+
+.secret-field {
+    display: block;
+    margin: 0 0 20px;
+}
+
+.secret-field-label {
+    color: var(--text-label);
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+}
+
+.secret-field-row {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.secret-field-control {
+    align-items: center;
+    background: var(--surface);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex: 1 1 16rem;
+    min-width: 0;
+}
+
+.secret-field-control:focus-within {
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.secret-field-control:has(.secret-field-input.hidden) {
+    display: none;
+}
+
+.secret-field-input.hidden {
+    display: none;
+}
+
+.secret-field-input {
+    background: transparent;
+    border: 0;
+    flex: 1 1 auto;
+    font-family: var(--font-mono);
+    min-width: 0;
+    width: auto;
+}
+
+.secret-field-input:focus,
+.secret-field-input:focus-visible {
+    border-color: transparent;
+    box-shadow: none;
+    outline: none;
+}
+
+.secret-field-show {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    flex: 0 0 auto;
+    height: 32px;
+    justify-content: center;
+    margin-right: 2px;
+    padding: 0;
+    width: 32px;
+}
+
+.secret-field-show:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.secret-field-show:disabled {
+    cursor: default;
+    opacity: 0.35;
+}
+
+.secret-field-show svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.secret-field-icon-hide {
+    display: none;
+}
+
+.secret-field-show[aria-pressed="true"] .secret-field-icon-show {
+    display: none;
+}
+
+.secret-field-show[aria-pressed="true"] .secret-field-icon-hide {
+    display: block;
+}
+
+.secret-field-replace {
+    flex: 0 0 auto;
+}
+
+.secret-field-hint {
+    align-items: center;
+    color: var(--text-muted);
+    display: flex;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    gap: 6px;
+    letter-spacing: 0.08em;
+    margin: 8px 0 0;
+    text-transform: uppercase;
+}
+
+.secret-field-hint svg {
+    color: var(--accent);
+    display: block;
+    flex: 0 0 auto;
+    height: 12px;
+    width: 12px;
+}
+
