@@ -29,7 +29,6 @@
         dropboxCopyUri:   $('#cloud-dropbox-copy-uri'),
         s3Wrap:           $('#cloud-s3-form-wrap'),
         s3Form:           $('#cloud-s3-form'),
-        s3Cancel:         $('#cloud-s3-cancel'),
         migrateBanner:    $('#cloud-migrate-banner'),
         migrateCount:     $('#cloud-migrate-count'),
         migrateBtn:       $('#cloud-migrate-btn'),
@@ -41,9 +40,90 @@
         dropZone:         $('#cloud-drop-zone'),
         uploadInput:      $('#cloud-upload-input'),
         newFolderBtn:     $('#cloud-new-folder-btn'),
+        folderModal:      $('#cloud-folder-modal'),
+        folderForm:       $('#cloud-folder-form'),
         disconnectBtn:    $('#cloud-disconnect-btn'),
         tabPanel:         $('#files-tab-panel'),
     };
+
+    function openModal(modal) {
+        if (!modal) return;
+        modal.classList.remove('hidden');
+        document.body.classList.add('app-modal-open');
+    }
+
+    function closeModal(modal) {
+        if (!modal) return;
+        modal.classList.add('hidden');
+        if (!document.querySelector('.app-modal:not(.hidden)')) {
+            document.body.classList.remove('app-modal-open');
+        }
+    }
+
+    function bindModal(modal, onClose) {
+        if (!modal) return;
+        modal.addEventListener('click', (event) => {
+            if (event.target.closest('[data-close]')) {
+                if (onClose) onClose();
+                else closeModal(modal);
+            }
+        });
+    }
+
+    function clearFieldError(id) {
+        const node = document.getElementById(id);
+        if (!node) return;
+        node.textContent = '';
+        node.classList.add('hidden');
+    }
+
+    function showFieldError(id, message) {
+        const node = document.getElementById(id);
+        if (!node) {
+            alert(message);
+            return;
+        }
+        node.textContent = message;
+        node.classList.remove('hidden');
+    }
+
+    function closeDropbox() {
+        closeModal(el.dropboxWrap);
+        setDropboxFormMsg('', undefined);
+    }
+
+    function openDropbox() {
+        closeS3();
+        openModal(el.dropboxWrap);
+        syncDropboxFormFromStatus();
+    }
+
+    function closeS3() {
+        closeModal(el.s3Wrap);
+        clearFieldError('cloud-s3-error');
+    }
+
+    function openS3() {
+        closeDropbox();
+        clearFieldError('cloud-s3-error');
+        openModal(el.s3Wrap);
+    }
+
+    function closeFolder() {
+        closeModal(el.folderModal);
+        clearFieldError('cloud-folder-error');
+    }
+
+    function openFolder() {
+        clearFieldError('cloud-folder-error');
+        const input = document.getElementById('cloud-folder-name');
+        if (input) input.value = '';
+        openModal(el.folderModal);
+    }
+
+    bindModal(el.dropboxWrap, closeDropbox);
+    bindModal(el.s3Wrap, closeS3);
+    bindModal(el.folderModal, closeFolder);
 
     function escHtml(str) {
         return String(str)
@@ -172,19 +252,11 @@
 
         el.connectActions.innerHTML = parts.join('\n            ');
 
-        $('#cloud-show-dropbox')?.addEventListener('click', () => {
-            el.dropboxWrap?.classList.remove('hidden');
-            syncDropboxFormFromStatus();
-        });
+        $('#cloud-show-dropbox')?.addEventListener('click', openDropbox);
 
-        $('#cloud-edit-dropbox')?.addEventListener('click', () => {
-            el.dropboxWrap?.classList.remove('hidden');
-            syncDropboxFormFromStatus();
-        });
+        $('#cloud-edit-dropbox')?.addEventListener('click', openDropbox);
 
-        $('#cloud-show-s3')?.addEventListener('click', () => {
-            el.s3Wrap?.classList.remove('hidden');
-        });
+        $('#cloud-show-s3')?.addEventListener('click', openS3);
     }
 
     function applyStatusNotice() {
@@ -267,7 +339,7 @@
 
         if (pendingConfigProvider !== null) {
             if (pendingConfigProvider === 'dropbox') {
-                el.dropboxWrap?.classList.remove('hidden');
+                openDropbox();
                 statusNotice = 'Save your Dropbox app credentials below, then authorize with Dropbox.';
             } else {
                 statusNotice = `${providerLabel(pendingConfigProvider)} is not configured.`;
@@ -373,7 +445,15 @@
         });
 
         el.fileList.querySelectorAll('.cloud-delete-btn').forEach(btn => {
-            btn.addEventListener('click', () => deleteNode(parseInt(btn.dataset.id, 10), btn.dataset.name || ''));
+            btn.addEventListener('click', async () => {
+                if (btn.dataset.confirming === '1') return;
+                btn.dataset.confirming = '1';
+                try {
+                    await deleteNode(parseInt(btn.dataset.id, 10), btn.dataset.name || '');
+                } finally {
+                    if (btn.isConnected) btn.dataset.confirming = '';
+                }
+            });
         });
     }
 
@@ -472,7 +552,13 @@
     }
 
     async function deleteNode(id, name) {
-        if (!confirm(`Delete "${name}" from cloud storage? This cannot be undone.`)) return;
+        const ok = await globalThis.AppModal.confirm({
+            title: 'Delete file',
+            message: `Delete "${name}" from cloud storage? This cannot be undone.`,
+            confirmLabel: 'Delete',
+            danger: true,
+        });
+        if (!ok) return;
 
         const { res, data } = await apiJson(`/api/storage/${id}/delete`, {
             method: 'POST',
@@ -488,6 +574,16 @@
     }
 
     async function disconnectCloud() {
+        if (el.disconnectBtn?.dataset.confirming === '1') return;
+        if (el.disconnectBtn) el.disconnectBtn.dataset.confirming = '1';
+        try {
+            await disconnectCloudConfirmed();
+        } finally {
+            if (el.disconnectBtn?.isConnected) el.disconnectBtn.dataset.confirming = '';
+        }
+    }
+
+    async function disconnectCloudConfirmed() {
         const { res, data } = await apiJson('/api/storage/disconnect/stats');
         if (!res.ok) {
             alert(data.error || 'Could not load disconnect info.');
@@ -503,7 +599,13 @@
         if (files > 0) {
             msg += `\n\n${files} indexed cloud file(s) will no longer appear here.`;
         }
-        if (!confirm(msg)) return;
+        const ok = await globalThis.AppModal.confirm({
+            title: 'Disconnect',
+            message: msg,
+            confirmLabel: 'Disconnect',
+            danger: true,
+        });
+        if (!ok) return;
 
         const disc = await apiJson('/api/storage/disconnect', {
             method: 'POST',
@@ -622,10 +724,7 @@
         setDropboxFormMsg(data.message || data.error || (res.ok ? 'OK' : 'Test failed.'), data.ok === true);
     });
 
-    el.dropboxCancel?.addEventListener('click', () => {
-        el.dropboxWrap?.classList.add('hidden');
-        setDropboxFormMsg('', undefined);
-    });
+    el.dropboxCancel?.addEventListener('click', closeDropbox);
 
     el.dropboxCopyUri?.addEventListener('click', () => {
         const text = el.dropboxRedirect?.textContent || '';
@@ -634,6 +733,7 @@
 
     el.s3Form?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        clearFieldError('cloud-s3-error');
         const fd = new FormData(el.s3Form);
         const body = Object.fromEntries(fd.entries());
         body.path_style = fd.get('path_style') === '1';
@@ -644,17 +744,13 @@
         });
 
         if (!res.ok) {
-            alert(data.error || 'S3 connect failed.');
+            showFieldError('cloud-s3-error', data.error || 'S3 connect failed.');
             return;
         }
 
-        el.s3Wrap?.classList.add('hidden');
+        closeS3();
         el.s3Form?.reset();
         await loadStatus();
-    });
-
-    el.s3Cancel?.addEventListener('click', () => {
-        el.s3Wrap?.classList.add('hidden');
     });
 
     el.migrateBtn?.addEventListener('click', migrateLocal);
@@ -672,20 +768,28 @@
         if (el.uploadInput?.files?.length) uploadCloudFiles(el.uploadInput.files);
     });
 
-    el.newFolderBtn?.addEventListener('click', async () => {
-        const name = prompt('New folder name:');
-        if (!name || !name.trim()) return;
+    el.newFolderBtn?.addEventListener('click', openFolder);
 
-        const { res, data } = await apiJson('/api/storage/folder', {
-            method: 'POST',
-            body: JSON.stringify({ path: currentPath, name: name.trim() }),
-        });
-
-        if (!res.ok) {
-            alert(data.error || 'Could not create folder.');
+    el.folderForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const name = (document.getElementById('cloud-folder-name')?.value || '').trim();
+        if (!name) {
+            closeFolder();
             return;
         }
 
+        clearFieldError('cloud-folder-error');
+        const { res, data } = await apiJson('/api/storage/folder', {
+            method: 'POST',
+            body: JSON.stringify({ path: currentPath, name }),
+        });
+
+        if (!res.ok) {
+            showFieldError('cloud-folder-error', data.error || 'Could not create folder.');
+            return;
+        }
+
+        closeFolder();
         await browse(currentPath);
     });
 
@@ -754,12 +858,12 @@
             } else if (cloudMessage) {
                 statusNotice = cloudMessage;
                 if (cloudProvider === 'dropbox') {
-                    el.dropboxWrap?.classList.remove('hidden');
+                    openDropbox();
                 }
             } else if (cloudError === 'scope') {
                 statusNotice = 'Dropbox permissions are incomplete. Enable files.content.read, files.content.write, and account_info.read on your app, then authorize again.';
                 if (cloudProvider === 'dropbox') {
-                    el.dropboxWrap?.classList.remove('hidden');
+                    openDropbox();
                 }
             } else if (cloudError === 'invalid') {
                 statusNotice = 'Cloud connection request was invalid. Try again.';
