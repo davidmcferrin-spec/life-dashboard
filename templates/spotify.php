@@ -12,14 +12,7 @@ $extraStyles = ['/assets/css/lifedash.css'];
 require __DIR__ . '/partials/head.php';
 ?>
 <body class="page min-h-screen">
-<nav class="chrome flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-    <a href="/" class="brand hover:text-accent">Dashboard</a>
-    <div class="nav-meta flex flex-wrap items-center justify-end gap-2">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <a href="/settings/spotify" class="nav-link">Spotify</a>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 <main class="mx-auto px-4 py-6" id="spotify-app">
     <header class="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -184,6 +177,7 @@ require __DIR__ . '/partials/head.php';
         </div>
     </div>
 </main>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer ?? '20261022d') ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer ?? '20261022d') ?>"></script>
 <script src="/assets/js/spotify.js?v=<?= e($assetVer ?? '20261022d') ?>"></script>

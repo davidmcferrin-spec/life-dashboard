@@ -14,18 +14,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page brain-page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <div class="flex items-center gap-3">
-        <span class="brand">Vault</span>
-        <a href="/" class="nav-link mono text-xs">← Dashboard</a>
-    </div>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <button type="button" id="brain-show-map" class="nav-link">Map</button>
-        <a href="/brain/graph" class="nav-link">Brain</a>
-        <a href="/settings" class="nav-link">Settings</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Vault'; require __DIR__ . '/partials/page-heading.php'; ?>
 <div class="brain-shell" data-open-page="<?= (int) $openPage ?>">
@@ -119,6 +108,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         </aside>
     </div>
 </div>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>

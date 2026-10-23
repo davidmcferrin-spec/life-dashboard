@@ -81,20 +81,7 @@ $timezones = [
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen" data-ai-presence="<?= $showAiPresence ? '1' : '0' ?>">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <span class="brand">Dashboard</span>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <button type="button" class="nav-link" data-player-toggle aria-pressed="false">Player</button>
-        <span id="live-date"></span>
-        <a href="/brain" class="nav-link">Vault</a>
-        <a href="/spotify" class="nav-link">Playlists</a>
-        <a href="/pantry" class="nav-link">Pantry</a>
-        <a href="/digest" class="nav-link">Grok Digest</a>
-        <a href="/settings" class="nav-link">Settings</a>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="dash-main mx-auto py-6 space-y-6">
 
@@ -296,6 +283,7 @@ $timezones = [
 <?php endif; ?>
 
 <?php require __DIR__ . '/partials/lifedash-modals.php'; ?>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/dashboard.js?v=<?= e($assetVer) ?>"></script>

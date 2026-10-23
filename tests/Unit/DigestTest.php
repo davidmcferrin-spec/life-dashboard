@@ -169,14 +169,10 @@ final class DigestTest extends TestCase
 
     public function testDashboardLinksDigestWithTheOtherModules(): void
     {
-        $html = file_get_contents(VIEWS_DIR . '/dashboard.php');
+        $html = file_get_contents(VIEWS_DIR . '/partials/app-shell-open.php');
         self::assertIsString($html);
         self::assertMatchesRegularExpression(
-            '/<div class="nav-meta flex items-center gap-3 flex-wrap justify-end">'
-            . '.*<a href="\/brain" class="nav-link">Vault<\/a>\s*'
-            . '<a href="\/spotify" class="nav-link">Playlists<\/a>\s*'
-            . '<a href="\/pantry" class="nav-link">Pantry<\/a>\s*'
-            . '<a href="\/digest" class="nav-link">Grok Digest<\/a>/s',
+            "/\\['Vault', '\\/brain'\\].*\\['Grok Digest', '\\/digest'\\].*\\['Playlists', '\\/spotify'\\].*\\['Pantry', '\\/pantry'\\]/s",
             $html
         );
     }

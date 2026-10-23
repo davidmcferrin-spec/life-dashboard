@@ -14,16 +14,7 @@ $extraStyles   = ['/assets/css/lifedash.css'];
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page brain-page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <div class="flex items-center gap-3">
-        <span class="brand">Brain</span>
-        <a href="/brain" class="nav-link mono text-xs">← Vault</a>
-    </div>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end min-w-0">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <a href="/" class="nav-link">Dashboard</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <?php $pageEyebrow = 'Dashboard'; $pageHeading = 'Brain'; require __DIR__ . '/partials/page-heading.php'; ?>
 <div class="brain-graph-wrap">
@@ -55,6 +46,7 @@ $extraStyles   = ['/assets/css/lifedash.css'];
         <p id="brain-live" class="brain-live">Connecting</p>
     </aside>
 </div>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>

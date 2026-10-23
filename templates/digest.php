@@ -27,13 +27,7 @@ $bandLayouts = $digestWidgets->breakpointLayouts((int) $user['id']);
 <?php require __DIR__ . '/partials/head.php'; ?>
 <body class="page min-h-screen">
 
-<nav class="chrome flex items-center justify-between px-6 py-3">
-    <a href="/" class="brand hover:text-accent">← Dashboard</a>
-    <div class="nav-meta flex items-center gap-3 flex-wrap justify-end">
-        <?php require __DIR__ . '/partials/appearance-nav.php'; ?>
-        <a href="/logout" class="nav-link nav-link-danger">Sign Out</a>
-    </div>
-</nav>
+<?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="dash-main mx-auto py-6 space-y-6" id="digest-app" data-tz="<?= e($digestTz) ?>">
 <div class="ld-grid<?= $gridMaxWidth ? ' ld-cols-capped' : '' ?>" data-grid-cap="<?= $gridMaxWidth ? '1' : '0' ?>">
@@ -127,6 +121,7 @@ $bandLayouts = $digestWidgets->breakpointLayouts((int) $user['id']);
 <script type="application/json" id="ld-band-items"><?= json_encode($bandItems, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
 <script type="application/json" id="ld-band-layouts"><?= json_encode($bandLayouts, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR) ?></script>
 </main>
+<?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
