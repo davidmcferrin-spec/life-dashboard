@@ -152,6 +152,15 @@ final class SecretFieldTest extends TestCase
         );
     }
 
+    private function assetVersion(): string
+    {
+        $head = file_get_contents(VIEWS_DIR . '/partials/head.php');
+        self::assertIsString($head);
+        self::assertSame(1, preg_match("/\\\$assetVer\\s*=\\s*'([^']+)'/", $head, $match));
+
+        return $match[1];
+    }
+
     /**
      * @param array{secretId: string, secretName: string, secretLabel: string, secretHint: string, secretValue: string, secretPlaceholder: string, secretAutocomplete: string, secretHidden: bool} $vars
      */

@@ -59,20 +59,21 @@
             const strip = h.history.map((done, i) => {
                 const day = d.days[i];
                 const isToday = day === d.today;
+                const letter = String(fmt.shortDate(day) || '').slice(0, 1);
                 return `<button type="button" class="ld-dot${done ? ' is-done' : ''}${isToday ? ' is-today' : ''}"
                     data-habit="${h.id}" data-date="${esc(day)}"
                     title="${esc(fmt.shortDate(day))}: ${done ? 'done' : 'not done'}"
-                    aria-label="${esc(h.name)} ${esc(fmt.shortDate(day))} ${done ? 'done' : 'not done'}"></button>`;
+                    aria-label="${esc(h.name)} ${esc(fmt.shortDate(day))} ${done ? 'done' : 'not done'}">${esc(letter)}</button>`;
             }).join('');
             const target = h.target_per_week ? `${h.week_count}/${h.target_per_week} this week` : `${h.week_count} this week`;
-            const streak = h.streak > 0 ? `<span class="ld-hot">🔥${h.streak}</span> · ` : '';
+            const streak = h.streak > 0 ? `${h.streak} day streak` : 'No streak';
             return `
                 <div class="ld-habit">
                     <button type="button" class="ld-check${h.done_today ? ' is-done' : ''}" data-habit="${h.id}"
-                        aria-pressed="${h.done_today}" aria-label="${esc(h.name)} today">✓</button>
+                        aria-pressed="${h.done_today}" aria-label="${esc(h.name)} today"></button>
                     <div class="min-w-0">
-                        <div class="ld-habit-name">${h.emoji ? esc(h.emoji) + ' ' : ''}${esc(h.name)}</div>
-                        <div class="ld-habit-meta">${streak}${esc(target)}</div>
+                        <div class="ld-habit-name">${esc(h.name)}</div>
+                        <div class="ld-habit-meta">${esc(streak)} · ${esc(target)}</div>
                     </div>
                     <div class="ld-strip">${strip}</div>
                 </div>`;
@@ -84,7 +85,7 @@
                 <button type="submit" class="btn text-xs">Add</button>
             </form>` : '';
 
-        ctx.body.innerHTML = (rows || emptyPanel('No habits yet', 'Add the first one below.', 'Open habits', '/settings/trackers')) + quickAdd;
+        ctx.body.innerHTML = `<div class="ld-habit-list ld-card-wipe">${rows || emptyPanel('No habits yet', 'Add the first one below.', 'Open habits', '/settings/trackers')}${quickAdd}</div>`;
 
         ctx.body.querySelectorAll('.ld-check, button.ld-dot').forEach((btn) => {
             btn.addEventListener('click', () => guarded(btn, async () => {
@@ -123,31 +124,36 @@
         let buttons = '';
         for (let v = min; v <= max; v++) {
             const label = (cfg.labels && cfg.labels[String(v)]) || String(v);
-            const face = fmt.face(m, v);
             buttons += `<button type="button" class="ld-mood-btn${v === current ? ' is-current' : ''}" data-value="${v}"
-                title="${esc(label)}" aria-label="Log ${esc(label)}">${face ? esc(face) : esc(v)}</button>`;
+                title="${esc(label)}" aria-label="Log ${esc(label)}">${esc(v)}</button>`;
         }
 
+        const todayShown = d.latest
+            ? ((cfg.labels && cfg.labels[String(Math.round(d.latest.value))]) || fmt.number(d.latest.value, 0))
+            : '';
         const todayLine = d.latest
-            ? `Today ${esc(fmt.face(m, d.latest.value) || fmt.number(d.latest.value, 0))} at ${esc(fmt.time(d.latest.ts))}${d.today_count > 1 ? ` (+${d.today_count - 1})` : ''}`
+            ? `Today ${esc(todayShown)} at ${esc(fmt.time(d.latest.ts))}${d.today_count > 1 ? ` (+${d.today_count - 1})` : ''}`
             : 'Not logged today';
         const avg = d.average !== null ? `${d.buckets.length}d avg ${fmt.number(d.average, 1)}` : '';
 
-        const notes = (d.notes || []).map((n) =>
-            `<li><span class="ld-meta">${esc(fmt.monthDay(n.date))}</span>${esc(fmt.face(m, n.value) || '')} ${esc(n.note)}</li>`
-        ).join('');
+        const notes = (d.notes || []).map((n) => {
+            const noteLabel = (cfg.labels && cfg.labels[String(Math.round(n.value))]) || fmt.number(n.value, 0);
+            return `<li><span class="ld-meta">${esc(fmt.monthDay(n.date))}</span>${esc(noteLabel)} ${esc(n.note)}</li>`;
+        }).join('');
 
         ctx.body.innerHTML = `
+            <div class="ld-mood ld-card-wipe">
             <div class="ld-mood-scale">${buttons}</div>
-            <div class="ld-mood-foot"><span>${todayLine}</span><span>${esc(avg)}</span></div>
+            <p class="ld-mood-foot"><span>${todayLine}</span><span>${esc(avg)}</span></p>
             <div data-spark class="ld-mood-spark"></div>
             <details class="ld-mood-note">
                 <summary>Note</summary>
                 <form data-note>
-                    <input class="input" name="note" maxlength="500" placeholder="Optional note, then tap a face" aria-label="Mood note" autocomplete="off">
+                    <input class="input" name="note" maxlength="500" placeholder="Optional note, then tap a score" aria-label="Mood note" autocomplete="off">
                 </form>
                 ${notes ? `<ul class="ld-notes">${notes}</ul>` : ''}
-            </details>`;
+            </details>
+            </div>`;
 
         const noteInput = ctx.body.querySelector('input[name=note]');
         ctx.body.querySelector('[data-note]').addEventListener('submit', (e) => e.preventDefault());
@@ -185,14 +191,14 @@
             if (Math.abs(diff) > 1e-9) {
                 const goodUp = (d.metric.config || {}).goal_direction !== 'down';
                 const good = diff > 0 ? goodUp : !goodUp;
-                delta = `<span class="${good ? 'ld-delta-up' : 'ld-delta-down'}">${diff > 0 ? '▲' : '▼'} ${esc(fmt.value(d.metric, Math.abs(diff), d.decimals))}</span> vs prior`;
+                delta = `<span class="${good ? 'ld-delta-up' : 'ld-delta-down'}">${diff > 0 ? '+' : '−'} ${esc(fmt.value(d.metric, Math.abs(diff), d.decimals))}</span> vs prior`;
             }
         }
         ctx.body.innerHTML = `
-            <div class="ld-center">
-                <div class="ld-big">${esc(d.agg === 'count' ? fmt.number(d.value, 0) : fmt.value(d.metric, d.value, d.decimals))}</div>
-                <div class="ld-sub">${esc(AGG_LABEL[d.agg] || d.agg)} · ${esc(PERIOD_LABEL[d.period] || d.period)}</div>
-                ${delta ? `<div class="ld-sub">${delta}</div>` : ''}
+            <div class="ld-stat ld-card-wipe">
+                <strong class="ld-big">${esc(d.agg === 'count' ? fmt.number(d.value, 0) : fmt.value(d.metric, d.value, d.decimals))}</strong>
+                <span class="ld-sub">${esc(AGG_LABEL[d.agg] || d.agg)} · ${esc(PERIOD_LABEL[d.period] || d.period)}</span>
+                ${delta ? `<small class="ld-sub">${delta}</small>` : ''}
             </div>`;
     }
 
@@ -216,7 +222,7 @@
         const legend = series.length > 1
             ? `<div class="ld-legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`
             : '';
-        ctx.body.innerHTML = `<div class="ld-chart-wrap">${legend}<div class="ld-plot" data-plot></div></div>`;
+        ctx.body.innerHTML = `<div class="ld-chart-wrap ld-card-wipe">${legend}<div class="ld-plot" data-plot></div></div>`;
 
         const plot = ctx.body.querySelector('[data-plot]');
         const metric = series[0] && series[0].metric;
@@ -251,7 +257,7 @@
         const color = frac >= 1 ? 'var(--ok)' : 'var(--accent)';
 
         ctx.body.innerHTML = `
-            <div class="ld-center">
+            <div class="ld-center ld-gauge ld-card-wipe">
                 <svg class="ld-svg" viewBox="0 0 100 58" style="max-height:8rem" role="img"
                      aria-label="${esc(d.metric.name)} ${esc(fmt.value(d.metric, d.value))} of ${esc(d.max)}">
                     <path class="ld-track" d="M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}" stroke-width="9" stroke-linecap="round"/>
@@ -334,7 +340,7 @@
         const label = single ? `+${goalAmount(first, unit)}` : `+${fmt.number(first, Number.isInteger(first) ? 0 : 1)}`;
         return `<div class="ld-goal-ctl" data-metric="${esc(id)}" data-incs="${esc(incs.join(','))}" data-unit="${esc(unit)}">
             <button type="button" class="btn text-xs ld-goal-tap" data-delta="${first}" aria-label="Add ${esc(goalAmount(first, unit))}">${esc(label)}</button>
-            <button type="button" class="btn text-xs ld-goal-more" aria-expanded="false" aria-label="Other amounts and undo">▾</button>
+            <button type="button" class="btn text-xs ld-goal-more" aria-expanded="false" aria-label="Other amounts and undo">More</button>
         </div>`;
     }
 
@@ -528,7 +534,7 @@
         if (goals.every((g) => g.error)) return errorBox(ctx, goals[0].error || d.error);
         tools(ctx, d.view === 'week' ? '<span class="ld-sub">0 empty · 100% full · 200%</span>' : '');
         const single = goals.length === 1;
-        const cls = ['ld-goal-list', single ? 'is-single' : '', d.view === 'week' ? 'is-week' : 'is-day'].filter(Boolean).join(' ');
+        const cls = ['ld-goal-list', 'ld-card-wipe', single ? 'is-single' : '', d.view === 'week' ? 'is-week' : 'is-day'].filter(Boolean).join(' ');
         ctx.body.innerHTML = `<div class="${cls}">${goals.map((g) => goalRow(g, d.view, single)).join('')}</div>`;
         bindGoalRows(ctx);
     }
@@ -544,12 +550,12 @@
             ctx.body.innerHTML = emptyPanel('No entries yet', 'The first check-in will show up here.');
             return;
         }
-        ctx.body.innerHTML = `<table class="ld-table"><tbody>${d.rows.map((r) => `
-            <tr>
-                <td>${esc(fmt.monthDay(r.date))}<br>${esc(fmt.time(r.ts))}</td>
-                <td class="ld-note">${esc(r.note || '')}</td>
-                <td class="ld-num">${esc(fmt.value(d.metric, r.value))}</td>
-            </tr>`).join('')}</tbody></table>`;
+        ctx.body.innerHTML = `<div class="ld-entries ld-card-wipe">${d.rows.map((r) => `
+            <div>
+                <time>${esc(fmt.monthDay(r.date))}</time>
+                <strong>${esc(fmt.value(d.metric, r.value))}</strong>
+                <span>${esc(r.note || '')}</span>
+            </div>`).join('')}</div>`;
     }
 
     // -----------------------------------------------------------------
@@ -560,16 +566,18 @@
         if (d.error || !d.habit) return errorBox(ctx, d.error || 'Habit not found.');
         const h = d.habit;
         tools(ctx, '');
-        const dots = h.history.map((done, i) =>
-            `<span class="ld-dot${done ? ' is-done' : ''}${d.days[i] === d.days[d.days.length - 1] ? ' is-today' : ''}" title="${esc(fmt.shortDate(d.days[i]))}"></span>`
-        ).join('');
+        const dots = h.history.map((done, i) => {
+            const day = d.days[i];
+            const letter = String(fmt.shortDate(day) || '').slice(0, 1);
+            return `<span class="ld-dot${done ? ' is-done' : ''}${day === d.days[d.days.length - 1] ? ' is-today' : ''}" title="${esc(fmt.shortDate(day))}">${esc(letter)}</span>`;
+        }).join('');
         ctx.body.innerHTML = `
-            <div class="ld-center">
-                <div class="ld-big">${h.streak > 0 ? '🔥' : ''}${h.streak}</div>
-                <div class="ld-sub">${esc(h.emoji || '')} ${esc(h.name)} · best ${h.best_streak}</div>
-                <div class="ld-strip" style="margin-top:0.5rem">${dots}</div>
-                <button type="button" class="btn text-xs" style="margin-top:0.5rem" data-toggle aria-pressed="${h.done_today}">
-                    ${h.done_today ? '✓ Done today' : 'Mark done today'}</button>
+            <div class="ld-streak ld-card-wipe">
+                <span><strong>${h.streak}</strong><small>${esc(h.name)} · day current</small></span>
+                <span><strong>${h.best_streak}</strong><small>personal best</small></span>
+                <div class="ld-strip">${dots}</div>
+                <button type="button" class="btn text-xs" data-toggle aria-pressed="${h.done_today}">
+                    ${h.done_today ? 'Done today' : 'Mark done today'}</button>
             </div>`;
         const btn = ctx.body.querySelector('[data-toggle]');
         btn.addEventListener('click', () => guarded(btn, async () => {
@@ -691,9 +699,11 @@
                 shown = m.kind === 'duration' ? fmt.duration(v) : (m.kind === 'habit' ? (v >= 1 ? 'Yes' : 'No') : fmt.number(v, m.unit === 'steps' ? 0 : 1));
                 if (m.unit && m.kind === 'number') shown += ' ' + m.unit;
             }
-            return `<div class="ld-life-row"><span>${esc(m.name)}</span><strong>${esc(shown)}</strong></div>`;
+            return `<div class="ld-today-cell"><span>${esc(m.name)}<strong>${esc(shown)}</strong></span></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || emptyPanel('No life metrics', 'Add one to start a chart.', 'Open life', '/settings/life');
+        ctx.body.innerHTML = rows
+            ? `<div class="ld-today ld-card-wipe">${rows}</div>`
+            : emptyPanel('No life metrics', 'Add one to start a chart.', 'Open life', '/settings/life');
     }
 
     function spending(ctx) {
@@ -1012,7 +1022,7 @@
             : '';
 
         ctx.body.innerHTML = `
-            <div class="ld-shop">
+            <div class="ld-shop ld-card-wipe">
                 <div class="ld-shop-tabs" role="tablist">${tabs}</div>
                 <form class="ld-shop-add" data-shop-add>
                     <input class="input" name="text" maxlength="160" placeholder="2 lb chicken" aria-label="Add item" autocomplete="off">
@@ -1069,12 +1079,12 @@
         const meta = [qty, item.store || '', item.notes || ''].filter(Boolean).join(' · ');
         return `<div class="ld-shop-row${bought ? ' is-bought' : ''}">
             <button type="button" class="ld-check${bought ? ' is-done' : ''}" data-shop-check="${item.id}" data-bought="${bought ? '1' : '0'}"
-                aria-pressed="${bought}" aria-label="${esc(bought ? 'Return' : 'Buy')} ${esc(item.name)}">✓</button>
+                aria-pressed="${bought}" aria-label="${esc(bought ? 'Return' : 'Buy')} ${esc(item.name)}"></button>
             <div class="min-w-0">
                 <div class="ld-shop-name">${esc(item.name)}</div>
                 ${meta ? `<div class="ld-shop-meta">${esc(meta)}</div>` : ''}
             </div>
-            <button type="button" class="ld-shop-x" data-shop-remove="${item.id}" aria-label="Remove ${esc(item.name)}">✕</button>
+            <button type="button" class="ld-shop-x" data-shop-remove="${item.id}" aria-label="Remove ${esc(item.name)}"><svg class="lucide lucide-x" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>`;
     }
 
@@ -1099,7 +1109,7 @@
         const list = shown.length
             ? shown.map((call) => callRow(call, String(call.id) === openId)).join('')
             : emptyPanel('Nothing in this view', 'Switch the filter, or add an item.');
-        ctx.body.innerHTML = `<div class="ld-call"><div class="ld-call-tabs" role="tablist">${tabHtml}</div><div class="ld-call-list">${list}</div></div>`;
+        ctx.body.innerHTML = `<div class="ld-call ld-card-wipe"><div class="ld-call-tabs" role="tablist">${tabHtml}</div><div class="ld-call-list">${list}</div></div>`;
         ctx.body.querySelectorAll('[data-call-filter]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 if (host) host.dataset.callFilter = btn.dataset.callFilter;
@@ -1149,6 +1159,7 @@
         }
         if (call.vip) badges.push(`<span class="ld-call-badge is-vip">VIP${call.vip_tier ? ' · ' + esc(call.vip_tier) : ''}</span>`);
         const urgent = call.urgency === 'urgent' || call.category === 'urgent';
+        const pip = call.vip ? 'is-vip' : (call.category === 'debt_collector' ? 'is-debt' : (urgent ? 'is-urgent' : ''));
         const detail = open ? callDetail(call) : '';
         const statuses = ['returned', 'resolved', 'spam'].map((status) =>
             `<button type="button" class="ld-call-status${call.status === status ? ' is-on' : ''}" data-call-id="${call.id}" data-call-status="${status}">${status}</button>`
@@ -1159,6 +1170,7 @@
                 ${call.reason ? `<span class="ld-call-meta">${esc(call.reason)}</span>` : ''}
                 ${badges.length ? `<span class="ld-call-badges">${badges.join('')}</span>` : ''}
             </button>
+            <i class="ld-call-pip ${pip}" aria-hidden="true"></i>
             ${phone ? `<div class="ld-call-meta">${phone}</div>` : ''}
             ${detail}
             <div class="ld-call-actions">${statuses}</div>
@@ -1189,10 +1201,6 @@
         const counts = d.counts || {};
         const expiring = d.expiring || [];
         const low = d.low_stock || [];
-        const countLine = ['fridge', 'freezer', 'pantry'].map((key) => {
-            const label = key.charAt(0).toUpperCase() + key.slice(1);
-            return label + ' ' + (counts[key] || 0);
-        }).join(' · ');
         const soon = expiring.map((lot) => {
             const when = lot.days_left < 0 ? 'expired' : (lot.days_left === 0 ? 'today' : lot.days_left + 'd');
             return `<li class="ld-pantry-${esc(lot.freshness)}">${esc(lot.name)} <span class="ld-meta">${esc(when)}</span></li>`;
@@ -1203,12 +1211,24 @@
                 : (row.min_on_hand == null ? '' : row.on_hand + ' / ' + row.min_on_hand);
             return `<li>${esc(row.name)} <span class="ld-meta">${esc(meta)}</span></li>`;
         }).join('');
+        const soonCount = Number(d.expiring_count || expiring.length);
+        const lowCount = Number(d.low_stock_count || low.length);
+        const chips = [
+            soonCount ? `<span class="is-warn">${soonCount} use soon</span>` : '',
+            lowCount ? `<span>${lowCount} below par</span>` : '',
+        ].filter(Boolean).join('');
         ctx.body.innerHTML = `
-            <div class="ld-pantry-card">
-                <p class="ld-meta">${esc(countLine)}</p>
-                ${soon ? `<p class="ld-pantry-label">Use soon</p><ul class="ld-pantry-list">${soon}</ul>` : emptyPanel('Nothing due soon', 'The pantry has no lots coming due.', 'Open pantry', '/pantry')}
-                ${lowRows ? `<p class="ld-pantry-label">Low</p><ul class="ld-pantry-list">${lowRows}</ul>` : ''}
-                <a class="ld-card-title" href="/pantry">Open pantry</a>
+            <div class="ld-pantry-counts ld-card-wipe">
+                <div>
+                    <span><strong>${counts.fridge || 0}</strong>Fridge</span>
+                    <span><strong>${counts.freezer || 0}</strong>Freezer</span>
+                    <span><strong>${counts.pantry || 0}</strong>Pantry</span>
+                </div>
+                ${chips ? `<p>${chips}</p>` : ''}
+                ${soon ? `<ul class="ld-pantry-list">${soon}</ul>` : ''}
+                ${lowRows ? `<ul class="ld-pantry-list">${lowRows}</ul>` : ''}
+                ${soon || lowRows ? '' : emptyPanel('Nothing due soon', 'The pantry has no lots coming due.', 'Open pantry', '/pantry')}
+                <a class="ld-pantry-open" href="/pantry">Open pantry</a>
             </div>`;
     }
 
@@ -1230,7 +1250,7 @@
             ctx.body.innerHTML = '<p class="ov-empty">Nothing logged yet.</p>';
             return;
         }
-        ctx.body.innerHTML = `<ul class="ov-vitals">${items.map((item) => `
+        ctx.body.innerHTML = `<ul class="ov-vitals ld-card-wipe">${items.map((item) => `
             <li class="ov-vital">
                 <div class="ov-vital-row">
                     <span class="ov-vital-label">${esc(item.label)}</span>
@@ -1251,13 +1271,13 @@
             ctx.body.innerHTML = '<p class="ov-empty">Nothing due today.</p>';
             return;
         }
-        ctx.body.innerHTML = `<ol class="ov-agenda">${items.map((item) => `
-            <li><time datetime="${esc(item.datetime)}">${esc(item.time)}</time><a href="${esc(item.href)}">${esc(item.title)}</a></li>`).join('')}</ol>`;
+        ctx.body.innerHTML = `<ol class="ov-agenda ld-card-wipe">${items.map((item) => `
+            <li><time datetime="${esc(item.datetime)}">${esc(item.time)}</time><span><strong><a href="${esc(item.href)}">${esc(item.title)}</a></strong><small>Today</small></span><a class="ld-agenda-open" href="${esc(item.href)}">Open</a></li>`).join('')}</ol>`;
     }
 
     function quickActions(ctx) {
         const actions = (ctx.data && ctx.data.actions) || [];
-        ctx.body.innerHTML = `<div class="ov-actions">${actions.map((action) => `
+        ctx.body.innerHTML = `<div class="ov-actions ld-card-wipe">${actions.map((action) => `
             <a class="ov-action" href="${esc(action.href)}">
                 <span class="ov-action-title">${esc(action.title)}</span>
                 <span class="ov-action-line">${esc(action.line)}</span>
@@ -1268,15 +1288,21 @@
         tools(ctx, '<a href="/digest" class="nav-link">Digest</a>');
         const data = ctx.data || {};
         const count = Number(data.new_count || 0);
-        const rows = (data.items || []).slice(0, 3).map((item) => {
-            const badge = item.is_new ? '<span class="ld-digest-badge">New</span> ' : '';
-            const line = item.summary ? `<p class="ld-digest-blurb">${esc(item.summary)}</p>` : '';
-            return `<p class="ld-card-title">${badge}<a href="${esc(item.url)}" target="_blank" rel="noopener">${esc(item.title)}</a></p><p class="ld-meta">${esc(item.product_label || '')}</p>${line}`;
+        const items = (data.items || []).slice(0, 3);
+        const fileIcon = '<svg class="lucide lucide-file-text" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+        const chevron = '<svg class="lucide lucide-chevron-right" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>';
+        const headline = items[0] ? (items[0].product_label || items[0].title || 'Grok Digest') : 'Grok Digest';
+        const rows = items.map((item) => {
+            const line = item.summary ? `<small>${esc(item.summary)}</small>` : '';
+            return `<a class="ld-digest-row" href="${esc(item.url)}" target="_blank" rel="noopener">${fileIcon}<span><strong>${esc(item.title)}</strong>${line}</span>${chevron}</a>`;
         }).join('');
         ctx.body.innerHTML = `
-            <p class="ld-card-title">${count} new</p>
-            ${rows || emptyPanel('Not checked yet', 'Check now to pull the latest release notes.', 'Check now', '/digest')}
-            <a class="ld-card-title" href="/digest">Grok Digest</a>`;
+            <div class="ld-digest-mini ld-card-wipe">
+                <span class="ld-digest-badge">${count} new</span>
+                <h4>${esc(headline)}</h4>
+                ${rows || emptyPanel('Not checked yet', 'Check now to pull the latest release notes.', 'Check now', '/digest')}
+                <a class="ld-digest-all" href="/digest">Grok Digest</a>
+            </div>`;
     }
 
     function spotify(ctx) {
