@@ -1,5 +1,7 @@
 import json
+import socket
 import threading
+import time
 import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
@@ -8,6 +10,7 @@ from unittest.mock import patch
 from lifedash.mcp_server import (
     TOOLS,
     PlainHttpGate,
+    PublicBind,
     RequestLimiter,
     _TRANSPORT,
     authorization_server_document,
@@ -24,6 +27,7 @@ from lifedash.mcp_server import (
     request_transport,
     resolve,
     urllib_fetch,
+    watch_plain_http,
     www_authenticate,
 )
 
@@ -540,6 +544,11 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     assert listen_host("127.0.0.1", "all") == "0.0.0.0"
     assert listen_host("10.1.1.5", "loopback") == "127.0.0.1"
     assert listen_host(None, "localhost") == "127.0.0.1"
+    assert listen_host(None, None, False) == "127.0.0.1"
+    assert listen_host("10.1.1.5", "all", False) == "127.0.0.1"
+    assert listen_host(None, "loopback", True) == "127.0.0.1"
+    assert listen_host(None, "loopback", False) == "127.0.0.1"
+    assert listen_host("127.0.0.1", None, True) == "0.0.0.0"
     assert negotiate_protocol({"protocolVersion": "2024-11-05"}) == "2024-11-05"
     assert negotiate_protocol({"protocolVersion": "1999-01-01"}) == "2025-03-26"
 
@@ -837,6 +846,168 @@ def test_plain_http_stays_on_until_the_override_says_off():
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _listen_v4(port: int) -> set[str]:
+    found: set[str] = set()
+    with open("/proc/net/tcp", encoding="ascii") as handle:
+        next(handle)
+        for line in handle:
+            fields = line.split()
+            local, state = fields[1], fields[3]
+            if state != "0A":
+                continue
+            ip_hex, port_hex = local.split(":")
+            if int(port_hex, 16) != port:
+                continue
+            found.add(socket.inet_ntoa(bytes.fromhex(ip_hex)[::-1]))
+    return found
+
+
+def _wait_host(bind: PublicBind, host: str) -> None:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        if bind.host() == host:
+            return
+        time.sleep(0.05)
+    assert bind.host() == host
+
+
+def test_plain_http_off_drops_the_public_listener_and_keeps_loopback():
+    public = "https://mcp.example.com/mcp"
+    seen = {}
+
+    def fetch(method, path, body, authorization, tool):
+        seen["transport"] = current_transport()
+        return 200, {"ok": True}
+
+    running: dict[str, PublicBind] = {}
+    handler = make_handler(
+        fetch,
+        RequestLimiter(),
+        listen=lambda: running["bind"].host(),
+        port=lambda: running["bind"].port,
+        mcp_public_url=public,
+        issuer="https://dash.example.com",
+        allow_plain_http=lambda: running["bind"].host() == "0.0.0.0",
+    )
+    bind = PublicBind(0, handler, loopback_only=False, plain_http=True)
+    running["bind"] = bind
+    bind.start()
+    try:
+        port = bind.port
+        assert bind.host() == "0.0.0.0"
+        assert _listen_v4(port) == {"0.0.0.0"}
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            body = json.loads(res.read().decode())
+        assert body["listen"] == f"0.0.0.0:{port}"
+
+        assert bind.apply(False) == "127.0.0.1"
+        assert _listen_v4(port) == {"127.0.0.1"}
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            body = json.loads(res.read().decode())
+        assert body["listen"] == f"127.0.0.1:{port}"
+
+        init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
+
+        def post(headers):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/mcp",
+                data=json.dumps(init).encode(),
+                headers={"Content-Type": "application/json", "Authorization": "Bearer ld_test", **headers},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return res.status, json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode())
+
+        status, body = post({})
+        assert status == 403
+        assert public in body["error"]["message"]
+        status, body = post({"X-Forwarded-Proto": "https"})
+        assert status == 200
+        assert seen["transport"] == "https"
+
+        assert bind.apply(True) == "0.0.0.0"
+        assert _listen_v4(port) == {"0.0.0.0"}
+        status, body = post({})
+        assert status == 200
+    finally:
+        bind.close()
+
+
+def test_plain_http_watcher_moves_the_listener_without_a_restart():
+    def fetch(method, path, body, authorization, tool):
+        return 200, {"ok": True}
+
+    flag = {"on": True}
+    handler = make_handler(fetch, allow_plain_http=lambda: flag["on"])
+    bind = PublicBind(0, handler, loopback_only=False, plain_http=True)
+    bind.start()
+    stop = threading.Event()
+    watcher = threading.Thread(
+        target=watch_plain_http,
+        args=(bind, lambda: flag["on"], stop, 0.05),
+        daemon=True,
+    )
+    watcher.start()
+    try:
+        assert bind.host() == "0.0.0.0"
+        flag["on"] = False
+        _wait_host(bind, "127.0.0.1")
+        assert _listen_v4(bind.port) == {"127.0.0.1"}
+        with urllib.request.urlopen(f"http://127.0.0.1:{bind.port}/healthz") as res:
+            assert res.status == 200
+        flag["on"] = True
+        _wait_host(bind, "0.0.0.0")
+        assert _listen_v4(bind.port) == {"0.0.0.0"}
+    finally:
+        stop.set()
+        watcher.join(timeout=2)
+        bind.close()
+
+
+def test_loopback_bind_stays_loopback_when_plain_http_is_on():
+    def fetch(method, path, body, authorization, tool):
+        return 200, {}
+
+    handler = make_handler(fetch)
+    fixed = PublicBind(0, handler, loopback_only=True, plain_http=True)
+    assert fixed.address_for(True) == "127.0.0.1"
+    fixed.start()
+    try:
+        assert fixed.apply(True) == "127.0.0.1"
+        assert _listen_v4(fixed.port) == {"127.0.0.1"}
+        assert fixed.apply(False) == "127.0.0.1"
+        assert _listen_v4(fixed.port) == {"127.0.0.1"}
+    finally:
+        fixed.close()
+
+
+def test_a_failed_flag_read_does_not_reopen_the_public_listener():
+    def fetch(method, path, body, authorization, tool):
+        return 200, {}
+
+    state = {"row": 0, "fail": False}
+
+    def reader():
+        if state["fail"]:
+            raise OSError("db down")
+        return state["row"]
+
+    gate = PlainHttpGate(True, reader, ttl=0)
+    handler = make_handler(fetch, allow_plain_http=gate.allowed)
+    bind = PublicBind(0, handler, loopback_only=False, plain_http=gate.allowed())
+    bind.start()
+    try:
+        assert bind.host() == "127.0.0.1"
+        state["fail"] = True
+        assert bind.apply(gate.allowed()) == "127.0.0.1"
+        assert "0.0.0.0" not in _listen_v4(bind.port)
+    finally:
+        bind.close()
 
 
 def test_forwarded_call_carries_the_transport_header():

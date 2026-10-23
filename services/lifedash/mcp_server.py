@@ -1,6 +1,8 @@
 """``lifedash-mcp`` — MCP endpoint on port 8765.
 
-Listens on 0.0.0.0 unless MCP_BIND=loopback. Cloudflare Tunnel sends ``/mcp`` here.
+Listens on 0.0.0.0 unless MCP_BIND=loopback or plain HTTP is off.
+Settings → Agents drops 0.0.0.0 and keeps 127.0.0.1 without a restart.
+Cloudflare Tunnel and the HTTPS proxy send ``/mcp`` to loopback.
 Each tool call is an HTTP request to the PHP ``/api/v1`` API with the caller's
 bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
@@ -2599,10 +2601,11 @@ def plain_http_error(msg_id: Any, public_url: str) -> dict[str, Any]:
 
 
 class PlainHttpGate:
-    """Live override from server_flags. The listen socket is not part of this.
+    """Live override from server_flags.
 
     A failed read keeps the last value, or the config default when there is none.
     The cache is short so Settings → Agents applies without a restart.
+    PublicBind uses the same answer to move the listen socket.
     """
 
     def __init__(self, config_default: bool, reader: Callable[[], int | None], ttl: float = 2.0) -> None:
@@ -2656,23 +2659,113 @@ def read_plain_http_flag(config: Config) -> int | None:
     return 1 if int(row[0]) == 1 else 0
 
 
-def listen_host(requested: str | None, bind: str | None = None) -> str:
-    """All IPv4 interfaces unless MCP_BIND=loopback.
+def listen_host(requested: str | None, bind: str | None = None, plain_http: bool = True) -> str:
+    """All IPv4 interfaces unless MCP_BIND=loopback or plain HTTP is off.
 
-    MCP_HOST is ignored so a leftover 127.0.0.1 cannot change the bind.
-    Loopback is opt-in after existing clients have moved to the tunnel.
-    MCP_ALLOW_PLAIN_HTTP does not change this address. Turning plain HTTP off
-    still accepts the TCP connection so the 403 can name the HTTPS URL.
+    MCP_HOST is ignored so a leftover 127.0.0.1 cannot hide the public bind.
+    Loopback from MCP_BIND is opt-in and still needs a process start.
+    Plain HTTP off is applied live: the public socket closes and 127.0.0.1 stays.
+    A missing flag leaves plain_http true, so a deploy with no saved row stays on 0.0.0.0.
     """
     mode = (bind or "").strip().lower()
     if mode in ("loopback", "localhost"):
         return "127.0.0.1"
+    chosen = "0.0.0.0" if plain_http else "127.0.0.1"
     if mode not in ("", "all", "0.0.0.0", "*"):
-        LOG.warning("MCP_BIND=%s is not all or loopback; listening on 0.0.0.0", mode)
+        LOG.warning("MCP_BIND=%s is not all or loopback; listening on %s", mode, chosen)
     host = (requested or "").strip()
     if host not in ("", "0.0.0.0", "*"):
         LOG.warning("MCP_HOST=%s is ignored; set MCP_BIND=loopback to listen on 127.0.0.1", host)
-    return "0.0.0.0"
+    return chosen
+
+
+class PublicBind:
+    """One listen socket. Plain HTTP off replaces 0.0.0.0 with 127.0.0.1.
+
+    0.0.0.0 and 127.0.0.1 cannot share the port, so the old socket closes first.
+    MCP_BIND=loopback never opens 0.0.0.0, including when the flag is turned back on.
+    """
+
+    def __init__(self, port: int, handler: type[BaseHTTPRequestHandler], *, loopback_only: bool, plain_http: bool) -> None:
+        self.port = port
+        self._handler = handler
+        self._loopback_only = loopback_only
+        self._host = self.address_for(plain_http)
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: threading.Thread | None = None
+        self._lock = threading.Lock()
+
+    def host(self) -> str:
+        return self._host
+
+    def address_for(self, plain_http: bool) -> str:
+        if self._loopback_only or not plain_http:
+            return "127.0.0.1"
+        return "0.0.0.0"
+
+    def start(self) -> None:
+        with self._lock:
+            if self._server is None:
+                self._open(self._host)
+
+    def apply(self, plain_http: bool) -> str:
+        """Listen on the address this flag requires. Same address is a no-op."""
+        want = self.address_for(plain_http)
+        with self._lock:
+            if self._server is not None and want == self._host:
+                return self._host
+            self._rebind(want)
+            return self._host
+
+    def close(self) -> None:
+        with self._lock:
+            self._stop()
+
+    def _rebind(self, host: str) -> None:
+        self._stop()
+        self._open(host)
+        LOG.info("lifedash-mcp listening on http://%s:%s/mcp", host, self.port)
+
+    def _stop(self) -> None:
+        old = self._server
+        thread = self._thread
+        self._server = None
+        self._thread = None
+        if old is not None:
+            old.shutdown()
+            old.server_close()
+        if thread is not None:
+            thread.join(timeout=5)
+
+    def _open(self, host: str) -> None:
+        server = ThreadingHTTPServer((host, self.port), self._handler)
+        self.port = int(server.server_address[1])
+        thread = threading.Thread(
+            target=server.serve_forever,
+            kwargs={"poll_interval": 0.2},
+            name="lifedash-mcp-http",
+            daemon=True,
+        )
+        thread.start()
+        self._server = server
+        self._thread = thread
+        self._host = host
+
+
+def watch_plain_http(
+    bind: PublicBind,
+    allowed: Callable[[], bool],
+    stop: threading.Event,
+    interval: float = 1.0,
+) -> None:
+    """Poll the plain-HTTP flag and move the socket. No service restart."""
+    while not stop.is_set():
+        try:
+            bind.apply(allowed())
+        except OSError:
+            LOG.exception("lifedash-mcp did not move its listen address")
+        if stop.wait(interval):
+            return
 
 
 def negotiate_protocol(params: Any) -> str:
@@ -2834,8 +2927,8 @@ def make_handler(
     fetch: Fetch,
     limiter: RequestLimiter | None = None,
     *,
-    listen: str = "0.0.0.0",
-    port: int = 8765,
+    listen: str | Callable[[], str] = "0.0.0.0",
+    port: int | Callable[[], int] = 8765,
     mcp_public_url: str = "",
     issuer: str = "",
     allow_plain_http: Callable[[], bool] | None = None,
@@ -2849,6 +2942,14 @@ def make_handler(
     def current_issuer() -> str:
         value = issuer() if callable(issuer) else issuer
         return (value or "").strip()
+
+    def current_listen() -> str:
+        value = listen() if callable(listen) else listen
+        return (value or "").strip() or "0.0.0.0"
+
+    def current_port() -> int:
+        value = port() if callable(port) else port
+        return int(value)
 
     allows = allow_plain_http if allow_plain_http is not None else (lambda: True)
 
@@ -2915,7 +3016,7 @@ def make_handler(
         def do_GET(self) -> None:  # noqa: N802
             path = self.path.split("?", 1)[0]
             if path == "/healthz":
-                self._send(200, health_document(listen, port))
+                self._send(200, health_document(current_listen(), current_port()))
                 return
             if self._plain_blocked():
                 self._send(403, plain_http_error(None, current_public()))
@@ -2970,10 +3071,11 @@ def main() -> None:
     config = Config.load()
     setup_logging(config.get("LOG_LEVEL", "INFO"))
     runtime = RuntimeSettings(config, lambda: read_setup(config))
-    # Bind is read once. Settings → Setup queues a restart after it changes.
-    host = listen_host(config.maybe("MCP_HOST"), runtime.maybe("MCP_BIND"))
+    # MCP_BIND is read once. Settings → Setup queues a restart after that changes.
+    # Plain HTTP is polled: off closes 0.0.0.0 and leaves 127.0.0.1 in this process.
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
+    loopback_only = listen_host(config.maybe("MCP_HOST"), runtime.maybe("MCP_BIND")) == "127.0.0.1"
 
     def mcp_public() -> str:
         return runtime.maybe("MCP_PUBLIC_URL") or ""
@@ -2981,24 +3083,42 @@ def main() -> None:
     def issuer() -> str:
         return runtime.maybe("PUBLIC_BASE_URL") or config.maybe("APP_URL") or ""
 
-    # Config default until Agents stores mcp_plain_http. The bind above stays put.
     plain = PlainHttpGate(config.bool("MCP_ALLOW_PLAIN_HTTP", True), lambda: read_plain_http_flag(config))
-    server = ThreadingHTTPServer(
-        (host, port),
-        make_handler(
-            urllib_fetch(api_base),
-            listen=host,
-            port=port,
-            mcp_public_url=mcp_public,
-            issuer=issuer,
-            allow_plain_http=plain.allowed,
-        ),
+    running: dict[str, PublicBind] = {}
+    handler = make_handler(
+        urllib_fetch(api_base),
+        listen=lambda: running["bind"].host(),
+        port=port,
+        mcp_public_url=mcp_public,
+        issuer=issuer,
+        allow_plain_http=plain.allowed,
     )
-    LOG.info("lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)", host, port, api_base, len(TOOLS))
+    bind = PublicBind(port, handler, loopback_only=loopback_only, plain_http=plain.allowed())
+    running["bind"] = bind
+    bind.start()
+    LOG.info(
+        "lifedash-mcp listening on http://%s:%s/mcp → %s (%s tools)",
+        bind.host(),
+        bind.port,
+        api_base,
+        len(TOOLS),
+    )
+    stop = threading.Event()
+    watcher = threading.Thread(
+        target=watch_plain_http,
+        args=(bind, plain.allowed, stop),
+        name="lifedash-mcp-bind",
+        daemon=True,
+    )
+    watcher.start()
     try:
-        server.serve_forever()
+        stop.wait()
     except KeyboardInterrupt:
-        server.shutdown()
+        pass
+    finally:
+        stop.set()
+        watcher.join(timeout=2)
+        bind.close()
 
 
 if __name__ == "__main__":
