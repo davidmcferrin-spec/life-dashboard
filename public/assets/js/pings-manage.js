@@ -37,7 +37,12 @@ async function loadList() {
 
     const targets = data.targets || [];
     if (targets.length === 0) {
-        el.innerHTML = '<p class="empty-state mono">No targets yet.</p>';
+        el.innerHTML = window.DashboardEmpty.html({
+            title: 'No targets yet',
+            body: 'Add a host to watch whether it answers.',
+            actionLabel: 'System status',
+            actionHref: '/settings/pings',
+        });
         return;
     }
 

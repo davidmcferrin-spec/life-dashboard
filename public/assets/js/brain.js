@@ -118,7 +118,15 @@
         const rootPages = pagesIn(null).map(pageButton).join('');
         const rootDrop = '<div class="brain-folder-row" data-drop="root"><span class="brain-folder-name">Root</span></div>';
         const body = folderHtml(folders) + rootPages;
-        tree.innerHTML = rootDrop + (body || '<p class="empty-state mono text-xs">No pages yet.</p>');
+        tree.innerHTML = rootDrop + (body || window.DashboardEmpty.html({
+            title: 'No pages yet',
+            body: 'Create a page to start the vault.',
+            actionLabel: 'New page',
+            actionAttrs: 'type="button" id="brain-empty-new"',
+        }));
+        tree.querySelector('#brain-empty-new')?.addEventListener('click', () => {
+            document.getElementById('brain-new')?.click();
+        });
         fillMoveMenu();
     }
 

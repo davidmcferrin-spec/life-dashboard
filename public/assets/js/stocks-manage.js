@@ -60,7 +60,12 @@ async function loadList() {
     }
 
     if (symbols.length === 0) {
-        el.innerHTML = '<p class="empty-state mono">No symbols yet. Add one below.</p>';
+        el.innerHTML = window.DashboardEmpty.html({
+            title: 'No symbols yet',
+            body: 'Add a ticker in the form below.',
+            actionLabel: 'Stock symbols',
+            actionHref: '/settings/stocks',
+        });
         return;
     }
 

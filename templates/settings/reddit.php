@@ -24,7 +24,7 @@ require __DIR__ . '/_shell-top.php';
                 </p>
             </header>
 
-            <form method="post" action="/settings/reddit/add" class="surface p-4 space-y-3 mb-4">
+            <form id="reddit-add" method="post" action="/settings/reddit/add" class="surface p-4 space-y-3 mb-4">
                 <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
                 <h2 class="section-title">Add a subreddit</h2>
                 <div class="grid gap-3 sm:grid-cols-2">
@@ -54,7 +54,13 @@ require __DIR__ . '/_shell-top.php';
 
             <div class="space-y-2 mb-4">
                 <?php if ($subs === []): ?>
-                <p class="empty-state mono text-xs">No subreddits yet.</p>
+                <?php
+                $emptyTitle = 'No subreddits';
+                $emptyBody = 'Add one in the form above. Posts are fetched about every half hour.';
+                $emptyAction = 'Add a subreddit';
+                $emptyHref = '#reddit-add';
+                require __DIR__ . '/../partials/empty-panel.php';
+                ?>
                 <?php endif; ?>
                 <?php foreach ($subs as $sub): ?>
                 <form method="post" action="/settings/reddit/update" class="surface p-4 space-y-3">

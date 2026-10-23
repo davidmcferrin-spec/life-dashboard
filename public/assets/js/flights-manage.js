@@ -32,7 +32,12 @@ async function loadList() {
 
     const flights = data.flights || [];
     if (flights.length === 0) {
-        el.innerHTML = '<p class="empty-state mono">No watches yet.</p>';
+        el.innerHTML = window.DashboardEmpty.html({
+            title: 'No watches yet',
+            body: 'Add a flight to follow it here.',
+            actionLabel: 'Flight watches',
+            actionHref: '/settings/flights',
+        });
         return;
     }
 

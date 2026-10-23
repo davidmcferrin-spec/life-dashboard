@@ -138,7 +138,12 @@
             if (!groups[key].length) return '';
             const rows = groups[key].map((lot) => lotRow(lot, lotActions(lot))).join('');
             return `<section class="ld-pantry-group"><h2 class="ld-pantry-label">${esc(key)}</h2><ul>${rows}</ul></section>`;
-        }).join('') || '<p class="empty-state mono text-xs mt-4">Nothing matches.</p>';
+        }).join('') || window.DashboardEmpty.html({
+            title: 'Nothing matches',
+            body: 'Try another search, or clear the filter.',
+            actionLabel: 'Pantry',
+            actionHref: '/pantry',
+        });
     }
 
     async function inventory() {
@@ -579,7 +584,12 @@
             : []);
         const data = await api.get('/pantry/expiring?days=' + encodeURIComponent(days));
         if (gen !== purgeGen) return;
-        const rows = purgeRows(data.lots, checked) || '<p class="empty-state mono text-xs">Nothing due.</p>';
+        const rows = purgeRows(data.lots, checked) || window.DashboardEmpty.html({
+            title: 'Nothing due',
+            body: 'No lots need to be used up in this window.',
+            actionLabel: 'Inventory',
+            actionHref: '/pantry',
+        });
         if (!form) {
             body.innerHTML = `
                 <form id="purge-form">
@@ -1211,7 +1221,12 @@
         });
         const ideasEl = document.getElementById('recipe-ideas');
         const listEl = document.getElementById('recipe-list');
-        if (ideasEl) ideasEl.innerHTML = ranked || '<li class="empty-state mono text-xs">No recipes yet.</li>';
+        if (ideasEl) ideasEl.innerHTML = ranked || '<li>' + window.DashboardEmpty.html({
+            title: 'No recipes yet',
+            body: 'Save a meal as a recipe to see ideas here.',
+            actionLabel: 'Recipes',
+            actionHref: '/pantry?view=recipes',
+        }) + '</li>';
         if (listEl) listEl.innerHTML = recipeItems(recipeCache);
         if (!recipeScrolled) {
             recipeScrolled = true;

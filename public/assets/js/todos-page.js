@@ -348,7 +348,12 @@ async function loadItems() {
             meta.innerHTML = `<span>${items.length} task(s) assigned to you</span>`;
         }
         if (items.length === 0) {
-            container.innerHTML = '<p class="empty-state mono text-xs py-4 text-center">Nothing assigned to you.</p>';
+            container.innerHTML = window.DashboardEmpty.html({
+                title: 'Nothing assigned',
+                body: 'Tasks someone assigns to you will show up here.',
+                actionLabel: 'Manage lists',
+                actionHref: '/settings/todos',
+            });
             return;
         }
         container.innerHTML = items.map(itemRow).join('');
@@ -357,7 +362,12 @@ async function loadItems() {
     }
 
     if (!activeListId) {
-        container.innerHTML = '<p class="empty-state mono text-xs py-4 text-center">No lists yet. <a href="/settings/todos" class="link">Create one</a>.</p>';
+        container.innerHTML = window.DashboardEmpty.html({
+            title: 'No lists yet',
+            body: 'Create a list to start adding tasks.',
+            actionLabel: 'Create a list',
+            actionHref: '/settings/todos',
+        });
         return;
     }
 
@@ -388,10 +398,14 @@ async function loadItems() {
     }
 
     if (items.length === 0) {
-        const msg = activeStatus === 'open'
-            ? 'No open tasks. Add one below.'
-            : `No ${activeStatus} tasks.`;
-        container.innerHTML = `<p class="empty-state mono text-xs py-4 text-center">${msg}</p>`;
+        container.innerHTML = window.DashboardEmpty.html({
+            title: activeStatus === 'open' ? 'No open tasks' : 'Nothing here',
+            body: activeStatus === 'open'
+                ? 'Add one in the field below.'
+                : 'No ' + activeStatus + ' tasks in this list.',
+            actionLabel: 'Manage lists',
+            actionHref: '/settings/todos',
+        });
         return;
     }
 

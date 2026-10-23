@@ -197,30 +197,36 @@ function feedEmptyMessage() {
 
     if (allArticles.length === 0) {
         if (feedScope === 'dashboard') {
-            return (
-                '<div class="empty-state mono text-xs py-4 text-center text-muted">' +
-                'No articles from your pinned sources yet. Check <a href="/settings/feeds" class="text-accent hover:underline">News feeds</a> ' +
-                'and ensure the RSS cron job (<code class="text-faint">cron/fetch_feeds.php</code>) is running.</div>'
-            );
+            return window.DashboardEmpty.html({
+                title: 'No articles yet',
+                body: 'Pin a source, then wait for the feed refresh.',
+                actionLabel: 'News feeds',
+                actionHref: '/settings/feeds',
+            });
         }
-        return (
-            '<div class="empty-state mono text-xs py-4 text-center text-muted">' +
-            'No articles in the cache yet. Cron refreshes all RSS sources periodically ' +
-            '(<code class="text-faint">cron/fetch_feeds.php</code>).</div>'
-        );
+        return window.DashboardEmpty.html({
+            title: 'No articles yet',
+            body: 'The cache is empty until the feed refresh runs.',
+            actionLabel: 'News feeds',
+            actionHref: '/settings/feeds',
+        });
     }
 
     if (hasFilters) {
-        return (
-            '<div class="empty-state mono text-xs py-4 text-center text-muted">' +
-            'No articles match these filters. Try another category or source.</div>'
-        );
+        return window.DashboardEmpty.html({
+            title: 'No matching articles',
+            body: 'Try another category or source.',
+            actionLabel: 'News feeds',
+            actionHref: '/settings/feeds',
+        });
     }
 
-    return (
-        '<div class="empty-state mono text-xs py-4 text-center text-muted">' +
-        'No articles to show.</div>'
-    );
+    return window.DashboardEmpty.html({
+        title: 'No articles to show',
+        body: 'The feed is empty for this view.',
+        actionLabel: 'News feeds',
+        actionHref: '/settings/feeds',
+    });
 }
 
 function renderFeedPage() {
@@ -333,8 +339,12 @@ async function loadFeed() {
         enabledSources = Array.isArray(data.sources) ? data.sources : [];
         refreshFeedView();
     } catch (_) {
-        container.innerHTML =
-            '<div class="empty-state mono text-xs py-4 text-center">Feed unavailable. Check your connection and try again.</div>';
+        container.innerHTML = window.DashboardEmpty.html({
+            title: 'Feed unavailable',
+            body: 'Check the connection and try again.',
+            actionLabel: 'News feeds',
+            actionHref: '/settings/feeds',
+        });
     }
 }
 

@@ -28,7 +28,12 @@
                 <span>${esc(t.name)} <span class="ld-meta">${esc(t.prefix)}… ${t.revoked ? 'revoked' : esc(t.scopes.join(' '))}${t.expires_at ? ' · expires ' + esc(t.expires_at.slice(0, 10)) : ''} · ${hop}</span></span>
                 <span class="ld-metric-actions">${actions.join('')}</span>
             </div>`;
-        }).join('') || '<p class="empty-state mono text-xs">No tokens yet.</p>';
+        }).join('') || window.DashboardEmpty.html({
+            title: 'No tokens yet',
+            body: 'Create a token to let an agent call the API.',
+            actionLabel: 'Agents',
+            actionHref: '/settings/agents',
+        });
     }
 
     function paintAudit(events) {
@@ -37,7 +42,12 @@
             const name = e.detail && e.detail.token_name ? ' · ' + esc(e.detail.token_name) : '';
             const gone = e.detail && e.detail.deleted ? ' · deleted' : '';
             return `<div class="ld-life-row"><span>${esc(e.actor)}${e.tool ? ' · ' + esc(e.tool) : ''} ${esc(e.action)}${name}${gone}</span><span class="ld-meta">${esc(e.resource || '')}</span></div>`;
-        }).join('') || '<p class="empty-state mono text-xs">No writes yet.</p>';
+        }).join('') || window.DashboardEmpty.html({
+            title: 'No writes yet',
+            body: 'Agent changes will be listed here.',
+            actionLabel: 'Agents',
+            actionHref: '/settings/agents',
+        });
     }
 
     function findToken(id) {

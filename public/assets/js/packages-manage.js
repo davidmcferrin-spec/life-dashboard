@@ -37,7 +37,12 @@ async function loadList() {
 
     const packages = data.packages || [];
     if (packages.length === 0) {
-        el.innerHTML = '<p class="empty-state mono">No watches yet.</p>';
+        el.innerHTML = window.DashboardEmpty.html({
+            title: 'No watches yet',
+            body: 'Add a tracking number to follow a delivery.',
+            actionLabel: 'Package tracking',
+            actionHref: '/settings/packages',
+        });
         return;
     }
 
