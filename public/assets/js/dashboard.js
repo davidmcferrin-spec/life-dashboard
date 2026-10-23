@@ -320,7 +320,12 @@ async function loadWeather(lat, lon) {
         const data = await res.json();
 
         if (!res.ok || data.error) {
-            widget.innerHTML = `<div class="text-danger text-xs mono">${data.error ?? 'Weather unavailable'}</div>`;
+            showWeatherPanel(
+                'Weather unavailable',
+                data.error || 'The forecast did not load.',
+                'Try again',
+                initWeather
+            );
             return;
         }
 
@@ -343,15 +348,36 @@ async function loadWeather(lat, lon) {
             </div>
         `;
     } catch (e) {
-        widget.innerHTML = '<div class="empty-state mono text-xs">Could not load weather.</div>';
+        showWeatherPanel(
+            'Weather unavailable',
+            'The forecast did not load.',
+            'Try again',
+            initWeather
+        );
     }
+}
+
+function showWeatherPanel(title, body, actionLabel, onClick) {
+    const widget = document.getElementById('weather-widget');
+    if (!widget || !window.DashboardEmpty) return;
+    widget.innerHTML = window.DashboardEmpty.html({
+        title,
+        body,
+        actionLabel,
+        actionAttrs: 'type="button" data-weather-action="1"',
+    });
+    widget.querySelector('[data-weather-action]')?.addEventListener('click', onClick);
 }
 
 function initWeather() {
     if (!document.getElementById('weather-widget')) return; // widget not on the board
     if (!navigator.geolocation) {
-        document.getElementById('weather-widget').innerHTML =
-            '<div class="empty-state mono text-xs">Geolocation not available.</div>';
+        showWeatherPanel(
+            'Location unavailable',
+            'This browser cannot share a location.',
+            'Use Huntsville',
+            () => loadWeather(34.7304, -86.5861)
+        );
         return;
     }
 

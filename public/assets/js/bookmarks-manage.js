@@ -142,7 +142,12 @@ function render() {
     syncFolderSelects();
 
     if (bmFolders.length === 0 && bmUnfiled.length === 0) {
-        root.innerHTML = '<p class="empty-state mono text-xs py-4 text-center">No folders or links yet. Add a folder or link above.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'No bookmarks yet',
+            body: 'Add a folder or a link in the form above.',
+            actionLabel: 'Bookmarks',
+            actionHref: '/settings/bookmarks',
+        });
         return;
     }
 

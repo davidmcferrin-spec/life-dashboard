@@ -19,11 +19,15 @@
         <button type="button" id="clip-widget-reload" class="underline ml-1">Reload</button>
     </p>
 
-    <p id="clip-widget-empty" class="hidden empty-state mono text-xs py-3 text-center text-muted">
-        No clipboards pinned.
-        <a href="/settings/clipboards" class="text-accent hover:underline">Open Cloud Clipboards</a>
-        and enable <span class="text-secondary">Show on dashboard</span> for a board.
-    </p>
+    <div id="clip-widget-empty" class="hidden">
+        <?php
+        $emptyTitle = 'No clipboards pinned';
+        $emptyBody = 'Open Cloud Clipboards and turn on Show on dashboard for a board.';
+        $emptyAction = 'Open Cloud Clipboards';
+        $emptyHref = '/settings/clipboards';
+        require __DIR__ . '/../empty-panel.php';
+        ?>
+    </div>
 
     <div id="clip-widget-view-toggle" class="flex flex-wrap items-center gap-2 mb-2">
         <span class="text-faint mono text-xs">View:</span>

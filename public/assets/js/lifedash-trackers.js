@@ -188,7 +188,12 @@
 
     function render() {
         if (!metrics.length) {
-            listEl.innerHTML = '<p class="empty-state mono">Nothing yet — add a habit above.</p>';
+            listEl.innerHTML = window.DashboardEmpty.html({
+                title: 'No habits yet',
+                body: 'Add a habit in the form above.',
+                actionLabel: 'Habits',
+                actionHref: '/settings/trackers',
+            });
             return;
         }
         listEl.innerHTML = GROUPS.map(([kind, label]) => {

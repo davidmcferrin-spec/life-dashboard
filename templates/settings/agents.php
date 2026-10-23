@@ -123,7 +123,13 @@ require __DIR__ . '/_shell-top.php';
                 </p>
                 <?php $oauthClients = $oauthClients ?? []; ?>
                 <?php if ($oauthClients === []): ?>
-                <p class="empty-state mono text-xs mt-3">No OAuth clients yet.</p>
+                <?php
+                $emptyTitle = 'No OAuth clients';
+                $emptyBody = 'A client shows up here after it asks to connect.';
+                $emptyAction = 'About clients';
+                $emptyHref = '#oauth-clients';
+                require __DIR__ . '/../partials/empty-panel.php';
+                ?>
                 <?php else: ?>
                 <ul class="mt-3 space-y-3">
                     <?php foreach ($oauthClients as $client): ?>

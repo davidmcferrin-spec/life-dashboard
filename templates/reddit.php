@@ -43,7 +43,13 @@ foreach ($posts as $post) {
 
     <?php if ($subs === []): ?>
     <section class="surface p-4">
-        <p class="empty-state mono text-sm">No subreddits yet.</p>
+        <?php
+        $emptyTitle = 'No subreddits';
+        $emptyBody = 'Add one to start saving posts here.';
+        $emptyAction = 'Add a subreddit';
+        $emptyHref = '/settings/reddit';
+        require __DIR__ . '/partials/empty-panel.php';
+        ?>
     </section>
     <?php endif; ?>
 
@@ -58,7 +64,13 @@ foreach ($posts as $post) {
         <?php endif; ?>
         <?php $rows = $grouped[$sub['name']] ?? []; ?>
         <?php if ($rows === []): ?>
-        <p class="empty-state mono text-xs">Nothing saved for this subreddit yet.</p>
+        <?php
+        $emptyTitle = 'Nothing saved';
+        $emptyBody = 'Posts from this subreddit show up after the next fetch.';
+        $emptyAction = 'Edit subreddits';
+        $emptyHref = '/settings/reddit';
+        require __DIR__ . '/partials/empty-panel.php';
+        ?>
         <?php endif; ?>
         <div class="space-y-3">
             <?php foreach ($rows as $post): ?>

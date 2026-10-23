@@ -37,7 +37,13 @@ require __DIR__ . '/partials/head.php';
     <div class="sp-layout">
         <aside class="sp-list surface" id="spotify-lists"></aside>
         <section class="sp-detail surface" id="spotify-detail">
-            <p class="empty-state mono text-xs">Choose a playlist.</p>
+            <?php
+            $emptyTitle = 'Choose a playlist';
+            $emptyBody = 'Open one from the list, or connect Spotify and sync.';
+            $emptyAction = 'Connect Spotify';
+            $emptyHref = '/settings/spotify';
+            require __DIR__ . '/partials/empty-panel.php';
+            ?>
         </section>
     </div>
     <div id="spotify-new-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="spotify-new-title">

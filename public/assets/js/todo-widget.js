@@ -254,7 +254,12 @@ async function loadTodoWidget(listId = null) {
     const { res, data } = await todoApi(`/api/todos/widget${qs}`);
 
     if (!res.ok) {
-        root.innerHTML = '<p class="empty-state mono text-xs">Todos unavailable.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'Todos unavailable',
+            body: 'The lists could not be loaded.',
+            actionLabel: 'Open todos',
+            actionHref: '/todos',
+        });
         return;
     }
 
@@ -263,7 +268,12 @@ async function loadTodoWidget(listId = null) {
 
     if (lists.length === 0) {
         renderTodoTabs([], null);
-        root.innerHTML = '<p class="empty-state">No lists yet. <a href="/settings/todos" class="link">Add one →</a></p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'No lists yet',
+            body: 'Create a list to track tasks here.',
+            actionLabel: 'Add a list',
+            actionHref: '/settings/todos',
+        });
         todoWidgetListId = null;
         todoWidgetCanWrite = false;
         todoWidgetItems = [];
@@ -282,7 +292,12 @@ async function loadTodoWidget(listId = null) {
 
     const items = todoWidgetItems;
     if (items.length === 0) {
-        root.innerHTML = '<p class="empty-state mono text-xs py-2">No open tasks.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'No open tasks',
+            body: 'Add a task below, or open the full list.',
+            actionLabel: 'Open todos',
+            actionHref: '/todos',
+        });
         return;
     }
 

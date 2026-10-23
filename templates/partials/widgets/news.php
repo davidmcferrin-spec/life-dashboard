@@ -24,8 +24,12 @@
             <button type="button" id="load-more-feed" class="hidden btn">Load more</button>
         </div>
     <?php else: ?>
-        <p class="empty-state mono text-xs py-3 text-center">
-            No sources pinned. <a href="/settings/feeds" class="link">Pin feeds →</a>
-        </p>
+        <?php
+        $emptyTitle = 'No sources pinned';
+        $emptyBody = 'Pin a feed to show articles on the dashboard.';
+        $emptyAction = 'Pin feeds';
+        $emptyHref = '/settings/feeds';
+        require __DIR__ . '/../empty-panel.php';
+        ?>
     <?php endif; ?>
 </section>

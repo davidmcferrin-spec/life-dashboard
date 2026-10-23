@@ -24,6 +24,15 @@
         ctx.body.innerHTML = `<p class="ld-error">${esc(message)}</p>`;
     }
 
+    function emptyPanel(title, body, label, href) {
+        return window.DashboardEmpty.html({
+            title: title,
+            body: body,
+            actionLabel: label || '',
+            actionHref: href || '',
+        });
+    }
+
     function tools(ctx, html) {
         if (ctx.tools) ctx.tools.innerHTML = html;
     }
@@ -75,7 +84,7 @@
                 <button type="submit" class="btn text-xs">Add</button>
             </form>` : '';
 
-        ctx.body.innerHTML = (rows || '<p class="empty-state mono text-xs py-2">No habits yet — add your first one below.</p>') + quickAdd;
+        ctx.body.innerHTML = (rows || emptyPanel('No habits yet', 'Add the first one below.', 'Open habits', '/settings/trackers')) + quickAdd;
 
         ctx.body.querySelectorAll('.ld-check, button.ld-dot').forEach((btn) => {
             btn.addEventListener('click', () => guarded(btn, async () => {
@@ -532,7 +541,7 @@
         if (d.error) return errorBox(ctx, d.error);
         tools(ctx, '');
         if (!d.rows.length) {
-            ctx.body.innerHTML = '<p class="empty-state mono text-xs py-2">No entries yet.</p>';
+            ctx.body.innerHTML = emptyPanel('No entries yet', 'The first check-in will show up here.');
             return;
         }
         ctx.body.innerHTML = `<table class="ld-table"><tbody>${d.rows.map((r) => `
@@ -621,7 +630,7 @@
         if (!el) return;
         const f = frame(el, buckets, series, opts);
         if (!f.ext) {
-            el.innerHTML = '<p class="empty-state mono text-xs py-2">No data in this period.</p>';
+            el.innerHTML = emptyPanel('No data in this period', 'Try a wider range, or add an entry.');
             return;
         }
         const [lo, hi] = f.ext;
@@ -649,7 +658,7 @@
     function drawBarChart(el, buckets, series, opts) {
         const f = frame(el, buckets, series, Object.assign({ zero: true }, opts));
         if (!f.ext) {
-            el.innerHTML = '<p class="empty-state mono text-xs py-2">No data in this period.</p>';
+            el.innerHTML = emptyPanel('No data in this period', 'Try a wider range, or add an entry.');
             return;
         }
         const [lo, hi] = f.ext;
@@ -684,7 +693,7 @@
             }
             return `<div class="ld-life-row"><span>${esc(m.name)}</span><strong>${esc(shown)}</strong></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No life metrics yet.</p>';
+        ctx.body.innerHTML = rows || emptyPanel('No life metrics', 'Add one to start a chart.', 'Open life', '/settings/life');
     }
 
     function spending(ctx) {
@@ -736,7 +745,7 @@
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         if (!d.step) {
-            ctx.body.innerHTML = '<p class="empty-state mono text-xs">No Baby Step recorded yet.</p>';
+            ctx.body.innerHTML = emptyPanel('No Baby Step yet', 'Record the current step to see it here.', 'Open money', '/settings/money');
             return;
         }
         const step = Number(d.step) || 0;
@@ -754,7 +763,7 @@
             const dates = [d.target_payoff_on ? 'target ' + d.target_payoff_on : '', d.estimated_payoff_on ? 'estimate ' + d.estimated_payoff_on : 'estimate unavailable'].filter(Boolean).join(' · ');
             return `<div class="ld-life-row"><span>${esc(d.name)}${d.last4 ? ' · ' + esc(d.last4) : ''}<span class="ld-meta">${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</span></span><strong>${esc(fmt.money(d.balance))}</strong></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No debts recorded.</p>';
+        ctx.body.innerHTML = rows || emptyPanel('No debts recorded', 'Add a balance to build the snowball.', 'Open money', '/settings/money');
     }
 
     function foodWeek(ctx) {
@@ -776,7 +785,7 @@
         const rows = (d.lines || []).map((line) =>
             `<div class="ld-life-row"><span>${esc(line.category)}<span class="ld-meta">planned ${esc(fmt.money(line.planned))}</span></span><strong class="${line.actual > line.planned ? 'text-danger' : ''}">${esc(fmt.money(line.actual))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-meta">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || '<p class="empty-state mono text-xs">No budget lines this month.</p>'}`;
+        ctx.body.innerHTML = `<div class="ld-meta">${esc(String(d.month))}/${esc(String(d.year))}</div>${rows || emptyPanel('No budget lines', 'This month has no lines yet.', 'Open money', '/settings/money')}`;
     }
 
     function sinkingFunds(ctx) {
@@ -785,7 +794,7 @@
             const pct = Number(f.percent) || 0;
             return `<div class="ld-fund">${arcMeter(pct, { small: true, label: f.name, value: Math.round(pct) + '%' })}<div class="ld-fund-copy"><span>${esc(f.name)}</span><span class="ld-meta">${esc(fmt.money(f.balance))} / ${esc(fmt.money(f.target_amount))}${f.due_on ? ' · due ' + esc(f.due_on) : ''}</span></div></div>`;
         }).join('');
-        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">No sinking funds yet.</p>';
+        ctx.body.innerHTML = rows || emptyPanel('No sinking funds', 'Add a fund to track it here.', 'Open money', '/settings/money');
     }
 
     function billsDue(ctx) {
@@ -793,7 +802,7 @@
         const rows = (ctx.data.bills || []).map((b) =>
             `<div class="ld-life-row"><span>${esc(b.name)}<span class="ld-meta">${esc(b.due_on)}</span></span><strong>${esc(fmt.money(b.amount))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">Nothing due in the next 10 days.</p>';
+        ctx.body.innerHTML = rows || emptyPanel('Nothing due soon', 'No bills land in the next 10 days.');
     }
 
     function retirement(ctx) {
@@ -822,7 +831,7 @@
         const rows = (d.positions || []).map((p) =>
             `<div class="ld-life-row"><span>${esc(p.symbol)} <span class="ld-meta">${esc(p.venue)}</span></span><strong class="${p.unrealized < 0 ? 'ld-down' : 'ld-up'}">${esc(fmt.money(p.unrealized))}</strong></div>`
         ).join('');
-        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.market_value))}</div><div class="ld-meta">market value · unrealized ${esc(fmt.money(d.unrealized))}</div>${rows || '<p class="empty-state mono text-xs">No positions imported.</p>'}`;
+        ctx.body.innerHTML = `<div class="ld-stat-value">${esc(fmt.money(d.market_value))}</div><div class="ld-meta">market value · unrealized ${esc(fmt.money(d.unrealized))}</div>${rows || emptyPanel('No positions', 'Import holdings to see them here.', 'Open investing', '/settings/investing')}`;
     }
 
     function pages(ctx) {
@@ -830,7 +839,7 @@
         const rows = (ctx.data.pages || []).map((p) =>
             `<a class="ld-life-row" href="/brain?page=${p.id}"><span>${esc(p.title)}</span><span class="ld-meta">${esc(p.kind)}</span></a>`
         ).join('');
-        ctx.body.innerHTML = rows || '<p class="empty-state mono text-xs">The vault is empty. <a class="link" href="/brain">Write the first page.</a></p>';
+        ctx.body.innerHTML = rows || emptyPanel('The vault is empty', 'Write the first page to start the map.', 'Open the vault', '/brain');
     }
 
     function custom(ctx) {
@@ -862,7 +871,7 @@
 
         if (!cards.length) {
             const errs = (d.errors || []).map((e) => `<p class="ld-error">${esc(e)}</p>`).join('');
-            ctx.body.innerHTML = `${errs}<p class="empty-state mono text-xs">${esc(d.empty || 'Nothing to show yet.')}</p>`;
+            ctx.body.innerHTML = `${errs}${emptyPanel('Nothing to show', d.empty || 'Nothing to show yet.')}`;
             return;
         }
 
@@ -950,7 +959,7 @@
         tools(ctx, '<a href="/reddit" class="nav-link">Reader</a>');
         const posts = ctx.data.posts || [];
         if (!posts.length) {
-            ctx.body.innerHTML = `<p class="empty-state mono text-xs">${esc(ctx.data.empty || 'No posts yet.')}</p>`;
+            ctx.body.innerHTML = emptyPanel('No posts yet', ctx.data.empty || 'Nothing has been saved for this feed.');
             return;
         }
         ctx.body.innerHTML = posts.map((post) => {
@@ -999,7 +1008,7 @@
             : '';
 
         const empty = list && !(list.groups || []).length
-            ? '<p class="empty-state mono text-xs">Nothing open. Add an item below.</p>'
+            ? emptyPanel('Nothing open', 'Add an item below.')
             : '';
 
         ctx.body.innerHTML = `
@@ -1089,7 +1098,7 @@
         ).join('');
         const list = shown.length
             ? shown.map((call) => callRow(call, String(call.id) === openId)).join('')
-            : '<p class="empty-state mono text-xs">Nothing in this view.</p>';
+            : emptyPanel('Nothing in this view', 'Switch the filter, or add an item.');
         ctx.body.innerHTML = `<div class="ld-call"><div class="ld-call-tabs" role="tablist">${tabHtml}</div><div class="ld-call-list">${list}</div></div>`;
         ctx.body.querySelectorAll('[data-call-filter]').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -1197,7 +1206,7 @@
         ctx.body.innerHTML = `
             <div class="ld-pantry-card">
                 <p class="ld-meta">${esc(countLine)}</p>
-                ${soon ? `<p class="ld-pantry-label">Use soon</p><ul class="ld-pantry-list">${soon}</ul>` : '<p class="empty-state mono text-xs">Nothing due soon.</p>'}
+                ${soon ? `<p class="ld-pantry-label">Use soon</p><ul class="ld-pantry-list">${soon}</ul>` : emptyPanel('Nothing due soon', 'The pantry has no lots coming due.', 'Open pantry', '/pantry')}
                 ${lowRows ? `<p class="ld-pantry-label">Low</p><ul class="ld-pantry-list">${lowRows}</ul>` : ''}
                 <a class="ld-card-title" href="/pantry">Open pantry</a>
             </div>`;
@@ -1214,14 +1223,14 @@
         }).join('');
         ctx.body.innerHTML = `
             <p class="ld-card-title">${count} new</p>
-            ${rows || '<p class="empty-state mono text-xs">No changelog entries yet.</p>'}
+            ${rows || emptyPanel('Not checked yet', 'Check now to pull the latest release notes.', 'Check now', '/digest')}
             <a class="ld-card-title" href="/digest">Grok Digest</a>`;
     }
 
     function spotify(ctx) {
         const data = ctx.data || {};
         if (!data.connected) {
-            ctx.body.innerHTML = '<p class="empty-state mono text-xs">Spotify is not connected.</p><a class="ld-card-title" href="/settings/spotify">Connect</a>';
+            ctx.body.innerHTML = emptyPanel('Spotify is not connected', 'Connect an account to show what is playing.', 'Connect Spotify', '/settings/spotify');
             return;
         }
         const now = data.now;

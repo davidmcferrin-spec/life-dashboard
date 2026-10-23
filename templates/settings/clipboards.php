@@ -353,7 +353,13 @@ require __DIR__ . '/_shell-top.php';
 
                     <section class="flex-1 flex flex-col surface p-4 min-h-[60vh]">
                         <div id="cloudpad-embed-empty" class="flex-1 flex items-center justify-center min-h-[50vh]">
-                            <p class="empty-state mono text-sm">Select a canvas or create one with <strong>+</strong>.</p>
+                            <?php
+                            $emptyTitle = 'No canvas open';
+                            $emptyBody = 'Pick one from the list, or create a canvas to start drawing.';
+                            $emptyAction = 'New canvas';
+                            $emptyButtonId = 'cloudpad-empty-new';
+                            require __DIR__ . '/../partials/empty-panel.php';
+                            ?>
                         </div>
 
                         <div id="cloudpad-embed-editor-wrap" class="hidden flex-1 flex flex-col min-h-[50vh]">

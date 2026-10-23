@@ -186,7 +186,20 @@
         els.count.textContent = items.length ? noun + ' · ' + items.length + ' shown' : noun;
         els.more.classList.toggle('hidden', !hasMore);
         if (!items.length) {
-            els.feed.innerHTML = '<p class="empty-state mono text-xs">No matching entries.</p>';
+            const never = sourceRows.length
+                ? sourceRows.every((row) => !row.last_checked_at)
+                : (els.checked.textContent || '').indexOf('Not checked') === 0;
+            els.feed.innerHTML = window.DashboardEmpty.html(never ? {
+                title: 'Not checked yet',
+                body: 'Check now to pull the latest release notes.',
+                actionLabel: 'Check now',
+                actionAttrs: 'type="button" data-empty-check',
+            } : {
+                title: 'No entries',
+                body: 'Nothing matches this filter.',
+                actionLabel: 'Show everything',
+                actionAttrs: 'type="button" data-empty-reset',
+            });
             return;
         }
         els.feed.innerHTML = groupsFor(items).map((section) => {
@@ -261,9 +274,9 @@
             const batch = feed.items || [];
             items = reset ? batch : items.concat(batch);
             products = feed.products || products;
+            if (sources) renderSources(sources);
             renderChips();
             renderFeed();
-            if (sources) renderSources(sources);
         } catch (error) {
             if (gen !== loadGen) return;
             showError(error);
@@ -321,6 +334,18 @@
             await load(true);
         } catch (error) {
             showError(error);
+        }
+    });
+    els.feed.addEventListener('click', (event) => {
+        if (event.target.closest('[data-empty-check]')) {
+            document.getElementById('digest-check').click();
+            return;
+        }
+        if (event.target.closest('[data-empty-reset]')) {
+            product = '';
+            els.q.value = '';
+            els.unread.checked = false;
+            load(true);
         }
     });
     document.getElementById('digest-check').addEventListener('click', async () => {
@@ -417,7 +442,12 @@
             els.compareCount.textContent = line + ' from ' + data.from_version + ' to ' + data.to_version;
             els.compareOut.innerHTML = data.items.length
                 ? data.items.map(card).join('')
-                : '<p class="empty-state mono text-xs">No entries in that range.</p>';
+                : window.DashboardEmpty.html({
+                    title: 'No entries',
+                    body: 'Nothing falls in that range.',
+                    actionLabel: 'Compare again',
+                    actionAttrs: 'type="submit" form="digest-compare-form"',
+                });
             return;
         }
         const groups = data.groups || [];
@@ -425,7 +455,12 @@
         els.compareCount.textContent = data.count + noun + ' from ' + data.from + ' to ' + data.to
             + (data.truncated ? '. Showing the first ' + groups.reduce((n, section) => n + section.items.length, 0) + '.' : '');
         if (!groups.length) {
-            els.compareOut.innerHTML = '<p class="empty-state mono text-xs">No entries in that range.</p>';
+            els.compareOut.innerHTML = window.DashboardEmpty.html({
+                title: 'No entries',
+                body: 'Nothing falls in that range.',
+                actionLabel: 'Compare again',
+                actionAttrs: 'type="submit" form="digest-compare-form"',
+            });
             return;
         }
         els.compareOut.innerHTML = groups.map((section) => {

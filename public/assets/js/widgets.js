@@ -34,7 +34,12 @@ async function loadFlightsWidget() {
         const flights = data.flights || [];
 
         if (flights.length === 0) {
-            root.innerHTML = '<p class="empty-state">No active flights. <a href="/settings/flights" class="link">Add a watch →</a></p>';
+            root.innerHTML = window.DashboardEmpty.html({
+                title: 'No active flights',
+                body: 'Add a watch to follow a flight here.',
+                actionLabel: 'Add a watch',
+                actionHref: '/settings/flights',
+            });
             return;
         }
 
@@ -62,7 +67,12 @@ async function loadFlightsWidget() {
         `;
         }).join('');
     } catch {
-        root.innerHTML = '<p class="empty-state mono text-xs">Flights unavailable.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'Flights unavailable',
+            body: 'The list could not be loaded.',
+            actionLabel: 'Check watches',
+            actionHref: '/settings/flights',
+        });
     }
 }
 
@@ -80,7 +90,12 @@ async function loadPingsWidget() {
         const targets = data.targets || [];
 
         if (targets.length === 0) {
-            root.innerHTML = '<p class="empty-state">No targets configured.</p>';
+            root.innerHTML = window.DashboardEmpty.html({
+                title: 'No targets',
+                body: 'Add a host to watch whether it answers.',
+                actionLabel: 'Add a target',
+                actionHref: '/settings/pings',
+            });
             return;
         }
 
@@ -97,7 +112,12 @@ async function loadPingsWidget() {
             `;
         }).join('')}</ul>`;
     } catch {
-        root.innerHTML = '<p class="empty-state mono text-xs">Status unavailable.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'Status unavailable',
+            body: 'The checks could not be loaded.',
+            actionLabel: 'Open status',
+            actionHref: '/settings/pings',
+        });
     }
 }
 
@@ -115,7 +135,12 @@ async function loadStocksWidget() {
         const symbols = data.widget_symbols || data.symbols || [];
 
         if (symbols.length === 0) {
-            root.innerHTML = '<p class="empty-state">No symbols configured.</p>';
+            root.innerHTML = window.DashboardEmpty.html({
+                title: 'No symbols',
+                body: 'Add a ticker to follow it here.',
+                actionLabel: 'Add a symbol',
+                actionHref: '/settings/stocks',
+            });
             return;
         }
 
@@ -138,7 +163,12 @@ async function loadStocksWidget() {
             `;
         }).join('')}</div>`;
     } catch {
-        root.innerHTML = '<p class="empty-state mono text-xs">Stocks unavailable.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'Stocks unavailable',
+            body: 'Quotes could not be loaded.',
+            actionLabel: 'Check symbols',
+            actionHref: '/settings/stocks',
+        });
     }
 }
 
@@ -156,7 +186,12 @@ async function loadPackagesWidget() {
         const packages = data.packages || [];
 
         if (packages.length === 0) {
-            root.innerHTML = '<p class="empty-state">No packages in transit. <a href="/settings/packages" class="link">Add a watch →</a></p>';
+            root.innerHTML = window.DashboardEmpty.html({
+                title: 'No packages in transit',
+                body: 'Add a tracking number to follow a delivery.',
+                actionLabel: 'Add a watch',
+                actionHref: '/settings/packages',
+            });
             return;
         }
 
@@ -187,7 +222,12 @@ async function loadPackagesWidget() {
         `;
         }).join('');
     } catch {
-        root.innerHTML = '<p class="empty-state mono text-xs">Packages unavailable.</p>';
+        root.innerHTML = window.DashboardEmpty.html({
+            title: 'Packages unavailable',
+            body: 'Tracking could not be loaded.',
+            actionLabel: 'Check watches',
+            actionHref: '/settings/packages',
+        });
     }
 }
 

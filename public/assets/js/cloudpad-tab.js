@@ -195,6 +195,10 @@
         el.newName?.focus();
     });
 
+    document.getElementById('cloudpad-empty-new')?.addEventListener('click', () => {
+        el.newBtn?.click();
+    });
+
     el.newCancel?.addEventListener('click', () => {
         el.newForm?.classList.add('hidden');
         el.newBtn?.classList.remove('hidden');

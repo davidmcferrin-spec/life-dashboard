@@ -4,7 +4,13 @@
 </div>
 
 <?php if (empty($folders) && empty($unfiledBookmarks)): ?>
-    <p class="empty-state">No bookmarks yet. <a href="/settings/bookmarks" class="link">Add some →</a></p>
+    <?php
+    $emptyTitle = 'No bookmarks';
+    $emptyBody = 'Add a folder or a link to see them here.';
+    $emptyAction = 'Add bookmarks';
+    $emptyHref = '/settings/bookmarks';
+    require __DIR__ . '/../empty-panel.php';
+    ?>
 <?php else: ?>
 
     <?php foreach ($folders as $folder): ?>

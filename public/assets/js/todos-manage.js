@@ -73,7 +73,12 @@ async function loadLists() {
 
     manageLists = data.lists || [];
     if (manageLists.length === 0) {
-        el.innerHTML = '<p class="empty-state mono text-xs">No lists yet.</p>';
+        el.innerHTML = window.DashboardEmpty.html({
+            title: 'No lists yet',
+            body: 'Add a list in the form on this page.',
+            actionLabel: 'Todo lists',
+            actionHref: '/todos',
+        });
         return;
     }
 

@@ -109,6 +109,9 @@ class Router
     private function notFound(): void
     {
         http_response_code(404);
-        echo '404 — Page not found';
+        $pageTitle = 'Page not found';
+        $themePref = 'jarvis';
+        $themeLocalOnly = true;
+        require VIEWS_DIR . '/errors/404.php';
     }
 }

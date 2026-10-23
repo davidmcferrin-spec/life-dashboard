@@ -1112,7 +1112,12 @@
                 const opts = ms.filter(kindsOk);
                 return `<div class="ld-field"><span>${esc(f.label || name)}</span><div class="ld-checks" data-multi="${esc(name)}">${
                     opts.length ? opts.map((m) => `<label><input type="checkbox" value="${m.id}" ${selected.has(m.id) ? 'checked' : ''}> ${esc(m.name)} <span class="text-faint mono text-xs">${esc(m.kind)}</span></label>`).join('')
-                        : '<p class="empty-state mono text-xs">No metrics yet.</p>'
+                        : window.DashboardEmpty.html({
+                            title: 'No metrics yet',
+                            body: 'Add a life metric before charting it.',
+                            actionLabel: 'Life',
+                            actionHref: '/settings/life',
+                        })
                 }</div>${err}</div>`;
             }
             case 'goal_logs':
@@ -1175,7 +1180,12 @@
                     <input class="input text-sm" data-log-inc value="${esc(incs)}" placeholder="250,500" aria-label="Quick-add amounts for ${esc(metric.name || id)}" ${mode === 'count' ? 'hidden' : ''}>
                     <input class="input text-sm" data-log-prefix value="${esc(savedEntry.dedupe_prefix || '')}" placeholder="key prefix" maxlength="40" aria-label="Daily key prefix for ${esc(metric.name || id)}">
                 </div>`;
-            }).join('') || '<p class="empty-state mono text-xs">Choose 1–4 metrics.</p>';
+            }).join('') || window.DashboardEmpty.html({
+                title: 'Choose metrics',
+                body: 'Pick 1 to 4 metrics for this chart.',
+                actionLabel: 'Life',
+                actionHref: '/settings/life',
+            });
             host.querySelectorAll('[data-log-mode]').forEach((sel) => {
                 sel.addEventListener('change', () => {
                     const row = sel.closest('[data-log-for]');

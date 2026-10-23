@@ -60,7 +60,12 @@
 
     function renderLists() {
         if (!playlists.length) {
-            listEl.innerHTML = '<p class="empty-state mono text-xs">No playlists yet. Sync, or create one.</p>';
+            listEl.innerHTML = window.DashboardEmpty.html({
+                title: 'No playlists',
+                body: 'Sync from Spotify, or create one here.',
+                actionLabel: 'New playlist',
+                actionAttrs: 'type="button" data-new-playlist',
+            });
             return;
         }
         listEl.innerHTML = playlists.map((row) => {
@@ -203,7 +208,12 @@
             ? prompts.filter((row) => Number(row.target_playlist_id) === Number(playlist.id) || !row.target_playlist_id)
             : [];
         if (!rows.length) {
-            promptList.innerHTML = '<p class="empty-state mono text-xs">No prompts yet.</p>';
+            promptList.innerHTML = window.DashboardEmpty.html({
+                title: 'No prompts',
+                body: 'Save a prompt to reuse when a playlist is built.',
+                actionLabel: 'Write a prompt',
+                actionAttrs: 'type="button" data-focus-prompt',
+            });
             return;
         }
         promptList.innerHTML = rows.map((row) => `
@@ -440,7 +450,10 @@
         const target = event.target.closest('button');
         if (!target) return;
         try {
-            if (target.dataset.newPlaylist !== undefined) {
+            if (target.dataset.focusPrompt !== undefined) {
+                const name = promptForm && promptForm.elements.name;
+                if (name) name.focus();
+            } else if (target.dataset.newPlaylist !== undefined) {
                 openNew();
             } else if (target.dataset.closeModal !== undefined) {
                 closeNew();
