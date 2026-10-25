@@ -50,8 +50,8 @@ final class OllamaReport
         }
         if ($facts['api_ok']) {
             $names = $facts['models'];
-            $missingChat = $facts['chat'] !== '' && !in_array($facts['chat'], $names, true);
-            $missingEmbed = $facts['embed'] !== '' && !in_array($facts['embed'], $names, true);
+            $missingChat = $facts['chat'] !== '' && !self::modelPresent($names, $facts['chat']);
+            $missingEmbed = $facts['embed'] !== '' && !self::modelPresent($names, $facts['embed']);
             if ($missingChat && $missingEmbed) {
                 return self::row('warn', 'The default chat model and the embedding model are not installed.');
             }
@@ -69,6 +69,26 @@ final class OllamaReport
         }
 
         return self::row('warn', 'Ollama API did not answer.');
+    }
+
+    /**
+     * An untagged pull is stored as name:latest.
+     *
+     * @param list<string> $names
+     */
+    private static function modelPresent(array $names, string $wanted): bool
+    {
+        if (in_array($wanted, $names, true)) {
+            return true;
+        }
+        $prefix = $wanted . ':';
+        foreach ($names as $name) {
+            if (str_starts_with($name, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
