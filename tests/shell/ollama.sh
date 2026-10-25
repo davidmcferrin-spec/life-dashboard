@@ -28,4 +28,13 @@ if grep -R -n '11434' "$root/deploy/bin/lifedash-cloudflared" "$root/deploy/syst
     fail "the tunnel must not mention the Ollama port"
 fi
 
+pool=$root/deploy/php/lifedash-pool.conf
+basedir=$(sed -n 's/^php_admin_value\[open_basedir\][[:space:]]*=[[:space:]]*//p' "$pool")
+case ":${basedir}:" in
+    *:/var/lib/lifedash/ollama:*) ;;
+    *) fail "open_basedir must allow /var/lib/lifedash/ollama" ;;
+esac
+grep -q 'deploy/php/lifedash-pool.conf' "$root/deploy/provision.sh" || fail "provision must install the pool conf"
+grep -q 'deploy/php/lifedash-pool.conf' "$root/deploy/bin/lifedash-deploy" || fail "deploy must install the pool conf"
+
 echo ok
