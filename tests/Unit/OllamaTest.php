@@ -74,6 +74,41 @@ final class OllamaTest extends TestCase
         self::assertSame('The default chat model is not installed.', $missing['detail']);
     }
 
+    public function testReportTreatsAnUntaggedNameAsTheTaggedInstall(): void
+    {
+        $embed = OllamaReport::assess([
+            'installed' => true, 'systemd' => 'active', 'api_ok' => true,
+            'hosts' => ['127.0.0.1'], 'models' => ['qwen2.5:7b', 'nomic-embed-text:latest'],
+            'chat' => 'qwen2.5:7b', 'embed' => 'nomic-embed-text', 'pull_state' => 'ready',
+        ]);
+        self::assertSame('ok', $embed['status']);
+        self::assertSame('Ollama API answered.', $embed['detail']);
+
+        $chat = OllamaReport::assess([
+            'installed' => true, 'systemd' => 'active', 'api_ok' => true,
+            'hosts' => ['127.0.0.1'], 'models' => ['llama3.2:latest', 'nomic-embed-text'],
+            'chat' => 'llama3.2', 'embed' => 'nomic-embed-text', 'pull_state' => 'ready',
+        ]);
+        self::assertSame('ok', $chat['status']);
+        self::assertSame('Ollama API answered.', $chat['detail']);
+
+        $chatMissing = OllamaReport::assess([
+            'installed' => true, 'systemd' => 'active', 'api_ok' => true,
+            'hosts' => ['127.0.0.1'], 'models' => ['nomic-embed-text:latest'],
+            'chat' => 'qwen2.5:7b', 'embed' => 'nomic-embed-text', 'pull_state' => 'ready',
+        ]);
+        self::assertSame('warn', $chatMissing['status']);
+        self::assertSame('The default chat model is not installed.', $chatMissing['detail']);
+
+        $nearMiss = OllamaReport::assess([
+            'installed' => true, 'systemd' => 'active', 'api_ok' => true,
+            'hosts' => ['127.0.0.1'], 'models' => ['qwen2.5:7b', 'nomic-embed-text-v2:latest'],
+            'chat' => 'qwen2.5:7b', 'embed' => 'nomic-embed-text', 'pull_state' => 'ready',
+        ]);
+        self::assertSame('warn', $nearMiss['status']);
+        self::assertSame('The embedding model is not installed.', $nearMiss['detail']);
+    }
+
     public function testEffectiveChatUsesThePlanWhenUnset(): void
     {
         $row = ['base_url' => 'http://127.0.0.1:11434', 'chat_model' => '', 'embed_model' => 'nomic-embed-text'];
