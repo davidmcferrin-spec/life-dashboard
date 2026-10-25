@@ -163,6 +163,10 @@ final class OllamaTest extends TestCase
             $db = new OllamaMemoryDatabase();
             $view = (new OllamaService($db, null, $client, $dir))->view();
             self::assertSame('cpu', $view['hardware']['accelerator']);
+            self::assertSame(8192, $view['hardware']['ram_mib']);
+            self::assertSame(0, $view['hardware']['vram_mib']);
+            self::assertSame('llama3.2:3b', $view['hardware']['chat_model']);
+            self::assertSame('nomic-embed-text', $view['hardware']['embed_model']);
             self::assertSame('llama3.2:3b', $view['effective']['chat_model']);
             self::assertSame('failed', $view['job']['state']);
             self::assertSame('warn', $view['health']['status']);
