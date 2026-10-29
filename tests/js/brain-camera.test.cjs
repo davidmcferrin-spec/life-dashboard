@@ -50,3 +50,45 @@ test('pan and reset', () => {
     assert.deepEqual(moved, { k: 1, x: 12, y: -3 });
     assert.deepEqual(cam.reset(), { k: 1, x: 0, y: 0 });
 });
+
+test('mesh camera zooms, spins, pans, and idles', () => {
+    const home = cam.meshReset();
+    assert.deepEqual(home, { x: 0, y: 0, zoom: 1, rx: -7, ry: -12 });
+
+    const closer = cam.meshZoomBy(home, cam.MESH_ZOOM_STEP);
+    assert.equal(closer.zoom, 1.12);
+    let huge = home;
+    for (let i = 0; i < 40; i++) huge = cam.meshZoomBy(huge, 0.5);
+    assert.equal(huge.zoom, cam.MESH_MAX_ZOOM);
+    let tiny = home;
+    for (let i = 0; i < 40; i++) tiny = cam.meshZoomBy(tiny, -0.5);
+    assert.equal(tiny.zoom, cam.MESH_MIN_ZOOM);
+
+    const wheeled = cam.meshWheel(home, 100);
+    assert.ok(Math.abs(wheeled.zoom - 0.9) < 0.0001);
+
+    const spun = cam.meshSpin(home, 10, 20);
+    assert.equal(spun.ry, home.ry + 2.4);
+    assert.ok(Math.abs(spun.rx - (home.rx - 3.6)) < 0.0001);
+    const capped = cam.meshSpin(home, 0, -1000);
+    assert.equal(capped.rx, 48);
+
+    const panned = cam.meshPan(home, 12, -4);
+    assert.equal(panned.x, 12);
+    assert.equal(panned.y, -4);
+    assert.equal(panned.zoom, 1);
+
+    const turned = cam.meshIdle(home, 1000, false);
+    assert.equal(turned.ry, home.ry + 4);
+    assert.deepEqual(cam.meshIdle(home, 1000, true), home);
+
+    const pinched = cam.meshPinch(home, 1, 100, 150);
+    assert.equal(pinched.zoom, 1.5);
+
+    const faced = cam.meshFace(home, 30, 10);
+    assert.equal(faced.ry, -30);
+    assert.equal(faced.rx, -10);
+    assert.equal(faced.x, 0);
+    assert.equal(faced.y, 0);
+    assert.equal(faced.zoom, 1);
+});
