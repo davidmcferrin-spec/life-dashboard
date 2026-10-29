@@ -25,8 +25,8 @@
     const redlineSummary = document.getElementById('brain-redline-summary');
     const revCurrent = document.getElementById('brain-rev-current');
     const revRestore = document.getElementById('brain-rev-restore');
-    const saveBtn = document.getElementById('brain-save');
     const REDLINE_KEY = 'ld_vault_redline';
+    const AUTOSAVE_MS = 600;
 
     let pages = [];
     let folders = [];
@@ -38,6 +38,11 @@
     let activeFolder = null;
     let didExpand = false;
     let treeCursor = '';
+    let savedSnapshot = '';
+    let saveTimer = null;
+    let saving = false;
+    let queued = false;
+    let saveTail = Promise.resolve();
     const expanded = new Set();
     const split = document.getElementById('brain-split');
     try {
@@ -194,10 +199,33 @@
         }).catch(() => {});
     }
 
-    function noteMeta(page) {
+    function savedLine(page) {
         if (!page || !page.updated_at) return '';
         const day = fmt && fmt.monthDay ? fmt.monthDay(String(page.updated_at).slice(0, 10)) : String(page.updated_at).slice(0, 10);
         return 'Updated ' + day;
+    }
+
+    function paintSaved(page) {
+        const line = savedLine(page);
+        if (!line) {
+            statusEl.textContent = '';
+            return;
+        }
+        statusEl.innerHTML = esc(line) + ' · <span class="brain-saved">Saved automatically</span>';
+    }
+
+    function paintSaving(page) {
+        const line = savedLine(page);
+        statusEl.textContent = line ? line + ' · Saving…' : 'Saving…';
+    }
+
+    function snapshot() {
+        return titleEl.value.trim() + '\n' + bodyEl.value + '\n' + kindEl.value;
+    }
+
+    function searchValue() {
+        const field = document.getElementById('brain-search');
+        return field && field.value ? field.value.trim() : '';
     }
 
     function setTreeOpen(on) {
@@ -256,6 +284,27 @@
         return source && source.innerHTML ? source.innerHTML : '';
     }
 
+    function rowActions(kind, id) {
+        const menuId = id === null || id === undefined ? '' : String(id);
+        let items = '';
+        if (kind === 'page') {
+            items = `<button type="button" class="brain-menu-item is-danger" role="menuitem" data-menu="archive" data-menu-id="${menuId}">Archive</button>`;
+        } else if (kind === 'root') {
+            items = `<button type="button" class="brain-menu-item" role="menuitem" data-menu="new-folder" data-menu-id="">New folder</button>`;
+        } else {
+            items = `<button type="button" class="brain-menu-item" role="menuitem" data-menu="new-folder" data-menu-id="${menuId}">New folder</button>`
+                + `<button type="button" class="brain-menu-item" role="menuitem" data-menu="rename" data-menu-id="${menuId}">Rename</button>`
+                + `<button type="button" class="brain-menu-item is-danger" role="menuitem" data-menu="delete" data-menu-id="${menuId}">Delete</button>`;
+        }
+        return `<span class="brain-row-actions">
+            <button type="button" class="brain-icon-btn" tabindex="-1" data-tree-action="add" aria-label="New note">${treeIcon('brain-icon-plus')}</button>
+            <span class="brain-row-menu">
+                <button type="button" class="brain-icon-btn" tabindex="-1" data-tree-action="menu" aria-haspopup="menu" aria-expanded="false" aria-label="Row actions">${treeIcon('brain-icon-ellipsis')}</button>
+                <span class="brain-menu-panel" role="menu" hidden>${items}</span>
+            </span>
+        </span>`;
+    }
+
     function folderHtml(nodes, parentKey) {
         return nodes.map((folder) => {
             const open = expanded.has(folder.id);
@@ -268,6 +317,7 @@
                 <div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="${folder.id}" data-tree-key="${key}" data-tree-kind="folder" data-tree-id="${folder.id}" data-parent-key="${parentKey}" aria-expanded="${open ? 'true' : 'false'}" aria-selected="${selected ? 'true' : 'false'}">
                     <button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle="${folder.id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${verb} ${esc(folder.name)}"><span class="brain-chevron" aria-hidden="true">${treeIcon('brain-icon-chevron')}</span></button>
                     <button type="button" class="brain-folder-name" tabindex="-1" data-folder-pick="${folder.id}" title="${esc(folder.name)}"><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span>${treeLabel(folder.name)}</button>
+                    ${rowActions('folder', folder.id)}
                 </div>
                 <div class="brain-folder-children${open ? '' : ' is-collapsed'}" role="group"><div class="brain-folder-branch">${kids}${pageButtons}</div></div>
             </div>`;
@@ -276,9 +326,10 @@
 
     function pageButton(page, parentKey) {
         const on = current && current.id === page.id;
-        return `<button type="button" class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
+        return `<div class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
             <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-kind brain-kind-${esc(page.kind)}" aria-hidden="true">${treeIcon('brain-icon-file')}</span>${treeLabel(page.title)}
-        </button>`;
+            ${rowActions('page', page.id)}
+        </div>`;
     }
 
     function focusInsideTree() {
@@ -378,6 +429,7 @@
         const rootPages = pagesIn(null).map((page) => pageButton(page, '')).join('');
         const rootDrop = `<div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="root" data-tree-key="root" data-tree-kind="root" data-parent-key="" aria-selected="false">
             <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span><span class="brain-folder-name" title="Root">${treeLabel('Root')}</span>
+            ${rowActions('root', null)}
         </div>`;
         const body = folderHtml(folders, '') + rootPages;
         tree.innerHTML = rootDrop + (body || window.DashboardEmpty.html({
@@ -408,7 +460,6 @@
         titleEl.readOnly = false;
         bodyEl.readOnly = false;
         kindEl.disabled = false;
-        saveBtn.disabled = false;
         const archiveBtn = optional('brain-archive');
         if (archiveBtn) archiveBtn.disabled = !current;
         revCurrent.hidden = true;
@@ -432,7 +483,6 @@
         titleEl.readOnly = true;
         bodyEl.readOnly = true;
         kindEl.disabled = true;
-        saveBtn.disabled = true;
         const archiveBtn = optional('brain-archive');
         if (archiveBtn) archiveBtn.disabled = true;
         revCurrent.hidden = false;
@@ -475,6 +525,7 @@
         titleEl.value = page ? page.title : '';
         bodyEl.value = page ? (page.body || '') : '';
         kindEl.value = page ? page.kind : 'note';
+        savedSnapshot = snapshot();
         linksEl.innerHTML = (page && page.links || []).map((link) =>
             link.id ? `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>` : `<span class="brain-back km-missing">${esc(link.title)}</span>`
         ).join('') || '<p class="ld-meta">No outgoing links.</p>';
@@ -487,7 +538,8 @@
         if (page) treeCursor = 'page:' + page.id;
         renderTree();
         renderMarkdown(bodyEl.value);
-        setStatus(noteMeta(page));
+        if (page) paintSaved(page);
+        else setStatus('');
         if (page) history.replaceState(null, '', '/brain?page=' + page.id);
     }
 
@@ -510,30 +562,95 @@
     }
 
     async function openPage(id) {
+        if (saveTimer) {
+            clearTimeout(saveTimer);
+            saveTimer = null;
+        }
+        if (dirty && current && !viewing) await flushSave();
         const res = await api.get('/pages/' + id);
         const opened = !current || current.id !== res.page.id;
         const brief = pages.find((page) => page.id === res.page.id);
         if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, folder_id: res.page.folder_id, updated_at: res.page.updated_at });
         show(res.page);
         setTreeOpen(false);
-        // Opening a note starts in preview. Save and move keep the Edit toggle.
+        // Opening another note starts in preview. Autosave and move keep the Edit toggle.
         if (opened) setView('preview');
     }
 
-    async function save() {
+    async function saveOnce() {
+        if (viewing || !current) return;
         const payload = { title: titleEl.value.trim(), body: bodyEl.value, kind: kindEl.value };
-        if (!current && activeFolder) payload.folder_id = activeFolder;
+        const mark = snapshot();
         if (!payload.title) {
+            dirty = true;
             setStatus('Add a title first.');
             return;
         }
-        setStatus('Saving…');
-        const res = current
-            ? await api.post('/pages/' + current.id + '/update', payload)
-            : await api.post('/pages', payload);
-        await loadList(document.getElementById('brain-search').value.trim());
+        if (mark === savedSnapshot) {
+            dirty = false;
+            paintSaved(current);
+            return;
+        }
+        paintSaving(current);
+        const res = await api.post('/pages/' + current.id + '/update', payload);
+        if (snapshot() !== mark) {
+            queued = true;
+            if (res.page) current = Object.assign({}, current, { updated_at: res.page.updated_at });
+            return;
+        }
+        savedSnapshot = mark;
+        dirty = false;
+        await loadList(searchValue());
+        if (snapshot() !== mark) {
+            queued = true;
+            return;
+        }
         show(res.page);
-        setStatus('Saved.');
+    }
+
+    function flushSave() {
+        const run = saveTail.then(async () => {
+            saving = true;
+            try {
+                do {
+                    queued = false;
+                    await saveOnce();
+                } while (queued);
+            } catch (err) {
+                dirty = true;
+                setStatus(err.message);
+                throw err;
+            } finally {
+                saving = false;
+            }
+        });
+        saveTail = run.then(() => {}, () => {});
+        return run;
+    }
+
+    // One revision per pause, not per keystroke. A save already in flight queues the latest text.
+    function scheduleAutosave() {
+        if (viewing || !current) return;
+        if (snapshot() === savedSnapshot) {
+            dirty = false;
+            if (saveTimer) {
+                clearTimeout(saveTimer);
+                saveTimer = null;
+            }
+            if (!saving) paintSaved(current);
+            return;
+        }
+        dirty = true;
+        paintSaving(current);
+        if (saving) {
+            queued = true;
+            return;
+        }
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            saveTimer = null;
+            return flushSave();
+        }, AUTOSAVE_MS);
     }
 
     async function moveCurrent(folderId) {
@@ -546,7 +663,90 @@
         setStatus('Moved.');
     }
 
+    function closeTreeMenus() {
+        if (typeof tree.querySelectorAll !== 'function') return;
+        tree.querySelectorAll('.brain-row-menu').forEach((wrap) => {
+            wrap.classList.remove('is-open');
+            const panel = wrap.querySelector('.brain-menu-panel');
+            const button = wrap.querySelector('[data-tree-action="menu"]');
+            if (panel) panel.hidden = true;
+            if (button) button.setAttribute('aria-expanded', 'false');
+        });
+    }
+
+    function closeNoteMenu() {
+        const button = document.getElementById('brain-note-menu');
+        const panel = document.getElementById('brain-note-panel');
+        if (panel) panel.hidden = true;
+        if (button) {
+            button.setAttribute('aria-expanded', 'false');
+            const wrap = button.closest ? button.closest('.brain-note-menu') : null;
+            if (wrap) wrap.classList.remove('is-open');
+        }
+    }
+
+    // The folder branch clips overflow so it can collapse. A fixed panel stays visible.
+    function placePanel(button, panel) {
+        if (!button || !panel || typeof button.getBoundingClientRect !== 'function') return;
+        const rect = button.getBoundingClientRect();
+        const width = 200;
+        panel.style.position = 'fixed';
+        panel.style.top = (rect.bottom + 4) + 'px';
+        panel.style.left = Math.max(8, rect.right - width) + 'px';
+        panel.style.right = 'auto';
+        panel.style.zIndex = '30';
+    }
+
+    function folderForRow(row) {
+        if (!row) return activeFolder;
+        if (row.dataset.treeKind === 'root') return null;
+        if (row.dataset.treeKind === 'folder') return Number(row.dataset.treeId);
+        const page = pages.find((item) => item.id === Number(row.dataset.treeId));
+        return page && page.folder_id ? Number(page.folder_id) : null;
+    }
+
+    function collapseAll() {
+        expanded.clear();
+        didExpand = true;
+        renderTree();
+    }
+
     tree.addEventListener('click', (e) => {
+        const menuItem = e.target.closest('[data-menu]');
+        if (menuItem) {
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+            const action = menuItem.dataset.menu;
+            const rawId = menuItem.dataset.menuId;
+            const id = rawId ? Number(rawId) : null;
+            closeTreeMenus();
+            if (action === 'new-folder') openFolderDialog(id);
+            else if (action === 'rename') openRenameDialog(id);
+            else if (action === 'delete') deleteFolder(id);
+            else if (action === 'archive') archivePage(id).catch((err) => setStatus(err.message));
+            return;
+        }
+        const actionBtn = e.target.closest('[data-tree-action]');
+        if (actionBtn) {
+            if (typeof e.stopPropagation === 'function') e.stopPropagation();
+            const row = actionBtn.closest('[data-tree-key]');
+            if (actionBtn.dataset.treeAction === 'add') {
+                openCreateNote(folderForRow(row));
+                return;
+            }
+            const wrap = actionBtn.closest('.brain-row-menu');
+            const panel = wrap ? wrap.querySelector('.brain-menu-panel') : null;
+            const willOpen = !wrap || !wrap.classList.contains('is-open');
+            closeTreeMenus();
+            closeNoteMenu();
+            if (willOpen && wrap && panel) {
+                wrap.classList.add('is-open');
+                panel.hidden = false;
+                actionBtn.setAttribute('aria-expanded', 'true');
+                placePanel(actionBtn, panel);
+            }
+            return;
+        }
+        if (e.target.closest('.brain-row-actions')) return;
         const toggle = e.target.closest('[data-toggle]');
         if (toggle) {
             toggleFolder(toggle.dataset.toggle);
@@ -610,6 +810,7 @@
         if (row.dataset.treeKind === 'folder') toggleFolder(row.dataset.treeId);
         else if (row.dataset.treeKind === 'page') openPage(Number(row.dataset.treeId)).catch((err) => setStatus(err.message));
     });
+    tree.addEventListener('scroll', () => closeTreeMenus());
     tree.addEventListener('dragstart', (e) => {
         const btn = e.target.closest('[data-id]');
         if (!btn) return;
@@ -651,96 +852,218 @@
         loadList(document.getElementById('brain-search').value.trim()).catch((err) => setStatus(err.message));
     });
     moveEl.addEventListener('change', () => {
-        moveCurrent(moveEl.value).catch((err) => setStatus(err.message));
+        const next = moveEl.value;
+        const pending = dirty && current && !viewing ? flushSave() : Promise.resolve();
+        pending.then(() => moveCurrent(next)).catch((err) => setStatus(err.message));
     });
-    document.getElementById('brain-new').addEventListener('click', () => show(null));
-    function openFolderDialog() {
-        if (document.getElementById('brain-folder-modal')) return;
+    function openTextModal(spec) {
+        if (document.querySelector('#' + spec.id)) return;
 
         let settled = false;
         const modal = document.createElement('div');
-        modal.id = 'brain-folder-modal';
+        modal.id = spec.id;
         modal.className = 'app-modal';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-modal', 'true');
-        modal.setAttribute('aria-labelledby', 'brain-folder-title');
+        modal.setAttribute('aria-labelledby', spec.id + '-title');
+        const description = spec.description ? '<p class="ld-meta mb-3">' + esc(spec.description) + '</p>' : '';
         modal.innerHTML = ''
             + '<div class="app-modal-backdrop" data-close aria-hidden="true"></div>'
             + '<div class="app-modal-panel surface">'
             + '<div class="flex items-center justify-between gap-2 mb-3">'
-            + '<h2 id="brain-folder-title" class="section-title text-sm">New folder</h2>'
+            + '<h2 id="' + spec.id + '-title" class="section-title text-sm">' + esc(spec.title) + '</h2>'
             + '<button type="button" class="app-modal-close" data-close aria-label="Close">' + (iconHtml('brain-icon-x') || '') + '</button>'
             + '</div>'
-            + '<form id="brain-folder-form" class="space-y-3">'
+            + description
+            + '<form id="' + spec.id + '-form" class="space-y-3">'
             + '<label class="block">'
-            + '<span class="mono text-xs text-faint">Folder name</span>'
-            + '<input type="text" id="brain-folder-name" class="input w-full mt-1 text-sm" autocomplete="off">'
+            + '<span class="mono text-xs text-faint">' + esc(spec.label) + '</span>'
+            + '<input type="text" id="' + spec.fieldId + '" class="input w-full mt-1 text-sm" autocomplete="off" placeholder="' + esc(spec.placeholder || '') + '" value="' + esc(spec.value || '') + '">'
             + '</label>'
+            + '<p class="ld-field-error" data-error hidden></p>'
             + '<div class="flex flex-wrap gap-2">'
-            + '<button type="submit" class="btn-primary text-sm">Create</button>'
+            + '<button type="submit" class="btn-primary text-sm">' + esc(spec.submitLabel) + '</button>'
             + '<button type="button" class="btn text-sm" data-close>Cancel</button>'
             + '</div>'
             + '</form>'
             + '</div>';
 
-        function finish(name) {
-            if (settled) return;
-            settled = true;
+        const field = modal.querySelector('#' + spec.fieldId);
+        const error = modal.querySelector('[data-error]');
+        if (field) field.value = spec.value || '';
+
+        function close() {
             modal.classList.add('hidden');
-            modal.remove();
+            if (typeof modal.remove === 'function') modal.remove();
             if (!document.querySelector('.app-modal:not(.hidden)')) {
                 document.body.classList.remove('app-modal-open');
             }
-            if (!name) return;
-            api.post('/pages/folders', { name: name.trim(), parent_id: activeFolder })
-                .then(() => loadList(document.getElementById('brain-search').value.trim()))
-                .then(() => setStatus('Folder created.'))
-                .catch((err) => setStatus(err.message));
         }
 
-        modal.querySelector('#brain-folder-form').addEventListener('submit', (event) => {
-            event.preventDefault();
-            finish(modal.querySelector('#brain-folder-name').value);
+        function finish(submitted, value) {
+            if (settled) return;
+            const trimmed = (value || '').trim();
+            if (submitted && !trimmed) {
+                if (error) {
+                    error.hidden = false;
+                    error.textContent = 'Add a title first.';
+                }
+                return;
+            }
+            settled = true;
+            close();
+            if (!submitted) return;
+            spec.onSubmit(trimmed);
+        }
+
+        modal.querySelector('#' + spec.id + '-form').addEventListener('submit', (event) => {
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            finish(true, field.value);
         });
         modal.addEventListener('click', (event) => {
             const target = event.target;
-            if (target && typeof target.closest === 'function' && target.closest('[data-close]')) {
-                finish('');
-            }
+            if (target && typeof target.closest === 'function' && target.closest('[data-close]')) finish(false, '');
         });
 
         document.body.classList.add('app-modal-open');
         document.body.appendChild(modal);
+        if (field && typeof field.focus === 'function') field.focus();
     }
 
-    document.getElementById('brain-folder').addEventListener('click', openFolderDialog);
-    document.getElementById('brain-save').addEventListener('click', () => save().catch((err) => setStatus(err.message)));
-    async function archiveCurrent() {
-        if (!current || !window.AppModal) return;
+    function openCreateNote(folderId) {
+        const folder = folderId === undefined ? activeFolder : folderId;
+        openTextModal({
+            id: 'brain-note-modal',
+            title: 'Create note',
+            description: 'Add a new note to your knowledge vault.',
+            label: 'Note title',
+            fieldId: 'brain-note-title',
+            placeholder: 'Untitled note',
+            submitLabel: 'Create',
+            onSubmit(name) {
+                const payload = { title: name, body: '', kind: 'note' };
+                if (folder) payload.folder_id = folder;
+                api.post('/pages', payload)
+                    .then((res) => loadList(searchValue()).then(() => openPage(res.page.id)))
+                    .catch((err) => setStatus(err.message));
+            },
+        });
+    }
+
+    function openFolderDialog(parentId) {
+        const parent = parentId === undefined ? activeFolder : parentId;
+        openTextModal({
+            id: 'brain-folder-modal',
+            title: 'New folder',
+            label: 'Folder name',
+            fieldId: 'brain-folder-name',
+            submitLabel: 'Create',
+            onSubmit(name) {
+                api.post('/pages/folders', { name: name, parent_id: parent })
+                    .then(() => loadList(searchValue()))
+                    .then(() => setStatus('Folder created.'))
+                    .catch((err) => setStatus(err.message));
+            },
+        });
+    }
+
+    function openRenameDialog(folderId) {
+        const folder = flatFolders().find((item) => item.id === folderId);
+        openTextModal({
+            id: 'brain-rename-modal',
+            title: 'Rename folder',
+            label: 'Folder name',
+            fieldId: 'brain-rename-name',
+            value: folder ? folder.name : '',
+            submitLabel: 'Rename',
+            onSubmit(name) {
+                api.post('/pages/folders/' + folderId, { name: name })
+                    .then(() => loadList(searchValue()))
+                    .then(() => setStatus('Renamed.'))
+                    .catch((err) => setStatus(err.message));
+            },
+        });
+    }
+
+    function deleteFolder(folderId) {
+        if (!folderId || !window.AppModal) return;
+        const folder = flatFolders().find((item) => item.id === folderId);
+        window.AppModal.confirm({
+            title: 'Delete folder',
+            message: 'Delete ' + (folder ? folder.name : 'this folder') + '? An empty folder can be deleted. A folder with notes stays until those notes move.',
+            confirmLabel: 'Delete',
+            danger: true,
+        }).then((ok) => {
+            if (!ok) return null;
+            return api.post('/pages/folders/' + folderId + '/delete', { move_contents: false });
+        }).then((res) => {
+            if (!res) return null;
+            if (activeFolder === folderId) activeFolder = null;
+            return loadList(searchValue()).then(() => setStatus('Folder deleted.'));
+        }).catch((err) => setStatus(err.message));
+    }
+
+    async function archivePage(id) {
+        if (!id || !window.AppModal) return;
+        const page = pages.find((item) => item.id === id) || (current && current.id === id ? current : null);
         const ok = await window.AppModal.confirm({
             title: 'Archive page',
-            message: 'Archive ' + (current.title || 'this page') + '? It leaves the vault list.',
+            message: 'Archive ' + (page && page.title ? page.title : 'this page') + '? It leaves the vault list.',
             confirmLabel: 'Archive',
             danger: true,
         });
         if (!ok) return;
-        const id = current.id;
         setStatus('Archiving…');
         await api.post('/pages/' + id + '/archive', {});
-        current = null;
-        await loadList(document.getElementById('brain-search').value.trim());
-        if (pages[0]) await openPage(pages[0].id);
-        else show(null);
+        const wasCurrent = current && current.id === id;
+        if (wasCurrent) current = null;
+        await loadList(searchValue());
+        if (wasCurrent) {
+            if (pages[0]) await openPage(pages[0].id);
+            else show(null);
+        }
         setStatus('Archived.');
     }
+
+    document.getElementById('brain-new').addEventListener('click', () => openCreateNote(activeFolder));
+    const collapseBtn = document.getElementById('brain-collapse');
+    if (collapseBtn) collapseBtn.addEventListener('click', () => collapseAll());
+    const noteMenuBtn = document.getElementById('brain-note-menu');
+    const notePanel = document.getElementById('brain-note-panel');
+    if (noteMenuBtn && notePanel) {
+        noteMenuBtn.addEventListener('click', (event) => {
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            const willOpen = notePanel.hidden !== false;
+            closeTreeMenus();
+            notePanel.hidden = !willOpen;
+            noteMenuBtn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+            const wrap = noteMenuBtn.closest ? noteMenuBtn.closest('.brain-note-menu') : null;
+            if (wrap) wrap.classList.toggle('is-open', willOpen);
+            if (willOpen) placePanel(noteMenuBtn, notePanel);
+        });
+    }
     const archiveBtn = optional('brain-archive');
-    if (archiveBtn) archiveBtn.addEventListener('click', () => archiveCurrent().catch((err) => setStatus(err.message)));
+    if (archiveBtn) archiveBtn.addEventListener('click', () => {
+        closeNoteMenu();
+        if (current) archivePage(current.id).catch((err) => setStatus(err.message));
+    });
+    if (typeof document.addEventListener === 'function') {
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+            if (target && typeof target.closest === 'function' && target.closest('.brain-note-menu, .brain-row-menu')) return;
+            closeTreeMenus();
+            closeNoteMenu();
+        });
+    }
     const treeToggle = optional('brain-tree-toggle');
     if (treeToggle) treeToggle.addEventListener('click', () => setTreeOpen(!shell.classList.contains('is-tree-open')));
     const treeScrim = optional('brain-tree-scrim');
     if (treeScrim) treeScrim.addEventListener('click', () => setTreeOpen(false));
     window.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && shell.classList.contains('is-tree-open')) setTreeOpen(false);
+        if (event.key !== 'Escape') return;
+        closeTreeMenus();
+        closeNoteMenu();
+        if (shell.classList.contains('is-tree-open')) setTreeOpen(false);
     });
     const outlineEl = optional('brain-outline');
     if (outlineEl) {
@@ -751,8 +1074,12 @@
             if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
         });
     }
-    titleEl.addEventListener('input', () => { dirty = true; });
-    bodyEl.addEventListener('input', () => { dirty = true; renderMarkdown(bodyEl.value); });
+    titleEl.addEventListener('input', () => scheduleAutosave());
+    bodyEl.addEventListener('input', () => {
+        renderMarkdown(bodyEl.value);
+        scheduleAutosave();
+    });
+    kindEl.addEventListener('change', () => scheduleAutosave());
     document.querySelectorAll('[data-brain-tab]').forEach((btn) => {
         btn.addEventListener('click', () => setView(btn.dataset.brainTab));
     });
@@ -785,7 +1112,9 @@
     });
     revCurrent.addEventListener('click', () => {
         leaveRevision();
-        setStatus('');
+        if (dirty) scheduleAutosave();
+        else if (current) paintSaved(current);
+        else setStatus('');
     });
     revRestore.addEventListener('click', () => {
         if (!viewing || !current) return;
