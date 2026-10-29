@@ -9676,3 +9676,264 @@ html[data-theme="light"] .flight-card {
     .ld-assistant-orb { animation: none; }
 }
 
+.feeds-page {
+    margin: 0 auto;
+    max-width: 72rem;
+    padding: 24px 16px 48px;
+}
+
+.feeds-head {
+    align-items: flex-end;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.feeds-lead {
+    color: var(--text-muted);
+    font-size: 14px;
+    margin: 8px 0 0;
+}
+
+.feeds-board {
+    align-items: start;
+    display: grid;
+    gap: 14px;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+}
+
+.feeds-overview,
+.system-context {
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    min-height: 280px;
+    min-width: 0;
+    padding: 16px;
+}
+
+.feeds-card-head {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.feeds-card-head h2 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.feeds-card-icon {
+    color: var(--accent);
+    display: grid;
+    height: 28px;
+    place-items: center;
+    width: 28px;
+}
+
+.feeds-card-icon svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.feeds-list {
+    display: flex;
+    flex-direction: column;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.feeds-list li {
+    border-top: 1px solid var(--border-soft);
+    padding: 12px 0;
+}
+
+.feeds-kicker {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin: 0 0 4px;
+    text-transform: uppercase;
+}
+
+.feeds-list a {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.feeds-list a:hover {
+    color: var(--accent);
+}
+
+.feeds-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin: 4px 0 0;
+}
+
+.system-context .context-stats {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+}
+
+.system-context .context-stats > div {
+    align-items: baseline;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 14px 0;
+}
+
+.system-context .context-stats dt {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.system-context .context-stats dd {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0;
+}
+
+.system-context .context-stats .is-ready {
+    color: var(--ok);
+}
+
+.system-context-action {
+    margin: 14px 0 0;
+}
+
+.system-context-action a {
+    color: var(--accent);
+    font-size: 13px;
+}
+
+@media (max-width: 850px) {
+    .feeds-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .feeds-board {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.app-modal-close[data-lucide-x] svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.app-modal-close[data-lucide-x]:has(svg) {
+    color: var(--text-secondary);
+}
+
+.app-modal-close[data-lucide-x]:has(svg)::before {
+    content: none;
+}
+
+.app-modal-close[data-lucide-x]:has(svg):hover {
+    color: var(--accent);
+}
+
+.sp-player .sp-stage-art.sp-expanded-visual {
+    background:
+        radial-gradient(circle at 50% 45%, rgba(85, 74, 133, 0.4), transparent 32%),
+        linear-gradient(135deg, #102a31, #231a2e 65%, #392134);
+    overflow: hidden;
+    position: relative;
+}
+
+.sp-player .sp-record {
+    background: repeating-radial-gradient(circle, #101719 0 5px, #1b282b 6px 8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    box-shadow: 0 16px 35px rgba(0, 0, 0, 0.35);
+    display: grid;
+    height: 84px;
+    place-items: center;
+    position: relative;
+    width: 84px;
+    z-index: 1;
+}
+
+.sp-player .sp-record::before {
+    background: linear-gradient(135deg, #31666a, #713c64);
+    border-radius: 50%;
+    content: "";
+    inset: 26px;
+    position: absolute;
+}
+
+.sp-player .sp-record .sp-art {
+    border-radius: 50%;
+    height: 32px;
+    position: relative;
+    width: 32px;
+    z-index: 2;
+}
+
+.sp-player .sp-record-spindle {
+    background: #0b1011;
+    border-radius: 50%;
+    height: 7px;
+    position: absolute;
+    width: 7px;
+    z-index: 3;
+}
+
+.sp-player .sp-equalizer {
+    align-items: flex-end;
+    bottom: 14px;
+    display: flex;
+    gap: 3px;
+    height: 23px;
+    pointer-events: none;
+    position: absolute;
+    right: 15px;
+    z-index: 1;
+}
+
+.sp-player .sp-equalizer i {
+    background: var(--accent);
+    border-radius: 2px;
+    display: block;
+    opacity: 0.55;
+    transform-origin: bottom;
+    width: 2px;
+}
+
+/* The disc and bars move only while Spotify reports playback. */
+@media (prefers-reduced-motion: no-preference) {
+    .sp-player .sp-record.is-playing {
+        animation: sp-record-spin 16s linear infinite;
+    }
+
+    .sp-player .sp-equalizer.is-playing i {
+        animation: sp-eq-wave 0.8s ease-in-out infinite alternate;
+    }
+
+    .sp-player .sp-equalizer.is-playing i:nth-child(3n) {
+        animation-delay: -0.4s;
+    }
+}
+
+@keyframes sp-record-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes sp-eq-wave {
+    to { transform: scaleY(0.35); opacity: 0.3; }
+}
+

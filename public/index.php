@@ -196,6 +196,11 @@ $router->get('/news', function () use ($auth): void {
     require VIEWS_DIR . '/news.php';
 });
 
+$router->get('/feeds', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/feeds.php';
+});
+
 $router->get('/todos', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/todos.php';

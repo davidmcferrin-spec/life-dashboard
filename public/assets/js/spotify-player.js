@@ -118,6 +118,39 @@ function spotifyTrackLine(now) {
     return artists || album;
 }
 
+function spotifyRecordHtml(art, playing) {
+    return '<div class="sp-record' + (playing ? ' is-playing' : '') + '" aria-hidden="true">'
+        + art
+        + '<i class="sp-record-spindle"></i></div>';
+}
+
+// Heights draw the disc graphic. They are not measured audio levels.
+function spotifyEqualizerHtml(playing) {
+    const heights = [8, 15, 11, 20, 13, 18, 9, 16, 12, 19, 10, 14];
+    return '<span class="sp-equalizer' + (playing ? ' is-playing' : '') + '" aria-hidden="true">'
+        + heights.map(function (height) {
+            return '<i style="height:' + height + 'px"></i>';
+        }).join('')
+        + '</span>';
+}
+
+function spotifyChangeDevice(root, refresh) {
+    const openDeviceList = function () {
+        const select = root && root.querySelector ? root.querySelector('[data-device]') : null;
+        if (!select) return;
+        select.focus();
+        if (typeof select.showPicker === 'function') {
+            try { select.showPicker(); } catch (err) { /* the focus still lands on the list */ }
+        }
+    };
+    openDeviceList();
+    // A refresh can replace the select, so open the list again once it is current.
+    const pending = typeof refresh === 'function' ? refresh() : null;
+    if (pending && typeof pending.then === 'function') {
+        pending.then(openDeviceList);
+    }
+}
+
 (function () {
     const STORE = 'ld_spotify_player';
     const PLAYER_NAME = 'Life Dashboard';
@@ -389,6 +422,10 @@ function spotifyTrackLine(now) {
 
     function patchLive(el, now, devices, collapsed, volume, volumeFocused) {
         el.classList.toggle('is-min', collapsed);
+        const spinning = !!(now && now.is_playing);
+        el.querySelectorAll('.sp-record, .sp-equalizer').forEach(function (node) {
+            node.classList.toggle('is-playing', spinning);
+        });
         const toggleLabel = collapsed ? 'Expand player' : 'Collapse player';
         el.querySelectorAll('[data-collapse]').forEach(function (collapse) {
             collapse.setAttribute('aria-pressed', collapsed ? 'true' : 'false');
@@ -544,7 +581,7 @@ function spotifyTrackLine(now) {
                     <button type="button" data-reset>Reset</button>
                     <button type="button" data-player-off>Off</button>
                 </div>
-                <div class="sp-stage-art">${art}</div>
+                <div class="sp-stage-art sp-expanded-visual">${spotifyRecordHtml(art, playing)}${spotifyEqualizerHtml(playing)}</div>
                 <div class="sp-stage-meta">
                     <p class="sp-title">${title}</p>
                     <p class="sp-artists">${artists}</p>
@@ -560,6 +597,7 @@ function spotifyTrackLine(now) {
                 <div class="sp-device sp-field">
                     <div class="sp-field-head" data-device-head>
                         ${deviceMark}<span class="sp-device-copy"><small class="sp-eyebrow">Playing on</small><span data-device-line>${escapeHtml(spotifyClip(deviceLine, 48))}</span></span>
+                        <button type="button" data-change-device>Change device</button>
                         <button type="button" data-refresh-devices>Refresh</button>
                     </div>
                     <div data-device-slot>${deviceControl}</div>
@@ -830,6 +868,10 @@ function spotifyTrackLine(now) {
             }
             if (button.dataset.playerOff !== undefined) {
                 setOn(false);
+                return;
+            }
+            if (button.dataset.changeDevice !== undefined) {
+                spotifyChangeDevice(el, function () { return refresh(config, true); });
                 return;
             }
             if (button.dataset.refreshDevices !== undefined) {

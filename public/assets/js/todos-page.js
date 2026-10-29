@@ -19,6 +19,26 @@ function esc(s) {
         .replace(/"/g, '&quot;');
 }
 
+let todoCloseIcon = '';
+
+function paintTodoClose(button) {
+    button.setAttribute('data-lucide-x', '');
+    if (todoCloseIcon) button.innerHTML = todoCloseIcon;
+}
+
+function loadTodoCloseIcon() {
+    fetch('/assets/vendor/lucide/x.svg', { credentials: 'same-origin' })
+        .then(function (res) { return res.ok ? res.text() : ''; })
+        .then(function (text) {
+            if (!text || text.indexOf('<svg') === -1) return;
+            todoCloseIcon = text;
+            document.querySelectorAll('[data-lucide-x]').forEach(function (button) {
+                button.innerHTML = text;
+            });
+        })
+        .catch(function () { /* the masked glyph stays until the file loads */ });
+}
+
 function openModal(modal) {
     if (!modal) {
         return;
@@ -93,7 +113,7 @@ function modalShell(id, titleId, title, wide) {
     close.className = 'app-modal-close';
     close.setAttribute('data-close', '');
     close.setAttribute('aria-label', 'Close');
-    close.textContent = '×';
+    paintTodoClose(close);
 
     head.append(heading, close);
     panel.append(head);
@@ -623,6 +643,7 @@ async function loadItems() {
     bindItemEvents();
 }
 
+loadTodoCloseIcon();
 mountPageDialogs();
 
 document.getElementById('todo-page-list')?.addEventListener('change', e => {
