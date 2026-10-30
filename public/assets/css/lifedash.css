@@ -4561,6 +4561,18 @@ html[data-theme="dark"] .settings-shell {
     grid-template-columns: 240px minmax(0, 1fr) 260px;
 }
 
+.settings-layout.no-rail {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.settings-layout.no-rail.has-preview {
+    grid-template-columns: minmax(0, 1fr) 260px;
+}
+
+.settings-layout.no-rail > .settings-panel {
+    padding-left: 0;
+}
+
 .settings-rail {
     border-right: 1px solid var(--line);
     max-height: calc(100vh - 72px - 32px);
@@ -5017,6 +5029,10 @@ html[data-theme="dark"] .settings-shell {
         grid-template-columns: 240px minmax(0, 1fr);
     }
 
+    .settings-layout.no-rail.has-preview {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .settings-preview {
         display: none;
     }
@@ -5028,7 +5044,9 @@ html[data-theme="dark"] .settings-shell {
     }
 
     .settings-layout,
-    .settings-layout.has-preview {
+    .settings-layout.has-preview,
+    .settings-layout.no-rail,
+    .settings-layout.no-rail.has-preview {
         grid-template-columns: minmax(0, 1fr);
     }
 

@@ -4,10 +4,13 @@
  *
  * Expects: $user, $active, $pageTitle. Optional $flash, $settingsFormId,
  * $settingsSubmitLabel, $settingsFooterNote, $settingsAutosave, $settingsMainClass,
- * $settingsWide, $settingsPreview.
+ * $settingsWide, $settingsPreview, $settingsHideRail.
  *
  * $settingsPreview, when a page sets it, is an array of kicker, text, and percent.
  * Nothing is filled in here.
+ *
+ * $settingsHideRail drops the settings step column. Cloud clipboards and CloudPad
+ * set it so the page fills the width beside the primary shell nav.
  */
 $flash = $flash ?? null;
 $active = $active ?? 'general';
@@ -69,7 +72,11 @@ if (!isset($settingsContentClass)) {
 if ($settingsNarrow) {
     $settingsContentClass .= ' is-narrow';
 }
+$settingsHideRail = !empty($settingsHideRail);
 $settingsLayoutClass = 'settings-layout' . ($settingsPreviewView !== null ? ' has-preview' : '');
+if ($settingsHideRail) {
+    $settingsLayoutClass .= ' no-rail';
+}
 
 if (!isset($themePref) && !empty($user['id'])) {
     $shellPrefs    = new \Dashboard\Settings\PreferenceService(\Dashboard\DB\Database::getInstance());
@@ -89,14 +96,18 @@ if (!isset($themePref) && !empty($user['id'])) {
     </div>
     <?php endif; ?>
 
+    <?php if (!$settingsHideRail): ?>
     <button type="button" class="settings-rail-toggle" id="settings-rail-toggle" aria-expanded="false" aria-controls="settings-rail">Sections</button>
     <button type="button" class="settings-rail-backdrop" id="settings-rail-backdrop" hidden aria-label="Close sections"></button>
+    <?php endif; ?>
 
     <div class="<?= e($settingsLayoutClass) ?>">
+        <?php if (!$settingsHideRail): ?>
         <?php
         $settingsRenderNav = true;
         include __DIR__ . '/_nav.php';
         ?>
+        <?php endif; ?>
 
         <div class="<?= e($settingsContentClass) ?>">
             <?php if ($settingsCurrent !== null): ?>

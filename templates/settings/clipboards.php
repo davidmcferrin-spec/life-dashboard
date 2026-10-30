@@ -15,6 +15,7 @@ $active               = 'clipboards';
 $extraStyles          = ['/assets/css/remaining-pages.css'];
 $settingsMainClass    = 'max-w-screen-2xl mx-auto px-4 py-6';
 $settingsContentClass = 'flex-1 min-w-0';
+$settingsHideRail     = true;
 
 require __DIR__ . '/_shell-top.php';
 ?>
