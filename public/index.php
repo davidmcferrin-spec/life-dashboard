@@ -22,6 +22,7 @@ use Dashboard\Api\PingsHandler;
 use Dashboard\Api\NotificationsHandler;
 use Dashboard\Api\ClockAlarmHandler;
 use Dashboard\Api\PreferencesHandler;
+use Dashboard\Api\JarvisWizardHandler;
 use Dashboard\Api\StocksHandler;
 use Dashboard\Api\TodosHandler;
 use Dashboard\Auth\Auth;
@@ -230,6 +231,11 @@ $router->get('/clock', function () use ($auth): void {
 $router->get('/settings', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings.php';
+});
+
+$router->get('/settings/jarvis', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/settings/jarvis.php';
 });
 
 $router->get('/settings/clock', function () use ($auth): void {
@@ -801,6 +807,38 @@ $router->get('/api/preferences', function () use ($auth, $preferencesApi): void 
 $router->post('/api/preferences', function () use ($auth, $preferencesApi): void {
     $user = $auth->requireAuth();
     $preferencesApi->save($user);
+});
+
+$jarvisWizard = new JarvisWizardHandler($db);
+$router->post('/api/jarvis/identity', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->saveIdentity($auth->requireAuth());
+});
+$router->post('/api/jarvis/voice', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->saveVoice($auth->requireAuth());
+});
+$router->post('/api/jarvis/routines', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->saveRoutines($auth->requireAuth());
+});
+$router->post('/api/jarvis/routines/confirm', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->confirmRoutine($auth->requireAuth());
+});
+$router->post('/api/jarvis/privacy', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->savePrivacy($auth->requireAuth());
+});
+$router->post('/api/jarvis/initialize', function () use ($auth, $jarvisWizard): void {
+    \Dashboard\Settings\BrowserOnly::reject();
+    validateCsrf();
+    $jarvisWizard->initialize($auth->requireAuth());
 });
 
 $router->get('/api/weather', function () use ($auth): void {
