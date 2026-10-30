@@ -1,6 +1,6 @@
 <?php
 /**
- * Pantry inventory, scan, purge, catalog, recipes, and meal builder.
+ * Pantry inventory, scan, purge, catalog, recipes, meal builder, and weekday plan.
  *
  * @var array<string, mixed> $user
  */
@@ -49,7 +49,7 @@ $pantryNav = [
         <?php if ($view === 'inventory'): ?>
         <button type="button" class="btn-primary" id="pantry-add">Add item</button>
         <?php elseif ($isMeals): ?>
-        <button type="button" class="btn-primary" id="pantry-add-meal">Add meal</button>
+        <button type="button" class="btn-primary" id="pantry-add-meal"><span aria-hidden="true"><?php $pantryIcon('plus'); ?></span>Add meal</button>
         <?php endif; ?>
     </header>
     <nav class="ld-pantry-nav" id="pantry-nav" aria-label="Pantry">
@@ -69,6 +69,7 @@ $pantryNav = [
 <template id="pantry-icon-scan"><?php $pantryIcon('scan-barcode'); ?></template>
 <template id="pantry-icon-basket"><?php $pantryIcon('shopping-basket'); ?></template>
 <template id="pantry-icon-pot"><?php $pantryIcon('cooking-pot'); ?></template>
+<template id="pantry-icon-plus"><?php $pantryIcon('plus'); ?></template>
 <?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>

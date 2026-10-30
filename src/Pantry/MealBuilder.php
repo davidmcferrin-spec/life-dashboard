@@ -8,12 +8,15 @@ use Dashboard\DB\Database;
 use Dashboard\Deploy\DeployService;
 use Dashboard\Settings\PreferenceService;
 use Dashboard\Shopping\ShoppingService;
+use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
+use DateTimeImmutable;
 
 /**
  * Components and pairwise pairings for the meal builder.
  * A meal is not stored. The filter asks which components pair with every pick.
+ * The weekday plan stores one lunch and one dinner for each date.
  */
 final class MealBuilder
 {
@@ -22,6 +25,13 @@ final class MealBuilder
     public const SUPPORT = ['aromatic', 'vegetable', 'spice'];
 
     public const SOURCES = ['david', 'past_meal', 'research'];
+
+    public const PLAN_SLOTS = ['lunch', 'dinner'];
+
+    /** English labels so a column date does not follow the server locale. */
+    private const PLAN_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+    private const PLAN_WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     private const PREF_ON_HAND = 'meal_builder_on_hand_only';
 
@@ -476,6 +486,90 @@ SQL;
             ]], $by);
             return ['plan' => $plan, 'lot' => $added['lots'][0]];
         });
+    }
+
+    /**
+     * Monday through Friday of the week that contains $anchor.
+     *
+     * @return array{week_start: string, week_end: string, days: list<array<string, mixed>>}
+     */
+    public function weekPlan(int $userId, string $anchor): array
+    {
+        $monday = $this->weekMonday($anchor);
+        $dates = [];
+        for ($i = 0; $i < 5; $i++) {
+            $dates[] = $monday->modify('+' . $i . ' days')->format('Y-m-d');
+        }
+        $rows = $this->db->fetchAll(
+            'SELECT id, plan_date::text AS plan_date, slot, title, detail, recipe_id
+             FROM meal_plan_days
+             WHERE user_id = ? AND plan_date >= ? AND plan_date <= ?
+             ORDER BY plan_date, slot',
+            [$userId, $dates[0], $dates[4]]
+        );
+        $byDate = [];
+        foreach ($rows as $row) {
+            $byDate[substr((string) $row['plan_date'], 0, 10)][(string) $row['slot']] = $row;
+        }
+        $days = [];
+        foreach ($dates as $date) {
+            $day = new DateTimeImmutable($date);
+            $saved = $byDate[$date] ?? [];
+            $days[] = [
+                'date' => $date,
+                'weekday' => self::PLAN_WEEKDAYS[(int) $day->format('N') - 1],
+                'label' => self::PLAN_MONTHS[(int) $day->format('n') - 1] . ' ' . $day->format('j'),
+                'dinner' => isset($saved['dinner']) ? $this->publicPlanSlot($userId, $saved['dinner']) : null,
+                'lunch' => isset($saved['lunch']) ? $this->publicPlanSlot($userId, $saved['lunch']) : null,
+            ];
+        }
+        return [
+            'week_start' => $dates[0],
+            'week_end' => $dates[4],
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @return array{day: array<string, mixed>, week: array<string, mixed>}
+     */
+    public function savePlanDay(int $userId, array $fields): array
+    {
+        $date = $this->weekdayDate((string) ($fields['plan_date'] ?? ''));
+        $slot = $this->planSlot((string) ($fields['slot'] ?? ''));
+        $recipeId = $this->planRecipeId($userId, $fields);
+        $title = $this->planTitle($userId, $fields['title'] ?? '', $recipeId);
+        $detail = array_key_exists('detail', $fields) ? $this->optionalText($fields['detail'], 240, 'detail') : null;
+        $id = (int) $this->db->fetchScalar(
+            'INSERT INTO meal_plan_days (user_id, plan_date, slot, title, detail, recipe_id)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (user_id, plan_date, slot) DO UPDATE
+                SET title = EXCLUDED.title,
+                    detail = EXCLUDED.detail,
+                    recipe_id = EXCLUDED.recipe_id,
+                    updated_at = (now() AT TIME ZONE \'UTC\')
+             RETURNING id',
+            [$userId, $date, $slot, $title, $detail, $recipeId]
+        );
+        return [
+            'day' => $this->publicPlanSlot($userId, $this->requirePlanDay($userId, $id)),
+            'week' => $this->weekPlan($userId, $date),
+        ];
+    }
+
+    /**
+     * @return array{removed: int, week: array<string, mixed>}
+     */
+    public function clearPlanDay(int $userId, string $date, string $slot): array
+    {
+        $date = $this->weekdayDate($date);
+        $slot = $this->planSlot($slot);
+        $removed = $this->db->fetchAll(
+            'DELETE FROM meal_plan_days WHERE user_id = ? AND plan_date = ? AND slot = ? RETURNING id',
+            [$userId, $date, $slot]
+        );
+        return ['removed' => count($removed), 'week' => $this->weekPlan($userId, $date)];
     }
 
     /**
@@ -1402,5 +1496,166 @@ SQL,
     private function flag(mixed $value): bool
     {
         return $value === true || $value === 1 || $value === '1' || $value === 't';
+    }
+
+    private function weekMonday(string $anchor): DateTimeImmutable
+    {
+        try {
+            $date = Clock::normalizeDate(trim($anchor));
+        } catch (\InvalidArgumentException) {
+            throw ValidationException::withFields(['week' => 'Date must be YYYY-MM-DD.']);
+        }
+        $day = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if ($day === false) {
+            throw ValidationException::withFields(['week' => 'Date must be YYYY-MM-DD.']);
+        }
+        return $day->modify('-' . ((int) $day->format('N') - 1) . ' days');
+    }
+
+    private function weekdayDate(string $value): string
+    {
+        try {
+            $date = Clock::normalizeDate(trim($value));
+        } catch (\InvalidArgumentException) {
+            throw ValidationException::withFields(['plan_date' => 'Date must be YYYY-MM-DD.']);
+        }
+        $day = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+        if ($day === false) {
+            throw ValidationException::withFields(['plan_date' => 'Date must be YYYY-MM-DD.']);
+        }
+        if ((int) $day->format('N') > 5) {
+            throw ValidationException::withFields(['plan_date' => 'The planner is Monday through Friday.']);
+        }
+        return $date;
+    }
+
+    private function planSlot(string $slot): string
+    {
+        $slot = strtolower(trim($slot));
+        if (!in_array($slot, self::PLAN_SLOTS, true)) {
+            throw ValidationException::withFields(['slot' => 'Slot must be lunch or dinner.']);
+        }
+        return $slot;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function planRecipeId(int $userId, array $fields): ?int
+    {
+        if (!array_key_exists('recipe_id', $fields) || $fields['recipe_id'] === null || $fields['recipe_id'] === '') {
+            return null;
+        }
+        $value = $fields['recipe_id'];
+        $whole = is_int($value) || (is_string($value) && preg_match('/^[0-9]+$/', $value) === 1);
+        $id = $whole ? (int) $value : 0;
+        if (!$whole || $id < 1) {
+            throw ValidationException::withFields(['recipe_id' => 'Recipe not found.']);
+        }
+        $row = $this->db->fetchOne('SELECT id FROM pantry_recipes WHERE id = ? AND user_id = ?', [$id, $userId]);
+        if ($row === null) {
+            throw ValidationException::withFields(['recipe_id' => 'Recipe not found.']);
+        }
+        return $id;
+    }
+
+    private function planTitle(int $userId, mixed $title, ?int $recipeId): string
+    {
+        $name = trim(preg_replace('/\s+/u', ' ', (string) $title) ?? '');
+        if ($name === '' && $recipeId !== null) {
+            $name = (string) $this->pantry->recipe($userId, $recipeId)['name'];
+        }
+        if ($name === '') {
+            throw ValidationException::withFields(['title' => 'Enter a name.']);
+        }
+        if (mb_strlen($name) > 160) {
+            throw ValidationException::withFields(['title' => 'Name must be 160 characters or fewer.']);
+        }
+        return $name;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requirePlanDay(int $userId, int $id): array
+    {
+        $row = $this->db->fetchOne(
+            'SELECT id, plan_date::text AS plan_date, slot, title, detail, recipe_id
+             FROM meal_plan_days WHERE id = ? AND user_id = ?',
+            [$id, $userId]
+        );
+        if ($row === null) {
+            throw new NotFoundException('That day is not on the plan.');
+        }
+        return $row;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function publicPlanSlot(int $userId, array $row): array
+    {
+        $recipe = null;
+        $ready = null;
+        if ($row['recipe_id'] !== null && $row['recipe_id'] !== '') {
+            try {
+                $recipe = $this->pantry->recipe($userId, (int) $row['recipe_id']);
+                $ready = $this->planPantryReady($userId, $recipe);
+            } catch (NotFoundException) {
+                $recipe = null;
+            }
+        }
+        $parts = [];
+        if ($row['detail'] !== null && trim((string) $row['detail']) !== '') {
+            $parts[] = trim((string) $row['detail']);
+        }
+        if ($recipe !== null && $recipe['protein_g'] !== null) {
+            $grams = rtrim(rtrim(number_format((float) $recipe['protein_g'], 1, '.', ''), '0'), '.');
+            $parts[] = $grams . ' g protein';
+        }
+        if ($recipe !== null && $recipe['meal_prep']) {
+            $parts[] = 'Keeps ' . (int) $recipe['keeps_days'] . ' days';
+        }
+        if ($ready === true) {
+            $parts[] = 'Pantry ready';
+        }
+        return [
+            'id' => (int) $row['id'],
+            'slot' => (string) $row['slot'],
+            'title' => (string) $row['title'],
+            'detail' => $row['detail'] !== null && trim((string) $row['detail']) !== '' ? trim((string) $row['detail']) : null,
+            'line' => $parts === [] ? null : implode(' · ', $parts),
+            'recipe_id' => $recipe !== null ? (int) $recipe['id'] : null,
+            'pantry_ready' => $ready,
+        ];
+    }
+
+    /**
+     * True only when every linked product is on the shelf. Null when the recipe names no product.
+     *
+     * @param array<string, mixed> $recipe
+     */
+    private function planPantryReady(int $userId, array $recipe): ?bool
+    {
+        $checked = false;
+        foreach ($recipe['ingredients'] as $item) {
+            if ($item['product_id'] === null) {
+                continue;
+            }
+            $checked = true;
+            $have = $this->pantry->onHandAmount($userId, (int) $item['product_id'])['have'];
+            $need = $item['quantity'];
+            if ($need === null) {
+                if ($have <= 0) {
+                    return false;
+                }
+                continue;
+            }
+            if ($have + 0.0001 < (float) $need) {
+                return false;
+            }
+        }
+        return $checked ? true : null;
     }
 }

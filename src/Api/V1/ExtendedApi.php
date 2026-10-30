@@ -703,6 +703,19 @@ final class ExtendedApi
             $this->assertMealWrite();
             return $this->svc->meals->logPrep($u, $this->prepInput(true), $this->actorLabel());
         }, 201, true));
+        $r->get('/api/v1/pantry/meals/days', fn () => $this->run(function (int $u): array {
+            $anchor = isset($_GET['week']) && $_GET['week'] !== '' ? (string) $_GET['week'] : $this->svc->clock->today();
+            return $this->svc->meals->weekPlan($u, $anchor);
+        }));
+        $r->post('/api/v1/pantry/meals/days/remove', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            $body = $this->runner->body();
+            return $this->svc->meals->clearPlanDay($u, (string) ($body['plan_date'] ?? ''), (string) ($body['slot'] ?? ''));
+        }, 200, true));
+        $r->post('/api/v1/pantry/meals/days', fn () => $this->run(function (int $u): array {
+            $this->assertMealWrite();
+            return $this->svc->meals->savePlanDay($u, $this->runner->body());
+        }, 200, true));
         $r->get('/api/v1/pantry/meals', fn () => $this->run(function (int $u): array {
             $picks = self::csv($_GET['picks'] ?? null) ?? [];
             $only = null;

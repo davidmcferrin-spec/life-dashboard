@@ -1,5 +1,5 @@
 /**
- * Pantry page: inventory, scan, purge, products, recipes, and the meal builder.
+ * Pantry page: inventory, scan, purge, products, recipes, the meal builder, and the weekday plan.
  * BarcodeDetector when the browser has it, otherwise the vendored ZXing build.
  * The file is same-origin because the page CSP only allows scripts from 'self'.
  */
@@ -111,6 +111,7 @@
             pantry_recipe_ingredients: ['recipes', 'meals'],
             meal_components: ['meals'],
             meal_pairings: ['meals'],
+            meal_plan_days: ['meals'],
             shopping_lists: ['meals'],
             shopping_items: ['meals'],
         };
@@ -1326,6 +1327,9 @@
     let mealPrepName = '';
     let mealPlan = null;
     let mealPlanKey = '';
+    let mealWeek = null;
+    let mealPlanRecipes = null;
+    let mealPlanIntent = null;
 
     async function mealRepair(err) {
         const message = (err && err.fields && err.fields.picks) || (err && err.message) || '';
@@ -1575,21 +1579,155 @@
         }
     }
 
+    function renderMealWeek(week) {
+        const days = (week && week.days) || [];
+        if (!days.length) return '';
+        return `<section class="ld-meal-week" id="meal-week" aria-label="Monday to Friday">${days.map(mealDayColumn).join('')}</section>`;
+    }
+
+    function mealDayColumn(day) {
+        const lunch = day.lunch ? dinnerCard(day, 'lunch') : addLunchButton(day);
+        return `<article class="ld-meal-day">
+            <header><span>${esc(day.weekday || '')}</span><strong>${esc(day.label || '')}</strong></header>
+            ${dinnerCard(day, 'dinner')}
+            ${lunch}
+        </article>`;
+    }
+
+    function dinnerCard(day, slot) {
+        const row = day[slot];
+        const label = slot === 'lunch' ? 'LUNCH' : 'DINNER';
+        const quiet = slot === 'lunch' ? ' ld-meal-slot-lunch' : '';
+        if (!row) {
+            return `<button type="button" class="ld-meal-slot is-empty${quiet}" data-plan-add="${slot}" data-plan-date="${esc(day.date)}"><span>${label}</span><strong>Add ${slot}</strong></button>`;
+        }
+        const line = row.line ? `<small>${esc(row.line)}</small>` : '';
+        return `<button type="button" class="ld-meal-slot${quiet}" data-plan-edit="${slot}" data-plan-date="${esc(day.date)}"><span>${label}</span><strong>${esc(row.title || '')}</strong>${line}</button>`;
+    }
+
+    function addLunchButton(day) {
+        return `<button type="button" class="ld-meal-add" data-plan-add="lunch" data-plan-date="${esc(day.date)}">${icon('pantry-icon-plus')}<span>Add lunch</span></button>`;
+    }
+
+    function closeMealDay() {
+        unmountDialog('meal-day-modal');
+    }
+
+    async function openMealDay(date, slot) {
+        closeMealDay();
+        closeMove();
+        closeEdit();
+        closeConsume();
+        closeRecipe();
+        const days = (mealWeek && mealWeek.days) || [];
+        const day = days.find((row) => row.date === date) || days[0];
+        if (!day) return;
+        const chosen = day.date;
+        const current = day[slot] || null;
+        if (!mealPlanRecipes) {
+            const data = await api.get('/pantry/recipes');
+            mealPlanRecipes = data.recipes || [];
+        }
+        const recipeOptions = ['<option value="">No recipe</option>'].concat((mealPlanRecipes || []).map((recipe) => {
+            const selected = current && Number(current.recipe_id) === Number(recipe.id) ? ' selected' : '';
+            return `<option value="${esc(String(recipe.id))}"${selected}>${esc(recipe.name || '')}</option>`;
+        })).join('');
+        const dayOptions = days.map((row) => {
+            const selected = row.date === chosen ? ' selected' : '';
+            return `<option value="${esc(row.date)}"${selected}>${esc((row.weekday || '') + ' ' + (row.label || ''))}</option>`;
+        }).join('');
+        const heading = (current ? 'Edit ' : 'Add ') + slot;
+        const remove = current ? '<button type="button" class="btn text-sm" id="meal-day-remove">Remove</button>' : '';
+        const modal = mountDialog(`<div id="meal-day-modal" class="app-modal ld-pantry-dialog" role="dialog" aria-modal="true" aria-labelledby="meal-day-title">
+            <div class="app-modal-backdrop" data-close aria-hidden="true"></div>
+            <div class="app-modal-panel surface">
+                <form id="meal-day-form">
+                    <div class="flex items-start justify-between gap-3">
+                        <p id="meal-day-title" class="ld-pantry-dialog-title">${esc(heading)}</p>
+                        ${closeButton()}
+                    </div>
+                    <label class="ld-pantry-field">Day
+                        <select class="input w-full" name="plan_date">${dayOptions}</select>
+                    </label>
+                    <label class="ld-pantry-field">Name
+                        <input class="input w-full" name="title" required maxlength="160" value="${esc(current ? current.title : '')}">
+                    </label>
+                    <label class="ld-pantry-field">Note
+                        <input class="input w-full" name="detail" maxlength="240" value="${esc(current && current.detail ? current.detail : '')}">
+                    </label>
+                    <label class="ld-pantry-field">Recipe
+                        <select class="input w-full" name="recipe_id">${recipeOptions}</select>
+                    </label>
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="btn-primary text-sm">Save</button>
+                        ${remove}
+                    </div>
+                </form>
+            </div>
+        </div>`);
+        bindDismiss(modal, closeMealDay);
+        const form = modal.querySelector('#meal-day-form');
+        const nameInput = form.querySelector('[name="title"]');
+        form.querySelector('[name="recipe_id"]').addEventListener('change', (event) => {
+            if (nameInput.value.trim() !== '') return;
+            const id = Number(event.target.value);
+            const recipe = (mealPlanRecipes || []).find((row) => Number(row.id) === id);
+            if (recipe && recipe.name) nameInput.value = recipe.name;
+        });
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const fields = new FormData(form);
+            const nextDate = String(fields.get('plan_date') || chosen);
+            const recipeId = String(fields.get('recipe_id') || '');
+            const payload = {
+                plan_date: nextDate,
+                slot: slot,
+                title: String(fields.get('title') || ''),
+                detail: String(fields.get('detail') || ''),
+                recipe_id: recipeId === '' ? null : Number(recipeId),
+            };
+            api.post('/pantry/meals/days', payload).then(() => {
+                if (current && nextDate !== chosen) {
+                    return api.post('/pantry/meals/days/remove', { plan_date: chosen, slot: slot });
+                }
+            }).then(() => {
+                closeMealDay();
+                return meals();
+            }).catch(fail);
+        });
+        const removeBtn = modal.querySelector('#meal-day-remove');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+                api.post('/pantry/meals/days/remove', { plan_date: chosen, slot: slot }).then(() => {
+                    closeMealDay();
+                    return meals();
+                }).catch(fail);
+            });
+        }
+        if (nameInput) nameInput.focus();
+    }
+
     async function meals(repair) {
         const gen = ++mealGen;
         const qs = new URLSearchParams();
         if (mealPicks.length) qs.set('picks', mealPicks.join(','));
         let board;
         let listed;
+        let week;
         try {
-            board = await api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : ''));
-            listed = await api.get('/pantry/meals/components');
+            [board, listed, week] = await Promise.all([
+                api.get('/pantry/meals' + (qs.toString() ? '?' + qs.toString() : '')),
+                api.get('/pantry/meals/components'),
+                api.get('/pantry/meals/days'),
+            ]);
         } catch (err) {
             if (gen !== mealGen) return;
             if (repair && await mealRepair(err)) return;
             throw err;
         }
         if (gen !== mealGen) return;
+        mealWeek = week;
+        mealPlanRecipes = null;
         if (!repair) clearError();
         const returned = new Set((board.picks || []).map((row) => row.id));
         mealPicks = mealPicks.filter((id) => returned.has(id));
@@ -1649,6 +1787,7 @@
             : '';
         const planHtml = mealPlan ? renderPlan(mealPlan) : '';
         body.innerHTML = `
+            ${renderMealWeek(mealWeek)}
             <section class="ld-pantry-card">
                 <header class="ld-pantry-card-head">
                     <div class="ld-pantry-card-title">
@@ -1805,6 +1944,17 @@
                 window.location.href = '/pantry?view=recipes' + (id ? '&recipe=' + id : '');
             }).catch(fail);
         });
+        const weekEl = document.getElementById('meal-week');
+        if (weekEl) {
+            weekEl.addEventListener('click', (event) => {
+                const add = event.target.closest('[data-plan-add]');
+                const edit = event.target.closest('[data-plan-edit]');
+                const node = add || edit;
+                if (!node) return;
+                const planSlot = add ? add.dataset.planAdd : edit.dataset.planEdit;
+                openMealDay(node.dataset.planDate, planSlot).catch(fail);
+            });
+        }
         document.getElementById('meal-groceries').addEventListener('click', () => {
             api.post('/pantry/meals/groceries', { picks: mealPicks }).then((res) => {
                 const names = (res.added || []).map((row) => row.name).filter(Boolean);
@@ -1813,6 +1963,13 @@
                     : 'Nothing missing from Groceries.';
             }).catch(fail);
         });
+        if (mealPlanIntent && gen === mealGen) {
+            const intent = mealPlanIntent;
+            mealPlanIntent = null;
+            const days = (mealWeek && mealWeek.days) || [];
+            const open = days.find((day) => !day[intent]) || days[0];
+            if (open) openMealDay(open.date, intent).catch(fail);
+        }
     }
 
     const addItem = document.getElementById('pantry-add');
@@ -1834,10 +1991,13 @@
     const addMeal = document.getElementById('pantry-add-meal');
     if (addMeal) {
         addMeal.addEventListener('click', () => {
-            const name = document.querySelector('#meal-recipe [name="name"]');
-            if (!name) return;
-            name.scrollIntoView({ block: 'center' });
-            name.focus();
+            const days = (mealWeek && mealWeek.days) || [];
+            const open = days.find((day) => !day.dinner) || days[0];
+            if (!open) {
+                mealPlanIntent = 'dinner';
+                return;
+            }
+            openMealDay(open.date, 'dinner').catch(fail);
         });
     }
 

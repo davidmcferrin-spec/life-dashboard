@@ -471,6 +471,7 @@ final class MealBuilderTest extends PgsqlTestCase
         self::assertTrue(MealBuilder::mcpWriteAllowed(false, null));
         self::assertFalse(MealBuilder::mcpWriteAllowed(false, 9));
         self::assertTrue(MealBuilder::mcpWriteAllowed(true, 9));
+        self::assertSame('meal_plan_day', ApiRunner::entityFromPath('/api/v1/pantry/meals/days'));
         self::assertSame('meal_component', ApiRunner::entityFromPath('/api/v1/pantry/meals/components/4'));
         self::assertSame('recipe', ApiRunner::entityFromPath('/api/v1/pantry/meals/recipe'));
         self::assertSame('pantry_lot', ApiRunner::entityFromPath('/api/v1/pantry/meals/prep'));
@@ -664,6 +665,166 @@ final class MealBuilderTest extends PgsqlTestCase
         self::assertNotContains('Chicken', array_column($chicken['swaps'], 'name'));
         $sauceNames = $this->names($board['categories']['sauce']);
         self::assertNotContains('Turkey', $sauceNames);
+    }
+
+    public function testWeekdayPlanListsMondayThroughFriday(): void
+    {
+        $empty = $this->svc->meals->weekPlan($this->user, '2026-09-25');
+        self::assertSame('2026-09-21', $empty['week_start']);
+        self::assertSame('2026-09-25', $empty['week_end']);
+        self::assertSame(
+            ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+            array_column($empty['days'], 'weekday')
+        );
+        self::assertSame(
+            ['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25'],
+            array_column($empty['days'], 'date')
+        );
+        self::assertSame(['SEP 21', 'SEP 22', 'SEP 23', 'SEP 24', 'SEP 25'], array_column($empty['days'], 'label'));
+        self::assertNull($empty['days'][0]['dinner']);
+        self::assertNull($empty['days'][0]['lunch']);
+
+        $saturday = $this->svc->meals->weekPlan($this->user, '2026-09-26');
+        self::assertSame('2026-09-21', $saturday['week_start']);
+
+        $saved = $this->svc->meals->savePlanDay($this->user, [
+            'plan_date' => '2026-09-21',
+            'slot' => 'dinner',
+            'title' => 'Lemon herb chicken',
+        ]);
+        self::assertSame($saved['day']['id'], ApiRunner::entityIdFromPayload($saved));
+        self::assertSame('dinner', $saved['day']['slot']);
+        self::assertSame('Lemon herb chicken', $saved['day']['title']);
+        self::assertNull($saved['day']['line']);
+
+        $lunch = $this->svc->meals->savePlanDay($this->user, [
+            'plan_date' => '2026-09-21',
+            'slot' => 'lunch',
+            'title' => 'Rice bowl',
+            'detail' => 'Use the leftover rice',
+        ]);
+        self::assertSame('Use the leftover rice', $lunch['day']['detail']);
+        self::assertSame('Use the leftover rice', $lunch['day']['line']);
+
+        $replaced = $this->svc->meals->savePlanDay($this->user, [
+            'plan_date' => '2026-09-21',
+            'slot' => 'dinner',
+            'title' => 'Miso salmon bowls',
+        ]);
+        self::assertSame($saved['day']['id'], $replaced['day']['id']);
+        self::assertSame(1, (int) $this->db->fetchScalar(
+            "SELECT COUNT(*) FROM meal_plan_days WHERE user_id = ? AND plan_date = '2026-09-21' AND slot = 'dinner'",
+            [$this->user]
+        ));
+
+        $this->db->execute("INSERT INTO users (username, email, password_hash) VALUES ('other', 'o@x', 'h')");
+        $other = (int) $this->db->lastInsertId();
+        $this->svc->meals->savePlanDay($other, [
+            'plan_date' => '2026-09-22',
+            'slot' => 'dinner',
+            'title' => 'Hidden dinner',
+        ]);
+
+        $week = $this->svc->meals->weekPlan($this->user, $this->svc->clock->today());
+        $monday = $week['days'][0];
+        self::assertSame('Miso salmon bowls', $monday['dinner']['title']);
+        self::assertSame('Rice bowl', $monday['lunch']['title']);
+        self::assertNull($week['days'][1]['dinner']);
+
+        $cleared = $this->svc->meals->clearPlanDay($this->user, '2026-09-21', 'lunch');
+        self::assertSame(1, $cleared['removed']);
+        self::assertNull($cleared['week']['days'][0]['lunch']);
+        self::assertSame('Miso salmon bowls', $cleared['week']['days'][0]['dinner']['title']);
+        self::assertSame(0, $this->svc->meals->clearPlanDay($this->user, '2026-09-21', 'lunch')['removed']);
+    }
+
+    public function testWeekdayPlanLineUsesTheRecipeOnTheShelf(): void
+    {
+        $jar = $this->jarKitchen(false);
+        $recipe = $this->svc->pantry->upsertRecipe($this->user, [
+            'name' => 'Spicy chicken noodle jar',
+            'meal_prep' => true,
+            'protein_g' => 28.5,
+            'servings' => 1,
+            'ingredients' => [
+                ['product_id' => $jar['chicken_product'], 'quantity' => 4, 'unit' => 'oz'],
+                ['product_id' => $jar['noodle_product'], 'quantity' => 80, 'unit' => 'g'],
+                ['product_id' => $jar['chili_product'], 'quantity' => 2, 'unit' => 'oz'],
+                ['product_id' => $jar['cabbage_product'], 'quantity' => 1, 'unit' => 'each'],
+                ['product_id' => $jar['scallion_product'], 'quantity' => 1, 'unit' => 'each'],
+            ],
+        ]);
+        $saved = $this->svc->meals->savePlanDay($this->user, [
+            'plan_date' => '2026-09-23',
+            'slot' => 'dinner',
+            'title' => '',
+            'recipe_id' => $recipe['id'],
+        ]);
+        self::assertSame('Spicy chicken noodle jar', $saved['day']['title']);
+        self::assertSame($recipe['id'], $saved['day']['recipe_id']);
+        self::assertFalse($saved['day']['pantry_ready']);
+        self::assertSame('28.5 g protein · Keeps 3 days', $saved['day']['line']);
+
+        $this->stock($jar['chicken_product'], 4, 'oz', '2026-10-01');
+        $this->stock($jar['chili_product'], 2, 'oz', '2026-10-01');
+        $ready = $this->svc->meals->weekPlan($this->user, '2026-09-23');
+        self::assertTrue($ready['days'][2]['dinner']['pantry_ready']);
+        self::assertSame('28.5 g protein · Keeps 3 days · Pantry ready', $ready['days'][2]['dinner']['line']);
+    }
+
+    public function testWeekdayPlanRejectsAWeekendAndAnUnknownRecipe(): void
+    {
+        try {
+            $this->svc->meals->savePlanDay($this->user, [
+                'plan_date' => '2026-09-26',
+                'slot' => 'dinner',
+                'title' => 'Saturday',
+            ]);
+            self::fail('Saturday was stored.');
+        } catch (ValidationException $e) {
+            self::assertSame('The planner is Monday through Friday.', $e->fields()['plan_date']);
+        }
+        try {
+            $this->svc->meals->savePlanDay($this->user, [
+                'plan_date' => '2026-09-27',
+                'slot' => 'lunch',
+                'title' => 'Sunday',
+            ]);
+            self::fail('Sunday was stored.');
+        } catch (ValidationException $e) {
+            self::assertSame('The planner is Monday through Friday.', $e->fields()['plan_date']);
+        }
+        try {
+            $this->svc->meals->savePlanDay($this->user, [
+                'plan_date' => '2026-09-22',
+                'slot' => 'brunch',
+                'title' => 'Eggs',
+            ]);
+            self::fail('An unknown slot was stored.');
+        } catch (ValidationException $e) {
+            self::assertSame('Slot must be lunch or dinner.', $e->fields()['slot']);
+        }
+        try {
+            $this->svc->meals->savePlanDay($this->user, [
+                'plan_date' => '2026-09-22',
+                'slot' => 'dinner',
+                'title' => '',
+            ]);
+            self::fail('A blank dinner was stored.');
+        } catch (ValidationException $e) {
+            self::assertSame('Enter a name.', $e->fields()['title']);
+        }
+        try {
+            $this->svc->meals->savePlanDay($this->user, [
+                'plan_date' => '2026-09-22',
+                'slot' => 'dinner',
+                'title' => 'Ghost',
+                'recipe_id' => 999999,
+            ]);
+            self::fail('An unknown recipe was linked.');
+        } catch (ValidationException $e) {
+            self::assertSame('Recipe not found.', $e->fields()['recipe_id']);
+        }
     }
 
     /**
