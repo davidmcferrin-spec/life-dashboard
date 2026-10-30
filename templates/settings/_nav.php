@@ -47,10 +47,16 @@ if (!function_exists('settings_nav_groups')) {
                 'bookmarks'  => ['Bookmarks', '/settings/bookmarks'],
                 'clipboards' => ['Cloud clipboards', '/settings/clipboards'],
                 'agents'     => ['Agents', '/settings/agents'],
+                'grok'       => ['Grok', '/settings/grok'],
                 'pings'      => ['System status', '/settings/pings'],
             ],
             'Tracking' => $tracking,
         ];
+
+        // The key is for the whole server, so only an admin gets this step.
+        if (!$admin) {
+            unset($groups['Connections']['grok']);
+        }
 
         if ($admin) {
             $groups['Administration'] = [
