@@ -55,6 +55,137 @@ final class SpotifyLibrary
     }
 
     /**
+     * Season, mood, and energy gathered from tracks stored on each playlist.
+     *
+     * @return array{facets: array<string, array<string, mixed>>}
+     */
+    public function playlistFacets(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT p.id, p.created_at, m.energy, m.mood_tags, m.season_tags
+             FROM spotify_playlists p
+             LEFT JOIN spotify_playlist_tracks pt ON pt.playlist_id = p.id AND pt.user_id = p.user_id
+             LEFT JOIN spotify_tracks t ON t.id = pt.track_id
+             LEFT JOIN spotify_track_meta m ON m.user_id = p.user_id AND m.spotify_track_id = t.spotify_id
+             WHERE p.user_id = ?
+             ORDER BY p.id',
+            [$userId]
+        );
+        $bags = [];
+        foreach ($rows as $row) {
+            $id = (string) $row['id'];
+            if (!isset($bags[$id])) {
+                $bags[$id] = [
+                    'season_counts' => [],
+                    'moods' => [],
+                    'energies' => [],
+                    'created_at' => (string) $row['created_at'],
+                ];
+            }
+            if ($row['energy'] !== null && $row['energy'] !== '') {
+                $bags[$id]['energies'][] = (int) $row['energy'];
+            }
+            foreach (self::jsonTags($row['season_tags'] ?? null) as $tag) {
+                $bags[$id]['season_counts'][$tag] = ($bags[$id]['season_counts'][$tag] ?? 0) + 1;
+            }
+            foreach (self::jsonTags($row['mood_tags'] ?? null) as $tag) {
+                $bags[$id]['moods'][$tag] = true;
+            }
+        }
+        $facets = [];
+        foreach ($bags as $id => $bag) {
+            arsort($bag['season_counts']);
+            $energies = $bag['energies'];
+            $facets[$id] = [
+                'season' => $bag['season_counts'] === [] ? null : (string) array_key_first($bag['season_counts']),
+                'seasons' => array_keys($bag['season_counts']),
+                'moods' => array_keys($bag['moods']),
+                'energy_min' => $energies === [] ? null : min($energies),
+                'energy_max' => $energies === [] ? null : max($energies),
+                'created_at' => $bag['created_at'],
+            ];
+        }
+        return ['facets' => $facets];
+    }
+
+    /**
+     * Local tracks Spotify has not been asked about in the last day.
+     *
+     * @return array{stale: int, ids: list<string>}
+     */
+    public function catalogStale(int $userId): array
+    {
+        $stale = (int) $this->db->fetchScalar(
+            "SELECT COUNT(*) FROM spotify_tracks
+             WHERE user_id = ? AND updated_at <= (now() AT TIME ZONE 'UTC') - interval '1 day'",
+            [$userId]
+        );
+        $rows = $this->db->fetchAll(
+            "SELECT spotify_id FROM spotify_tracks
+             WHERE user_id = ? AND updated_at <= (now() AT TIME ZONE 'UTC') - interval '1 day'
+             ORDER BY updated_at, id
+             LIMIT 50",
+            [$userId]
+        );
+        return [
+            'stale' => $stale,
+            'ids' => array_map(static fn (array $row): string => (string) $row['spotify_id'], $rows),
+        ];
+    }
+
+    /**
+     * Write catalog fields Spotify still returns. Does not invent energy, BPM, or mood.
+     *
+     * @param list<array<string, mixed>> $tracks
+     * @return array{updated: int, missing: int, checked: int}
+     */
+    public function applyCatalog(int $userId, array $tracks): array
+    {
+        $updated = 0;
+        $missing = 0;
+        foreach ($tracks as $track) {
+            if (!is_array($track)) {
+                continue;
+            }
+            $id = (string) ($track['id'] ?? '');
+            if (preg_match('/^[A-Za-z0-9]+$/', $id) !== 1) {
+                continue;
+            }
+            $artists = $track['artists'] ?? [];
+            if (!is_array($artists)) {
+                $artists = [];
+            }
+            $changed = $this->db->execute(
+                'UPDATE spotify_tracks
+                 SET name = ?, artists = ?::jsonb, album = ?, duration_ms = ?, explicit = ?,
+                     popularity = ?, image_url = ?, updated_at = (now() AT TIME ZONE \'UTC\')
+                 WHERE user_id = ? AND spotify_id = ?',
+                [
+                    trim((string) ($track['name'] ?? '')) !== '' ? trim((string) $track['name']) : $id,
+                    json_encode(array_values(array_map('strval', $artists)), JSON_THROW_ON_ERROR),
+                    isset($track['album']) && $track['album'] !== null ? (string) $track['album'] : null,
+                    max(0, (int) ($track['duration_ms'] ?? 0)),
+                    !empty($track['explicit']) ? 1 : 0,
+                    isset($track['popularity']) && is_numeric($track['popularity'])
+                        ? max(0, min(100, (int) $track['popularity']))
+                        : null,
+                    isset($track['image_url']) && is_string($track['image_url']) && str_starts_with($track['image_url'], 'https://')
+                        ? $track['image_url']
+                        : null,
+                    $userId,
+                    $id,
+                ]
+            );
+            if ($changed > 0) {
+                $updated++;
+            } else {
+                $missing++;
+            }
+        }
+        return ['updated' => $updated, 'missing' => $missing, 'checked' => $updated + $missing];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function playlist(int $userId, int $id): array
@@ -1121,6 +1252,26 @@ final class SpotifyLibrary
     /**
      * @return list<string>
      */
+    private static function jsonTags(mixed $value): array
+    {
+        if (is_array($value)) {
+            $decoded = $value;
+        } else {
+            $decoded = json_decode((string) $value, true);
+        }
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $tags = [];
+        foreach ($decoded as $tag) {
+            $text = trim((string) $tag);
+            if ($text !== '') {
+                $tags[] = $text;
+            }
+        }
+        return $tags;
+    }
+
     private static function tagValue(mixed $value): array
     {
         if (is_array($value)) {

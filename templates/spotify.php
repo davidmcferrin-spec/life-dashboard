@@ -24,6 +24,8 @@ $musicIconNames = [
     'chevron-right', 'chevron-down', 'search', 'x', 'sparkles', 'bot',
     'layout-dashboard', 'settings', 'refresh-cw', 'lock-keyhole', 'archive', 'activity',
     'undo-2', 'eye', 'plus', 'tag', 'cloud-sun', 'pencil', 'play',
+    'pause', 'skip-back', 'skip-forward', 'volume-2', 'ellipsis',
+    'external-link', 'grip-vertical', 'check',
 ];
 $musicIcon = static function (string $name) use ($musicIconNames): void {
     if (!in_array($name, $musicIconNames, true)) {
@@ -174,6 +176,29 @@ require __DIR__ . '/partials/head.php';
                     </label>
                 </div>
                 <button type="submit" class="btn-primary">Create</button>
+            </form>
+        </div>
+    </div>
+    <div id="music-season-modal" class="app-modal hidden" role="dialog" aria-modal="true" aria-labelledby="music-season-title">
+        <div class="app-modal-backdrop" data-close-modal></div>
+        <div class="app-modal-panel">
+            <div class="music-drawer-head">
+                <h2 id="music-season-title">Add season</h2>
+                <button type="button" class="app-modal-close" data-close-modal aria-label="Close"><?php $musicIcon('x'); ?></button>
+            </div>
+            <form id="music-season-form" class="music-form">
+                <label class="music-field">Season name
+                    <input name="season" class="input" maxlength="32" required placeholder="christmas">
+                </label>
+                <label class="music-check"><input type="checkbox" name="thanksgiving"> Start on Thanksgiving</label>
+                <div class="music-split">
+                    <label class="music-field">Start month <input name="start_month" class="input" inputmode="numeric" maxlength="2"></label>
+                    <label class="music-field">Start day <input name="start_day" class="input" inputmode="numeric" maxlength="2"></label>
+                    <label class="music-field">End month <input name="end_month" class="input" inputmode="numeric" maxlength="2" required></label>
+                    <label class="music-field">End day <input name="end_day" class="input" inputmode="numeric" maxlength="2" required></label>
+                </div>
+                <label class="music-check"><input type="checkbox" name="allow_outside"> Allow outside window</label>
+                <button type="submit" class="btn-primary">Save window</button>
             </form>
         </div>
     </div>
