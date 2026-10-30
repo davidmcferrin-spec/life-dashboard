@@ -82,4 +82,93 @@ final class MixtapeTest extends TestCase
         self::assertContains('bpm', $rough[0]['reasons']);
         self::assertContains('key', $rough[0]['reasons']);
     }
+
+    public function testPlanKeepsALockedTrackInItsSlot(): void
+    {
+        $plan = Mixtape::plan($this->arcTracks(), Mixtape::ARC, [
+            'locks' => [['uri' => 'spotify:track:end', 'position' => 0]],
+        ]);
+        self::assertSame('spotify:track:end', $plan['order'][0]['uri']);
+        self::assertCount(5, $plan['order']);
+        self::assertSame(1, count(array_filter(
+            $plan['order'],
+            static fn (array $row): bool => $row['uri'] === 'spotify:track:end'
+        )));
+    }
+
+    public function testPlanSwapsOneUnlockedSlot(): void
+    {
+        $tracks = $this->arcTracks();
+        $tracks[] = ['uri' => 'spotify:track:alt', 'energy' => 6, 'bpm' => 97, 'camelot' => '8A'];
+        $plan = Mixtape::plan($tracks, Mixtape::ARC, [
+            'locks' => [
+                ['uri' => 'spotify:track:low', 'position' => 0],
+                ['uri' => 'spotify:track:peak', 'position' => 2],
+                ['uri' => 'spotify:track:rest', 'position' => 3],
+                ['uri' => 'spotify:track:end', 'position' => 4],
+            ],
+            'avoid' => ['spotify:track:mid'],
+            'slots' => 5,
+        ]);
+        self::assertSame(
+            ['spotify:track:low', 'spotify:track:alt', 'spotify:track:peak', 'spotify:track:rest', 'spotify:track:end'],
+            array_column($plan['order'], 'uri')
+        );
+    }
+
+    public function testPlanCanIgnoreKeyCompatibility(): void
+    {
+        $plan = Mixtape::plan($this->arcTracks(), Mixtape::ARC, ['key' => false]);
+        self::assertSame(
+            ['spotify:track:low', 'spotify:track:mid', 'spotify:track:peak', 'spotify:track:rest', 'spotify:track:end'],
+            array_column($plan['order'], 'uri')
+        );
+        $rough = array_values(array_filter(
+            $plan['rough'],
+            static fn (array $row): bool => $row['to'] === 'spotify:track:end'
+        ));
+        self::assertNotSame([], $rough);
+        self::assertContains('bpm', $rough[0]['reasons']);
+        self::assertNotContains('key', $rough[0]['reasons']);
+    }
+
+    public function testPlanFitsATargetLengthWithoutDroppingALock(): void
+    {
+        $tracks = $this->arcTracks();
+        foreach ($tracks as $i => $track) {
+            $tracks[$i]['duration_ms'] = 600000;
+        }
+        $open = Mixtape::plan($tracks, Mixtape::ARC, ['target_ms' => 1500000]);
+        self::assertSame(
+            ['spotify:track:low', 'spotify:track:mid'],
+            array_column($open['order'], 'uri')
+        );
+
+        $held = Mixtape::plan($tracks, Mixtape::ARC, [
+            'target_ms' => 1500000,
+            'locks' => [['uri' => 'spotify:track:end', 'position' => 4]],
+        ]);
+        self::assertSame(
+            ['spotify:track:low', 'spotify:track:end'],
+            array_column($held['order'], 'uri')
+        );
+        self::assertLessThanOrEqual(1500000, array_sum(array_column($held['order'], 'duration_ms')));
+
+        $untimed = Mixtape::plan($this->arcTracks(), Mixtape::ARC, ['target_ms' => 1000]);
+        self::assertCount(5, $untimed['order']);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function arcTracks(): array
+    {
+        return [
+            ['uri' => 'spotify:track:low', 'energy' => 3, 'bpm' => 90, 'camelot' => '8A'],
+            ['uri' => 'spotify:track:mid', 'energy' => 6, 'bpm' => 96, 'camelot' => '8A'],
+            ['uri' => 'spotify:track:peak', 'energy' => 9, 'bpm' => 102, 'camelot' => '9A'],
+            ['uri' => 'spotify:track:rest', 'energy' => 5, 'bpm' => 98, 'camelot' => '8B'],
+            ['uri' => 'spotify:track:end', 'energy' => 4, 'bpm' => 140, 'camelot' => '1A'],
+        ];
+    }
 }

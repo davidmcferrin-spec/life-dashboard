@@ -172,6 +172,59 @@ final class SpotifyMixtapeTest extends PgsqlTestCase
         self::assertNotContains('replace', $ops);
     }
 
+    public function testSavedLocksStayInPlaceAndPlanDoesNotWriteThem(): void
+    {
+        $lib = $this->library('2026-07-04 18:00:00');
+        $rows = [
+            ['uri' => 'spotify:track:low01', 'energy' => 3, 'bpm' => 90, 'camelot' => '8A', 'source' => 'manual'],
+            ['uri' => 'spotify:track:mid01', 'energy' => 6, 'bpm' => 96, 'camelot' => '8A'],
+            ['uri' => 'spotify:track:peak01', 'energy' => 9, 'bpm' => 102, 'camelot' => '9A'],
+            ['uri' => 'spotify:track:rest01', 'energy' => 5, 'bpm' => 98, 'camelot' => '8B'],
+            ['uri' => 'spotify:track:end01', 'energy' => 4, 'bpm' => 140, 'camelot' => '1A'],
+        ];
+        $lib->mixtape()->saveMany($this->user, $rows);
+        $uris = array_column($rows, 'uri');
+        $plain = $lib->mixtape()->plan($this->user, $uris, null, null, ['key' => false]);
+        self::assertSame([], $lib->mixtape()->locks($this->user)['locks']);
+        $rough = array_values(array_filter(
+            $plain['rough'],
+            static fn (array $row): bool => $row['to'] === 'spotify:track:end01'
+        ));
+        self::assertNotSame([], $rough);
+        self::assertNotContains('key', $rough[0]['reasons']);
+
+        $saved = $lib->mixtape()->saveLocks($this->user, [
+            ['uri' => 'spotify:track:end01', 'position' => 0],
+        ]);
+        self::assertTrue($saved['saved']);
+        self::assertSame(0, $saved['locks'][0]['position']);
+        $durations = [];
+        foreach ($uris as $uri) {
+            $durations[$uri] = 600000;
+        }
+        $plan = $lib->mixtape()->plan($this->user, $uris, null, null, [
+            'locks' => $saved['locks'],
+            'durations' => $durations,
+            'target_ms' => 1500000,
+        ]);
+        self::assertSame('spotify:track:end01', $plan['order'][0]['uri']);
+        self::assertLessThanOrEqual(1500000, array_sum(array_column($plan['order'], 'duration_ms')));
+        self::assertSame('spotify:track:end01', $lib->mixtape()->locks($this->user)['locks'][0]['uri']);
+
+        $cleared = $lib->mixtape()->saveLocks($this->user, []);
+        self::assertSame([], $cleared['locks']);
+    }
+
+    public function testDuplicateLockPositionsAreRefused(): void
+    {
+        $lib = $this->library('2026-07-04 18:00:00');
+        $this->expectException(ValidationException::class);
+        $lib->mixtape()->saveLocks($this->user, [
+            ['uri' => 'spotify:track:low01', 'position' => 1],
+            ['uri' => 'spotify:track:mid01', 'position' => 1],
+        ]);
+    }
+
     /**
      * @param list<string> $uris
      */
