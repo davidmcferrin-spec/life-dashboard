@@ -8,6 +8,7 @@ use Dashboard\Api\V1\Scope;
 use Dashboard\Digest\DigestBrief;
 use Dashboard\Digest\DigestCatalog;
 use Dashboard\Digest\DigestDates;
+use Dashboard\Digest\DigestTopics;
 use Dashboard\Digest\DigestUrl;
 use Dashboard\Settings\ServiceControl;
 use Dashboard\Support\ValidationException;
@@ -127,6 +128,39 @@ final class DigestTest extends TestCase
         self::assertStringContainsString("item.date_source === 'found'", $js);
         self::assertStringContainsString('is-found', $js);
         self::assertStringContainsString('Found ', $js);
+        self::assertStringContainsString('id="digest-topics"', $html);
+        self::assertStringContainsString('digest-icon-ellipsis', $html);
+        self::assertStringContainsString('digest-icon-arrow', $html);
+        self::assertStringContainsString('aria-label="Item actions"', $js);
+        self::assertStringContainsString('Read full analysis', $js);
+        self::assertStringContainsString('function sourceBadge', $js);
+        self::assertStringContainsString('function renderTopicChips', $js);
+        self::assertStringContainsString('All topics', $js);
+        self::assertStringNotContainsString('AI agents move from demos', $js);
+        self::assertStringContainsString('.ld-digest-read', $css);
+        self::assertStringContainsString('.ld-digest-item-menu', $css);
+        self::assertSame('digest:write', Scope::forPath('/api/v1/digest/items/4/topics', true));
+        $icon = file_get_contents(dirname(__DIR__, 2) . '/public/assets/vendor/lucide/arrow-up-right.svg');
+        self::assertIsString($icon);
+        self::assertStringContainsString('lucide-static v1.61.0', $icon);
+        self::assertStringContainsString('M7 7h10v10', $icon);
+    }
+
+    public function testTopicNamesFoldAndRejectBlanks(): void
+    {
+        self::assertSame(
+            ['slug' => 'harbor lights', 'label' => 'Harbor Lights'],
+            DigestTopics::name("  Harbor   Lights \n")
+        );
+        self::assertSame('harbor lights', DigestTopics::name('harbor lights')['slug']);
+        foreach (['', '   ', '!!!', str_repeat('a', 41)] as $bad) {
+            try {
+                DigestTopics::name($bad);
+                self::fail($bad === '' ? 'blank' : $bad);
+            } catch (ValidationException $e) {
+                self::assertArrayHasKey('name', $e->fields());
+            }
+        }
     }
 
     public function testPeelPullsATrailingDateAndLeavesADateInsideTheSentence(): void

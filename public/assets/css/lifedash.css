@@ -12049,3 +12049,35 @@ html.app-sidebar-rail .app-nav-badge {
     .ld-meal-week { grid-template-columns: minmax(0, 1fr); }
 }
 
+.ld-digest-item { grid-template-columns: max-content minmax(0, 1fr) auto; }
+.ld-digest-item:has(.ld-digest-menu-panel:not([hidden])) { position: relative; z-index: 20; }
+.ld-digest-body { white-space: normal; }
+.ld-digest-note { margin: 0; white-space: pre-wrap; }
+.ld-digest-analysis-bar {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-3);
+    justify-content: space-between;
+    margin-top: var(--sp-3);
+}
+.ld-digest-read {
+    align-items: center;
+    color: var(--accent);
+    display: inline-flex;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 500;
+    gap: var(--sp-1);
+    min-height: 32px;
+    text-decoration: none;
+}
+.ld-digest-read svg { display: block; height: 14px; width: 14px; }
+.ld-digest-item-menu { justify-self: end; }
+.ld-digest-item-menu .ld-digest-menu-panel { min-width: 14rem; }
+.ld-digest-item-menu-btn { justify-content: center; padding: 0; width: 32px; }
+.ld-digest-item-menu-btn svg { height: 16px; width: 16px; }
+a.ld-digest-menu-item { text-decoration: none; }
+.ld-digest-tag { display: flex; gap: var(--sp-2); padding: var(--sp-1); }
+.ld-digest-tag .input { flex: 1 1 auto; min-width: 0; }
+
