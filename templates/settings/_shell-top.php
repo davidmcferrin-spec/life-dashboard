@@ -10,7 +10,8 @@
  * Nothing is filled in here.
  *
  * $settingsHideRail drops the settings step column. Cloud clipboards and CloudPad
- * set it so the page fills the width beside the primary shell nav.
+ * set it so the page is a full-width stage beside the primary shell nav, not the
+ * 240px settings grid.
  */
 $flash = $flash ?? null;
 $active = $active ?? 'general';
@@ -73,9 +74,12 @@ if ($settingsNarrow) {
     $settingsContentClass .= ' is-narrow';
 }
 $settingsHideRail = !empty($settingsHideRail);
-$settingsLayoutClass = 'settings-layout' . ($settingsPreviewView !== null ? ' has-preview' : '');
 if ($settingsHideRail) {
-    $settingsLayoutClass .= ' no-rail';
+    // Not .settings-layout: that grid's first track is 240px, and a single child
+    // sits in it with an empty track beside it.
+    $settingsLayoutClass = 'settings-stage';
+} else {
+    $settingsLayoutClass = 'settings-layout' . ($settingsPreviewView !== null ? ' has-preview' : '');
 }
 
 if (!isset($themePref) && !empty($user['id'])) {

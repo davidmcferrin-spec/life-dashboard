@@ -45,8 +45,10 @@ final class SettingsRailTest extends TestCase
         $weather = $this->render('settings/weather.php', '/settings/weather');
         self::assertStringContainsString('id="app-sidebar"', $weather);
         self::assertStringContainsString('class="app-nav-text">Dashboard</span>', $weather);
+        self::assertStringContainsString('class="settings-main settings-shell"', $weather);
         self::assertStringContainsString('class="settings-layout"', $weather);
-        self::assertStringNotContainsString('settings-layout no-rail', $weather);
+        self::assertStringContainsString('settings-panel is-narrow', $weather);
+        self::assertStringNotContainsString('settings-stage', $weather);
         self::assertStringContainsString('id="settings-rail"', $weather);
         self::assertStringContainsString('class="settings-step-name">Weather</span>', $weather);
         self::assertStringContainsString('class="settings-step-name">Cloud clipboards</span>', $weather);
@@ -54,7 +56,9 @@ final class SettingsRailTest extends TestCase
 
         $bookmarks = $this->render('settings/bookmarks.php', '/settings/bookmarks');
         self::assertStringContainsString('id="settings-rail"', $bookmarks);
-        self::assertStringNotContainsString('settings-layout no-rail', $bookmarks);
+        self::assertStringContainsString('class="settings-layout"', $bookmarks);
+        self::assertStringContainsString('settings-panel is-narrow', $bookmarks);
+        self::assertStringNotContainsString('settings-stage', $bookmarks);
         self::assertStringContainsString('class="settings-step-name">Bookmarks</span>', $bookmarks);
     }
 
@@ -67,13 +71,22 @@ final class SettingsRailTest extends TestCase
             $css
         );
         self::assertMatchesRegularExpression(
-            '/\.settings-layout\.no-rail\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);/s',
+            '/\.settings-stage\s*\{[^}]*width:\s*100%;/s',
             $css
         );
         self::assertMatchesRegularExpression(
-            '/\.settings-layout\.no-rail > \.settings-panel\s*\{[^}]*padding-left:\s*0;/s',
+            '/\.settings-stage > \.settings-panel,\s*\.settings-stage > \.settings-panel\.is-narrow\s*\{[^}]*max-width:\s*none;[^}]*width:\s*100%;/s',
             $css
         );
+        self::assertMatchesRegularExpression(
+            '/\.settings-panel\.is-narrow\s*\{[^}]*max-width:\s*40rem;/s',
+            $css
+        );
+        self::assertMatchesRegularExpression(
+            '/\.settings-main\s*\{[^}]*max-width:\s*1180px;/s',
+            $css
+        );
+        self::assertStringNotContainsString('.settings-layout.no-rail', $css);
     }
 
     private function assertWorkspaceWithoutSettingsRail(string $html, string $uri): void
@@ -83,8 +96,14 @@ final class SettingsRailTest extends TestCase
         self::assertStringContainsString('class="app-nav-text">Clipboard</span>', $html, $uri);
         self::assertStringContainsString('class="app-nav-text">CloudPad</span>', $html, $uri);
         self::assertStringContainsString('class="app-settings-label">Settings</span>', $html, $uri);
-        self::assertStringContainsString('class="settings-layout no-rail"', $html, $uri);
+        self::assertStringContainsString('class="w-full px-4 py-6 settings-shell"', $html, $uri);
+        self::assertStringContainsString('class="settings-stage"', $html, $uri);
+        self::assertStringContainsString('class="flex-1 min-w-0 settings-panel"', $html, $uri);
         self::assertStringContainsString('class="page-title">Cloud clipboards</h1>', $html, $uri);
+        self::assertStringNotContainsString('settings-layout', $html, $uri);
+        self::assertStringNotContainsString('max-w-screen-2xl', $html, $uri);
+        self::assertStringNotContainsString('mx-auto', $html, $uri);
+        self::assertStringNotContainsString('is-narrow', $html, $uri);
         self::assertStringNotContainsString('id="settings-rail"', $html, $uri);
         self::assertStringNotContainsString('id="settings-rail-toggle"', $html, $uri);
         self::assertStringNotContainsString('settings-step-name', $html, $uri);

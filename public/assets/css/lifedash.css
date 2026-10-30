@@ -4561,16 +4561,11 @@ html[data-theme="dark"] .settings-shell {
     grid-template-columns: 240px minmax(0, 1fr) 260px;
 }
 
-.settings-layout.no-rail {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.settings-layout.no-rail.has-preview {
-    grid-template-columns: minmax(0, 1fr) 260px;
-}
-
-.settings-layout.no-rail > .settings-panel {
-    padding-left: 0;
+.settings-stage {
+    display: block;
+    max-width: none;
+    min-width: 0;
+    width: 100%;
 }
 
 .settings-rail {
@@ -4746,6 +4741,15 @@ html[data-theme="dark"] .settings-shell {
     justify-self: center;
     margin-inline: auto;
     max-width: 40rem;
+    width: 100%;
+}
+
+.settings-stage > .settings-panel,
+.settings-stage > .settings-panel.is-narrow {
+    justify-self: stretch;
+    margin-inline: 0;
+    max-width: none;
+    padding-left: 0;
     width: 100%;
 }
 
@@ -5029,10 +5033,6 @@ html[data-theme="dark"] .settings-shell {
         grid-template-columns: 240px minmax(0, 1fr);
     }
 
-    .settings-layout.no-rail.has-preview {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .settings-preview {
         display: none;
     }
@@ -5044,9 +5044,7 @@ html[data-theme="dark"] .settings-shell {
     }
 
     .settings-layout,
-    .settings-layout.has-preview,
-    .settings-layout.no-rail,
-    .settings-layout.no-rail.has-preview {
+    .settings-layout.has-preview {
         grid-template-columns: minmax(0, 1fr);
     }
 
