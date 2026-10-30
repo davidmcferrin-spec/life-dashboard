@@ -251,14 +251,29 @@
             const tone = amount < 0 ? 'is-down' : (amount > 0 ? 'is-up' : '');
             // Payee text is the stored label. "Creator subscription" stays as written.
             const payee = row.payee ? String(row.payee) : '—';
-            return '<tr><td>' + esc(row.date) + '</td><td>' + esc(payee) + '</td><td>' + esc(row.category || '—') + '</td>'
-                + '<td class="fin-num ' + tone + '">' + esc(fmt.money(amount)) + '</td></tr>';
+            const category = row.category ? String(row.category) : '—';
+            const menuItems = [];
+            if (row.payee) menuItems.push({ act: 'merchant', label: 'Filter merchant' });
+            if (row.category) menuItems.push({ act: 'category', label: 'Filter category' });
+            const menu = window.FinTable ? window.FinTable.rowMenu(menuItems) : '';
+            return '<tr data-filter="' + esc([row.date, payee, category].join(' ')) + '" data-payee="' + esc(payee) + '" data-category="' + esc(category) + '"><td>'
+                + esc(row.date) + '</td><td>' + esc(payee) + '</td><td>' + esc(category) + '</td>'
+                + '<td class="fin-num ' + tone + '">' + esc(fmt.money(amount)) + '</td><td class="fin-actions">' + menu + '</td></tr>';
         }).join('');
         const tx = document.getElementById('money-tx');
         tx.innerHTML = txBody
-            ? '<div class="fin-table-wrap"><table class="fin-table"><thead><tr><th>Date</th><th>Merchant</th><th>Category</th><th class="fin-num">Amount</th></tr></thead><tbody>'
+            ? '<div class="fin-table-wrap"><table class="fin-table"><thead><tr><th>Date</th><th>Merchant</th><th>Category</th><th class="fin-num">Amount</th><th></th></tr></thead><tbody>'
                 + txBody + '</tbody></table></div>'
             : emptyPanel('No recent transactions', 'Imported rows show up here. A negative amount is money out.');
+        if (window.FinTable) {
+            window.FinTable.bindHost(tx);
+            window.FinTable.bindFilter(
+                document.getElementById('money-filter'),
+                document.getElementById('money-filter-input'),
+                document.getElementById('money-filter-row'),
+                tx
+            );
+        }
     }
 
     async function load() {
@@ -278,6 +293,23 @@
 
     document.getElementById('money-account-open').addEventListener('click', openAdd);
 
+    document.getElementById('money-tx').addEventListener('click', (event) => {
+        const item = event.target.closest('[data-fin-act]');
+        if (!item || !window.FinTable) return;
+        const row = item.closest('tr');
+        if (!row) return;
+        const query = item.getAttribute('data-fin-act') === 'category'
+            ? (row.getAttribute('data-category') || '')
+            : (row.getAttribute('data-payee') || '');
+        window.FinTable.setQuery(
+            document.getElementById('money-filter'),
+            document.getElementById('money-filter-input'),
+            document.getElementById('money-filter-row'),
+            document.getElementById('money-tx'),
+            query
+        );
+    });
+
     document.getElementById('money-accounts').addEventListener('click', (event) => {
         if (event.target.closest('[data-open-account]')) {
             openAdd();
@@ -293,11 +325,14 @@
         const data = new FormData(e.target);
         clearFieldError('money-account-error');
         try {
-            await api.post('/money/accounts', {
+            const body = {
                 name: String(data.get('name')),
                 kind: String(data.get('kind')),
                 balance: Number(data.get('balance') || 0),
-            });
+            };
+            const last4 = String(data.get('last4') || '').trim();
+            if (last4 !== '') body.last4 = last4;
+            await api.post('/money/accounts', body);
             e.target.reset();
             closeModal(addModal);
             await load();

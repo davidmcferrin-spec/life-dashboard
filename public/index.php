@@ -243,9 +243,14 @@ $router->get('/settings/clock', function () use ($auth): void {
     require VIEWS_DIR . '/settings/clock.php';
 });
 
-$router->get('/settings/stocks', function () use ($auth): void {
+$router->get('/stocks', function () use ($auth): void {
     $user = $auth->requireAuth();
-    require VIEWS_DIR . '/settings/stocks.php';
+    require VIEWS_DIR . '/stocks.php';
+});
+
+$router->get('/settings/stocks', function () use ($auth): void {
+    $auth->requireAuth();
+    redirect('/stocks');
 });
 
 $router->get('/settings/bookmarks', function () use ($auth, $db): void {
@@ -1520,14 +1525,24 @@ $router->get('/settings/life', function () use ($auth, $lifedash): void {
     require VIEWS_DIR . '/settings/life.php';
 });
 
-$router->get('/settings/money', function () use ($auth): void {
+$router->get('/money', function () use ($auth): void {
     $user = $auth->requireAuth();
-    require VIEWS_DIR . '/settings/money.php';
+    require VIEWS_DIR . '/money.php';
+});
+
+$router->get('/investing', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/investing.php';
+});
+
+$router->get('/settings/money', function () use ($auth): void {
+    $auth->requireAuth();
+    redirect('/money');
 });
 
 $router->get('/settings/investing', function () use ($auth): void {
-    $user = $auth->requireAuth();
-    require VIEWS_DIR . '/settings/investing.php';
+    $auth->requireAuth();
+    redirect('/investing');
 });
 
 $router->get('/settings/spotify', function () use ($auth, $db): void {

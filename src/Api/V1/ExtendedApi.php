@@ -415,6 +415,17 @@ final class ExtendedApi
             'wallet' => $this->svc->invest->saveWallet($u, (string) ($this->runner->body()['address'] ?? '')),
         ], 200, true));
         $r->post('/api/v1/invest/polymarket/refresh', fn () => $this->run(fn (int $u) => $this->svc->invest->refreshPolymarket($u), 200, true));
+        $r->post('/api/v1/invest/positions', fn () => $this->run(function (int $u): array {
+            return ['position' => $this->svc->invest->saveManualPosition($u, $this->runner->body())];
+        }, 200, true));
+        $r->post('/api/v1/invest/positions/{id}/delete', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $this->svc->invest->deleteManualPosition($u, (int) ($p['id'] ?? 0));
+            return ['deleted' => true];
+        }, 200, true));
+        $r->post('/api/v1/invest/cash', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            return ['cash' => $this->svc->invest->saveCash($u, $body['cash'] ?? null)];
+        }, 200, true));
 
         $r->get('/api/v1/reddit/subs', fn () => $this->run(fn (int $u) => [
             'subs' => $this->svc->reddit->list($u),

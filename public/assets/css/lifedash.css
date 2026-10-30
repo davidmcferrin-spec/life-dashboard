@@ -12689,3 +12689,95 @@ a.ld-digest-menu-item { text-decoration: none; }
     }
 }
 
+
+/* Finance filter and row menu. [hidden] on a tr does not hide it. */
+
+.fin-table-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.fin-add,
+.fin-filter,
+.fin-filter-input,
+.fin-menu-item {
+    font-family: var(--font-sans);
+}
+
+.fin-add,
+.fin-filter {
+    align-items: center;
+    display: inline-flex;
+    gap: 8px;
+}
+
+.fin-filter-icon {
+    display: inline-flex;
+}
+
+.fin-filter-icon svg,
+.fin-icon-btn svg {
+    display: block;
+    height: 16px;
+    width: 16px;
+}
+
+.fin-filter-row {
+    margin: 0 0 12px;
+}
+
+.fin-filter-input {
+    max-width: 20rem;
+}
+
+.fin-menu {
+    position: relative;
+}
+
+.fin-icon-btn {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    padding: 0;
+    width: 32px;
+}
+
+.fin-menu-pop {
+    background: var(--surface);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    min-width: 11rem;
+    padding: 4px;
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 20;
+}
+
+.fin-menu-item {
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 8px 10px;
+    text-align: left;
+}
+
+.fin-menu-item:hover,
+.fin-menu-item:focus-visible {
+    background: var(--accent-soft);
+}
+
+.fin-table tr[hidden] {
+    display: none;
+}
