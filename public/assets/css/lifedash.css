@@ -804,12 +804,19 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
     align-items: flex-start;
     border-bottom: 1px solid var(--border-soft);
     display: flex;
+    flex-wrap: wrap;
     gap: var(--sp-4);
-    justify-content: space-between;
+    justify-content: flex-end;
     min-height: 70px;
     padding: var(--sp-3) 26px;
 }
-.brain-note-title { min-width: 0; }
+/* The title column takes the free header space. It keeps at least 28rem
+   when the row can hold that plus the actions, and drops the actions to
+   the next line when it cannot, so a long page name stays readable. */
+.brain-note-title {
+    flex: 1 1 28rem;
+    min-width: min(100%, 28rem);
+}
 .brain-note-actions {
     align-items: center;
     display: flex;
@@ -856,11 +863,15 @@ button.ld-dot:hover { outline: 1px solid var(--accent); }
     background: transparent;
     border: 0;
     border-radius: 0;
+    box-sizing: border-box;
     color: var(--text-primary);
+    display: block;
     font-family: var(--font-sans);
     font-size: var(--fs-lg);
     font-weight: 500;
     margin: 4px 0;
+    max-width: 100%;
+    min-width: 0;
     padding: 0;
     width: 100%;
 }

@@ -26,8 +26,8 @@ storage/**
 !storage/**/.gitkeep
 !storage/**/.htaccess
 
-# AI working notes stay local. Product docs stay in README.md and docs/.
+# Local AI notes stay untracked. AGENTS.md and .cursor/CLOUD.md are the shared agent map.
 CLAUDE.md
-AGENTS.md
 .cursorrules
-.cursor/
+.cursor/*
+!.cursor/CLOUD.md
