@@ -7,7 +7,9 @@
 if (empty($ldMediaWidgetsCss)) {
     $ldMediaWidgetsCss = true;
     ?>
-<link rel="stylesheet" href="/assets/css/widgets-media.css?v=<?= e($assetVer ?? '') ?>">
+<?php foreach (\Dashboard\Support\Stylesheets::media() as $mediaSheet): ?>
+<link rel="stylesheet" href="<?= e($mediaSheet) ?>?v=<?= e($assetVer ?? '') ?>">
+<?php endforeach; ?>
     <?php
 }
 ?>

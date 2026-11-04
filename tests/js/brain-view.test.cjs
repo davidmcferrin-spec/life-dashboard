@@ -120,6 +120,7 @@ function boot() {
         8: page(8, 'Trip', '# Trip'),
     };
     const posts = [];
+    const gets = [];
     const nodes = {};
     const editBtn = element({ brainTab: 'edit' });
     const previewBtn = element({ brainTab: 'preview' });
@@ -160,6 +161,22 @@ function boot() {
         LD: {
             api: {
                 async get(url) {
+                    gets.push(url);
+                    const rev = /^\/pages\/(\d+)\/revisions\/(\d+)$/.exec(url);
+                    if (rev) {
+                        return {
+                            revision: {
+                                version: Number(rev[2]),
+                                title: 'Home draft',
+                                body: 'alpha line',
+                                created_at: '2026-10-01T00:00:00Z',
+                            },
+                            diff: {
+                                html: 'alpha <del>line</del><ins>page</ins>',
+                                summary: '1 addition, 1 deletion',
+                            },
+                        };
+                    }
                     if (url === '/pages/folders') return { folders: [] };
                     if (url === '/pages') {
                         return {
@@ -202,7 +219,12 @@ function boot() {
 
     return {
         posts,
+        gets,
         drain,
+        redline: nodes['brain-redline'],
+        redlineView: nodes['brain-redline-view'],
+        redlineSummary: nodes['brain-redline-summary'],
+        revs: nodes['brain-revs'],
         editBtn,
         previewBtn,
         stage,
@@ -703,7 +725,7 @@ test('a note opens in preview and autosave keeps the Edit toggle', async () => {
 });
 
 test('the vault tree uses guides, chevrons, and kind marks', async () => {
-    const css = fs.readFileSync(path.join(root, 'public/assets/css/lifedash.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'public/assets/css/vault.css'), 'utf8');
     const chevron = css.slice(css.indexOf('.brain-chevron {'), css.indexOf('.brain-folder-toggle[aria-expanded="false"]'));
     assert.match(css, /\.brain-folder-branch::before\s*\{[^}]*width:\s*1px/);
     assert.match(css, /\.brain-tree-label\s*\{[^}]*text-overflow:\s*ellipsis/);
@@ -843,7 +865,7 @@ test('vault tree keys move, expand, and open without scrolling', async () => {
 });
 
 test('collapse all closes every folder and tree rows keep hover actions', async () => {
-    const css = fs.readFileSync(path.join(root, 'public/assets/css/lifedash.css'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'public/assets/css/vault-editor.css'), 'utf8');
     assert.match(css, /\.brain-tree-row:hover > \.brain-row-actions/);
     assert.match(css, /\.brain-saved \{ color: var\(--ok\);/);
     assert.match(script, /function scheduleAutosave\(/);
@@ -918,4 +940,52 @@ test('create note posts the title and the folder from the tree row', async () =>
     assert.equal(ui.posts[1].payload.folder_id, undefined);
     assert.equal(ui.title.value, 'Root note');
     assertPreview(ui, '');
+});
+
+test('red-line shows the server diff against the current page', async () => {
+    assert.match(template, /<label class="brain-redline-toggle" for="brain-redline">/);
+    assert.match(template, /Red-line/);
+    const css = fs.readFileSync(path.join(root, 'public/assets/css/vault.css'), 'utf8');
+    assert.match(css, /\.brain-redline del/);
+    assert.match(css, /\.brain-redline ins/);
+    assert.match(css, /\.brain-stage\.is-redline \.brain-title/);
+
+    const ui = boot();
+    await flush();
+    assert.equal(ui.title.value, 'Home');
+    assert.equal(ui.body.value, '# Hello');
+    ui.redline.checked = true;
+    await ui.redline.dispatch('change');
+    await ui.revs.dispatch('click', {
+        target: {
+            closest(selector) {
+                return selector === '[data-rev]' ? { dataset: { rev: '2' } } : null;
+            },
+        },
+    });
+    await flush();
+    assert.equal(ui.gets.includes('/pages/7/revisions/2'), true);
+    assert.equal(ui.stage.classList.contains('is-redline'), true);
+    assert.equal(ui.redlineView.hidden, false);
+    assert.equal(ui.redlineView.innerHTML, 'alpha <del>line</del><ins>page</ins>');
+    assert.equal(ui.redlineSummary.textContent, '1 addition, 1 deletion');
+    assert.equal(ui.title.value, 'Home');
+    assert.equal(ui.body.value, '# Hello');
+    assert.equal(ui.title.readOnly, true);
+    assert.equal(ui.body.readOnly, true);
+
+    ui.redline.checked = false;
+    await ui.redline.dispatch('change');
+    assert.equal(ui.stage.classList.contains('is-redline'), false);
+    assert.equal(ui.redlineView.hidden, true);
+    assert.equal(ui.redlineView.innerHTML, '');
+    assert.equal(ui.redlineSummary.textContent, '');
+    assert.equal(ui.title.value, 'Home draft');
+    assert.equal(ui.body.value, 'alpha line');
+    assert.equal(ui.preview.innerHTML, '<article>alpha line</article>');
+
+    ui.title.value = 'should not save';
+    await ui.title.dispatch('input');
+    await ui.drain();
+    assert.equal(ui.posts.length, 0);
 });

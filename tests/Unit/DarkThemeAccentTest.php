@@ -35,7 +35,7 @@ final class DarkThemeAccentTest extends TestCase
         self::assertStringContainsString('--hud-accent', $jarvis);
         self::assertStringNotContainsString('#9ab4b5', $jarvis);
 
-        $shell = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        $shell = file_get_contents(ROOT_DIR . '/public/assets/css/shell.css');
         self::assertIsString($shell);
         self::assertSame('#44d7d0', self::token(self::ruleBlock($shell, '.settings-shell', true), '--settings-accent'));
         self::assertSame('#168c88', self::token(self::ruleBlock($shell, 'html[data-theme="light"] .settings-shell'), '--settings-accent'));

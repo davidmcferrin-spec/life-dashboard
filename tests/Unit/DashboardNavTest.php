@@ -73,7 +73,7 @@ final class DashboardNavTest extends TestCase
 
     public function testPhoneDrawerDoesNotStretchTheHeader(): void
     {
-        $shell = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        $shell = file_get_contents(ROOT_DIR . '/public/assets/css/shell.css');
         self::assertIsString($shell);
         self::assertMatchesRegularExpression(
             '/@media \(max-width: 699px\)\s*\{.*?\.app-sidebar\s*\{[^}]*position:\s*fixed;/s',
@@ -218,7 +218,7 @@ final class DashboardNavTest extends TestCase
         self::assertStringNotContainsString('data-hero', $html);
         self::assertStringNotContainsString('ov-layout', $html);
 
-        $css = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        $css = file_get_contents(ROOT_DIR . '/public/assets/css/shell.css');
         self::assertIsString($css);
         self::assertStringNotContainsString('minmax(0, 1fr) 320px', $css);
         self::assertMatchesRegularExpression(

@@ -6,7 +6,10 @@ const vm = require('node:vm');
 
 const root = path.join(__dirname, '..', '..');
 const js = fs.readFileSync(path.join(root, 'public/assets/js/spotify-player.js'), 'utf8');
-const css = fs.readFileSync(path.join(root, 'public/assets/css/lifedash.css'), 'utf8');
+const css = [
+    fs.readFileSync(path.join(root, 'public/assets/css/spotify.css'), 'utf8'),
+    fs.readFileSync(path.join(root, 'public/assets/css/spotify-stage.css'), 'utf8'),
+].join('\n');
 const themes = fs.readFileSync(path.join(root, 'public/assets/css/dashboard.css'), 'utf8');
 
 function extract(source, name) {

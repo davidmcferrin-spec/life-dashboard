@@ -139,7 +139,7 @@ final class SecretFieldTest extends TestCase
 
     public function testModalEnterAnimationRespectsReducedMotion(): void
     {
-        $css = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        $css = file_get_contents(ROOT_DIR . '/public/assets/css/controls.css');
         self::assertIsString($css);
         self::assertMatchesRegularExpression(
             '/@media \(prefers-reduced-motion: no-preference\)\s*\{[^}]*\.app-modal-panel\s*\{[^}]*animation:\s*modalIn\s+/s',
@@ -156,9 +156,9 @@ final class SecretFieldTest extends TestCase
     {
         $head = file_get_contents(VIEWS_DIR . '/partials/head.php');
         self::assertIsString($head);
-        self::assertSame(1, preg_match("/\\\$assetVer\\s*=\\s*'([^']+)'/", $head, $match));
+        self::assertStringContainsString('AssetStamp::current()', $head);
 
-        return $match[1];
+        return \Dashboard\Support\AssetStamp::current();
     }
 
     /**

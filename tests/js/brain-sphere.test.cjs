@@ -87,5 +87,6 @@ test('graph screen keeps the figma controls and spells vault correctly', () => {
     assert.doesNotMatch(html, /Open in Valut/);
     assert.doesNotMatch(html, /brain\.png/);
     const head = fs.readFileSync(path.join(__dirname, '../../templates/partials/head.php'), 'utf8');
-    assert.match(head, /\$assetVer = '20261023bs'/);
+    assert.match(head, /AssetStamp::current\(\)/);
+    assert.doesNotMatch(head, /\$assetVer = '20261023bs'/);
 });

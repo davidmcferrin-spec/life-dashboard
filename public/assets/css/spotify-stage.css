@@ -1,0 +1,91 @@
+/* Spotify player disc and equalizer. */
+.sp-player .sp-stage-art.sp-expanded-visual {
+    background:
+        radial-gradient(circle at 50% 45%, rgba(85, 74, 133, 0.4), transparent 32%),
+        linear-gradient(135deg, #102a31, #231a2e 65%, #392134);
+    overflow: hidden;
+    position: relative;
+}
+
+.sp-player .sp-record {
+    background: repeating-radial-gradient(circle, #101719 0 5px, #1b282b 6px 8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    box-shadow: 0 16px 35px rgba(0, 0, 0, 0.35);
+    display: grid;
+    height: 84px;
+    place-items: center;
+    position: relative;
+    width: 84px;
+    z-index: 1;
+}
+
+.sp-player .sp-record::before {
+    background: linear-gradient(135deg, #31666a, #713c64);
+    border-radius: 50%;
+    content: "";
+    inset: 26px;
+    position: absolute;
+}
+
+.sp-player .sp-record .sp-art {
+    border-radius: 50%;
+    height: 32px;
+    position: relative;
+    width: 32px;
+    z-index: 2;
+}
+
+.sp-player .sp-record-spindle {
+    background: #0b1011;
+    border-radius: 50%;
+    height: 7px;
+    position: absolute;
+    width: 7px;
+    z-index: 3;
+}
+
+.sp-player .sp-equalizer {
+    align-items: flex-end;
+    bottom: 14px;
+    display: flex;
+    gap: 3px;
+    height: 23px;
+    pointer-events: none;
+    position: absolute;
+    right: 15px;
+    z-index: 1;
+}
+
+.sp-player .sp-equalizer i {
+    background: var(--accent);
+    border-radius: 2px;
+    display: block;
+    opacity: 0.55;
+    transform-origin: bottom;
+    width: 2px;
+}
+
+/* The disc and bars move only while Spotify reports playback. */
+@media (prefers-reduced-motion: no-preference) {
+    .sp-player .sp-record.is-playing {
+        animation: sp-record-spin 16s linear infinite;
+    }
+
+    .sp-player .sp-equalizer.is-playing i {
+        animation: sp-eq-wave 0.8s ease-in-out infinite alternate;
+    }
+
+    .sp-player .sp-equalizer.is-playing i:nth-child(3n) {
+        animation-delay: -0.4s;
+    }
+}
+
+@keyframes sp-record-spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes sp-eq-wave {
+    to { transform: scaleY(0.35); opacity: 0.3; }
+}
+

@@ -4,7 +4,7 @@ Self-hosted life dashboard. PHP renders pages, vanilla JS and plain CSS run in t
 
 ## Map
 
-- `public/` — web root. `public/index.php` is the front controller. Vault client is `public/assets/js/brain.js`. Vault and widget CSS is `public/assets/css/lifedash.css` (edit it in place; no build).
+- `public/` — web root. `public/index.php` is the front controller. Vault client is `public/assets/js/brain.js`. Shared widget CSS is `public/assets/css/lifedash.css`. Feature sheets (`vault.css`, `vault-editor.css`, and the rest of `Stylesheets::app()`) load after it. Edit those in place; no build.
 - `templates/` — PHP pages. The vault page is `templates/brain.php` (`#brain-title`).
 - `src/` — PHP, namespace `Dashboard\`. Vault domain is `src/Knowledge/` (`PageService`, folders, wikilinks, redline). JSON API is `src/Api/`.
 - `services/` — Python package `lifedash` (`mcp_server.py`, sync workers, realtime push). Tests live in `services/tests/`.
