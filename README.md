@@ -95,7 +95,8 @@ These frames use a fictional demo account. Nothing in them is from a live server
 │       ├── css/
 │       │   ├── tailwind.css   # built — run npm run build:css after template/class changes
 │       │   ├── dashboard.css
-│       │   └── lifedash.css   # widget grid + native widgets (plain CSS, no build)
+│       │   ├── lifedash.css   # shared widget grid (plain CSS, no build)
+│       │   └── vault.css      # vault editor; other features are sibling sheets
 │       ├── vendor/gridstack-12.6.0/  # vendored GridStack (MIT)
 │       └── js/
 │           ├── lifedash-api.js        # /api/v1 client + formatters

@@ -31,7 +31,8 @@ $jarvisAccent = \Dashboard\Support\JarvisAccent::normalize($jarvisAccent);
 $jarvisStyle = \Dashboard\Support\JarvisAccent::cssDeclaration($jarvisAccent);
 $starfieldPrefAttr = (!$themeLocalOnly && $starfieldPref) ? ' data-starfield-pref="1"' : '';
 $starfieldBoot = (!$themeLocalOnly && $starfieldPref) ? 'true' : 'false';
-$assetVer = '20261023bs';
+$assetVer = \Dashboard\Support\AssetStamp::current();
+$appSheets = \Dashboard\Support\Stylesheets::app();
 $extraStyles = $extraStyles ?? [];
 $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
 ?>
@@ -77,13 +78,16 @@ $serverTimeMs = $themeLocalOnly ? null : (int) round(microtime(true) * 1000);
     <link rel="stylesheet" href="/assets/css/tailwind.css?v=<?= e($assetVer) ?>">
     <link rel="stylesheet" href="/assets/css/dashboard.css?v=<?= e($assetVer) ?>">
     <?php if (!$themeLocalOnly): ?>
-    <link rel="stylesheet" href="/assets/css/lifedash.css?v=<?= e($assetVer) ?>">
+    <?php foreach ($appSheets as $sheet): ?>
+    <link rel="stylesheet" href="<?= e($sheet) ?>?v=<?= e($assetVer) ?>">
+    <?php endforeach; ?>
     <?php endif; ?>
     <?php foreach ($extraStyles as $sheet): ?>
-    <?php if (str_contains($sheet, '/assets/css/lifedash.css')) { continue; } ?>
+    <?php if (in_array($sheet, $appSheets, true) || str_contains($sheet, '/assets/css/lifedash.css')) { continue; } ?>
     <link rel="stylesheet" href="<?= e($sheet) ?>?v=<?= e($assetVer) ?>">
     <?php endforeach; ?>
     <?php if (!$themeLocalOnly): ?>
+    <script>window.LD_MEDIA_CSS = <?= json_encode(\Dashboard\Support\Stylesheets::media(), JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
     <script src="/assets/js/csrf.js?v=<?= e($assetVer) ?>"></script>
     <script src="/assets/js/server-time.js?v=<?= e($assetVer) ?>"></script>
     <script src="/assets/js/broadcast-week.js?v=<?= e($assetVer) ?>"></script>

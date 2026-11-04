@@ -1,0 +1,35 @@
+/* Reddit reader */
+.ld-mk-reader {
+    display: flex;
+    flex-direction: column;
+}
+
+.ld-mk-reader a {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    color: inherit;
+    column-gap: var(--sp-3, 12px);
+    display: grid;
+    grid-template-columns: minmax(4.5rem, auto) minmax(0, 1fr) auto 16px;
+    min-height: 44px;
+    padding: var(--sp-2, 8px) 0;
+    text-decoration: none;
+}
+
+.ld-mk-reader a:hover strong {
+    color: var(--accent);
+}
+
+.ld-mk-sub {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: var(--fs-2xs, 11px);
+    letter-spacing: 0.04em;
+    overflow-wrap: anywhere;
+}
+
+.ld-mk-reader a > small {
+    margin-top: 0;
+    white-space: nowrap;
+}
+

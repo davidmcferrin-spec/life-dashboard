@@ -42,7 +42,8 @@ final class FinanceNavTest extends TestCase
 
         $head = file_get_contents(VIEWS_DIR . '/partials/head.php');
         self::assertIsString($head);
-        self::assertStringContainsString("\$assetVer = '20261023bs';", $head);
+        self::assertStringContainsString('AssetStamp::current()', $head);
+        self::assertStringNotContainsString("\$assetVer = '20261023bs';", $head);
 
         $funnel = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/funnel.svg');
         self::assertIsString($funnel);

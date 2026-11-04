@@ -1,0 +1,30 @@
+/* Custom */
+.ld-mk-custom {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2, 8px);
+    height: 100%;
+    min-height: 0;
+}
+
+.ld-mk-custom-bar {
+    align-items: center;
+    display: grid;
+    gap: var(--sp-3, 12px);
+    grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.ld-mk-custom-bar .ld-mk-ico,
+.ld-mk-custom-bar .ld-mk-ico svg {
+    height: 22px;
+    width: 22px;
+}
+
+.ld-mk-custom iframe {
+    background: transparent;
+    border: 0;
+    flex: 1 1 auto;
+    min-height: 6rem;
+    width: 100%;
+}
+

@@ -861,15 +861,20 @@
     const mediaIconSvg = Object.create(null);
 
     function mediaSheet() {
-        if (document.querySelector('link[href*="/assets/css/widgets-media.css"]')) return;
-        const link = document.createElement('link');
-        link.rel = 'stylesheet';
-        link.id = 'ld-media-widgets-css';
+        const sheets = Array.isArray(window.LD_MEDIA_CSS) && window.LD_MEDIA_CSS.length
+            ? window.LD_MEDIA_CSS
+            : ['/assets/css/widgets-media.css'];
+        if (document.querySelector('link[href*="' + sheets[0] + '"]')) return;
         const current = document.querySelector('link[href*="/assets/css/lifedash.css"]');
         const href = current && current.getAttribute('href');
         const version = href && href.match(/[?&]v=([^&]+)/);
-        link.href = '/assets/css/widgets-media.css' + (version ? '?v=' + encodeURIComponent(version[1]) : '');
-        document.head.appendChild(link);
+        const suffix = version ? '?v=' + encodeURIComponent(version[1]) : '';
+        sheets.forEach((path) => {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = path + suffix;
+            document.head.appendChild(link);
+        });
     }
 
     function primeMediaIcons() {

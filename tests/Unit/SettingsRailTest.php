@@ -64,7 +64,7 @@ final class SettingsRailTest extends TestCase
 
     public function testNoRailLayoutFillsTheColumnWidth(): void
     {
-        $css = file_get_contents(ROOT_DIR . '/public/assets/css/lifedash.css');
+        $css = file_get_contents(ROOT_DIR . '/public/assets/css/shell.css');
         self::assertIsString($css);
         self::assertMatchesRegularExpression(
             '/\.settings-layout\s*\{[^}]*grid-template-columns:\s*240px minmax\(0, 1fr\);/s',

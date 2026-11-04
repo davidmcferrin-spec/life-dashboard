@@ -90,7 +90,7 @@ final class FeedBoardTest extends TestCase
         $index = file_get_contents(ROOT_DIR . '/public/index.php');
         $page = file_get_contents(VIEWS_DIR . '/feeds.php');
         $card = file_get_contents(VIEWS_DIR . '/partials/system-context.php');
-        $css = file_get_contents(PUBLIC_DIR . '/assets/css/lifedash.css');
+        $css = file_get_contents(PUBLIC_DIR . '/assets/css/feature-widgets.css');
         self::assertIsString($index);
         self::assertIsString($page);
         self::assertIsString($card);

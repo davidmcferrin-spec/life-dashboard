@@ -1,0 +1,46 @@
+/* Knowledge */
+.ld-mk-knowledge {
+    display: flex;
+    flex-direction: column;
+}
+
+.ld-mk-knowledge a {
+    align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    color: inherit;
+    display: grid;
+    gap: var(--sp-2, 8px);
+    grid-template-columns: 20px minmax(0, 1fr) 16px;
+    min-height: 44px;
+    padding: var(--sp-2, 8px) 0;
+    text-decoration: none;
+}
+
+.ld-mk-knowledge a:hover strong {
+    color: var(--accent);
+}
+
+.ld-mk-knowledge strong,
+.ld-mk-reader strong,
+.ld-mk-custom-bar strong,
+.ld-mk-now strong {
+    color: var(--text);
+    display: block;
+    font-size: var(--fs-md, 14px);
+    font-weight: 500;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.ld-mk-knowledge small,
+.ld-mk-reader small,
+.ld-mk-custom-bar small {
+    color: var(--text-muted);
+    display: block;
+    font-family: var(--font-sans);
+    font-size: var(--fs-xs, 12px);
+    font-weight: 400;
+    line-height: 1.4;
+    margin-top: 2px;
+}
+
