@@ -57,9 +57,9 @@ require __DIR__ . '/_shell-top.php';
                     </label>
                     <p id="plain-http-source" class="text-muted text-xs">Effective: <?= e($plainSource) ?></p>
                     <p class="text-muted text-xs">
-                        Off stops the public listener on <span class="mono">0.0.0.0:<?= e((string) $mcpPort) ?></span>.
-                        The running service keeps <span class="mono">127.0.0.1:<?= e((string) $mcpPort) ?></span>
-                        for the HTTPS proxy and the tunnel. Saving applies that without a restart.
+                        Off answers plain HTTP with 403. The service keeps listening on
+                        <span class="mono">0.0.0.0:<?= e((string) $mcpPort) ?></span>.
+                        Saving applies that without a restart.
                         <?php if ($mcpPublic !== ''): ?>
                             Clients should use <span class="mono"><?= e($mcpPublic) ?></span>.
                         <?php else: ?>

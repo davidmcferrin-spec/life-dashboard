@@ -61,35 +61,26 @@ def test_agent_tools_reject_shell_and_bad_ids():
         resolve("openclaw_ask", {"prompt": "x" * 4001})
 
 
-def test_tools_list_is_one_complete_page():
+def test_default_tools_list_returns_every_tool_without_a_cursor():
     from lifedash.mcp_server import handle_message
 
     def fetch(method, path, body, authorization, tool):
         assert path == "/api/v1/agent-prompt"
         return 200, {"prompt": "ok"}
 
-    reply = handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-        "Bearer token",
-        fetch,
-    )
-    result = reply["result"]
-    names = [tool["name"] for tool in result["tools"]]
-    assert result["resultType"] == "complete"
-    assert result["ttlMs"] == 0
-    assert result["cacheScope"] == "public"
-    assert "nextCursor" not in result
-    assert len(names) == len(TOOLS)
-    for name in (
-        "list_bills",
-        "create_bill",
-        "list_envelopes",
-        "get_payday_pressure",
-        "propose_envelope_assignment",
-        "hermes_status",
-        "openclaw_ask",
-    ):
-        assert name in names
+    full = [tool["name"] for tool in TOOLS]
+    for params in (None, {}, {"cursor": None}):
+        message = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+        if params is not None:
+            message["params"] = params
+        reply = handle_message(message, "Bearer token", fetch)
+        result = reply["result"]
+        names = [tool["name"] for tool in result["tools"]]
+        assert "nextCursor" not in result
+        assert "error" not in reply
+        assert names == full
+        for name in ("hermes_send", "brief_me", "health_status", "list_bills", "ollama_status"):
+            assert name in names
     init = handle_message(
         {
             "jsonrpc": "2.0",
@@ -109,3 +100,34 @@ def test_tools_list_is_one_complete_page():
     )
     assert bad["error"]["code"] == -32602
     assert "result" not in bad
+
+
+def test_explicit_cursor_pages_the_same_registry():
+    from lifedash.mcp_server import TOOL_PAGE, handle_message
+
+    def fetch(method, path, body, authorization, tool):
+        assert path == "/api/v1/agent-prompt"
+        return 200, {"prompt": "ok"}
+
+    names = []
+    cursor = "0"
+    pages = 0
+    while cursor is not None:
+        reply = handle_message(
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/list", "params": {"cursor": cursor}},
+            "Bearer token",
+            fetch,
+        )
+        result = reply["result"]
+        batch = [tool["name"] for tool in result["tools"]]
+        assert 0 < len(batch) <= TOOL_PAGE
+        if pages == 0:
+            assert result["nextCursor"] == str(TOOL_PAGE)
+            assert "hermes_send" not in batch
+        names.extend(batch)
+        cursor = result.get("nextCursor")
+        pages += 1
+    assert pages > 1
+    assert names == [tool["name"] for tool in TOOLS]
+    for name in ("hermes_send", "brief_me", "health_status"):
+        assert name in names

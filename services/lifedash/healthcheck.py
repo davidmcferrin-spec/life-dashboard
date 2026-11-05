@@ -366,9 +366,8 @@ def _listen_part(hosts: list[str], port: int, systemd: str, *, expect: str, plai
     if expect == "0.0.0.0":
         if any(host not in _ALL_INTERFACES for host in hosts):
             return WARN, f"listen {shown} (not 0.0.0.0)"
-        # 0.0.0.0 is the tunnel bind. It is a problem only when plain HTTP is off.
-        if not plain_http:
-            return WARN, f"listen {shown} (plain HTTP disabled)"
+        # Plain HTTP off still belongs on 0.0.0.0. The handler returns 403.
+        del plain_http
         return OK, f"listen {shown}"
     if any(host != expect for host in hosts):
         return WARN, f"listen {shown} (not {expect})"

@@ -6,7 +6,6 @@ namespace Dashboard\Brief;
 
 use Dashboard\DB\Database;
 use Dashboard\Digest\DigestService;
-use Dashboard\Grants\SectorGate;
 use Dashboard\Health\HealthService;
 use Dashboard\Home\HomeStatus;
 use Dashboard\Money\BillsService;
@@ -16,7 +15,7 @@ use Dashboard\Support\ValidationException;
 
 /**
  * One short brief from stored calendar, digests, payday, home, music, and health.
- * A denied sector is named and skipped. Balances and vitals are never invented.
+ * Balances and vitals are never invented.
  */
 final class MorningBriefService
 {
@@ -26,21 +25,20 @@ final class MorningBriefService
         private readonly BillsService $bills,
         private readonly DigestService $digest,
         private readonly HealthService $health,
-        private readonly SectorGate $grants,
     ) {}
 
     /**
      * @return array{brief: array<string, mixed>}
      */
-    public function compose(int $userId, ?string $kind, ?int $principalId, string $tool = 'brief_me'): array
+    public function compose(int $userId): array
     {
         $facts = [
             'calendar' => ['connected' => false],
             'digests'  => $this->digests($userId),
-            'money'    => $this->money($userId, $kind, $principalId, $tool),
-            'home'     => $this->home($userId, $kind, $principalId, $tool),
+            'money'    => $this->money($userId),
+            'home'     => $this->home(),
             'music'    => $this->music($userId),
-            'health'   => $this->healthFacts($userId, $kind, $principalId, $tool),
+            'health'   => $this->healthFacts($userId),
         ];
         $body = BriefText::render($facts);
         $this->db->execute(
@@ -149,7 +147,7 @@ final class MorningBriefService
                 if ($this->health->status($userId)['open_wearables']['configured'] ?? false) {
                     $this->health->sync($userId);
                 }
-                $this->compose($userId, null, null, 'brief_schedule');
+                $this->compose($userId);
                 $this->db->execute(
                     'UPDATE brief_schedules SET last_ran_on = ? WHERE user_id = ?',
                     [$today, $userId]
@@ -190,11 +188,8 @@ final class MorningBriefService
     /**
      * @return array<string, mixed>
      */
-    private function money(int $userId, ?string $kind, ?int $principalId, string $tool): array
+    private function money(int $userId): array
     {
-        if (!$this->grants->take($userId, $kind, $principalId, 'money', $tool)) {
-            return ['omitted' => 'needs-grant'];
-        }
         try {
             $pressure = $this->bills->pressure($userId);
         } catch (\Throwable) {
@@ -227,12 +222,8 @@ final class MorningBriefService
     /**
      * @return array<string, mixed>
      */
-    private function home(int $userId, ?string $kind, ?int $principalId, string $tool): array
+    private function home(): array
     {
-        if (!$this->grants->take($userId, $kind, $principalId, 'home', $tool)) {
-            return ['omitted' => 'needs-grant'];
-        }
-        unset($userId);
         try {
             return (new HomeStatus($this->db))->status();
         } catch (\Throwable) {
@@ -278,11 +269,8 @@ final class MorningBriefService
     /**
      * @return array<string, mixed>
      */
-    private function healthFacts(int $userId, ?string $kind, ?int $principalId, string $tool): array
+    private function healthFacts(int $userId): array
     {
-        if (!$this->grants->take($userId, $kind, $principalId, 'health', $tool)) {
-            return ['omitted' => 'needs-grant'];
-        }
         try {
             $snap = $this->health->snapshot($userId);
         } catch (\Throwable) {

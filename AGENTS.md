@@ -24,3 +24,7 @@ node --test tests/js/*.cjs
 PostgreSQL integration tests need `LIFEDASH_TEST_PG_DB` ending in `_test`. Python: `cd services && pip install -e ".[dev]" && pytest -q`. Run `npm run build:css` only after a Tailwind class change.
 
 More detail is in `README.md`. Cloud-agent setup is in `.cursor/CLOUD.md`.
+
+## MCP
+
+`lifedash-mcp` listens on `0.0.0.0:8765` unless `MCP_BIND=loopback`. Plain HTTP off returns 403 and does not move that socket. `tools/list` with no cursor returns every registered tool. A cursor asks for one page. The list is not filtered by scope. A call still needs a valid key, that key's scopes, and the user id on the key. Session-only routes and `system:deploy` stay as they were. Those calls are written to `audit_events`. Settings → Audit is read-only. `get_audit_log` reads the same log.

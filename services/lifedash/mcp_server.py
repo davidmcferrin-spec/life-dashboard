@@ -1,16 +1,18 @@
 """``lifedash-mcp`` — MCP endpoint on port 8765.
 
-Listens on 0.0.0.0 unless MCP_BIND=loopback or plain HTTP is off.
-Settings → Agents drops 0.0.0.0 and keeps 127.0.0.1 without a restart.
+Listens on 0.0.0.0 unless MCP_BIND=loopback. Plain HTTP off rejects the call
+and leaves the socket where it is, so a deploy restart stays on 0.0.0.0:8765.
 Cloudflare Tunnel and the HTTPS proxy send ``/mcp`` to loopback.
 Each tool call is an HTTP request to the PHP ``/api/v1`` API with the caller's
 bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
 The tool registry is the ``TOOLS`` list in this module: one list for every
-authenticated caller, not a per-session cache and not a filter on protocol
-version or token scope. A JSON-RPC method is answered only after the PHP API
-accepts the bearer. Discovery, client registration metadata, and ``/healthz``
-stay open.
+authenticated caller, not a per-session cache. ``tools/list`` does not filter
+that list by protocol version, token scope, or sector. Calling a tool still
+requires a bearer the PHP API accepts, and PHP still enforces that key's
+scopes, session-only routes, and the user id on the key. Plain HTTP off
+rejects the JSON-RPC call before that check. Discovery documents and
+``/healthz`` stay open. ``/healthz`` does not run a tool.
 """
 from __future__ import annotations
 
@@ -39,6 +41,9 @@ LOG = logging.getLogger("lifedash.mcp")
 PROTOCOL = "2025-03-26"
 # Echo the client's version when we know it. The tool list does not change with it.
 SUPPORTED_PROTOCOLS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28")
+# Page size only when the client sends a cursor. The default response is the
+# whole registry: some clients keep the first tools/list page and ignore nextCursor.
+TOOL_PAGE = 80
 
 Fetch = Callable[[str, str, dict[str, Any] | None, str, str], tuple[int, Any]]
 # Set for the request thread before a tool call is forwarded. PHP records it
@@ -2909,7 +2914,7 @@ class PlainHttpGate:
 
     A failed read keeps the last value, or the config default when there is none.
     The cache is short so Settings → Agents applies without a restart.
-    PublicBind uses the same answer to move the listen socket.
+    The listen address does not follow this flag.
     """
 
     def __init__(self, config_default: bool, reader: Callable[[], int | None], ttl: float = 2.0) -> None:
@@ -2964,30 +2969,29 @@ def read_plain_http_flag(config: Config) -> int | None:
 
 
 def listen_host(requested: str | None, bind: str | None = None, plain_http: bool = True) -> str:
-    """All IPv4 interfaces unless MCP_BIND=loopback or plain HTTP is off.
+    """All IPv4 interfaces unless MCP_BIND=loopback.
 
     MCP_HOST is ignored so a leftover 127.0.0.1 cannot hide the public bind.
     Loopback from MCP_BIND is opt-in and still needs a process start.
-    Plain HTTP off is applied live: the public socket closes and 127.0.0.1 stays.
-    A missing flag leaves plain_http true, so a deploy with no saved row stays on 0.0.0.0.
+    plain_http is ignored here. Closing 0.0.0.0 when the flag is off left
+    deploy on 127.0.0.1 and a remote connector on a stale tool list.
     """
+    del plain_http
     mode = (bind or "").strip().lower()
     if mode in ("loopback", "localhost"):
         return "127.0.0.1"
-    chosen = "0.0.0.0" if plain_http else "127.0.0.1"
     if mode not in ("", "all", "0.0.0.0", "*"):
-        LOG.warning("MCP_BIND=%s is not all or loopback; listening on %s", mode, chosen)
+        LOG.warning("MCP_BIND=%s is not all or loopback; listening on 0.0.0.0", mode)
     host = (requested or "").strip()
     if host not in ("", "0.0.0.0", "*"):
         LOG.warning("MCP_HOST=%s is ignored; set MCP_BIND=loopback to listen on 127.0.0.1", host)
-    return chosen
+    return "0.0.0.0"
 
 
 class PublicBind:
-    """One listen socket. Plain HTTP off replaces 0.0.0.0 with 127.0.0.1.
+    """One listen socket on 0.0.0.0, or 127.0.0.1 when MCP_BIND=loopback.
 
-    0.0.0.0 and 127.0.0.1 cannot share the port, so the old socket closes first.
-    MCP_BIND=loopback never opens 0.0.0.0, including when the flag is turned back on.
+    Plain HTTP off does not move this socket. The handler answers 403 instead.
     """
 
     def __init__(self, port: int, handler: type[BaseHTTPRequestHandler], *, loopback_only: bool, plain_http: bool) -> None:
@@ -3003,7 +3007,8 @@ class PublicBind:
         return self._host
 
     def address_for(self, plain_http: bool) -> str:
-        if self._loopback_only or not plain_http:
+        del plain_http
+        if self._loopback_only:
             return "127.0.0.1"
         return "0.0.0.0"
 
@@ -3062,7 +3067,7 @@ def watch_plain_http(
     stop: threading.Event,
     interval: float = 1.0,
 ) -> None:
-    """Poll the plain-HTTP flag and move the socket. No service restart."""
+    """Poll the plain-HTTP flag. The listen address stays put."""
     while not stop.is_set():
         try:
             bind.apply(allowed())
@@ -3070,6 +3075,28 @@ def watch_plain_http(
             LOG.exception("lifedash-mcp did not move its listen address")
         if stop.wait(interval):
             return
+
+
+def tools_page(cursor: Any) -> dict[str, Any]:
+    """Every tool when the client did not ask for a page.
+
+    A missing cursor is the whole registry and has no nextCursor, so a client
+    that does not paginate still sees Hermes and the platform tools. A cursor
+    is a decimal offset on TOOL_PAGE boundaries and is only honored when sent.
+    """
+    if cursor in (None, ""):
+        return {"tools": list(TOOLS)}
+    if not isinstance(cursor, str) or not cursor.isascii() or not cursor.isdigit():
+        raise ValueError("This server does not recognize that tools/list cursor.")
+    start = int(cursor)
+    if start < 0 or start >= len(TOOLS) or start % TOOL_PAGE != 0:
+        raise ValueError("This server does not recognize that tools/list cursor.")
+    page = TOOLS[start:start + TOOL_PAGE]
+    result: dict[str, Any] = {"tools": page}
+    nxt = start + len(page)
+    if nxt < len(TOOLS):
+        result["nextCursor"] = str(nxt)
+    return result
 
 
 def negotiate_protocol(params: Any) -> str:
@@ -3172,20 +3199,13 @@ def handle_message(
     if method == "ping":
         return reply({})
     if method == "tools/list":
-        # Scope is enforced when the tool is called, not by hiding names.
-        # One page, no nextCursor: Cursor keeps only the first page.
-        # ttlMs 0 marks the list stale so a client that cached an older
-        # catalog (before bills, envelopes, and these agent tools) refetches it.
+        # The list is not filtered. The call still needs a bearer and the key's scopes.
         params = message.get("params") or {}
         cursor = params.get("cursor") if isinstance(params, dict) else None
-        if cursor not in (None,):
-            return reply(error={"code": -32602, "message": "This server returns every tool in one list."})
-        return reply({
-            "tools": TOOLS,
-            "resultType": "complete",
-            "ttlMs": 0,
-            "cacheScope": "public",
-        })
+        try:
+            return reply(tools_page(cursor))
+        except ValueError as exc:
+            return reply(error={"code": -32602, "message": str(exc)})
     return reply(error={"code": -32601, "message": f"Method not found: {method}"})
 
 
@@ -3388,7 +3408,7 @@ def main() -> None:
     setup_logging(config.get("LOG_LEVEL", "INFO"))
     runtime = RuntimeSettings(config, lambda: read_setup(config))
     # MCP_BIND is read once. Settings → Setup queues a restart after that changes.
-    # Plain HTTP is polled: off closes 0.0.0.0 and leaves 127.0.0.1 in this process.
+    # Plain HTTP is polled for the 403, and does not move this socket.
     port = int(config.get("MCP_PORT", "8765"))
     api_base = config.get("MCP_API_BASE", "http://127.0.0.1")
     loopback_only = listen_host(config.maybe("MCP_HOST"), runtime.maybe("MCP_BIND")) == "127.0.0.1"

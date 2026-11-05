@@ -1544,9 +1544,9 @@ $router->get('/settings/pantry', function () use ($auth): void {
     require VIEWS_DIR . '/settings/pantry.php';
 });
 
-$router->get('/settings/permissions', function () use ($auth): void {
+$router->get('/settings/audit', function () use ($auth): void {
     $user = $auth->requireAuth();
-    require VIEWS_DIR . '/settings/permissions.php';
+    require VIEWS_DIR . '/settings/audit.php';
 });
 
 $router->get('/settings/health', function () use ($auth, $db): void {

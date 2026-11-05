@@ -7,7 +7,6 @@ from lifedash.platform_tools import resolve_platform
 def test_platform_tools_are_in_the_one_list():
     names = [tool["name"] for tool in TOOLS]
     for name in (
-        "grants_status",
         "brief_me",
         "brief_history",
         "graph_query",
@@ -35,7 +34,6 @@ def test_platform_tools_are_in_the_one_list():
 
 
 def test_platform_routes():
-    assert resolve("grants_status", {}) == ("GET", "/api/v1/grants/mine", None)
     assert resolve("brief_me", {}) == ("POST", "/api/v1/brief", {})
     assert resolve("health_status", {})[1] == "/api/v1/health/status"
     assert resolve("health_sync", {}) == ("POST", "/api/v1/health/sync", {})

@@ -39,41 +39,20 @@ final class PlatformBundleTest extends PgsqlTestCase
         parent::tearDown();
     }
 
-    public function testHealthReadsFailClosedUntilGrantedAndOnceIsSpent(): void
+    public function testAValidKeyCanReadHealthAndTheActIsAudited(): void
     {
         $token = $this->svc->tokens->create($this->user, 'watch', ['health:read', 'health:write']);
-        $denied = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
-        self::assertSame(403, $denied->status);
-        self::assertStringStartsWith('needs-grant:', (string) ($denied->payload['error'] ?? ''));
-
-        $this->svc->grants->save($this->user, 'token', (int) $token['id'], 'health', 'once');
         $once = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
         self::assertSame(200, $once->status);
         self::assertFalse($once->payload['open_wearables']['configured']);
 
-        $spent = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
-        self::assertSame(403, $spent->status);
-        self::assertSame('deny', $this->svc->grants->mode($this->user, 'token', (int) $token['id'], 'health'));
+        $again = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
+        self::assertSame(200, $again->status);
 
-        $events = $this->svc->grants->recentAudits($this->user);
+        $events = $this->svc->audit->recent($this->user);
         self::assertNotSame([], $events);
-        self::assertSame('health', $events[0]['sector']);
-    }
-
-    public function testAlwaysAuditsWithoutReturningToDeny(): void
-    {
-        $token = $this->svc->tokens->create($this->user, 'watch', ['health:read', 'health:write']);
-        $this->svc->grants->save($this->user, 'token', (int) $token['id'], 'health', 'always');
-        self::assertSame(200, $this->call((string) $token['token'], 'GET', '/api/v1/health/readiness', false)->status);
-        self::assertSame(200, $this->call((string) $token['token'], 'GET', '/api/v1/health/readiness', false)->status);
-        self::assertSame('always', $this->svc->grants->mode($this->user, 'token', (int) $token['id'], 'health'));
-        $audit = $this->db->fetchOne(
-            "SELECT detail::text AS detail FROM audit_events WHERE user_id = ? AND action = 'GET' ORDER BY id DESC LIMIT 1",
-            [$this->user]
-        );
-        self::assertIsArray($audit);
-        self::assertStringContainsString('always', (string) $audit['detail']);
-        self::assertStringContainsString('health', (string) $audit['detail']);
+        self::assertSame('health', $events[0]['detail']['sector'] ?? null);
+        self::assertSame('health_status', $events[0]['tool']);
     }
 
     public function testManualHealthLogDoesNotInventReadiness(): void
@@ -89,7 +68,28 @@ final class PlatformBundleTest extends PgsqlTestCase
         self::assertStringNotContainsString('Readiness 0', (string) $brief['brief']['body']);
     }
 
-    public function testGraphLinksAWikilinkAndHidesBillsWithoutAGrant(): void
+    public function testHealthRowsStayWithTheUserWhoStoredThem(): void
+    {
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+            ['bea', 'bea@x', 'h']
+        );
+        $other = (int) $this->db->lastInsertId();
+        $this->svc->health->logBody($this->user, ['weight_lb' => 180, 'day' => '2026-11-05']);
+
+        $mine = $this->svc->health->metrics($this->user, 'body', '2026-11-01', '2026-11-06');
+        $theirs = $this->svc->health->metrics($other, 'body', '2026-11-01', '2026-11-06');
+        self::assertCount(1, $mine['points']);
+        self::assertSame(180.0, (float) $mine['points'][0]['value']);
+        self::assertSame([], $theirs['points']);
+
+        $token = $this->svc->tokens->create($other, 'watch', ['health:read']);
+        $foreign = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
+        self::assertSame(200, $foreign->status);
+        self::assertSame([], $this->svc->health->metrics($other, 'body', '2026-11-01', '2026-11-06')['points']);
+    }
+
+    public function testGraphLinksAWikilink(): void
     {
         $this->svc->pages->create($this->user, ['title' => 'Rent plan', 'body' => 'See [[Payday]]'], 'user', null);
         $this->svc->pages->create($this->user, ['title' => 'Payday', 'body' => 'Friday'], 'user', null);
@@ -97,12 +97,10 @@ final class PlatformBundleTest extends PgsqlTestCase
         $kinds = array_column($visible['edges'], 'kind');
         self::assertContains('wikilink', $kinds);
 
-        $token = $this->svc->tokens->create($this->user, 'pages', ['pages:read']);
         $hidden = $this->svc->graph->query($this->user, '', 20, ['bill', 'envelope']);
         foreach ($hidden['nodes'] as $node) {
             self::assertNotContains($node['kind'], ['bill', 'envelope']);
         }
-        self::assertSame('deny', $this->svc->grants->mode($this->user, 'token', (int) $token['id'], 'money'));
     }
 
     private function call(string $token, string $method, string $path, bool $mutating): CapturedResponse

@@ -65,8 +65,7 @@ AGENT_TOOLS: list[dict[str, Any]] = [
         "name": "hermes_stop",
         "description": (
             "Ask the Hermes gateway to stop one turn started by hermes_send. "
-            "If that gateway has no cancel route, supported is false. Does not run a shell command. "
-            "Needs an agents grant on this key."
+            "If that gateway has no cancel route, supported is false. Does not run a shell command."
         ),
         "inputSchema": {
             "type": "object",
