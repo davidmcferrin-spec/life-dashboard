@@ -15,6 +15,7 @@ use Dashboard\Hermes\PreferenceChatMemory;
 use Dashboard\Ollama\OllamaService;
 use Dashboard\Settings\PreferenceService;
 use Dashboard\Pantry\MealBuilder;
+use Dashboard\Knowledge\PageImageService;
 use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Router\Router;
 use Dashboard\Support\Clock;
@@ -221,6 +222,45 @@ final class ExtendedApi
             $actor = $this->runner->actor();
             return ['folder' => $this->svc->pages->renameFolder($u, self::id($p), (string) ($this->runner->body()['name'] ?? ''), $actor->kind, $actor->tool)];
         }, 200, true));
+        $r->post('/api/v1/pages/images', fn () => $this->run(function (int $u): array {
+            $actor = $this->runner->actor();
+            $images = new PageImageService($this->svc->db, $this->svc->audit);
+            $type = (string) ($_SERVER['CONTENT_TYPE'] ?? '');
+            if (str_contains($type, 'multipart/form-data')) {
+                $file = $_FILES['file'] ?? null;
+                if (!is_array($file)) {
+                    throw ValidationException::withFields(['file' => 'Choose an image to upload.']);
+                }
+                $alt = (string) ($_POST['alt'] ?? '');
+                return ['image' => $images->fromUpload($u, $file, $alt, $actor->kind, $actor->tool)];
+            }
+            return ['image' => $images->fromBase64($u, $this->runner->body(), $actor->kind, $actor->tool)];
+        }, 201, true));
+        $r->get('/api/v1/pages/images/{id}', function (array $p): void {
+            $this->runner->send(function (int $u) use ($p): void {
+                $id = filter_var($p['id'] ?? null, FILTER_VALIDATE_INT);
+                if ($id === false || $id < 1) {
+                    throw new NotFoundException('Image not found.');
+                }
+                $meta = (new PageImageService($this->svc->db, $this->svc->audit))->stream($u, $id);
+                header('Content-Type: ' . $meta['mime']);
+                header('Content-Length: ' . (string) filesize($meta['path']));
+                header('Content-Disposition: inline; filename="' . $meta['filename'] . '"');
+                header('X-Content-Type-Options: nosniff');
+                header('Content-Security-Policy: default-src \'none\'; style-src \'none\'; sandbox');
+                header('Cache-Control: private, no-store');
+                readfile($meta['path']);
+            });
+        });
+        $r->get('/api/v1/pages/recent', fn () => $this->run(fn (int $u) => [
+            'pages' => $this->svc->pages->opened($u, (int) ($_GET['limit'] ?? 12)),
+        ]));
+        $r->get('/api/v1/pages/favorites', fn () => $this->run(fn (int $u) => [
+            'pages' => $this->svc->pages->favorites($u),
+        ]));
+        $r->get('/api/v1/pages/resolve', fn () => $this->run(fn (int $u) => [
+            'link' => $this->svc->pages->resolveLink($u, (string) (self::strParam('q') ?? '')),
+        ]));
         $r->get('/api/v1/pages/graph', fn () => $this->run(fn (int $u) => $this->svc->pages->graph($u)));
         $r->get('/api/v1/pages/graph/access', fn () => $this->run(fn (int $u) => [
             'events'     => $this->svc->pages->graphAccess($u, (int) ($_GET['limit'] ?? 80)),
@@ -229,6 +269,39 @@ final class ExtendedApi
         $r->get('/api/v1/pages/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'page' => $this->svc->pages->get($u, self::id($p)),
         ]));
+        $r->get('/api/v1/pages/{id}/backlinks', fn (array $p) => $this->run(fn (int $u) => [
+            'backlinks' => $this->svc->pages->backlinksFor($u, self::id($p)),
+        ]));
+        $r->get('/api/v1/pages/{id}/children', fn (array $p) => $this->run(fn (int $u) => [
+            'pages' => $this->svc->pages->children($u, self::id($p)),
+        ]));
+        $r->get('/api/v1/pages/{id}/mentions', fn (array $p) => $this->run(fn (int $u) => [
+            'mentions' => $this->svc->pages->mentionsFor($u, self::id($p)),
+        ]));
+        $r->post('/api/v1/pages/{id}/parent', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if (!array_key_exists('parent_id', $b)) {
+                throw ValidationException::withFields(['parent_id' => 'parent_id is required. Use null for the top level.']);
+            }
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->setParent($u, self::id($p), self::nullablePageId($b['parent_id']), $actor->kind, $actor->tool)];
+        }, 200, true));
+        $r->post('/api/v1/pages/{id}/favorite', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            if (!array_key_exists('favorite', $b)) {
+                throw ValidationException::withFields(['favorite' => 'favorite must be true or false.']);
+            }
+            $on = filter_var($b['favorite'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($on === null) {
+                throw ValidationException::withFields(['favorite' => 'favorite must be true or false.']);
+            }
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->setFavorite($u, self::id($p), $on, $actor->kind, $actor->tool)];
+        }, 200, true));
+        $r->post('/api/v1/pages/{id}/open', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $this->svc->pages->touch($u, self::id($p));
+            return ['ok' => true];
+        }, 200, true));
         $r->post('/api/v1/pages/{id}/move', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $b = $this->runner->body();
             if (!array_key_exists('folder_id', $b) && !array_key_exists('folder', $b)) {
@@ -1096,6 +1169,17 @@ final class ExtendedApi
             return [null, true];
         }
         return [$this->svc->pages->folderIdByPath($userId, $path), true];
+    }
+
+    private static function nullablePageId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+        if (!is_numeric($value) || (int) $value < 1) {
+            throw ValidationException::withFields(['parent_id' => 'parent_id must be a page id, or null for the top level.']);
+        }
+        return (int) $value;
     }
 
     private static function nullableId(mixed $value): ?int

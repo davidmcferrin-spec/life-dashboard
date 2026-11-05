@@ -42,6 +42,76 @@ final class FileStorage
         return STORAGE_DIR . '/uploads/files';
     }
 
+    public static function vaultDirectory(int $userId): string
+    {
+        return STORAGE_DIR . '/uploads/vault/' . $userId;
+    }
+
+    /**
+     * Raster images only. SVG is refused because a browser would run a script in it.
+     *
+     * @return array{ext: string, mime: string}
+     */
+    public static function inspectImage(string $path, string $originalName): array
+    {
+        if (!is_file($path)) {
+            throw new \InvalidArgumentException('The image upload did not finish.');
+        }
+        $size = filesize($path);
+        if ($size === false || $size <= 0) {
+            throw new \InvalidArgumentException('The image is empty.');
+        }
+        $originalExt = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        if (in_array($originalExt, ['svg', 'svgz', 'html', 'htm', 'xml', 'js', 'php'], true)) {
+            throw new \InvalidArgumentException('Vault images must be JPEG, PNG, GIF, or WebP.');
+        }
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($path) ?: '';
+        $allowed = [
+            'image/jpeg' => 'jpg',
+            'image/png'  => 'png',
+            'image/gif'  => 'gif',
+            'image/webp' => 'webp',
+        ];
+        if (!isset($allowed[$mime])) {
+            throw new \InvalidArgumentException('Vault images must be JPEG, PNG, GIF, or WebP.');
+        }
+        $ext = $allowed[$mime];
+        if ($originalExt !== '' && $originalExt !== $ext && !($originalExt === 'jpeg' && $ext === 'jpg')) {
+            throw new \InvalidArgumentException('The file name does not match the image.');
+        }
+        if (!self::magicMatchesExtension($path, $ext)) {
+            throw new \InvalidArgumentException('File content does not match its type.');
+        }
+        return ['ext' => $ext, 'mime' => $mime];
+    }
+
+    public static function storeVaultImage(int $userId, string $storageId, string $source, string $ext, bool $uploaded): void
+    {
+        if (!self::isValidStorageId($storageId) || !in_array($ext, ['jpg', 'png', 'gif', 'webp'], true)) {
+            throw new \InvalidArgumentException('Could not store that image.');
+        }
+        $dir = self::vaultDirectory($userId);
+        if (!is_dir($dir) && !mkdir($dir, 0750, true) && !is_dir($dir)) {
+            throw new \RuntimeException('Could not create the vault image directory.');
+        }
+        $dest = $dir . '/' . strtolower($storageId) . '.' . $ext;
+        $moved = $uploaded ? move_uploaded_file($source, $dest) : copy($source, $dest);
+        if (!$moved) {
+            throw new \RuntimeException('Could not save the vault image.');
+        }
+        chmod($dest, 0640);
+    }
+
+    public static function vaultImagePath(int $userId, string $storageId, string $ext): ?string
+    {
+        if ($userId <= 0 || !self::isValidStorageId($storageId) || !in_array($ext, ['jpg', 'png', 'gif', 'webp'], true)) {
+            return null;
+        }
+        $path = self::vaultDirectory($userId) . '/' . strtolower($storageId) . '.' . $ext;
+        return is_file($path) ? $path : null;
+    }
+
     public static function userDirectory(int $userId): string
     {
         return self::baseDirectory() . '/' . $userId;

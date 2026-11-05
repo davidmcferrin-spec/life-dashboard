@@ -31,6 +31,20 @@
 
     function renderInline(text, known) {
         const src = String(text);
+        const re = /(`[^`\n]+`)/g;
+        let html = '';
+        let last = 0;
+        let match;
+        while ((match = re.exec(src))) {
+            html += renderProse(src.slice(last, match.index), known);
+            html += '<code>' + esc(match[1].slice(1, -1)) + '</code>';
+            last = match.index + match[1].length;
+        }
+        return html + renderProse(src.slice(last), known);
+    }
+
+    function renderProse(text, known) {
+        const src = String(text);
         const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g;
         const chunks = [];
         let last = 0;
@@ -41,13 +55,15 @@
             const page = known.get(target.toLowerCase());
             const label = esc((match[2] || target).trim());
             chunks.push(page
-                ? `<a class="km-wiki" href="/brain?page=${Number(page.id)}">${label}</a>`
-                : `<span class="km-missing">${label}</span>`);
+                ? `<a class="km-wiki" data-page="${Number(page.id)}" data-title="${esc(target)}" href="/brain?page=${Number(page.id)}">${label}</a>`
+                : `<span class="km-missing" data-title="${esc(target)}">${label}</span>`);
             last = match.index + match[0].length;
         }
         chunks.push(esc(src.slice(last)));
         let html = chunks.join('');
-        html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
+        html = html.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/(?!\/))[^)\s]+)\)/g, (_, alt, href) => {
+            return `<img class="km-img" alt="${alt}" src="${href}">`;
+        });
         html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
         html = html.replace(/\$([^$\n]+)\$/g, '<span class="km-math">$1</span>');
         html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
@@ -77,10 +93,13 @@
         let i = 0;
         while (i < lines.length) {
             const line = lines[i];
-            if (/^```/.test(line)) {
+            const fence = /^(```+|~~~+)/.exec(line);
+            if (fence) {
+                const mark = fence[1][0];
+                const close = new RegExp('^' + mark + '{3,}\\s*$');
                 i += 1;
                 const code = [];
-                while (i < lines.length && !/^```/.test(lines[i])) {
+                while (i < lines.length && !close.test(lines[i])) {
                     code.push(lines[i]);
                     i += 1;
                 }

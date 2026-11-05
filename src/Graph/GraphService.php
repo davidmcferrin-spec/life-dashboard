@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Dashboard\Graph;
 
+use Dashboard\Audit\AuditLog;
 use Dashboard\DB\Database;
+use Dashboard\Knowledge\PageService;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 
@@ -22,6 +24,7 @@ final class GraphService
 
     public function sync(int $userId): array
     {
+        (new PageService($this->db, new AuditLog($this->db)))->ensureProseLinks($userId);
         $this->db->transaction(function () use ($userId): void {
             $this->upsertSources($userId);
             $this->dropStale($userId);

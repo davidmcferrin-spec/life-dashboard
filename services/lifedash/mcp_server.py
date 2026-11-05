@@ -491,6 +491,92 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_backlinks",
+        "description": "Pages that link to this vault page with [[wikilinks]]. Requires pages:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "integer"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_child_pages",
+        "description": "Subpages nested under a vault page. Requires pages:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "integer"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_page_parent",
+        "description": "Nest a vault page under a parent page. parent_id null lifts it to the top level. Refuses a cycle and a nest deeper than 8. Requires pages:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "parent_id": {"type": ["integer", "null"]},
+            },
+            "required": ["page_id", "parent_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "favorite_page",
+        "description": "Mark a vault page as a favorite. Requires pages:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "integer"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "unfavorite_page",
+        "description": "Remove a vault page from favorites. Requires pages:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "integer"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "recent_pages",
+        "description": "Vault pages opened most recently. When none have been opened, returns recently updated pages. Requires pages:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"limit": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "upload_page_image",
+        "description": "Store a private vault image and return Markdown for it. content_base64 is a JPEG, PNG, GIF, or WebP, at most 8 MB. SVG is refused. The image is not shared. Requires pages:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string"},
+                "content_base64": {"type": "string"},
+                "alt": {"type": "string"},
+            },
+            "required": ["filename", "content_base64"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "resolve_wikilink",
+        "description": "Resolve a [[Page title]] link to a page id. Accepts [[Title]], [[Title#heading]], and [[Title|label]]. page_id is null when no page has that title. Requires pages:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"link": {"type": "string"}},
+            "required": ["link"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "money_summary",
         "description": "Spending and net worth for a date range. Dates are YYYY-MM-DD.",
         "inputSchema": {
@@ -2319,6 +2405,40 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "move_page":
         body = {k: args[k] for k in ("folder_id", "folder") if k in args}
         return "POST", f"/api/v1/pages/{int(args['page_id'])}/move", body
+    if name == "get_backlinks":
+        return "GET", f"/api/v1/pages/{int(args['page_id'])}/backlinks", None
+    if name == "list_child_pages":
+        return "GET", f"/api/v1/pages/{int(args['page_id'])}/children", None
+    if name == "set_page_parent":
+        if "parent_id" not in args:
+            raise ValueError("parent_id is required. Use null for the top level.")
+        return "POST", f"/api/v1/pages/{int(args['page_id'])}/parent", {"parent_id": args.get("parent_id")}
+    if name == "favorite_page":
+        return "POST", f"/api/v1/pages/{int(args['page_id'])}/favorite", {"favorite": True}
+    if name == "unfavorite_page":
+        return "POST", f"/api/v1/pages/{int(args['page_id'])}/favorite", {"favorite": False}
+    if name == "recent_pages":
+        query = {}
+        if args.get("limit") is not None:
+            query["limit"] = int(args["limit"])
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/pages/recent" + suffix, None
+    if name == "upload_page_image":
+        filename = args.get("filename")
+        encoded = args.get("content_base64")
+        if not isinstance(filename, str) or filename.strip() == "":
+            raise ValueError("filename is required.")
+        if not isinstance(encoded, str) or encoded.strip() == "":
+            raise ValueError("content_base64 is required.")
+        body = {"filename": filename, "content_base64": encoded}
+        if "alt" in args:
+            body["alt"] = args["alt"]
+        return "POST", "/api/v1/pages/images", body
+    if name == "resolve_wikilink":
+        link = args.get("link")
+        if not isinstance(link, str) or link.strip() == "":
+            raise ValueError("link is required, for example [[Page title]].")
+        return "GET", "/api/v1/pages/resolve?" + urlencode({"q": link}), None
     if name == "money_summary":
         return "GET", "/api/v1/money/summary" + _query(args, ("from", "to")), None
     if name == "list_accounts":
