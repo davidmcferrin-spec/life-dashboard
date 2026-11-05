@@ -129,11 +129,28 @@ final class LocalAgentsTest extends TestCase
         self::assertSame(127, $ran['code']);
     }
 
+    public function testHermesStopReportsAnUnsupportedGateway(): void
+    {
+        $memory = new LocalAgentMemory();
+        $memory->write(3, LocalAgents::RUNS, json_encode(['run_1']));
+        $gateway = new Gateway(str_repeat('ab', 16), static function (string $method, string $url, ?string $body, int $timeout): array {
+            unset($method, $body, $timeout);
+            if (str_ends_with($url, '/health')) {
+                return ['status' => 200, 'json' => ['status' => 'ok']];
+            }
+
+            return ['status' => 405, 'json' => null];
+        });
+        $stopped = (new LocalAgents($gateway, $memory))->hermesStop(3, 'run_1');
+        self::assertFalse($stopped['supported']);
+        self::assertFalse($stopped['stopped']);
+    }
+
     public function testPromptNamesTheAgentTools(): void
     {
         $prompt = AgentPrompt::text();
         foreach ([
-            'hermes_status', 'hermes_list_sessions', 'hermes_start_session', 'hermes_send', 'hermes_poll',
+            'hermes_status', 'hermes_list_sessions', 'hermes_start_session', 'hermes_send', 'hermes_poll', 'hermes_stop',
             'opencode_status', 'openclaw_status', 'openclaw_ask',
         ] as $name) {
             self::assertStringContainsString($name, $prompt);

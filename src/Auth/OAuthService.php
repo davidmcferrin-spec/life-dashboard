@@ -269,6 +269,8 @@ final class OAuthService
             'scopes' => $scopes,
             'id' => (int) $row['id'],
             'name' => (string) $row['client_name'],
+            'principal_kind' => 'oauth',
+            'principal_id' => (int) $row['client_row_id'],
         ];
     }
 

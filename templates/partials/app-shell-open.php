@@ -70,9 +70,13 @@ $shellItems = [
     ['Flights', '/flights', 'plane'],
     ['Feeds', '/feeds', 'inbox'],
     ['Grok Digest', '/digest', 'bot'],
+    ['Health', '/health', 'heart-pulse'],
+    ['Brief', '/brief', 'sun'],
+    ['Links', '/graph', 'link'],
 ];
 if ((int) ($user['is_admin'] ?? 0) === 1) {
     $shellItems[] = ['Hermes', '/hermes', 'message-square'];
+    $shellItems[] = ['Agents', '/agents', 'bot'];
 }
 
 $shellIcon = static function (string $name): void {

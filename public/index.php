@@ -218,6 +218,26 @@ $router->get('/hermes', function () use ($auth): void {
     require VIEWS_DIR . '/hermes.php';
 });
 
+$router->get('/agents', function () use ($auth): void {
+    $user = $auth->requireAdmin();
+    require VIEWS_DIR . '/agents.php';
+});
+
+$router->get('/health', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/health.php';
+});
+
+$router->get('/brief', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/brief.php';
+});
+
+$router->get('/graph', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/graph.php';
+});
+
 $router->get('/pantry', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/pantry.php';
@@ -1522,6 +1542,54 @@ $router->post('/settings/grok', function () use ($auth, $db): void {
 $router->get('/settings/pantry', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/settings/pantry.php';
+});
+
+$router->get('/settings/permissions', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/settings/permissions.php';
+});
+
+$router->get('/settings/health', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $wearables = (new \Dashboard\Health\HealthSettings($db))->view();
+    require VIEWS_DIR . '/settings/health.php';
+});
+
+$router->post('/settings/health', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAdmin();
+    try {
+        (new \Dashboard\Health\HealthSettings($db))->save([
+            'api_url'    => (string) ($_POST['api_url'] ?? ''),
+            'user_id'    => (string) ($_POST['user_id'] ?? ''),
+            'api_secret' => (string) ($_POST['api_secret'] ?? ''),
+        ], (int) $user['id']);
+        $_SESSION['settings_flash'] = 'Open Wearables connection saved.';
+    } catch (\InvalidArgumentException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/health');
+});
+
+$router->get('/settings/home', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $homeAssistant = (new \Dashboard\Home\HomeSettings($db))->view();
+    require VIEWS_DIR . '/settings/home.php';
+});
+
+$router->post('/settings/home', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAdmin();
+    try {
+        (new \Dashboard\Home\HomeSettings($db))->save([
+            'base_url'   => (string) ($_POST['base_url'] ?? ''),
+            'api_secret' => (string) ($_POST['api_secret'] ?? ''),
+        ], (int) $user['id']);
+        $_SESSION['settings_flash'] = 'Home Assistant connection saved.';
+    } catch (\InvalidArgumentException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/home');
 });
 
 $router->get('/settings/life', function () use ($auth, $lifedash): void {

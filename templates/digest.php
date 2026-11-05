@@ -58,6 +58,7 @@ $digestIcon = static function (string $name): void {
     </header>
     <p id="digest-error" class="ld-error hidden"></p>
     <p id="digest-status" class="ld-digest-meta" role="status"></p>
+    <p id="digest-health" class="ld-digest-meta" hidden></p>
     <div class="ld-digest-pane is-shown" data-digest-view="history">
         <div class="ld-digest-filters">
             <div class="ld-digest-filter-row">
@@ -153,5 +154,6 @@ $digestIcon = static function (string $name): void {
 <script src="/assets/js/lifedash-grid.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-realtime.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/digest.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/health-brief.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

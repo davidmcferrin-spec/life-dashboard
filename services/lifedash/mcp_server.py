@@ -31,6 +31,7 @@ from . import __version__
 from .config import Config
 from .log import setup as setup_logging
 from .agent_tools import AGENT_TOOLS, resolve_agent
+from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
 from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
 
@@ -2021,6 +2022,7 @@ TOOLS: list[dict[str, Any]] = [
 TOOLS.extend(SPOTIFY_TOOLS)
 TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend(AGENT_TOOLS)
+TOOLS.extend(PLATFORM_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -2719,6 +2721,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if mapped is not None:
         return mapped
     mapped = resolve_agent(name, args)
+    if mapped is not None:
+        return mapped
+    mapped = resolve_platform(name, args)
     if mapped is not None:
         return mapped
     if name == "list_digest_items":

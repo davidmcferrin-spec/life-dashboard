@@ -25,7 +25,8 @@ if (!function_exists('settings_nav_groups')) {
         $groups = [
             'Account' => [
                 'general' => ['Dashboard', '/settings'],
-                'tokens'  => ['Auto-login tokens', '/settings/tokens'],
+                'tokens'      => ['Auto-login tokens', '/settings/tokens'],
+                'permissions' => ['Permissions', '/settings/permissions'],
             ],
             'Life' => [
                 'life'     => ['Life', '/settings/life'],
@@ -47,6 +48,8 @@ if (!function_exists('settings_nav_groups')) {
                 'bookmarks'  => ['Bookmarks', '/settings/bookmarks'],
                 'clipboards' => ['Cloud clipboards', '/settings/clipboards'],
                 'agents'     => ['Agents', '/settings/agents'],
+                'health'     => ['Open Wearables', '/settings/health'],
+                'home'       => ['Home Assistant', '/settings/home'],
                 'grok'       => ['Grok', '/settings/grok'],
                 'pings'      => ['System status', '/settings/pings'],
             ],
@@ -79,6 +82,10 @@ if (!function_exists('settings_nav_groups')) {
     {
         return [
             ['Pantry', '/pantry'],
+            ['Health', '/health'],
+            ['Morning brief', '/brief'],
+            ['Agents', '/agents'],
+            ['Links', '/graph'],
             ['Grok Digest', '/digest'],
             ['Knowledge vault', '/brain'],
             ['Brain view', '/brain/graph'],

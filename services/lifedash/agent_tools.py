@@ -62,6 +62,20 @@ AGENT_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "hermes_stop",
+        "description": (
+            "Ask the Hermes gateway to stop one turn started by hermes_send. "
+            "If that gateway has no cancel route, supported is false. Does not run a shell command. "
+            "Needs an agents grant on this key."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"run_id": {"type": "string"}},
+            "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "opencode_status",
         "description": (
             "OpenCode install: binary path, version, and the loopback Ollama model. "
@@ -134,6 +148,13 @@ def resolve_agent(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str, 
         if not isinstance(run_id, str) or _ID.fullmatch(run_id) is None:
             raise ValueError("run_id is not valid.")
         return "GET", f"/api/v1/agents/hermes/runs/{run_id}", None
+    if name == "hermes_stop":
+        if set(args) != {"run_id"}:
+            raise ValueError("hermes_stop accepts only run_id.")
+        run_id = args.get("run_id")
+        if not isinstance(run_id, str) or _ID.fullmatch(run_id) is None:
+            raise ValueError("run_id is not valid.")
+        return "POST", f"/api/v1/agents/hermes/runs/{run_id}/stop", {}
     if name == "opencode_status":
         _empty(name, args)
         return "GET", "/api/v1/agents/opencode/status", None
