@@ -375,6 +375,52 @@ final class ExtendedApi
         $r->post('/api/v1/money/sinking-funds/{id}', fn (array $p) => $this->run(fn (int $u) => [
             'sinking_fund' => $this->svc->plan->updateSinkingFund($u, self::id($p), $this->runner->body()),
         ], 200, true));
+        $r->get('/api/v1/money/bills', fn () => $this->run(fn (int $u) => $this->svc->bills->bills($u)));
+        $r->get('/api/v1/money/bills/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'bill' => $this->svc->bills->bill($u, self::id($p)),
+        ]));
+        $r->post('/api/v1/money/bills', fn () => $this->run(fn (int $u) => [
+            'bill' => $this->svc->bills->saveBill($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/bills/{id}/paid', fn (array $p) => $this->run(fn (int $u) => [
+            'bill' => $this->svc->bills->markCycle($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/bills/{id}/archive', fn (array $p) => $this->run(fn (int $u) => [
+            'bill' => $this->svc->bills->archiveBill($u, self::id($p)),
+        ], 200, true));
+        $r->post('/api/v1/money/bills/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'bill' => $this->svc->bills->updateBill($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/envelopes/propose', fn () => $this->run(fn (int $u) => $this->svc->bills->propose($u, $this->runner->body()), 200, true));
+        $r->get('/api/v1/money/envelopes', fn () => $this->run(fn (int $u) => [
+            'envelopes' => $this->svc->bills->envelopes($u),
+        ]));
+        $r->get('/api/v1/money/envelopes/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'envelope' => $this->svc->bills->envelope($u, self::id($p)),
+        ]));
+        $r->post('/api/v1/money/envelopes', fn () => $this->run(fn (int $u) => [
+            'envelope' => $this->svc->bills->saveEnvelope($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/envelopes/{id}/funded', fn (array $p) => $this->run(fn (int $u) => [
+            'envelope' => $this->svc->bills->updateFunded($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/envelopes/{id}/archive', fn (array $p) => $this->run(fn (int $u) => [
+            'envelope' => $this->svc->bills->archiveEnvelope($u, self::id($p)),
+        ], 200, true));
+        $r->post('/api/v1/money/envelopes/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'envelope' => $this->svc->bills->updateEnvelope($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/money/payday', fn () => $this->run(fn (int $u) => [
+            'payday' => $this->svc->bills->payday($u),
+        ]));
+        $r->post('/api/v1/money/payday', fn () => $this->run(fn (int $u) => [
+            'payday' => $this->svc->bills->savePayday($u, $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/money/payday-pressure', fn () => $this->run(function (int $u): array {
+            $pressure = $this->svc->bills->pressure($u);
+            $pressure['food_week'] = $this->svc->plan->foodWeek($u);
+            return ['payday_pressure' => $pressure];
+        }));
         $r->post('/api/v1/money/snapshots', fn () => $this->run(function (int $u): array {
             $b = $this->runner->body();
             $breakdown = $b['breakdown'] ?? null;

@@ -105,7 +105,7 @@ final class MoneyPlanTest extends TestCase
             self::assertTrue(true);
         }
         self::assertSame(
-            ['debt', 'account', 'transaction', 'budget', 'sinking_fund'],
+            ['debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday'],
             Scope::auditEntityAllow(['money:read', 'money:write'], null)
         );
         self::assertFalse(Scope::allows(['money:read'], 'money:write'));

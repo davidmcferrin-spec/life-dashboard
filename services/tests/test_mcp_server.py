@@ -223,6 +223,40 @@ def test_money_tools_resolve_onto_the_money_api():
     assert (method, path, body) == ("POST", "/api/v1/money/weekly-review", {"write_page": False})
     method, path, body = resolve("weekly_review", {"write_page": True})
     assert body["write_page"] is True
+    method, path, body = resolve("list_bills", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/bills", None)
+    method, path, body = resolve("get_bill", {"bill_id": 4})
+    assert (method, path, body) == ("GET", "/api/v1/money/bills/4", None)
+    method, path, body = resolve("create_bill", {"name": "Rent", "amount": 1200, "cadence": "monthly", "due_day": 1, "autopay": False})
+    assert (method, path) == ("POST", "/api/v1/money/bills")
+    assert body["name"] == "Rent"
+    assert body["autopay"] is False
+    method, path, body = resolve("update_bill", {"bill_id": 4, "debt_id": None, "amount": 50})
+    assert (method, path) == ("POST", "/api/v1/money/bills/4")
+    assert body["debt_id"] is None
+    assert "bill_id" not in body
+    method, path, body = resolve("mark_bill_paid", {"bill_id": 4, "status": "paid", "cycle_due_on": "2026-11-01"})
+    assert (method, path) == ("POST", "/api/v1/money/bills/4/paid")
+    assert body == {"status": "paid", "cycle_due_on": "2026-11-01"}
+    method, path, body = resolve("archive_bill", {"bill_id": 4})
+    assert (method, path, body) == ("POST", "/api/v1/money/bills/4/archive", {})
+    method, path, body = resolve("list_envelopes", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/envelopes", None)
+    method, path, body = resolve("create_envelope", {"name": "Cushion", "job_type": "buffer", "target_amount": 1000, "account_id": 2})
+    assert (method, path) == ("POST", "/api/v1/money/envelopes")
+    assert body["account_id"] == 2
+    method, path, body = resolve("update_envelope_funded", {"envelope_id": 3, "funded_amount": 40})
+    assert (method, path, body) == ("POST", "/api/v1/money/envelopes/3/funded", {"funded_amount": 40})
+    method, path, body = resolve("get_payday_pressure", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/payday-pressure", None)
+    method, path, body = resolve("save_payday", {"next_on": "2026-11-13", "paycheck_amount": 2000, "living_float": None})
+    assert (method, path) == ("POST", "/api/v1/money/payday")
+    assert body["living_float"] is None
+    method, path, body = resolve("propose_envelope_assignment", {"envelope_id": 3, "amount": 25})
+    assert (method, path, body) == ("POST", "/api/v1/money/envelopes/propose", {"envelope_id": 3, "amount": 25})
+    schema = {tool["name"]: tool for tool in TOOLS}
+    assert "does not move money" in schema["mark_bill_paid"]["description"].lower() or "does not create a transaction" in schema["mark_bill_paid"]["description"].lower()
+    assert "proposal" in schema["propose_envelope_assignment"]["description"].lower()
     method, path, body = resolve("get_audit_log", {"since": "2026-10-01", "source": "ai", "entity": "debt", "entity_id": 4, "limit": 10})
     assert method == "GET"
     assert body is None
@@ -294,6 +328,9 @@ def test_money_tools_resolve_onto_the_money_api():
         "add_transactions", "list_transactions", "get_budget", "set_budget_line", "get_debts",
         "create_debt", "update_debt", "archive_debt", "delete_debt",
         "get_sinking_funds", "create_sinking_fund", "update_sinking_fund", "archive_sinking_fund",
+        "list_bills", "get_bill", "create_bill", "update_bill", "archive_bill", "mark_bill_paid",
+        "list_envelopes", "get_envelope", "create_envelope", "update_envelope", "update_envelope_funded",
+        "archive_envelope", "get_payday_pressure", "save_payday", "propose_envelope_assignment",
         "set_category_cap", "add_net_worth_snapshot",
         "add_credit_score", "get_dashboard_summary", "money_summary", "weekly_review", "get_audit_log",
         "list_todos", "create_todo", "update_todo", "complete_todo", "list_todo_categories", "create_todo_category",

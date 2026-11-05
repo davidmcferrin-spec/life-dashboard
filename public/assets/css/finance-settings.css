@@ -521,6 +521,182 @@ html[data-theme="light"] .fin-card {
     }
 }
 
+.fin-modal-scroll {
+    max-height: min(70vh, 640px);
+    overflow: auto;
+    padding-right: 4px;
+}
+
+.fin-pressure {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0 0 16px;
+}
+
+.fin-pressure div {
+    min-width: 0;
+}
+
+.fin-pressure dt {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.fin-pressure dd {
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
+    margin: 4px 0 0;
+}
+
+.fin-pressure .is-wide {
+    grid-column: 1 / -1;
+}
+
+.fin-unassigned {
+    font-size: 28px;
+    line-height: 1.2;
+}
+
+.fin-unassigned.is-down {
+    color: var(--danger);
+}
+
+.fin-group {
+    margin-top: 8px;
+}
+
+.fin-group h3 {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    margin: 12px 0 0;
+    text-transform: uppercase;
+}
+
+.fin-bill {
+    align-items: start;
+    border-bottom: 1px solid var(--border-soft);
+    display: grid;
+    gap: 8px 12px;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, auto) auto;
+    padding: 12px 0;
+}
+
+.fin-group .fin-bill:last-child,
+.fin-envelopes .fin-bill:last-child {
+    border-bottom: 0;
+}
+
+.fin-bill-name {
+    display: block;
+    font-weight: 500;
+}
+
+.fin-bill-meta,
+.fin-flag {
+    color: var(--text-secondary);
+    display: block;
+    font-size: 12px;
+    margin-top: 2px;
+}
+
+.fin-flag {
+    color: var(--danger);
+}
+
+.fin-pill {
+    border: 1px solid var(--border-soft);
+    border-radius: 999px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    line-height: 1;
+    padding: 4px 8px;
+    text-transform: uppercase;
+}
+
+.fin-pill.is-due {
+    border-color: var(--warn);
+    color: var(--warn);
+}
+
+.fin-pill.is-late,
+.fin-pill.is-risk {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.fin-pill.is-paid {
+    border-color: var(--ok);
+    color: var(--ok);
+}
+
+.fin-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.fin-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.fin-progress {
+    background: var(--border-soft);
+    border-radius: 999px;
+    height: 6px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+
+.fin-progress > i {
+    background: var(--accent);
+    display: block;
+    height: 100%;
+}
+
+.fin-proposal {
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    margin-bottom: 12px;
+    padding: 12px;
+}
+
+.fin-proposal p {
+    margin: 0;
+}
+
+.fin-proposal p + p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+@media (max-width: 850px) {
+    .fin-pressure {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .fin-bill {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fin-pills,
+    .fin-row-actions {
+        justify-content: flex-start;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .fin-page,
     .fin-page * {
