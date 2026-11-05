@@ -1,0 +1,9 @@
+#!/bin/sh
+# OpenClaw CLI against the shared loopback Ollama config.
+# This wrapper does not start the gateway daemon.
+export OPENCLAW_HOME=/var/lib/lifedash/openclaw
+export HOME=/var/lib/lifedash/openclaw
+if [ "$(id -u)" -eq 0 ]; then
+    exec runuser -u lifedash -- /var/lib/lifedash/openclaw/bin/openclaw "$@"
+fi
+exec /var/lib/lifedash/openclaw/bin/openclaw "$@"

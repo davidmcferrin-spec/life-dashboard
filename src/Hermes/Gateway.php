@@ -58,6 +58,15 @@ final class Gateway
         return $res['status'] === 200 && (($res['json']['status'] ?? '') === 'ok');
     }
 
+    public function redact(string $text): string
+    {
+        if ($this->key === '' || $text === '') {
+            return $text;
+        }
+
+        return str_replace($this->key, '[redacted]', $text);
+    }
+
     /**
      * @param array<string, mixed>|null $body
      * @return array{status: int, json: ?array<string, mixed>}
