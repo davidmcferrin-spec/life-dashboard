@@ -33,6 +33,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
             <input id="brain-search" type="search" class="input" placeholder="Search notes" autocomplete="off" aria-label="Search notes">
             <button type="button" id="brain-collapse" class="brain-icon-btn" title="Collapse all" aria-label="Collapse all"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/archive.svg'); ?></button>
         </div>
+        <div id="brain-pins" class="brain-pins" hidden></div>
         <div id="brain-tree" class="brain-tree"></div>
         <?php // Inline the vendored files so their stroke stays currentColor. ?>
         <template id="brain-icon-chevron"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/chevron-right.svg'); ?></template>
@@ -53,10 +54,14 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                     <span>Notes</span>
                 </button>
                 <nav id="brain-crumbs" class="brain-crumbs" aria-label="Folder"></nav>
-                <input id="brain-title" class="brain-title" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
+                <div class="brain-title-row">
+                    <input id="brain-title" class="brain-title" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
+                    <button type="button" id="brain-favorite" class="brain-icon-btn" aria-pressed="false" aria-label="Favorite" title="Favorite">☆</button>
+                </div>
                 <p id="brain-status" class="brain-note-meta"></p>
             </div>
             <div class="brain-note-actions">
+                <button type="button" id="brain-quick" class="brain-icon-btn" title="Quick switcher" aria-label="Quick switcher"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/search.svg'); ?></button>
                 <div class="brain-tabs" role="group" aria-label="Note view">
                     <button type="button" data-brain-tab="preview" class="is-active" aria-pressed="true">Preview</button>
                     <button type="button" data-brain-tab="edit" aria-pressed="false">Edit</button>
@@ -76,6 +81,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                         <label class="brain-menu-field">Move
                             <select id="brain-move" class="input" aria-label="Move page to folder"></select>
                         </label>
+                        <button type="button" id="brain-source" class="brain-menu-item" role="menuitem">Markdown</button>
                         <button type="button" id="brain-archive" class="brain-menu-item is-danger" role="menuitem">Archive</button>
                     </div>
                 </div>
@@ -83,6 +89,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         </header>
         <div class="brain-split" id="brain-split" style="grid-template-columns: 1fr">
             <textarea id="brain-body" class="brain-editor" hidden placeholder="Markdown. Link pages with [[Title]]. Callouts: &#10;&gt; [!note]&#10;&gt; text"></textarea>
+            <div id="brain-blocks" class="vault-doc" hidden></div>
             <div id="brain-preview" class="brain-preview km"></div>
         </div>
         <pre id="brain-redline-view" class="brain-redline" hidden aria-label="Red-line of this version against the current page"></pre>
@@ -91,6 +98,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         <section>
             <p class="brain-kicker"><span class="brain-ctx-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/link.svg'); ?></span> Backlinks <span id="brain-back-count"></span></p>
             <div id="brain-backlinks"></div>
+            <div id="brain-mentions"></div>
         </section>
         <section>
             <p class="brain-kicker"><span class="brain-ctx-icon" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/tag.svg'); ?></span> Tags</p>
@@ -157,7 +165,15 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-markdown.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-blocks.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain.js?v=<?= e($assetVer) ?>"></script>
+<div id="brain-switcher" class="vault-switcher" hidden>
+    <div class="vault-switcher-panel" role="dialog" aria-modal="true" aria-label="Quick switcher">
+        <input id="brain-switcher-input" type="search" class="input" placeholder="Search titles and pages" autocomplete="off" aria-label="Search titles and pages" aria-controls="brain-switcher-list">
+        <div id="brain-switcher-list" class="vault-switcher-list" role="listbox"></div>
+    </div>
+</div>
+<div id="brain-hover" class="vault-hover" hidden role="tooltip"></div>
 <script src="/assets/js/brain-camera.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-forces.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-graph.js?v=<?= e($assetVer) ?>"></script>

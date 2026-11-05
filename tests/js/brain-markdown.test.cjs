@@ -32,7 +32,7 @@ test('preview renders sanitized html', () => {
     assert.match(html, /<ol><li>First<\/li><li>Second<\/li><\/ol>/);
     assert.match(html, /<input type="checkbox" disabled checked>/);
     assert.match(html, /<input type="checkbox" disabled>/);
-    assert.match(html, /<a class="km-wiki" href="\/brain\?page=4">the house<\/a>/);
+    assert.match(html, /<a class="km-wiki" data-page="4" data-title="Home" href="\/brain\?page=4">the house<\/a>/);
     assert.match(html, /<a href="https:\/\/example.com\/docs" rel="noopener noreferrer" target="_blank">docs<\/a>/);
     assert.match(html, /<table class="km-table">/);
     assert.match(html, /<th>Item<\/th>/);

@@ -41,12 +41,15 @@
             const page = known.get(target.toLowerCase());
             const label = esc((match[2] || target).trim());
             chunks.push(page
-                ? `<a class="km-wiki" href="/brain?page=${Number(page.id)}">${label}</a>`
-                : `<span class="km-missing">${label}</span>`);
+                ? `<a class="km-wiki" data-page="${Number(page.id)}" data-title="${esc(target)}" href="/brain?page=${Number(page.id)}">${label}</a>`
+                : `<span class="km-missing" data-title="${esc(target)}">${label}</span>`);
             last = match.index + match[0].length;
         }
         chunks.push(esc(src.slice(last)));
         let html = chunks.join('');
+        html = html.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/(?!\/))[^)\s]+)\)/g, (_, alt, href) => {
+            return `<img class="km-img" alt="${alt}" src="${href}">`;
+        });
         html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
         html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
         html = html.replace(/\$([^$\n]+)\$/g, '<span class="km-math">$1</span>');

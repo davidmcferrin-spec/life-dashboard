@@ -38,7 +38,7 @@ final class PageService
             return array_map(
                 fn (array $row): array => $this->brief($row),
                 $this->db->fetchAll(
-                    "SELECT id, title, slug, kind, folder_id, updated_at FROM pages
+                    "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at FROM pages
                      WHERE user_id = ? AND archived_at IS NULL {$clause}
                      ORDER BY updated_at DESC, id DESC LIMIT {$limit}",
                     array_merge([$userId], $folderParams)
@@ -49,7 +49,7 @@ final class PageService
         $fts = array_map(
             fn (array $row): array => $this->brief($row),
             $this->db->fetchAll(
-                "SELECT id, title, slug, kind, folder_id, updated_at,
+                "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at,
                         ts_rank(to_tsvector('english', title || ' ' || body), plainto_tsquery('english', ?)) AS rank
                  FROM pages
                  WHERE user_id = ? AND archived_at IS NULL {$clause}
@@ -85,6 +85,47 @@ final class PageService
     }
 
     /**
+     * Pages opened from the vault, newest first.
+     * When nothing has been opened yet, fall back to recently updated pages
+     * so the sidebar and the recent_pages tool are not empty.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function opened(int $userId, int $limit = 12): array
+    {
+        $limit = max(1, min(50, $limit));
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, last_opened_at
+             FROM pages
+             WHERE user_id = ? AND archived_at IS NULL AND last_opened_at IS NOT NULL
+             ORDER BY last_opened_at DESC, id DESC
+             LIMIT {$limit}",
+            [$userId]
+        );
+        if ($rows === []) {
+            return $this->recent($userId, $limit);
+        }
+        return array_map(fn (array $row): array => $this->brief($row), $rows);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function favorites(int $userId): array
+    {
+        return array_map(
+            fn (array $row): array => $this->brief($row),
+            $this->db->fetchAll(
+                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at
+                 FROM pages
+                 WHERE user_id = ? AND archived_at IS NULL AND favorited_at IS NOT NULL
+                 ORDER BY favorited_at DESC, id DESC',
+                [$userId]
+            )
+        );
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function get(int $userId, int $id): array
@@ -98,6 +139,9 @@ final class PageService
         $page['links'] = $this->outgoing($userId, $id);
         $page['revisions'] = $this->revisions($userId, $id);
         $page['breadcrumbs'] = $this->breadcrumbs($userId, $page['folder_id']);
+        $page['parents'] = $this->ancestors($userId, $page['parent_id']);
+        $page['children'] = $this->childRows($userId, $id);
+        $page['mentions'] = $this->mentions($userId, $id, (string) $page['title']);
         return $page;
     }
 
@@ -112,11 +156,16 @@ final class PageService
         $kind = $this->cleanKind($input['kind'] ?? 'note');
         $body = $this->cleanBody($input['body'] ?? '');
         $slug = $this->uniqueSlug($userId, $title);
+        $parentId = $this->parentFromInput($userId, $input);
         $folderId = $this->inputHasFolder($input) ? $this->folderFromInput($userId, $input) : null;
+        if ($parentId !== null && !$this->inputHasFolder($input)) {
+            $parent = $this->requireLivePage($userId, $parentId);
+            $folderId = $parent['folder_id'];
+        }
 
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO pages (user_id, title, slug, kind, body, folder_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
-            [$userId, $title, $slug, $kind, $body, $folderId]
+            'INSERT INTO pages (user_id, title, slug, kind, body, folder_id, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $title, $slug, $kind, $body, $folderId, $parentId]
         );
         $this->addRevision($userId, $id, 1, $title, $body);
         $this->syncLinks($userId, $id, $body);
@@ -133,11 +182,13 @@ final class PageService
     public function update(int $userId, int $id, array $input, string $actor = 'user', ?string $tool = null): array
     {
         $page = $this->get($userId, $id);
-        $title = array_key_exists('title', $input) ? $this->cleanTitle($input['title']) : (string) $page['title'];
+        $oldTitle = (string) $page['title'];
+        $title = array_key_exists('title', $input) ? $this->cleanTitle($input['title']) : $oldTitle;
         $kind  = array_key_exists('kind', $input) ? $this->cleanKind($input['kind']) : (string) $page['kind'];
         $body  = array_key_exists('body', $input) ? $this->cleanBody($input['body']) : (string) $page['body'];
-        if ($title !== $page['title']) {
+        if ($title !== $oldTitle) {
             $this->assertUniqueTitle($userId, $title, $id);
+            $body = Wikilinks::rewrite($body, $oldTitle, $title);
         }
         if ($this->inputHasFolder($input)) {
             $this->movePage($userId, $id, $this->folderFromInput($userId, $input), $actor, $tool);
@@ -153,6 +204,9 @@ final class PageService
         );
         $this->addRevision($userId, $id, $version, $title, $body);
         $this->syncLinks($userId, $id, $body);
+        if ($title !== $oldTitle) {
+            $this->renameIncoming($userId, $id, $oldTitle, $title, $actor, $tool);
+        }
         $this->relink($userId);
         $this->maybeEmbed($userId, $id, $title, $body);
         $this->audit->record($userId, $actor, $tool, 'page.update', 'page:' . $id, ['title' => $title]);
@@ -232,12 +286,122 @@ final class PageService
 
     public function archive(int $userId, int $id, string $actor = 'user'): void
     {
-        $this->get($userId, $id);
+        $page = $this->get($userId, $id);
+        $parentId = $page['parent_id'];
+        $this->db->execute(
+            'UPDATE pages SET parent_id = ? WHERE user_id = ? AND parent_id = ?',
+            [$parentId, $userId, $id]
+        );
         $this->db->execute(
             "UPDATE pages SET archived_at = (now() AT TIME ZONE 'UTC'), updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
             [$id, $userId]
         );
         $this->audit->record($userId, $actor, null, 'page.archive', 'page:' . $id);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function backlinksFor(int $userId, int $id): array
+    {
+        $this->requireLivePage($userId, $id);
+        return $this->backlinks($userId, $id);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function children(int $userId, int $id): array
+    {
+        $this->requireLivePage($userId, $id);
+        return $this->childRows($userId, $id);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function mentionsFor(int $userId, int $id): array
+    {
+        $page = $this->requireLivePage($userId, $id);
+        return $this->mentions($userId, $id, (string) $page['title']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function setParent(int $userId, int $id, ?int $parentId, string $actor = 'user', ?string $tool = null): array
+    {
+        $page = $this->requireLivePage($userId, $id);
+        if ($parentId === $id) {
+            throw ValidationException::withFields(['parent_id' => 'A page cannot be its own parent.']);
+        }
+        $folderId = $page['folder_id'];
+        if ($parentId !== null) {
+            $parent = $this->requireLivePage($userId, $parentId);
+            $this->assertPageNesting($userId, $id, $parentId);
+            $folderId = $parent['folder_id'];
+        }
+        $current = $page['parent_id'];
+        if ($current === $parentId && $page['folder_id'] === $folderId) {
+            return $this->get($userId, $id);
+        }
+        $this->db->execute(
+            "UPDATE pages SET parent_id = ?, folder_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$parentId, $folderId, $id, $userId]
+        );
+        $this->audit->record($userId, $actor, $tool, 'page.parent', 'page:' . $id, [
+            'parent_id' => $parentId,
+        ]);
+        return $this->get($userId, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function setFavorite(int $userId, int $id, bool $on, string $actor = 'user', ?string $tool = null): array
+    {
+        $this->requireLivePage($userId, $id);
+        if ($on) {
+            $this->db->execute(
+                "UPDATE pages SET favorited_at = COALESCE(favorited_at, (now() AT TIME ZONE 'UTC')) WHERE id = ? AND user_id = ?",
+                [$id, $userId]
+            );
+        } else {
+            $this->db->execute(
+                'UPDATE pages SET favorited_at = NULL WHERE id = ? AND user_id = ?',
+                [$id, $userId]
+            );
+        }
+        $this->audit->record($userId, $actor, $tool, $on ? 'page.favorite' : 'page.unfavorite', 'page:' . $id);
+        return $this->get($userId, $id);
+    }
+
+    public function touch(int $userId, int $id): void
+    {
+        $this->requireLivePage($userId, $id);
+        $this->db->execute(
+            "UPDATE pages SET last_opened_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$id, $userId]
+        );
+    }
+
+    /**
+     * @return array{title: string, heading: ?string, alias: ?string, page_id: ?int, resolved_title: ?string}
+     */
+    public function resolveLink(int $userId, string $raw): array
+    {
+        $parsed = Wikilinks::parse($raw);
+        $row = $this->db->fetchOne(
+            'SELECT id, title FROM pages WHERE user_id = ? AND archived_at IS NULL AND lower(title) = lower(?)',
+            [$userId, $parsed['title']]
+        );
+        return [
+            'title'           => $parsed['title'],
+            'heading'         => $parsed['heading'],
+            'alias'           => $parsed['alias'],
+            'page_id'         => $row !== null ? (int) $row['id'] : null,
+            'resolved_title'  => $row !== null ? (string) $row['title'] : null,
+        ];
     }
 
     /**
@@ -586,6 +750,211 @@ final class PageService
         ));
     }
 
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function parentFromInput(int $userId, array $input): ?int
+    {
+        if (!array_key_exists('parent_id', $input)) {
+            return null;
+        }
+        $raw = $input['parent_id'];
+        if ($raw === null || $raw === '' || $raw === 0 || $raw === '0') {
+            return null;
+        }
+        if (!is_numeric($raw) || (int) $raw < 1) {
+            throw ValidationException::withFields(['parent_id' => 'parent_id must be a page id, or null for the top level.']);
+        }
+        $parentId = (int) $raw;
+        $this->requireLivePage($userId, $parentId);
+        return $parentId;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function requireLivePage(int $userId, int $id): array
+    {
+        $row = $this->db->fetchOne(
+            'SELECT * FROM pages WHERE id = ? AND user_id = ? AND archived_at IS NULL',
+            [$id, $userId]
+        );
+        if ($row === null) {
+            throw new NotFoundException('Page not found.');
+        }
+        $row['folder_id'] = $this->nullableInt($row['folder_id'] ?? null);
+        $row['parent_id'] = $this->nullableInt($row['parent_id'] ?? null);
+        return $row;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function childRows(int $userId, int $id): array
+    {
+        return array_map(
+            fn (array $row): array => $this->brief($row),
+            $this->db->fetchAll(
+                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at
+                 FROM pages
+                 WHERE user_id = ? AND parent_id = ? AND archived_at IS NULL
+                 ORDER BY lower(title) ASC, id ASC',
+                [$userId, $id]
+            )
+        );
+    }
+
+    /**
+     * @return list<array{id: int, title: string}>
+     */
+    private function ancestors(int $userId, ?int $parentId): array
+    {
+        $out = [];
+        $cursor = $parentId;
+        $guard = 0;
+        while ($cursor !== null && $guard < 8) {
+            $row = $this->db->fetchOne(
+                'SELECT id, title, parent_id FROM pages WHERE id = ? AND user_id = ? AND archived_at IS NULL',
+                [$cursor, $userId]
+            );
+            if ($row === null) {
+                break;
+            }
+            $out[] = ['id' => (int) $row['id'], 'title' => (string) $row['title']];
+            $cursor = $this->nullableInt($row['parent_id']);
+            $guard++;
+        }
+        return array_reverse($out);
+    }
+
+    /**
+     * Other pages that name this title in prose, outside a wikilink.
+     *
+     * @return list<array{id: int, title: string, kind: string}>
+     */
+    private function mentions(int $userId, int $id, string $title): array
+    {
+        $title = trim($title);
+        if (mb_strlen($title) < 3) {
+            return [];
+        }
+        $needle = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($title)) . '%';
+        $rows = $this->db->fetchAll(
+            "SELECT id, title, kind, body FROM pages
+             WHERE user_id = ? AND archived_at IS NULL AND id <> ?
+               AND lower(body) LIKE ? ESCAPE '\\'
+             ORDER BY lower(title) ASC, id ASC
+             LIMIT 40",
+            [$userId, $id, $needle]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            if (!Wikilinks::mentionsTitle((string) $row['body'], $title)) {
+                continue;
+            }
+            $out[] = [
+                'id'    => (int) $row['id'],
+                'title' => (string) $row['title'],
+                'kind'  => (string) $row['kind'],
+            ];
+            if (count($out) >= 12) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    private function renameIncoming(int $userId, int $pageId, string $from, string $to, string $actor, ?string $tool): void
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT p.id, p.title, p.body
+             FROM pages p
+             WHERE p.user_id = ? AND p.id <> ? AND p.archived_at IS NULL
+               AND EXISTS (
+                   SELECT 1 FROM page_links l
+                   WHERE l.from_page_id = p.id AND l.user_id = p.user_id
+                     AND (l.to_page_id = ? OR lower(l.to_title) = lower(?))
+               )',
+            [$userId, $pageId, $pageId, $from]
+        );
+        foreach ($rows as $row) {
+            $next = Wikilinks::rewrite((string) $row['body'], $from, $to);
+            if ($next === (string) $row['body']) {
+                continue;
+            }
+            $id = (int) $row['id'];
+            $version = (int) $this->db->fetchScalar(
+                'SELECT COALESCE(MAX(version), 0) + 1 FROM page_revisions WHERE page_id = ?',
+                [$id]
+            );
+            $this->db->execute(
+                "UPDATE pages SET body = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+                [$next, $id, $userId]
+            );
+            $this->addRevision($userId, $id, $version, (string) $row['title'], $next);
+            $this->syncLinks($userId, $id, $next);
+            $this->audit->record($userId, $actor, $tool, 'page.update', 'page:' . $id, [
+                'title'  => (string) $row['title'],
+                'reason' => 'wikilink rename',
+            ]);
+        }
+    }
+
+    private function assertPageNesting(int $userId, int $id, int $parentId): void
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT id, parent_id FROM pages WHERE user_id = ? AND archived_at IS NULL',
+            [$userId]
+        );
+        $parentOf = [];
+        $children = [];
+        foreach ($rows as $row) {
+            $pageId = (int) $row['id'];
+            $parent = $this->nullableInt($row['parent_id']);
+            $parentOf[$pageId] = $parent;
+            if ($parent !== null) {
+                $children[$parent][] = $pageId;
+            }
+        }
+        $depth = 0;
+        $cursor = $parentId;
+        $seen = [];
+        while ($cursor !== null) {
+            if ($cursor === $id || isset($seen[$cursor])) {
+                throw ValidationException::withFields(['parent_id' => 'A page cannot be nested under its own subpage.']);
+            }
+            $seen[$cursor] = true;
+            $depth++;
+            if ($depth > 8) {
+                throw ValidationException::withFields(['parent_id' => 'Pages can nest 8 levels deep.']);
+            }
+            $cursor = $parentOf[$cursor] ?? null;
+        }
+        if ($depth + $this->pageSubtreeHeight($id, $children) > 8) {
+            throw ValidationException::withFields(['parent_id' => 'Pages can nest 8 levels deep.']);
+        }
+    }
+
+    /**
+     * @param array<int, list<int>> $children
+     */
+    private function pageSubtreeHeight(int $id, array $children): int
+    {
+        $height = 1;
+        foreach ($children[$id] ?? [] as $child) {
+            $height = max($height, 1 + $this->pageSubtreeHeight($child, $children));
+        }
+        return $height;
+    }
+
+    private function nullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        return (int) $value;
+    }
+
     private function syncLinks(int $userId, int $pageId, string $body): void
     {
         $this->db->execute('DELETE FROM page_links WHERE from_page_id = ? AND user_id = ?', [$pageId, $userId]);
@@ -650,7 +1019,7 @@ final class PageService
             return [];
         }
         $rows = $this->db->fetchAll(
-            'SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.updated_at, e.embedding
+            'SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.parent_id, p.favorited_at, p.updated_at, e.embedding
              FROM page_embeddings e JOIN pages p ON p.id = e.page_id
              WHERE e.user_id = ? AND p.archived_at IS NULL',
             [$userId]
@@ -934,6 +1303,8 @@ final class PageService
             'slug'       => (string) $row['slug'],
             'kind'       => (string) $row['kind'],
             'folder_id'  => isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== '' ? (int) $row['folder_id'] : null,
+            'parent_id'  => $this->nullableInt($row['parent_id'] ?? null),
+            'favorite'   => isset($row['favorited_at']) && $row['favorited_at'] !== null && $row['favorited_at'] !== '',
             'updated_at' => (string) $row['updated_at'],
         ];
     }
@@ -945,8 +1316,11 @@ final class PageService
     private function full(array $row): array
     {
         return $this->brief($row) + [
-            'body'     => (string) $row['body'],
-            'archived' => $row['archived_at'] !== null,
+            'body'           => (string) $row['body'],
+            'archived'       => $row['archived_at'] !== null,
+            'last_opened_at' => isset($row['last_opened_at']) && $row['last_opened_at'] !== null && $row['last_opened_at'] !== ''
+                ? (string) $row['last_opened_at']
+                : null,
         ];
     }
 

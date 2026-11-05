@@ -43,7 +43,16 @@
     let saving = false;
     let queued = false;
     let saveTail = Promise.resolve();
+    let sourceMode = false;
+    let blockEditor = null;
+    let favorites = [];
+    let recents = [];
+    let switcherIndex = 0;
+    let switcherTimer = null;
+    let hoverTimer = null;
     const expanded = new Set();
+    const expandedPages = new Set();
+    const pageCache = new Map();
     const split = document.getElementById('brain-split');
     try {
         redlineBox.checked = localStorage.getItem(REDLINE_KEY) === '1';
@@ -51,18 +60,59 @@
         redlineBox.checked = false;
     }
 
+    function blocksReady() {
+        const host = optional('brain-blocks');
+        return !!(host && window.BrainBlocks && typeof window.BrainBlocks.mount === 'function');
+    }
+
+    function ensureEditor() {
+        const host = optional('brain-blocks');
+        if (!blocksReady()) return null;
+        if (!blockEditor) {
+            blockEditor = window.BrainBlocks.mount(host, {
+                pages: () => pages,
+                onChange(markdown) {
+                    if (bodyEl.value === markdown) return;
+                    bodyEl.value = markdown;
+                    preview.innerHTML = window.BrainMarkdown.render(markdown, pages);
+                    paintTags(markdown);
+                    paintOutline(markdown);
+                    scheduleAutosave();
+                },
+            });
+        }
+        return blockEditor;
+    }
+
     function setView(mode) {
+        if (mode === 'source') {
+            sourceMode = true;
+            mode = 'edit';
+        } else if (mode === 'edit' || mode === 'preview') {
+            sourceMode = false;
+        }
         const previewing = mode === 'preview';
+        const host = optional('brain-blocks');
+        const useBlocks = mode === 'edit' && !sourceMode && blocksReady();
         document.querySelectorAll('[data-brain-tab]').forEach((item) => {
             const on = item.dataset.brainTab === mode;
             item.classList.toggle('is-active', on);
             item.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
-        bodyEl.hidden = previewing;
+        bodyEl.hidden = previewing || useBlocks;
+        if (host) host.hidden = !useBlocks;
         preview.hidden = !previewing;
         stage.classList.toggle('is-preview', previewing);
+        stage.classList.toggle('is-blocks', useBlocks);
         split.style.gridTemplateColumns = '1fr';
         if (previewing) renderMarkdown(bodyEl.value);
+        if (useBlocks) {
+            const editor = ensureEditor();
+            if (editor) {
+                editor.setLocked(bodyEl.readOnly === true);
+                editor.load(bodyEl.value);
+            }
+        }
     }
 
     setView('preview');
@@ -82,6 +132,11 @@
 
     function renderMarkdown(raw) {
         preview.innerHTML = window.BrainMarkdown.render(raw, pages);
+        const host = optional('brain-blocks');
+        if (blockEditor && host && host.hidden === false && blockEditor.markdown() !== String(raw == null ? '' : raw)) {
+            blockEditor.load(String(raw == null ? '' : raw));
+        }
+        if (blockEditor && typeof blockEditor.setLocked === 'function') blockEditor.setLocked(bodyEl.readOnly === true);
         if (typeof preview.querySelectorAll === 'function') {
             preview.querySelectorAll('h2, h3, h4, h5, h6').forEach((node, index) => {
                 if (typeof node.setAttribute === 'function') node.setAttribute('id', 'brain-h-' + index);
@@ -171,6 +226,45 @@
         backsEl.innerHTML = rows.map((link) =>
             `<a class="brain-back" href="/brain?page=${Number(link.id)}"><span class="brain-ctx-icon" aria-hidden="true">${icon}</span><span class="brain-tree-label">${esc(link.title)}</span><span class="brain-ctx-chevron" aria-hidden="true">${chevron}</span></a>`
         ).join('') || '<p class="ld-meta">No backlinks.</p>';
+    }
+
+    function paintMentions(rows) {
+        const el = optional('brain-mentions');
+        if (!el) return;
+        const items = rows || [];
+        if (!items.length) {
+            el.innerHTML = '';
+            return;
+        }
+        el.innerHTML = '<p class="brain-kicker">Unlinked mentions</p>' + items.map((link) =>
+            `<button type="button" class="brain-back" data-mention="${Number(link.id)}">${esc(link.title)}</button>`
+        ).join('');
+    }
+
+    function paintFavorite(page) {
+        const button = optional('brain-favorite');
+        if (!button) return;
+        const on = !!(page && page.favorite);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+        button.textContent = on ? '★' : '☆';
+        button.disabled = !page;
+    }
+
+    function paintPins() {
+        const host = optional('brain-pins');
+        if (!host) return;
+        const favIds = new Set(favorites.map((page) => page.id));
+        const recent = recents.filter((page) => !favIds.has(page.id)).slice(0, 8);
+        if (!favorites.length && !recent.length) {
+            host.hidden = true;
+            host.innerHTML = '';
+            return;
+        }
+        const section = (label, rows) => rows.length
+            ? `<p class="brain-kicker">${esc(label)}</p>` + rows.map((page) => `<button type="button" class="brain-pin" data-id="${page.id}">${esc(page.title)}</button>`).join('')
+            : '';
+        host.hidden = false;
+        host.innerHTML = section('Favorites', favorites) + section('Recent', recent);
     }
 
     function linksFromGraph(page, graph) {
@@ -268,11 +362,29 @@
         crumbs.forEach((crumb) => {
             bits.push(`<span class="brain-crumb-sep">/</span><button type="button" data-folder="${crumb.id}">${esc(crumb.name)}</button>`);
         });
+        (page.parents || []).forEach((parent) => {
+            bits.push(`<span class="brain-crumb-sep">/</span><button type="button" data-page="${parent.id}">${esc(parent.title)}</button>`);
+        });
         crumbsEl.innerHTML = bits.join('');
     }
 
+    function sameId(a, b) {
+        return Number(a) === Number(b);
+    }
+
+    function nestedInList(page) {
+        if (!page || !page.parent_id) return false;
+        return pages.some((item) => sameId(item.id, page.parent_id));
+    }
+
+    function childPages(parentId) {
+        return pages.filter((page) => page.parent_id && sameId(page.parent_id, parentId))
+            .slice()
+            .sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    }
+
     function pagesIn(folderId) {
-        return pages.filter((page) => (page.folder_id || null) === folderId);
+        return pages.filter((page) => (page.folder_id || null) === folderId && !nestedInList(page));
     }
 
     function treeLabel(text) {
@@ -288,7 +400,8 @@
         const menuId = id === null || id === undefined ? '' : String(id);
         let items = '';
         if (kind === 'page') {
-            items = `<button type="button" class="brain-menu-item is-danger" role="menuitem" data-menu="archive" data-menu-id="${menuId}">Archive</button>`;
+            items = `<button type="button" class="brain-menu-item" role="menuitem" data-menu="subpage" data-menu-id="${menuId}">Subpage</button>`
+                + `<button type="button" class="brain-menu-item is-danger" role="menuitem" data-menu="archive" data-menu-id="${menuId}">Archive</button>`;
         } else if (kind === 'root') {
             items = `<button type="button" class="brain-menu-item" role="menuitem" data-menu="new-folder" data-menu-id="">New folder</button>`;
         } else {
@@ -324,12 +437,24 @@
         }).join('');
     }
 
-    function pageButton(page, parentKey) {
+    function pageButton(page, parentKey, stack) {
+        const seen = stack || new Set();
+        if (seen.has(page.id)) return '';
+        const nextSeen = new Set(seen);
+        nextSeen.add(page.id);
+        const kids = childPages(page.id).filter((kid) => !nextSeen.has(kid.id));
         const on = current && current.id === page.id;
-        return `<div class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
-            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-kind brain-kind-${esc(page.kind)}" aria-hidden="true">${treeIcon('brain-icon-file')}</span>${treeLabel(page.title)}
+        const open = expandedPages.has(page.id);
+        const toggle = kids.length
+            ? `<button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle-page="${page.id}" aria-expanded="${open ? 'true' : 'false'}" aria-label="${open ? 'Collapse' : 'Expand'} ${esc(page.title)}"><span class="brain-chevron" aria-hidden="true">${treeIcon('brain-icon-chevron')}</span></button>`
+            : `<span class="brain-tree-slot" aria-hidden="true"></span>`;
+        const row = `<div class="brain-node brain-tree-row${on ? ' is-active' : ''}" role="treeitem" draggable="true" data-id="${page.id}" data-tree-key="page:${page.id}" data-tree-kind="page" data-tree-id="${page.id}" data-parent-key="${parentKey}" aria-selected="${on ? 'true' : 'false'}" title="${esc(page.title)}">
+            ${toggle}<span class="brain-kind brain-kind-${esc(page.kind)}" aria-hidden="true">${treeIcon('brain-icon-file')}</span>${treeLabel(page.title)}
             ${rowActions('page', page.id)}
         </div>`;
+        if (!kids.length) return row;
+        const nested = kids.map((kid) => pageButton(kid, 'page:' + page.id, nextSeen)).join('');
+        return `<div class="brain-page-nest">${row}<div class="brain-folder-children${open ? '' : ' is-collapsed'}" role="group"><div class="brain-folder-branch">${nested}</div></div></div>`;
     }
 
     function focusInsideTree() {
@@ -530,6 +655,8 @@
             link.id ? `<a class="brain-back" href="/brain?page=${link.id}">${esc(link.title)}</a>` : `<span class="brain-back km-missing">${esc(link.title)}</span>`
         ).join('') || '<p class="ld-meta">No outgoing links.</p>';
         paintBacklinks(page && page.backlinks || []);
+        paintMentions(page && page.mentions || []);
+        paintFavorite(page);
         if (page) refreshBacklinks(page);
         revsEl.innerHTML = (page && page.revisions || []).map((rev) =>
             `<li><button type="button" data-rev="${rev.version}" aria-pressed="false">v${rev.version}</button> <span class="ld-meta">${esc(fmt.monthDay(String(rev.created_at).slice(0, 10)))}</span></li>`
@@ -554,6 +681,16 @@
             didExpand = true;
         }
         renderTree();
+        if (optional('brain-pins')) {
+            Promise.all([
+                api.get('/pages/favorites').catch(() => ({ pages: [] })),
+                api.get('/pages/recent').catch(() => ({ pages: [] })),
+            ]).then((pair) => {
+                favorites = pair[0].pages || [];
+                recents = pair[1].pages || [];
+                paintPins();
+            }).catch(() => {});
+        }
     }
 
     function walkExpand(folder) {
@@ -570,7 +707,19 @@
         const res = await api.get('/pages/' + id);
         const opened = !current || current.id !== res.page.id;
         const brief = pages.find((page) => page.id === res.page.id);
-        if (!brief) pages.unshift({ id: res.page.id, title: res.page.title, kind: res.page.kind, slug: res.page.slug, folder_id: res.page.folder_id, updated_at: res.page.updated_at });
+        const summary = {
+            id: res.page.id,
+            title: res.page.title,
+            kind: res.page.kind,
+            slug: res.page.slug,
+            folder_id: res.page.folder_id,
+            parent_id: res.page.parent_id || null,
+            favorite: !!res.page.favorite,
+            updated_at: res.page.updated_at,
+        };
+        if (!brief) pages.unshift(summary);
+        else Object.assign(brief, summary);
+        if (optional('brain-quick')) api.post('/pages/' + id + '/open', {}).catch(() => {});
         show(res.page);
         setTreeOpen(false);
         // Opening another note starts in preview. Autosave and move keep the Edit toggle.
@@ -707,7 +856,17 @@
 
     function collapseAll() {
         expanded.clear();
+        expandedPages.clear();
         didExpand = true;
+        renderTree();
+    }
+
+    function togglePage(id) {
+        const pageId = Number(id);
+        if (!pageId) return;
+        treeCursor = 'page:' + pageId;
+        if (expandedPages.has(pageId)) expandedPages.delete(pageId);
+        else expandedPages.add(pageId);
         renderTree();
     }
 
@@ -722,6 +881,7 @@
             if (action === 'new-folder') openFolderDialog(id);
             else if (action === 'rename') openRenameDialog(id);
             else if (action === 'delete') deleteFolder(id);
+            else if (action === 'subpage') openCreateNote(folderForRow(menuItem.closest('[data-tree-key]')), id);
             else if (action === 'archive') archivePage(id).catch((err) => setStatus(err.message));
             return;
         }
@@ -750,6 +910,11 @@
         const toggle = e.target.closest('[data-toggle]');
         if (toggle) {
             toggleFolder(toggle.dataset.toggle);
+            return;
+        }
+        const pageToggle = e.target.closest('[data-toggle-page]');
+        if (pageToggle) {
+            togglePage(pageToggle.dataset.togglePage);
             return;
         }
         const folderBtn = e.target.closest('[data-folder-pick]');
@@ -791,6 +956,20 @@
         }
         if (key === 'ArrowRight') {
             e.preventDefault();
+            if (row.dataset.treeKind === 'page') {
+                const pageId = Number(row.dataset.treeId);
+                if (childPages(pageId).length && !expandedPages.has(pageId)) {
+                    togglePage(pageId);
+                    return;
+                }
+                const nest = row.closest('.brain-page-nest');
+                const group = nest && nest.querySelector('.brain-folder-children');
+                if (group && !group.classList.contains('is-collapsed')) {
+                    const child = group.querySelector('[data-tree-key]');
+                    if (child && !rowConcealed(child)) moveTree(child);
+                }
+                return;
+            }
             if (row.dataset.treeKind !== 'folder') return;
             const id = Number(row.dataset.treeId);
             if (!expanded.has(id)) {
@@ -846,6 +1025,11 @@
             .catch((err) => setStatus(err.message));
     });
     crumbsEl.addEventListener('click', (e) => {
+        const pageCrumb = e.target.closest('[data-page]');
+        if (pageCrumb) {
+            openPage(Number(pageCrumb.dataset.page)).catch((err) => setStatus(err.message));
+            return;
+        }
         const btn = e.target.closest('[data-folder]');
         if (!btn) return;
         activeFolder = btn.dataset.folder === '' ? null : Number(btn.dataset.folder);
@@ -930,12 +1114,12 @@
         if (field && typeof field.focus === 'function') field.focus();
     }
 
-    function openCreateNote(folderId) {
+    function openCreateNote(folderId, parentId) {
         const folder = folderId === undefined ? activeFolder : folderId;
         openTextModal({
             id: 'brain-note-modal',
-            title: 'Create note',
-            description: 'Add a new note to your knowledge vault.',
+            title: parentId ? 'Create subpage' : 'Create note',
+            description: parentId ? 'This page is nested under the current one.' : 'Add a new note to your knowledge vault.',
             label: 'Note title',
             fieldId: 'brain-note-title',
             placeholder: 'Untitled note',
@@ -943,6 +1127,7 @@
             onSubmit(name) {
                 const payload = { title: name, body: '', kind: 'note' };
                 if (folder) payload.folder_id = folder;
+                if (parentId) payload.parent_id = parentId;
                 api.post('/pages', payload)
                     .then((res) => loadList(searchValue()).then(() => openPage(res.page.id)))
                     .catch((err) => setStatus(err.message));
@@ -1047,6 +1232,36 @@
         closeNoteMenu();
         if (current) archivePage(current.id).catch((err) => setStatus(err.message));
     });
+    const sourceBtn = optional('brain-source');
+    if (sourceBtn) sourceBtn.addEventListener('click', () => {
+        closeNoteMenu();
+        setView(sourceMode ? 'edit' : 'source');
+    });
+    const favoriteBtn = optional('brain-favorite');
+    if (favoriteBtn) favoriteBtn.addEventListener('click', () => {
+        if (!current || viewing) return;
+        const next = favoriteBtn.getAttribute('aria-pressed') !== 'true';
+        api.post('/pages/' + current.id + '/favorite', { favorite: next })
+            .then((res) => {
+                show(res.page);
+                return loadList(searchValue());
+            })
+            .catch((err) => setStatus(err.message));
+    });
+    const mentionsEl = optional('brain-mentions');
+    if (mentionsEl) mentionsEl.addEventListener('click', (event) => {
+        const btn = event.target && event.target.closest ? event.target.closest('[data-mention]') : null;
+        if (!btn) return;
+        openPage(Number(btn.dataset.mention)).catch((err) => setStatus(err.message));
+    });
+    const pinsEl = optional('brain-pins');
+    if (pinsEl) pinsEl.addEventListener('click', (event) => {
+        const btn = event.target && event.target.closest ? event.target.closest('[data-id]') : null;
+        if (!btn) return;
+        openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
+    });
+    const quickBtn = optional('brain-quick');
+    if (quickBtn) quickBtn.addEventListener('click', () => openSwitcher());
     if (typeof document.addEventListener === 'function') {
         document.addEventListener('click', (event) => {
             const target = event.target;
@@ -1060,7 +1275,19 @@
     const treeScrim = optional('brain-tree-scrim');
     if (treeScrim) treeScrim.addEventListener('click', () => setTreeOpen(false));
     window.addEventListener('keydown', (event) => {
+        const key = String(event.key || '').toLowerCase();
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && (key === 'k' || key === 'p') && optional('brain-switcher')) {
+            event.preventDefault();
+            const sw = optional('brain-switcher');
+            if (sw && sw.hidden === false) closeSwitcher();
+            else openSwitcher();
+            return;
+        }
         if (event.key !== 'Escape') return;
+        if (optional('brain-switcher') && optional('brain-switcher').hidden === false) {
+            closeSwitcher();
+            return;
+        }
         closeTreeMenus();
         closeNoteMenu();
         if (shell.classList.contains('is-tree-open')) setTreeOpen(false);
@@ -1131,6 +1358,166 @@
     window.addEventListener('beforeunload', (e) => {
         if (dirty || dirtyBeforeView) e.preventDefault();
     });
+
+    function openSwitcher() {
+        const sw = optional('brain-switcher');
+        const input = optional('brain-switcher-input');
+        if (!sw || !input) return;
+        sw.hidden = false;
+        input.value = '';
+        paintSwitcher('');
+        if (typeof input.focus === 'function') input.focus();
+    }
+
+    function closeSwitcher() {
+        const sw = optional('brain-switcher');
+        if (sw) sw.hidden = true;
+    }
+
+    function paintSwitcher(query, extra) {
+        const list = optional('brain-switcher-list');
+        if (!list) return;
+        const q = String(query || '').trim().toLowerCase();
+        let rows = !q ? (recents.length ? recents : pages.slice(0, 8)) : pages.filter((page) => String(page.title).toLowerCase().indexOf(q) !== -1);
+        (extra || []).forEach((page) => {
+            if (page && !rows.some((row) => row.id === page.id)) rows.push(page);
+        });
+        rows = rows.slice(0, 12);
+        switcherIndex = rows.length ? Math.min(switcherIndex, rows.length - 1) : 0;
+        list.innerHTML = rows.length
+            ? rows.map((page, index) => `<button type="button" class="vault-switcher-item${index === switcherIndex ? ' is-active' : ''}" role="option" data-id="${page.id}">${esc(page.title)}</button>`).join('')
+            : '<p class="ld-meta">No pages.</p>';
+    }
+
+    function moveSwitcher(delta) {
+        const list = optional('brain-switcher-list');
+        if (!list) return;
+        const buttons = Array.prototype.slice.call(list.querySelectorAll('[data-id]'));
+        if (!buttons.length) return;
+        switcherIndex = (switcherIndex + delta + buttons.length) % buttons.length;
+        buttons.forEach((button, index) => button.classList.toggle('is-active', index === switcherIndex));
+    }
+
+    function openSwitcherPick() {
+        const list = optional('brain-switcher-list');
+        if (!list) return;
+        const buttons = list.querySelectorAll('[data-id]');
+        const button = buttons[switcherIndex] || buttons[0];
+        if (!button) return;
+        closeSwitcher();
+        openPage(Number(button.dataset.id)).catch((err) => setStatus(err.message));
+    }
+
+    const switcherInput = optional('brain-switcher-input');
+    if (switcherInput) {
+        switcherInput.addEventListener('input', () => {
+            const q = switcherInput.value.trim();
+            paintSwitcher(q);
+            clearTimeout(switcherTimer);
+            if (q.length < 2) return;
+            switcherTimer = setTimeout(() => {
+                api.get('/pages?q=' + encodeURIComponent(q))
+                    .then((res) => paintSwitcher(q, res.pages || []))
+                    .catch(() => {});
+            }, 160);
+        });
+        switcherInput.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                moveSwitcher(1);
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                moveSwitcher(-1);
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                openSwitcherPick();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                closeSwitcher();
+            }
+        });
+    }
+    const switcherList = optional('brain-switcher-list');
+    if (switcherList) switcherList.addEventListener('click', (event) => {
+        const button = event.target && event.target.closest ? event.target.closest('[data-id]') : null;
+        if (!button) return;
+        closeSwitcher();
+        openPage(Number(button.dataset.id)).catch((err) => setStatus(err.message));
+    });
+    const switcher = optional('brain-switcher');
+    if (switcher) switcher.addEventListener('click', (event) => {
+        if (event.target === switcher) closeSwitcher();
+    });
+
+    function showHover(anchor, title, pageId) {
+        const card = optional('brain-hover');
+        if (!card || !title) return;
+        card.hidden = false;
+        card.textContent = '';
+        const heading = document.createElement('p');
+        heading.className = 'vault-hover-title';
+        heading.textContent = title;
+        const copy = document.createElement('p');
+        copy.className = 'vault-hover-copy';
+        card.appendChild(heading);
+        card.appendChild(copy);
+        const id = Number(pageId);
+        const cached = id ? pageCache.get(id) : null;
+        if (cached && window.BrainBlocks) copy.textContent = window.BrainBlocks.excerpt(cached.body || '');
+        else if (id) {
+            api.get('/pages/' + id).then((res) => {
+                pageCache.set(res.page.id, res.page);
+                if (card.hidden === false && window.BrainBlocks) copy.textContent = window.BrainBlocks.excerpt(res.page.body || '');
+            }).catch(() => {});
+        }
+        if (anchor && typeof anchor.getBoundingClientRect === 'function') {
+            const rect = anchor.getBoundingClientRect();
+            card.style.position = 'fixed';
+            card.style.left = Math.max(8, rect.left) + 'px';
+            card.style.top = (rect.bottom + 6) + 'px';
+        }
+    }
+
+    function scheduleHover(anchor, title, pageId) {
+        clearTimeout(hoverTimer);
+        hoverTimer = setTimeout(() => showHover(anchor, title, pageId), 280);
+    }
+
+    if (optional('brain-hover') && typeof preview.addEventListener === 'function') {
+        preview.addEventListener('mouseover', (event) => {
+            const link = event.target && event.target.closest ? event.target.closest('.km-wiki') : null;
+            if (!link) return;
+            scheduleHover(link, link.dataset.title, link.dataset.page);
+        });
+        preview.addEventListener('mouseout', (event) => {
+            const link = event.target && event.target.closest ? event.target.closest('.km-wiki') : null;
+            if (!link) return;
+            clearTimeout(hoverTimer);
+            const card = optional('brain-hover');
+            if (card) card.hidden = true;
+        });
+        preview.addEventListener('focusin', (event) => {
+            const link = event.target && event.target.closest ? event.target.closest('.km-wiki') : null;
+            if (link) scheduleHover(link, link.dataset.title, link.dataset.page);
+        });
+        let hold = null;
+        preview.addEventListener('touchstart', (event) => {
+            const link = event.target && event.target.closest ? event.target.closest('.km-wiki') : null;
+            if (!link) return;
+            hold = setTimeout(() => {
+                link.dataset.held = '1';
+                showHover(link, link.dataset.title, link.dataset.page);
+            }, 450);
+        });
+        preview.addEventListener('touchend', () => clearTimeout(hold));
+        preview.addEventListener('click', (event) => {
+            const link = event.target && event.target.closest ? event.target.closest('.km-wiki') : null;
+            if (link && link.dataset.held === '1') {
+                event.preventDefault();
+                delete link.dataset.held;
+            }
+        });
+    }
 
     const open = Number(shell.dataset.openPage || 0);
     loadList('').then(() => {
