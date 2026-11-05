@@ -129,6 +129,9 @@ lifedash_install_runtime_units() {
         lifedash-spotify.timer \
         lifedash-ollama-models.service \
         lifedash-ollama-models.timer \
+        lifedash-hermes-gateway.service \
+        lifedash-agent-model.service \
+        lifedash-agent-model.timer \
         lifedash-digest.service \
         lifedash-digest.timer
     do

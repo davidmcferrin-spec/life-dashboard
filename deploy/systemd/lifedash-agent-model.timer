@@ -1,0 +1,12 @@
+# Retry the coding-model pull after boot if setup was interrupted.
+
+[Unit]
+Description=Retry the Hermes and OpenCode model pull after boot
+
+[Timer]
+OnBootSec=3min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

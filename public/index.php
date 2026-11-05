@@ -213,6 +213,11 @@ $router->get('/digest', function () use ($auth): void {
     require VIEWS_DIR . '/digest.php';
 });
 
+$router->get('/hermes', function () use ($auth): void {
+    $user = $auth->requireAdmin();
+    require VIEWS_DIR . '/hermes.php';
+});
+
 $router->get('/pantry', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/pantry.php';

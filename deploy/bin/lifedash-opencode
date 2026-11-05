@@ -1,0 +1,4 @@
+#!/bin/sh
+# OpenCode against the shared loopback Ollama config.
+export OPENCODE_CONFIG="${OPENCODE_CONFIG:-/etc/lifedash/opencode.json}"
+exec /var/lib/lifedash/opencode/.opencode/bin/opencode "$@"

@@ -326,6 +326,7 @@ info "timers: $(systemctl list-timers 'lifedash-*' --no-legend | wc -l) active"
 # -----------------------------------------------------------------------------
 step "Local model (Ollama)"
 "$APP_DIR/deploy/bin/lifedash-ollama-ensure"
+"$APP_DIR/deploy/bin/lifedash-local-agents-ensure"
 
 # -----------------------------------------------------------------------------
 step "Realtime push and MCP"

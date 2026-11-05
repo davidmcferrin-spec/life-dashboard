@@ -194,9 +194,10 @@ sudo ./setup.sh
 2. Asks for the HTTPS details (dashboard hostname, Let's Encrypt email, Cloudflare DNS token) and any extra subnet to allow (your Teleport range)
 3. Builds the `.env`: asks for your existing `APP_SECRET` (reuse the Dreamhost one when migrating) and time zone, then encrypts it and deletes the plaintext
 4. Runs `deploy/provision.sh`: packages, PostgreSQL, Apache, PHP-FPM, HTTPS certificate, timers, backups, firewall, cloudflared
-5. Keeps `APP_URL` / `SESSION_SECURE` in the encrypted `.env` matched to HTTP or HTTPS mode
-6. Initialises the database: creates a new admin user, or imports personal-dashboard
-7. Verifies `/healthz` and `lifedash-healthcheck`
+5. Installs Ollama on loopback, then Hermes Agent and OpenCode against it, and queues `lifedash-coder` when the machine can hold a 7B model
+6. Keeps `APP_URL` / `SESSION_SECURE` in the encrypted `.env` matched to HTTP or HTTPS mode
+7. Initialises the database: creates a new admin user, or imports personal-dashboard
+8. Verifies `/healthz`, `lifedash-healthcheck`, and the Hermes gateway
 
 Re-runs remember the HTTPS and firewall settings (`/etc/lifedash/provision.conf`), so a plain `sudo ./setup.sh` is enough later.
 
@@ -290,6 +291,23 @@ python3 /srv/lifedash/app/tests/smoke/smoke_http.py --base https://dash.<yourdom
 ```
 
 `/settings/system` (admin) shows job health and PostgreSQL version, size and pending migrations.
+
+### Local coding agents
+
+`setup.sh` leaves the existing Ollama on `127.0.0.1:11434` and adds Hermes Agent and OpenCode beside it. Both use the OpenAI-compatible endpoint `http://127.0.0.1:11434/v1`. The dashboard chat at `/hermes` (admin) talks to the Hermes gateway on `127.0.0.1:8642`, not to Ollama directly.
+
+The coding model is `qwen2.5-coder:7b`, published as `lifedash-coder` with `num_ctx` 65536. Qwen2.5-Coder can call tools, and its native window is 128k, so 64k is inside the model. The default Ollama tag is about 4.7 GiB of Q4 weights, and a 64k cache adds about 4 GiB. A 12 GiB GPU holds both. An 8 GiB GPU, or 16 GiB of RAM with no GPU, is the same bar this host already uses for `qwen2.5:7b`; some layers then sit in system RAM. `gemma4:31b` and `qwen2.5-coder:32b` need about 24 GiB for the weights and closer to 40 GiB to keep a 64k dense cache on the GPU, so they are not installed by default. The pull is skipped when the hardware plan is below that 7B tier. Context is pinned on `lifedash-coder` only, so the dashboard chat and embedding models stay small.
+
+```bash
+curl -fsS http://127.0.0.1:11434/api/tags
+curl -fsS http://127.0.0.1:8642/health
+systemctl status lifedash-hermes-gateway
+ollama show lifedash-coder
+sudo hermes
+opencode --version
+```
+
+`sudo hermes` drops to the `lifedash` user. `opencode` reads `/etc/lifedash/opencode.json`. The model pull is a background oneshot (`lifedash-agent-model.service`) and does not hold setup.
 
 ### 7. Offsite backups (when you choose S3 or Dropbox)
 

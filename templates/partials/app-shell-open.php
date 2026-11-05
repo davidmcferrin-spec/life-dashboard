@@ -71,6 +71,9 @@ $shellItems = [
     ['Feeds', '/feeds', 'inbox'],
     ['Grok Digest', '/digest', 'bot'],
 ];
+if ((int) ($user['is_admin'] ?? 0) === 1) {
+    $shellItems[] = ['Hermes', '/hermes', 'message-square'];
+}
 
 $shellIcon = static function (string $name): void {
     $path = __DIR__ . '/../../public/assets/vendor/lucide/' . $name . '.svg';

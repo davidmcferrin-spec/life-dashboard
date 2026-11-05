@@ -114,6 +114,8 @@ lifedash_install_runtime_units "$APP_DIR" lifedash
 
 log "ollama"
 "$APP_DIR/deploy/bin/lifedash-ollama-ensure"
+log "hermes and opencode"
+"$APP_DIR/deploy/bin/lifedash-local-agents-ensure"
 
 log "record revision"
 lifedash_write_revision "$APP_DIR" || die "could not record the deployed revision"

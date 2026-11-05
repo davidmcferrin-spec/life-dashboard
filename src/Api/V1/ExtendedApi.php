@@ -8,7 +8,11 @@ use Dashboard\Auth\OAuthClientEndpoint;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Auth\PgOAuthStore;
 use Dashboard\Deploy\DeployService;
+use Dashboard\Hermes\Chat;
+use Dashboard\Hermes\Gateway;
+use Dashboard\Hermes\PreferenceChatMemory;
 use Dashboard\Ollama\OllamaService;
+use Dashboard\Settings\PreferenceService;
 use Dashboard\Pantry\MealBuilder;
 use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Router\Router;
@@ -600,6 +604,7 @@ final class ExtendedApi
 
         $this->registerPantry($r);
         $this->registerOllama($r);
+        $this->registerHermes($r);
         (new DigestApi($this->runner, $this->svc))->register($r);
     }
 
@@ -646,6 +651,36 @@ final class ExtendedApi
 
             return $ollama()->queue('ollama-remove', (string) ($this->runner->body()['model'] ?? ''));
         }, 202, true));
+    }
+
+    private function registerHermes(Router $r): void
+    {
+        $chat = function (): Chat {
+            return new Chat(
+                Gateway::fromEnv(),
+                new PreferenceChatMemory(new PreferenceService($this->svc->db))
+            );
+        };
+        $r->get('/api/v1/hermes/thread', fn () => $this->run(function (int $u) use ($chat): array {
+            $this->assertHermesAdmin($u);
+
+            return $chat()->thread($u);
+        }));
+        $r->post('/api/v1/hermes/chat', fn () => $this->run(function (int $u) use ($chat): array {
+            $this->assertHermesAdmin($u);
+
+            return $chat()->send($u, (string) ($this->runner->body()['message'] ?? ''));
+        }, 202, true));
+        $r->get('/api/v1/hermes/runs/{id}', fn (array $p) => $this->run(function (int $u) use ($chat, $p): array {
+            $this->assertHermesAdmin($u);
+
+            return $chat()->poll($u, (string) ($p['id'] ?? ''));
+        }));
+        $r->post('/api/v1/hermes/reset', fn () => $this->run(function (int $u) use ($chat): array {
+            $this->assertHermesAdmin($u);
+
+            return $chat()->reset($u);
+        }, 200, true));
     }
 
     private function registerPantry(Router $r): void
@@ -980,6 +1015,17 @@ final class ExtendedApi
     {
         if (!MealBuilder::mcpWriteAllowed($this->deploy()->mcpUpdatesEnabled(), $this->runner->tokenId())) {
             throw new ForbiddenException(DeployService::MCP_DISABLED);
+        }
+    }
+
+    private function assertHermesAdmin(int $userId): void
+    {
+        if ($this->runner->grantedScopes() !== null) {
+            return;
+        }
+        $flag = $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
+        if ((int) $flag !== 1) {
+            throw new ForbiddenException('Hermes chat requires an admin session.');
         }
     }
 

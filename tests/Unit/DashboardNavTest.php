@@ -28,6 +28,7 @@ final class DashboardNavTest extends TestCase
             "['Flights', '/flights', 'plane']",
             "['Feeds', '/feeds', 'inbox']",
             "['Grok Digest', '/digest', 'bot']",
+            "['Hermes', '/hermes', 'message-square']",
             'class="app-ambient-grid"',
             'class="app-nav-badge"',
             'class="app-user-role"',
