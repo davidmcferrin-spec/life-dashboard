@@ -9,6 +9,7 @@ VAULT_TOOLS = (
     "unfavorite_page",
     "recent_pages",
     "resolve_wikilink",
+    "upload_page_image",
 )
 
 
@@ -36,6 +37,14 @@ def test_vault_tools_are_advertised_and_resolve():
     method, path, body = resolve("recent_pages", {"limit": 5})
     assert (method, body) == ("GET", None)
     assert path == "/api/v1/pages/recent?limit=5"
+    method, path, body = resolve("upload_page_image", {
+        "filename": "shot.png",
+        "content_base64": "aGVsbG8=",
+        "alt": "Shot",
+    })
+    assert (method, path) == ("POST", "/api/v1/pages/images")
+    assert body["filename"] == "shot.png"
+    assert body["alt"] == "Shot"
     method, path, body = resolve("resolve_wikilink", {"link": "[[Home|house]]"})
     assert method == "GET"
     assert path.startswith("/api/v1/pages/resolve?q=")

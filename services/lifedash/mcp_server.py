@@ -553,6 +553,20 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "upload_page_image",
+        "description": "Store a private vault image and return Markdown for it. content_base64 is a JPEG, PNG, GIF, or WebP, at most 8 MB. SVG is refused. The image is not shared. Requires pages:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "filename": {"type": "string"},
+                "content_base64": {"type": "string"},
+                "alt": {"type": "string"},
+            },
+            "required": ["filename", "content_base64"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "resolve_wikilink",
         "description": "Resolve a [[Page title]] link to a page id. Accepts [[Title]], [[Title#heading]], and [[Title|label]]. page_id is null when no page has that title. Requires pages:read.",
         "inputSchema": {
@@ -2409,6 +2423,17 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
             query["limit"] = int(args["limit"])
         suffix = ("?" + urlencode(query)) if query else ""
         return "GET", "/api/v1/pages/recent" + suffix, None
+    if name == "upload_page_image":
+        filename = args.get("filename")
+        encoded = args.get("content_base64")
+        if not isinstance(filename, str) or filename.strip() == "":
+            raise ValueError("filename is required.")
+        if not isinstance(encoded, str) or encoded.strip() == "":
+            raise ValueError("content_base64 is required.")
+        body = {"filename": filename, "content_base64": encoded}
+        if "alt" in args:
+            body["alt"] = args["alt"]
+        return "POST", "/api/v1/pages/images", body
     if name == "resolve_wikilink":
         link = args.get("link")
         if not isinstance(link, str) or link.strip() == "":

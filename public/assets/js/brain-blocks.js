@@ -520,12 +520,19 @@
                     img.src = safe;
                     figure.appendChild(img);
                 }
+                const file = document.createElement('input');
+                file.type = 'file';
+                file.className = 'vault-file';
+                file.dataset.field = 'file';
+                file.accept = 'image/jpeg,image/png,image/gif,image/webp';
+                file.setAttribute('aria-label', 'Upload image');
+                figure.appendChild(file);
                 const url = document.createElement('input');
                 url.type = 'url';
                 url.className = 'input';
                 url.dataset.field = 'url';
                 url.value = block.url || '';
-                url.placeholder = 'https://';
+                url.placeholder = 'https:// or upload';
                 url.setAttribute('aria-label', 'Image address');
                 const alt = document.createElement('input');
                 alt.type = 'text';
@@ -1019,6 +1026,27 @@
         }
 
         host.addEventListener('input', onInput);
+        host.addEventListener('change', (event) => {
+            const target = event.target;
+            if (!target || !target.dataset || target.dataset.field !== 'file' || locked) return;
+            const file = target.files && target.files[0];
+            const index = blockIndex(target);
+            if (!file || index < 0 || typeof opts.onUploadImage !== 'function') return;
+            opts.onUploadImage(file).then((image) => {
+                const block = blocks[index];
+                if (!block || !image || !image.url) return;
+                block.url = image.url;
+                block.alt = image.alt || block.alt || '';
+                const end = newline(block);
+                block.body = '![' + String(block.alt).replace(/[\]\r\n]/g, '') + '](' + image.url + ')' + end;
+                block.trail = end;
+                commit(block);
+                emit();
+                paint();
+            }).catch((err) => {
+                if (typeof opts.onError === 'function') opts.onError(err);
+            });
+        });
         host.addEventListener('keydown', onKeyDown);
         host.addEventListener('paste', onPaste);
         host.addEventListener('click', onClick);

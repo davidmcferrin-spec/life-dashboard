@@ -39,6 +39,10 @@ test('preview renders sanitized html', () => {
     assert.match(html, /<td>XLR<\/td>/);
     assert.match(html, /<pre class="km-code"><code>&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/code><\/pre>/);
     assert.doesNotMatch(html, /<script>/);
+    const coded = render('Prose [[Home]] and `[[Home]]`.\n\n~~~\n[[Home]]\n~~~\n', [{ id: 4, title: 'Home' }]);
+    assert.equal(coded.match(/class="km-wiki"/g).length, 1);
+    assert.match(coded, /<code>\[\[Home\]\]<\/code>/);
+    assert.match(coded, /<pre class="km-code"><code>\[\[Home\]\]<\/code><\/pre>/);
     assert.doesNotMatch(html, /<img/);
     assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
 });

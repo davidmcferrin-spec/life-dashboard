@@ -121,6 +121,31 @@ final class ApiRunner
     }
 
     /**
+     * Authenticate, then let the callback write the response body.
+     * Used for a private image, which is not JSON.
+     */
+    public function send(callable $fn): void
+    {
+        try {
+            $userId = $this->authenticate(false, null);
+            if ($this->actor()->kind === 'ai') {
+                $this->auditRead($userId);
+            }
+            $fn($userId);
+        } catch (UnauthorizedException $e) {
+            header('WWW-Authenticate: ' . OAuthRules::wwwAuthenticate(PublicUrl::mcp()));
+            header('Cache-Control: no-store');
+            jsonResponse(['error' => $e->getMessage()], 401);
+        } catch (ForbiddenException $e) {
+            jsonResponse(['error' => $e->getMessage()], 403);
+        } catch (NotFoundException $e) {
+            jsonResponse(['error' => $e->getMessage()], 404);
+        } catch (ValidationException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'fields' => $e->fields()], 422);
+        }
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function body(): array

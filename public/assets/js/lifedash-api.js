@@ -54,9 +54,42 @@
         return data ?? {};
     }
 
+    async function postForm(path, form) {
+        const opts = {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-CSRF-Token': window.getCsrfToken ? window.getCsrfToken() : '',
+            },
+            body: form,
+        };
+        let res;
+        try {
+            res = await fetch('/api/v1' + path, opts);
+        } catch (e) {
+            throw new ApiError('Network error — check your connection.', 0);
+        }
+        let data = null;
+        try {
+            data = await res.json();
+        } catch (e) {
+            data = null;
+        }
+        if (res.status === 401) {
+            window.location.href = '/login';
+            throw new ApiError('Signed out.', 401);
+        }
+        if (!res.ok) {
+            throw new ApiError((data && data.error) || `Request failed (${res.status}).`, res.status, data && data.fields);
+        }
+        return data ?? {};
+    }
+
     const api = {
         get: (path) => request('GET', path),
         post: (path, body) => request('POST', path, body),
+        postForm: (path, form) => postForm(path, form),
     };
 
     function esc(s) {

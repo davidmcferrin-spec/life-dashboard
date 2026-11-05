@@ -22,5 +22,9 @@ final class VaultSchemaTest extends TestCase
         self::assertStringNotContainsString('page_revisions', $sql);
         self::assertStringNotContainsString('DROP TABLE', $sql);
         self::assertStringNotContainsString('DELETE FROM', $sql);
+        $images = (string) file_get_contents(Schema::pgsqlMigrationsDir() . '/0056_page_images.sql');
+        self::assertStringContainsString('CREATE TABLE page_images', $images);
+        self::assertStringContainsString("CHECK (ext IN ('jpg', 'png', 'gif', 'webp'))", $images);
+        self::assertStringNotContainsString('share', strtolower($images));
     }
 }

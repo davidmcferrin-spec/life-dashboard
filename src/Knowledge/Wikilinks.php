@@ -14,7 +14,8 @@ final class Wikilinks
      */
     public static function titles(string $body): array
     {
-        if (!preg_match_all('/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/u', $body, $matches)) {
+        $prose = self::mapProse($body, static fn (string $chunk): string => $chunk, true);
+        if (!preg_match_all('/\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]/u', $prose, $matches)) {
             return [];
         }
         $seen = [];

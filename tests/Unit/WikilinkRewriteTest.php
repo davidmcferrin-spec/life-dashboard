@@ -10,6 +10,26 @@ use PHPUnit\Framework\TestCase;
 
 final class WikilinkRewriteTest extends TestCase
 {
+    public function testTitlesIgnoreFencesInlineCodeAndKeepProse(): void
+    {
+        $body = implode("\n", [
+            'See [[Home]]',
+            '```js',
+            '[[Secret]]',
+            '```',
+            '~~~md',
+            '[[Other]]',
+            '~~~',
+            'A `[[Hidden]]` word.',
+            '````',
+            '[[Quad]]',
+            '````',
+        ]);
+        self::assertSame(['Home'], Wikilinks::titles($body));
+        self::assertSame([], Wikilinks::titles("```\n[[Home]]\n"));
+        self::assertSame(['After'], Wikilinks::titles("~~~\n[[Inside]]\n~~~\n[[After]]"));
+    }
+
     public function testTitlesKeepTheFirstCasing(): void
     {
         $titles = Wikilinks::titles("See [[Weekly review]] and [[weekly review|that]] plus [[Home#top]].");

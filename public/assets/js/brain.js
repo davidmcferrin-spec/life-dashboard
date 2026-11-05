@@ -71,6 +71,14 @@
         if (!blockEditor) {
             blockEditor = window.BrainBlocks.mount(host, {
                 pages: () => pages,
+                onUploadImage(file) {
+                    const form = new FormData();
+                    form.append('file', file);
+                    return api.postForm('/pages/images', form).then((res) => res.image);
+                },
+                onError(err) {
+                    setStatus(err && err.message ? err.message : 'The image upload failed.');
+                },
                 onChange(markdown) {
                     if (bodyEl.value === markdown) return;
                     bodyEl.value = markdown;

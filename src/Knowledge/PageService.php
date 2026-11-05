@@ -130,6 +130,7 @@ final class PageService
      */
     public function get(int $userId, int $id): array
     {
+        $this->ensureProseLinks($userId);
         $row = $this->db->fetchOne('SELECT * FROM pages WHERE id = ? AND user_id = ?', [$id, $userId]);
         if ($row === null) {
             throw new NotFoundException('Page not found.');
@@ -304,8 +305,59 @@ final class PageService
      */
     public function backlinksFor(int $userId, int $id): array
     {
+        $this->ensureProseLinks($userId);
         $this->requireLivePage($userId, $id);
         return $this->backlinks($userId, $id);
+    }
+
+    /**
+     * Drop page_links that exist only because a wikilink sat in code.
+     * Page bodies and revisions are not written.
+     */
+    public function repairProseLinks(int $userId): int
+    {
+        $changed = 0;
+        $rows = $this->db->fetchAll('SELECT id, body FROM pages WHERE user_id = ?', [$userId]);
+        foreach ($rows as $row) {
+            $want = [];
+            foreach (Wikilinks::titles((string) $row['body']) as $title) {
+                $want[mb_strtolower($title)] = true;
+            }
+            $have = [];
+            foreach ($this->db->fetchAll(
+                'SELECT to_title FROM page_links WHERE user_id = ? AND from_page_id = ?',
+                [$userId, (int) $row['id']]
+            ) as $link) {
+                $have[mb_strtolower((string) $link['to_title'])] = true;
+            }
+            if ($want === $have) {
+                continue;
+            }
+            $this->syncLinks($userId, (int) $row['id'], (string) $row['body']);
+            $changed++;
+        }
+        if ($changed > 0) {
+            $this->relink($userId);
+        }
+        return $changed;
+    }
+
+    public function ensureProseLinks(int $userId): void
+    {
+        $flag = $this->db->fetchOne(
+            "SELECT pref_value FROM user_preferences WHERE user_id = ? AND pref_key = 'vault_link_index'",
+            [$userId]
+        );
+        if ($flag !== null && (string) $flag['pref_value'] === '2') {
+            return;
+        }
+        $this->repairProseLinks($userId);
+        $this->db->execute(
+            "INSERT INTO user_preferences (user_id, pref_key, pref_value) VALUES (?, 'vault_link_index', '2')
+             ON CONFLICT (user_id, pref_key) DO UPDATE
+                SET pref_value = '2', updated_at = (now() AT TIME ZONE 'UTC')",
+            [$userId]
+        );
     }
 
     /**
@@ -627,6 +679,7 @@ final class PageService
      */
     public function graph(int $userId): array
     {
+        $this->ensureProseLinks($userId);
         $pages = [];
         $meta = [];
         foreach ($this->db->fetchAll(

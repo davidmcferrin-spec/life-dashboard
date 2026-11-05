@@ -128,7 +128,10 @@
     display: block;
     height: auto;
     margin: 8px 0;
+    max-height: 480px;
     max-width: 100%;
+    object-fit: contain;
+    width: auto;
 }
 .brain-stage.is-blocks .brain-editor { display: none !important; }
 .brain-stage.is-blocks .vault-doc { display: block; }
@@ -209,7 +212,16 @@
 }
 .vault-kind { margin-bottom: 4px; }
 .vault-figure { display: flex; flex-direction: column; gap: 6px; margin: 0; }
-.vault-figure img { border-radius: var(--radius-sm); max-width: 100%; }
+.vault-file { color: var(--text-secondary); font: inherit; font-size: var(--fs-xs); max-width: 100%; }
+.vault-figure img {
+    align-self: flex-start;
+    border-radius: var(--radius-sm);
+    height: auto;
+    max-height: 480px;
+    max-width: 100%;
+    object-fit: contain;
+    width: auto;
+}
 .vault-menu,
 .vault-switcher-panel,
 .vault-hover {

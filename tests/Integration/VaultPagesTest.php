@@ -45,7 +45,7 @@ final class VaultPagesTest extends PgsqlTestCase
             $byTitle[$link['title']] = $link;
         }
         self::assertSame((int) $home['id'], $byTitle['House']['id']);
-        self::assertNull($byTitle['Home']['id']);
+        self::assertArrayNotHasKey('Home', $byTitle);
         self::assertSame('Trip', $renamed['backlinks'][0]['title']);
 
         $old = $this->db->fetchOne(
@@ -99,6 +99,37 @@ final class VaultPagesTest extends PgsqlTestCase
         self::assertSame('Door', $resolved['heading']);
         self::assertSame('house', $resolved['alias']);
         self::assertNull($this->pages->resolveLink($this->user, '[[Missing page]]')['page_id']);
+
+        $this->db->execute(
+            "DELETE FROM user_preferences WHERE user_id = ? AND pref_key = 'vault_link_index'",
+            [$this->user]
+        );
+        $codePage = $this->pages->create($this->user, [
+            'title' => 'Sample',
+            'body' => "Real [[Home]]\n```\n[[Fence Only]]\n```\n",
+        ]);
+        $before = (string) $this->db->fetchScalar('SELECT body FROM pages WHERE id = ?', [(int) $codePage['id']]);
+        $revisions = (int) $this->db->fetchScalar(
+            'SELECT COUNT(*) FROM page_revisions WHERE page_id = ?',
+            [(int) $codePage['id']]
+        );
+        $this->db->execute(
+            'INSERT INTO page_links (user_id, from_page_id, to_title) VALUES (?, ?, ?)',
+            [$this->user, (int) $codePage['id'], 'Fence Only']
+        );
+        $this->db->execute(
+            "DELETE FROM user_preferences WHERE user_id = ? AND pref_key = 'vault_link_index'",
+            [$this->user]
+        );
+        $repaired = $this->pages->get($this->user, (int) $codePage['id']);
+        $titles = array_column($repaired['links'], 'title');
+        self::assertContains('Home', $titles);
+        self::assertNotContains('Fence Only', $titles);
+        self::assertSame($before, (string) $repaired['body']);
+        self::assertSame($revisions, (int) $this->db->fetchScalar(
+            'SELECT COUNT(*) FROM page_revisions WHERE page_id = ?',
+            [(int) $codePage['id']]
+        ));
 
         $this->pages->archive($this->user, (int) $child['id']);
         $lifted = $this->pages->get($this->user, (int) $grand['id']);

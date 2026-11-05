@@ -31,6 +31,20 @@
 
     function renderInline(text, known) {
         const src = String(text);
+        const re = /(`[^`\n]+`)/g;
+        let html = '';
+        let last = 0;
+        let match;
+        while ((match = re.exec(src))) {
+            html += renderProse(src.slice(last, match.index), known);
+            html += '<code>' + esc(match[1].slice(1, -1)) + '</code>';
+            last = match.index + match[1].length;
+        }
+        return html + renderProse(src.slice(last), known);
+    }
+
+    function renderProse(text, known) {
+        const src = String(text);
         const re = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|([^\]]+))?\]\]/g;
         const chunks = [];
         let last = 0;
@@ -50,7 +64,6 @@
         html = html.replace(/!\[([^\]]*)\]\(((?:https?:\/\/|\/(?!\/))[^)\s]+)\)/g, (_, alt, href) => {
             return `<img class="km-img" alt="${alt}" src="${href}">`;
         });
-        html = html.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
         html = html.replace(/==([^=\n]+)==/g, '<mark>$1</mark>');
         html = html.replace(/\$([^$\n]+)\$/g, '<span class="km-math">$1</span>');
         html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
@@ -80,10 +93,13 @@
         let i = 0;
         while (i < lines.length) {
             const line = lines[i];
-            if (/^```/.test(line)) {
+            const fence = /^(```+|~~~+)/.exec(line);
+            if (fence) {
+                const mark = fence[1][0];
+                const close = new RegExp('^' + mark + '{3,}\\s*$');
                 i += 1;
                 const code = [];
-                while (i < lines.length && !/^```/.test(lines[i])) {
+                while (i < lines.length && !close.test(lines[i])) {
                     code.push(lines[i]);
                     i += 1;
                 }
