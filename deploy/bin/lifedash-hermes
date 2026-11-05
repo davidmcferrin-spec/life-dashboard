@@ -1,0 +1,7 @@
+#!/bin/sh
+# Dashboard launcher. The install lives under the lifedash user.
+export HERMES_HOME=/var/lib/lifedash/hermes
+if [ "$(id -u)" -eq 0 ]; then
+    exec runuser -u lifedash -- /var/lib/lifedash/hermes/.local/bin/hermes "$@"
+fi
+exec /var/lib/lifedash/hermes/.local/bin/hermes "$@"

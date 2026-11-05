@@ -1,0 +1,116 @@
+/* Hermes chat. The transcript uses the shared Inter face; status stays mono. */
+
+.hermes-page {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    margin: 0 auto;
+    max-width: 46rem;
+    padding: var(--sp-6) var(--sp-4) var(--sp-8);
+}
+
+.hermes-mono { font-family: var(--font-mono); }
+
+.hermes-kicker {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    letter-spacing: 0.04em;
+    margin: 0;
+    text-transform: uppercase;
+}
+
+.hermes-title {
+    font-family: var(--font-sans);
+    font-size: var(--fs-3xl);
+    font-weight: 600;
+    line-height: 1.15;
+    margin: var(--sp-1) 0 0;
+}
+
+.hermes-lede {
+    color: var(--text-secondary);
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    margin: var(--sp-2) 0 0;
+}
+
+.hermes-status {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    margin: 0;
+    min-height: 1.2em;
+}
+
+.hermes-status[data-status="fail"] { color: var(--danger); }
+
+.hermes-log {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    max-height: min(60vh, 36rem);
+    min-height: 16rem;
+    overflow: auto;
+    padding: var(--sp-4);
+}
+
+.hermes-empty {
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    margin: auto;
+    text-align: center;
+}
+
+.hermes-msg {
+    border-radius: var(--radius);
+    font-family: var(--font-sans);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    max-width: min(100%, 34rem);
+    padding: var(--sp-3) var(--sp-4);
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.hermes-msg-user {
+    align-self: flex-end;
+    background: var(--accent-soft);
+    color: var(--text-primary);
+}
+
+.hermes-msg-assistant {
+    align-self: flex-start;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-soft);
+    color: var(--text-primary);
+}
+
+.hermes-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+}
+
+.hermes-form textarea {
+    font-family: var(--font-sans);
+    min-height: 5.5rem;
+    resize: vertical;
+    width: 100%;
+}
+
+.hermes-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+@media (max-width: 699px) {
+    .hermes-page { padding: var(--sp-4) var(--sp-3) var(--sp-6); }
+    .hermes-msg { max-width: 100%; }
+}

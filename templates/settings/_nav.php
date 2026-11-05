@@ -87,6 +87,7 @@ if (!function_exists('settings_nav_groups')) {
             ['Playlists', '/spotify'],
             ['Todo lists', '/todos'],
             ['Configure JARVIS', '/settings/jarvis'],
+            ['Hermes', '/hermes'],
         ];
     }
 

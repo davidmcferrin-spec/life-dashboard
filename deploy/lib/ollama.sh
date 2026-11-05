@@ -2,6 +2,8 @@
 # shellcheck shell=bash
 
 # The official unit is left in place. This drop-in is what forces loopback.
+# Agent context is pinned on the lifedash-coder model, not here. A server-wide
+# OLLAMA_CONTEXT_LENGTH would also enlarge the dashboard chat and embeddings.
 lifedash_ollama_dropin() {
     printf '%s\n' '[Service]' 'Environment=OLLAMA_HOST=127.0.0.1:11434'
 }

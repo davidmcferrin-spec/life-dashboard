@@ -149,7 +149,10 @@ final class ApiRunner
                 throw new UnauthorizedException('Invalid or expired token.');
             }
             if (Scope::sessionOnly($path)) {
-                throw new ForbiddenException('Creating, editing, revoking, and deleting tokens or OAuth clients requires a signed-in browser session.');
+                $message = str_contains($path, '/api/v1/hermes')
+                    ? 'Hermes chat requires a signed-in browser session.'
+                    : 'Creating, editing, revoking, and deleting tokens or OAuth clients requires a signed-in browser session.';
+                throw new ForbiddenException($message);
             }
             $this->grantedScopes = $row['scopes'];
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);

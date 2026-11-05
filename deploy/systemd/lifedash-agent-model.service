@@ -1,0 +1,28 @@
+# Pull qwen2.5-coder:7b and publish lifedash-coder at 64k context.
+# Deploy starts this with --no-block. A skipped pull exits 0.
+
+[Unit]
+Description=life-dashboard coding model for Hermes and OpenCode
+After=ollama.service lifedash-ollama-models.service network-online.target
+Wants=ollama.service
+
+[Service]
+Type=oneshot
+User=lifedash
+Group=lifedash
+Environment=PYTHONPATH=/srv/lifedash/app/services
+Environment=HOME=/var/lib/lifedash/hermes
+WorkingDirectory=/srv/lifedash/app
+ExecStart=/srv/lifedash/app/deploy/bin/lifedash-agent-model
+TimeoutStartSec=0
+Nice=10
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/lifedash/hermes /srv/lifedash/app/storage
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+LockPersonality=yes

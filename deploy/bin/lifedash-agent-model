@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Pull the coding model and publish it with a 64k context. Safe to re-run.
+# A small machine, or a missing Ollama, exits 0 so deploy is not blocked.
+set -euo pipefail
+
+SOURCE=$(readlink -f "$0")
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")/../.." && pwd)
+# shellcheck source=deploy/lib/local-agents.sh
+source "$APP_DIR/deploy/lib/local-agents.sh"
+
+python=/srv/lifedash/venv/bin/python
+home=/var/lib/lifedash/hermes
+model=$(lifedash_agent_model)
+base=$(lifedash_agent_base_model)
+
+if ! command -v ollama >/dev/null 2>&1; then
+    echo "agent model: ollama is not installed"
+    exit 0
+fi
+if [[ ! -x $python ]]; then
+    echo "agent model: the venv is missing, so the hardware plan was not read"
+    exit 0
+fi
+plan=$(PYTHONPATH="$APP_DIR/services" "$python" -m lifedash.ollama_models plan 2>/dev/null || true)
+if ! lifedash_agent_should_pull "$plan"; then
+    echo "agent model: hardware is below the 7B tier, so $model was not pulled"
+    exit 0
+fi
+if ! curl -fsS --max-time 5 http://127.0.0.1:11434/api/tags >/dev/null; then
+    echo "agent model: Ollama did not answer on 127.0.0.1:11434"
+    exit 0
+fi
+if ollama list 2>/dev/null | grep -Eq "^${model}([[:space:]]|:)"; then
+    echo "agent model: $model is already installed"
+    exit 0
+fi
+echo "agent model: pulling $base"
+ollama pull "$base"
+install -d -m 0750 /var/lib/lifedash/hermes
+lifedash_agent_modelfile > "$home/Modelfile"
+ollama create "$model" -f "$home/Modelfile"
+echo "agent model: $model ready (num_ctx $(lifedash_agent_context))"

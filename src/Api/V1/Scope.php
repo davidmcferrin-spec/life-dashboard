@@ -133,7 +133,8 @@ final class Scope
     public static function sessionOnly(string $path): bool
     {
         return str_contains($path, '/api/v1/tokens')
-            || str_contains($path, '/api/v1/oauth/clients');
+            || str_contains($path, '/api/v1/oauth/clients')
+            || str_contains($path, '/api/v1/hermes');
     }
 
     /**

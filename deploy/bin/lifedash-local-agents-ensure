@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Install Hermes Agent and OpenCode against the loopback Ollama.
+set -euo pipefail
+
+SOURCE=$(readlink -f "$0")
+APP_DIR=$(CDPATH='' cd -- "$(dirname -- "$SOURCE")/../.." && pwd)
+# shellcheck source=deploy/lib/local-agents.sh
+source "$APP_DIR/deploy/lib/local-agents.sh"
+lifedash_local_agents_ensure "$APP_DIR"

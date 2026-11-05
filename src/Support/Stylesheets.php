@@ -25,6 +25,7 @@ final class Stylesheets
             '/assets/css/pantry.css',
             '/assets/css/spotify.css',
             '/assets/css/ollama.css',
+            '/assets/css/hermes.css',
             '/assets/css/digest.css',
             '/assets/css/shell.css',
             '/assets/css/controls.css',

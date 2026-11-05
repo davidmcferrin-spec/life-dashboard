@@ -13,7 +13,7 @@
 #   3. Runs deploy/provision.sh (packages, PostgreSQL, Apache, PHP-FPM, HTTPS
 #      certificate, timers, backups, firewall, cloudflared)
 #   4. Initialises the database: fresh admin user, or import from personal-dashboard
-#   5. Verifies /healthz and the Python health check
+#   5. Verifies /healthz, the Python health check, and the Hermes gateway
 #
 # Options:
 #   --env-file FILE          use an existing .env (e.g. your Dreamhost one, DB block edited)
@@ -281,8 +281,9 @@ fi
 stage "Provision server (deploy/provision.sh)"
 run "$TARGET/deploy/provision.sh" "${PROVISION_ARGS[@]}"
 
-stage "Local model (Ollama)"
+stage "Local model (Ollama, Hermes, OpenCode)"
 run "$TARGET/deploy/bin/lifedash-ollama-ensure"
+run "$TARGET/deploy/bin/lifedash-local-agents-ensure"
 cleanup; GENERATED_ENV=""
 
 # Keep APP_URL / SESSION_SECURE consistent with how the UI is actually served:
@@ -372,6 +373,11 @@ if $DRY_RUN; then
     note "skipped (dry run)"
 else
     if curl -fsS --max-time 10 http://127.0.0.1/healthz >/dev/null; then ok "/healthz"; else note "/healthz failed — see /srv/lifedash/app/storage/logs/php-error.log"; fi
+    if curl -fsS --max-time 5 http://127.0.0.1:8642/health >/dev/null; then
+        ok "hermes gateway"
+    else
+        note "hermes gateway not answering yet — sudo systemctl status lifedash-hermes-gateway"
+    fi
     if runuser -u "$APP_USER" -- "$VENV/bin/lifedash-healthcheck" >/dev/null; then
         ok "lifedash-healthcheck"
     else
