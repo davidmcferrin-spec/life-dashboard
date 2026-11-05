@@ -327,7 +327,7 @@ The same Cloudflare zone that issues the LAN certificate can front two public ho
 Create a remotely managed tunnel in Cloudflare Zero Trust and copy its token. Then, signed in as an admin:
 
 1. **Settings → Setup → Public URLs.** Dashboard URL `https://dash.<your-domain>`. MCP URL `https://mcp.<your-domain>/mcp`. Leave MCP bind on **All interfaces** until every existing bot uses the tunnel. **Save**, then **Restart MCP service**. The bind applies after that restart.
-2. **Settings → Agents.** **Allow plain HTTP MCP access (LAN IP)** stays on so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. That checkbox is the switch. **Save**. A bearer token cannot change it.
+2. **Settings → AI connections.** **Allow plain HTTP MCP access (LAN IP)** stays on so a bot that still uses `http://<lan-ip>:8765/mcp` keeps working. That checkbox is the switch. **Save**. A bearer token cannot change it.
 3. **Settings → Tunnel.** Paste the tunnel token. Dashboard hostname `dash.<your-domain>`. MCP hostname `mcp.<your-domain>`. **Save**. Copy the two routes into the tunnel's public hostname routes in Zero Trust:
    - `dash.<your-domain>` → `http://localhost:80`
    - `mcp.<your-domain>` → `http://localhost:8765`
@@ -344,7 +344,7 @@ In Claude, add a custom connector with this URL:
 https://mcp.<your-domain>/mcp
 ```
 
-Claude opens `https://dash.<your-domain>` for consent. Sign in if that browser is not already signed in, then allow the scopes. Static bearer tokens on Settings → Agents are unchanged.
+Claude opens `https://dash.<your-domain>` for consent. Sign in if that browser is not already signed in, then allow the scopes. Static bearer tokens on Settings → AI connections are unchanged.
 
 LAN access by IP is unchanged. A forwarded `https` scheme is trusted only when the connection comes from cloudflared on localhost. Details: [docs/deploy/cloudflare-access.md](docs/deploy/cloudflare-access.md).
 
@@ -574,7 +574,7 @@ Metric kinds: `habit` (0/1, one per local day), `scale` (integers min–max, def
 - No database password: PHP and Python connect over the Unix socket with peer auth as the `lifedash` OS user
 - PostgreSQL listens on localhost only; UFW admits 22/80/443 from the LAN and explicitly allowed subnets (Teleport) only
 - Port 80 redirects everything except loopback (cloudflared, on-box checks) to HTTPS; HSTS on :443
-- The public tunnel serves the dashboard on `dash.<domain>` and MCP on `mcp.<domain>`. Forwarded HTTPS is trusted only from localhost. Plain HTTP MCP stays on until Settings → Agents turns it off. `MCP_BIND=loopback` is a separate restart and does not happen by itself
+- The public tunnel serves the dashboard on `dash.<domain>` and MCP on `mcp.<domain>`. Forwarded HTTPS is trusted only from localhost. Plain HTTP MCP stays on until Settings → AI connections turns it off. `MCP_BIND=loopback` is a separate restart and does not happen by itself
 - Code is `root:lifedash` read-only to the app; only `storage/` is writable; Apache (www-data) can read `public/` only
 - Offsite backups are restic-encrypted client-side and include the decrypted secrets (needed for restore)
 - `.env`, `storage/` and code outside `public/` are blocked by Apache even if a rewrite misfires

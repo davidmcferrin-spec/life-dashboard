@@ -28,7 +28,7 @@ The three tools stay registered either way. While the switch is off:
 
 **Update now** on Settings → System is an admin session. It does not carry a token id, and it still queues when the switch is off.
 
-`read`, `write`, and `*` do not grant either scope. `system:write` is not a scope. Settings → Agents shows the two checkboxes only for an admin, and the token API rejects them from anyone else. Existing tokens stay unchanged.
+`read`, `write`, and `*` do not grant either scope. `system:write` is not a scope. Settings → AI connections shows the two checkboxes only for an admin, and the token API rejects them from anyone else. Existing tokens stay unchanged.
 
 `confirm_sha` is 40 lowercase hex digits. The request accepts no ref, path, or command. `deploy_status` and the `deploy_update` check both run `git fetch origin` with the refspec `+refs/heads/main:refs/remotes/origin/main`, a 15 second timeout, and `GIT_TERMINAL_PROMPT=0`. The result is reused for 60 seconds (`app/.git/lifedash-origin-fetch`) so a status poll cannot hammer the remote. A failed or timed-out fetch sets `git_error` (`fetch of origin main failed` or `fetch of origin main timed out`) and still returns the last known `origin_main`, branch, and head. `deploy_update` does not queue while `git_error` is set.
 
@@ -66,7 +66,7 @@ The second command also applies migration `0025_mcp_updates`, which creates `ser
 
 PHP fetches as the `lifedash` user. `lifedash-perms` leaves the working tree group read-only and makes `.git` group-writable, except `.git/config` and `.git/hooks`, and sets `core.sharedRepository=group`. The deploy above runs that at the end. On a checkout that already has the new script, `sudo lifedash-perms` applies it without pulling. Until `.git` is group-writable, `deploy_status` reports the fetch failure in `git_error` and `deploy_update` refuses to queue.
 
-Then, as an admin, open Settings → System and turn **Allow MCP updates** on. Until that switch is on, `deploy_update` is refused and **Update now** on the same page still queues. Open Settings → Agents and create a token with `system:read`. Add `system:deploy` only for an agent that may queue an update. Call `deploy_status`, then `deploy_update` with `dry_run: true` and `confirm_sha` set to that `origin/main`. A dry run does not create a request file.
+Then, as an admin, open Settings → System and turn **Allow MCP updates** on. Until that switch is on, `deploy_update` is refused and **Update now** on the same page still queues. Open Settings → AI connections and create a token with `system:read`. Add `system:deploy` only for an agent that may queue an update. Call `deploy_status`, then `deploy_update` with `dry_run: true` and `confirm_sha` set to that `origin/main`. A dry run does not create a request file.
 
 Root still needs read access to the GitHub repo, the same as `sudo lifedash-deploy` today.
 

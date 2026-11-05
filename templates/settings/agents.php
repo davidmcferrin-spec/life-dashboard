@@ -13,7 +13,7 @@ $mcpPublic = is_string($mcpPublic) ? trim($mcpPublic) : '';
 $mcpPort   = Config::maybe('MCP_PORT') ?: '8765';
 $mcpLocal  = 'http://127.0.0.1:' . $mcpPort . '/mcp';
 
-$pageTitle   = 'Agents';
+$pageTitle   = 'AI connections';
 $active      = 'agents';
 $extraStyles = ['/assets/css/lifedash.css'];
 
@@ -21,8 +21,10 @@ require __DIR__ . '/_shell-top.php';
 ?>
 
             <header class="mb-4">
-                <?php $pageEyebrow = 'Settings'; $pageHeading = 'Agents'; require __DIR__ . '/../partials/page-heading.php'; ?>
+                <?php $pageEyebrow = 'Settings'; $pageHeading = 'AI connections'; require __DIR__ . '/../partials/page-heading.php'; ?>
                 <p class="text-muted text-sm mt-1">
+                    Set access on each key and revoke a key here. The secret is shown once and is not stored in the page.
+                    <a href="/settings/audit">Audit</a> lists what those keys did and does not change access.
                     A bearer token lets Claude or Grok use the same dashboard data as this account.
                     Read and write covers every area, including money, todos, habits, and widgets.
                     Read only cannot change anything.

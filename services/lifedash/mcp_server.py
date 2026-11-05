@@ -2913,7 +2913,7 @@ class PlainHttpGate:
     """Live override from server_flags.
 
     A failed read keeps the last value, or the config default when there is none.
-    The cache is short so Settings → Agents applies without a restart.
+    The cache is short so Settings → AI connections applies without a restart.
     The listen address does not follow this flag.
     """
 

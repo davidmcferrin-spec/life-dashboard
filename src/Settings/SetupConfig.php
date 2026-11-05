@@ -193,7 +193,7 @@ final class SetupConfig
             ],
             'tunnel' => [
                 'label' => 'Public URLs',
-                'blurb' => 'Dashboard and MCP addresses. Bind stays on all until existing bots use the tunnel. It takes effect after Restart MCP service. Plain HTTP is the switch on Settings → Agents.',
+                'blurb' => 'Dashboard and MCP addresses. Bind stays on all until existing bots use the tunnel. It takes effect after Restart MCP service. Plain HTTP is the switch on Settings → AI connections.',
                 'fields' => [
                     ['key' => 'PUBLIC_BASE_URL', 'label' => 'Dashboard URL', 'type' => 'url', 'placeholder' => 'https://dash.example.com'],
                     ['key' => 'MCP_PUBLIC_URL', 'label' => 'MCP URL', 'type' => 'url', 'placeholder' => 'https://mcp.example.com/mcp'],
