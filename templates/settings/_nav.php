@@ -25,8 +25,9 @@ if (!function_exists('settings_nav_groups')) {
         $groups = [
             'Account' => [
                 'general' => ['Dashboard', '/settings'],
-                'tokens'      => ['Auto-login tokens', '/settings/tokens'],
-                'audit' => ['Audit', '/settings/audit'],
+                'tokens'  => ['Auto-login tokens', '/settings/tokens'],
+                'agents'  => ['AI connections', '/settings/agents'],
+                'audit'   => ['Audit', '/settings/audit'],
             ],
             'Life' => [
                 'life'     => ['Life', '/settings/life'],
@@ -47,7 +48,7 @@ if (!function_exists('settings_nav_groups')) {
                 'spotify'    => ['Spotify', '/settings/spotify'],
                 'bookmarks'  => ['Bookmarks', '/settings/bookmarks'],
                 'clipboards' => ['Cloud clipboards', '/settings/clipboards'],
-                'agents'     => ['Agents', '/settings/agents'],
+                'agents-link' => ['AI connections', '/settings/agents'],
                 'health'     => ['Open Wearables', '/settings/health'],
                 'home'       => ['Home Assistant', '/settings/home'],
                 'grok'       => ['Grok', '/settings/grok'],
@@ -145,10 +146,14 @@ $settingsTrail = $settingsTrail ?? [];
 $settingsGroupTitle = $settingsGroupTitle ?? 'Settings';
 $numbered = [];
 $settingsCurrentNumber = 0;
+$activeHref = '';
 foreach ($settingsTrail as $step) {
-    $numbered[$step['key']] = $step;
-    if ($step['key'] === $active) {
+    if (!isset($numbered[$step['key']])) {
+        $numbered[$step['key']] = $step;
+    }
+    if ($activeHref === '' && $step['key'] === $active) {
         $settingsCurrentNumber = (int) $step['number'];
+        $activeHref = $step['href'];
     }
 }
 $lastKey = $settingsTrail === [] ? '' : $settingsTrail[count($settingsTrail) - 1]['key'];
@@ -165,7 +170,7 @@ $lastKey = $settingsTrail === [] ? '' : $settingsTrail[count($settingsTrail) - 1
         <?php foreach ($items as $key => [$label, $href]): ?>
         <?php
             $step = $numbered[$key] ?? null;
-            $isActive = $active === $key;
+            $isActive = $active === $key || ($activeHref !== '' && $href === $activeHref);
             $isVisited = $step !== null && $settingsCurrentNumber > 0 && (int) $step['number'] < $settingsCurrentNumber;
             $num = $step !== null ? sprintf('%02d', $step['number']) : '';
             $linkClass = 'settings-step-link';

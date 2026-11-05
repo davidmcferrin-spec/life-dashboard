@@ -7,7 +7,7 @@ $settingsFooterNote = 'This log is read-only.';
 require __DIR__ . '/_shell-top.php';
 ?>
             <?php $pageEyebrow = 'Account'; $pageHeading = 'Audit'; require __DIR__ . '/../partials/page-heading.php'; ?>
-            <p class="platform-lead">What keys and agents did. A valid key can call every tool. Each of those calls is written here. This page does not grant or deny anything.</p>
+            <p class="platform-lead">What each key did. This list is read-only. It does not change access and it does not revoke a key. Set access or revoke a connection on <a href="/settings/agents">AI connections</a>.</p>
             <p id="audit-error" class="ld-error hidden"></p>
             <div id="audit-app" class="platform-card"></div>
 <?php

@@ -31,7 +31,7 @@
         }).join('') || window.DashboardEmpty.html({
             title: 'No tokens yet',
             body: 'Create a token to let an agent call the API.',
-            actionLabel: 'Agents',
+            actionLabel: 'AI connections',
             actionHref: '/settings/agents',
         });
     }
@@ -45,7 +45,7 @@
         }).join('') || window.DashboardEmpty.html({
             title: 'No writes yet',
             body: 'Agent changes will be listed here.',
-            actionLabel: 'Agents',
+            actionLabel: 'AI connections',
             actionHref: '/settings/agents',
         });
     }

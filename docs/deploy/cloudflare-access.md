@@ -21,11 +21,11 @@ Claude custom connector URL:
 https://mcp.<your-domain>/mcp
 ```
 
-Claude discovers OAuth from that origin, registers a public client, and sends the browser to `https://dash.<your-domain>/oauth/authorize`. Sign in with the dashboard account and pick the scopes. Access tokens are short-lived. Refresh tokens rotate. Settings → Agents lists the client and can revoke it.
+Claude discovers OAuth from that origin, registers a public client, and sends the browser to `https://dash.<your-domain>/oauth/authorize`. Sign in with the dashboard account and pick the scopes. Access tokens are short-lived. Refresh tokens rotate. Settings → AI connections lists the client and can revoke it.
 
-Do not put a Cloudflare Access service-token policy on `/mcp` for this connector. Claude's browser and token calls do not send those headers. A static bearer token on Settings → Agents still works for an existing bot and does not need OAuth.
+Do not put a Cloudflare Access service-token policy on `/mcp` for this connector. Claude's browser and token calls do not send those headers. A static bearer token on Settings → AI connections still works for an existing bot and does not need OAuth.
 
-Settings → Agents, **Allow plain HTTP MCP access (LAN IP)**, stores the switch in `server_flags` (`mcp_plain_http`). With no row saved, plain HTTP stays allowed. The page shows On or Off. Each token and OAuth client shows the last hop, HTTP or HTTPS, so you can see that a client has moved before you turn plain HTTP off. The checkbox is the switch. A bearer token cannot change it.
+Settings → AI connections, **Allow plain HTTP MCP access (LAN IP)**, stores the switch in `server_flags` (`mcp_plain_http`). With no row saved, plain HTTP stays allowed. The page shows On or Off. Each token and OAuth client shows the last hop, HTTP or HTTPS, so you can see that a client has moved before you turn plain HTTP off. The checkbox is the switch. A bearer token cannot change it.
 
 Off means a direct `http://<ip>:8765` JSON-RPC call gets HTTP 403 and the message names the MCP URL. The process keeps listening, so the client sees that URL. `/healthz` stays open for local checks. Tunnel traffic is loopback plus `X-Forwarded-Proto: https` and is still accepted. The change applies within a couple of seconds. It does not restart the service and it does not change the bind.
 

@@ -54,7 +54,7 @@ Check those counts against the sheet. When they look right, delete the CSV folde
 rm -rf /home/david/budget-import
 ```
 
-Postgres is then the source of truth. The dashboard widgets (Edit layout → add the money widgets) and a money-only token on Settings → Agents read this database. See `docs/deploy/cloudflare-access.md` for the assistant's public MCP path.
+Postgres is then the source of truth. The dashboard widgets (Edit layout → add the money widgets) and a money-only token on Settings → AI connections read this database. See `docs/deploy/cloudflare-access.md` for the assistant's public MCP path.
 
 ## If the headers do not match
 

@@ -62,6 +62,38 @@ final class SettingsRailTest extends TestCase
         self::assertStringContainsString('class="settings-step-name">Bookmarks</span>', $bookmarks);
     }
 
+    public function testAiConnectionsAndAuditAreInTheSettingsRail(): void
+    {
+        $agents = $this->render('settings/agents.php', '/settings/agents');
+        self::assertStringContainsString('class="page-title">AI connections</h1>', $agents);
+        self::assertStringContainsString('name="access"', $agents);
+        self::assertStringContainsString('>Read and write</option>', $agents);
+        self::assertStringContainsString('Revoke cuts off that client', $agents);
+        $agentJs = file_get_contents(ROOT_DIR . '/public/assets/js/settings-agents.js');
+        self::assertIsString($agentJs);
+        self::assertStringContainsString('data-revoke', $agentJs);
+        self::assertStringContainsString("api.post('/tokens/' + btn.dataset.revoke + '/revoke'", $agentJs);
+        self::assertStringContainsString('id="oauth-clients"', $agents);
+        self::assertStringContainsString('href="/settings/audit"', $agents);
+        self::assertStringNotContainsString('sector_grants', $agents);
+        self::assertMatchesRegularExpression(
+            '/href="\/settings\/agents"[^>]*aria-current="page"/',
+            $agents
+        );
+        self::assertSame(2, substr_count($agents, 'class="settings-step-name">AI connections</span>'));
+        self::assertStringContainsString('class="settings-step-name">Audit</span>', $agents);
+
+        $audit = $this->render('settings/audit.php', '/settings/audit');
+        self::assertStringContainsString('class="page-title">Audit</h1>', $audit);
+        self::assertStringContainsString('read-only', $audit);
+        self::assertStringContainsString('href="/settings/agents">AI connections</a>', $audit);
+        self::assertStringNotContainsString('allow once', strtolower($audit));
+        self::assertMatchesRegularExpression(
+            '/href="\/settings\/audit"[^>]*aria-current="page"/',
+            $audit
+        );
+    }
+
     public function testNoRailLayoutFillsTheColumnWidth(): void
     {
         $css = file_get_contents(ROOT_DIR . '/public/assets/css/shell.css');

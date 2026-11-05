@@ -268,7 +268,7 @@ That is the same path `money_summary` uses today. `money_summary` stays.
 
 ### Auth
 
-Create the token on **Settings → Agents**. Scopes: `money:read` and `money:write` only. Do not use a token that can also read pages, habits, files, or investing. Reads require `money:read`. Writes require `money:write`. The plaintext is shown once, same as other API tokens. Revoke it from that page if a laptop is lost.
+Create the token on **Settings → AI connections**. Scopes: `money:read` and `money:write` only. Do not use a token that can also read pages, habits, files, or investing. Reads require `money:read`. Writes require `money:write`. The plaintext is shown once, same as other API tokens. Revoke it from that page if a laptop is lost.
 
 ### Audit
 

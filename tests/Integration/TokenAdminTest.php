@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Tests\Integration;
 
+use Dashboard\Api\V1\Scope;
 use Dashboard\Audit\AuditLog;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\Support\Clock;
@@ -108,5 +109,56 @@ final class TokenAdminTest extends PgsqlTestCase
         $events = $audit->recent($this->admin, 5);
         self::assertSame('Claude', $events[0]['detail']['token_name']);
         self::assertSame($created['id'], $events[0]['detail']['token_id']);
+    }
+
+    public function testNarrowingScopesIsEnforcedAndRevokeLeavesTheAudit(): void
+    {
+        $created = $this->svc->tokens->create($this->admin, 'Claude', ['*'], null, true);
+        $plain = $created['token'];
+        $hash = (string) $this->db->fetchScalar('SELECT token_hash FROM api_tokens WHERE id = ?', [$created['id']]);
+
+        $edited = $this->svc->tokens->update($this->admin, $created['id'], 'Claude', ['money:read']);
+        self::assertSame(['money:read'], $edited['token']['scopes']);
+        self::assertSame(['*'], $edited['previous_scopes']);
+        self::assertArrayNotHasKey('token', $edited['token']);
+        self::assertSame($hash, (string) $this->db->fetchScalar('SELECT token_hash FROM api_tokens WHERE id = ?', [$created['id']]));
+
+        $auth = $this->svc->tokens->authenticate($plain);
+        self::assertNotNull($auth);
+        self::assertSame($this->admin, $auth['user_id']);
+        self::assertSame(['money:read'], $auth['scopes']);
+        self::assertTrue(Scope::allows($auth['scopes'], 'money:read'));
+        self::assertFalse(Scope::allows($auth['scopes'], 'health:read'));
+        self::assertFalse(Scope::allows($auth['scopes'], 'agents:write'));
+        self::assertFalse(Scope::allows($auth['scopes'], 'system:deploy'));
+
+        try {
+            $this->svc->tokens->revoke($this->member, $created['id']);
+            self::fail('Another user must not revoke this key.');
+        } catch (NotFoundException) {
+        }
+        self::assertNotNull($this->svc->tokens->authenticate($plain));
+
+        $audit = new AuditLog($this->db);
+        $audit->record($this->admin, 'ai', 'list_bills', 'GET', '/api/v1/money/bills', [
+            'token_id' => $created['id'],
+            'token_name' => 'Claude',
+            'verb' => 'read',
+            'sector' => 'money',
+        ]);
+
+        $revoked = $this->svc->tokens->revoke($this->admin, $created['id']);
+        self::assertTrue($revoked['revoked']);
+        self::assertNull($this->svc->tokens->authenticate($plain));
+
+        $events = $audit->recent($this->admin, 5);
+        self::assertSame('Claude', $events[0]['detail']['token_name']);
+        self::assertSame('list_bills', $events[0]['tool']);
+        self::assertSame('money', $events[0]['detail']['sector']);
+
+        $table = $this->db->fetchScalar(
+            "SELECT to_regclass('public.sector_grants')"
+        );
+        self::assertNull($table);
     }
 }
