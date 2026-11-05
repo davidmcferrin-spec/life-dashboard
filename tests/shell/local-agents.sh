@@ -45,6 +45,17 @@ printf '%s\n' "$opencode" | grep -q "\"context\": $context" || fail "opencode co
 printf '%s\n' "$opencode" | grep -q "ollama/$model" || fail "opencode default model"
 printf '%s\n' "$opencode" | grep -q '0.0.0.0' && fail "opencode config must not publish 0.0.0.0"
 
+openclaw=$(lifedash_openclaw_config)
+printf '%s\n' "$openclaw" | python3 -m json.tool >/dev/null || fail "openclaw config must be json"
+printf '%s\n' "$openclaw" | grep -q 'http://127.0.0.1:11434"' || fail "openclaw uses the native ollama url"
+printf '%s\n' "$openclaw" | grep -q '/v1' && fail "openclaw must not use the OpenAI-compatible url"
+printf '%s\n' "$openclaw" | grep -q "\"$model\"" || fail "openclaw model"
+printf '%s\n' "$openclaw" | grep -q "ollama/$model" || fail "openclaw default model"
+printf '%s\n' "$openclaw" | grep -q "\"contextTokens\": $context" || fail "openclaw context"
+printf '%s\n' "$openclaw" | grep -q '"bind": "loopback"' || fail "openclaw gateway must be loopback"
+printf '%s\n' "$openclaw" | grep -q '0.0.0.0' && fail "openclaw config must not publish 0.0.0.0"
+printf '%s\n' "$openclaw" | grep -q 'install-daemon' && fail "openclaw config must not install a daemon"
+
 key=$(openssl rand -hex 32)
 envfile=$(mktemp)
 printf 'API_SERVER_KEY=%s\n' "$key" > "$envfile"
@@ -79,6 +90,26 @@ case ":${basedir}:" in
     *:/var/lib/lifedash/hermes:*) ;;
     *) fail "open_basedir must allow the hermes home" ;;
 esac
+case ":${basedir}:" in
+    *:/var/lib/lifedash/opencode:*) ;;
+    *) fail "open_basedir must allow the opencode home" ;;
+esac
+case ":${basedir}:" in
+    *:/var/lib/lifedash/openclaw:*) ;;
+    *) fail "open_basedir must allow the openclaw home" ;;
+esac
+case ":${basedir}:" in
+    *:/etc/lifedash:*) ;;
+    *) fail "open_basedir must allow the agent config dir" ;;
+esac
+grep -q 'install-cli.sh' "$root/deploy/lib/local-agents.sh" || fail "ensure must install openclaw"
+grep -q -- '--no-onboard' "$root/deploy/lib/local-agents.sh" || fail "openclaw install skips onboarding"
+if grep -E '(^|[[:space:]])--onboard([[:space:]]|$)' "$root/deploy/lib/local-agents.sh"; then
+    fail "do not pass --onboard"
+fi
+grep -q 'install-daemon' "$root/deploy/lib/local-agents.sh" && fail "do not install the openclaw daemon"
+[[ -f $root/deploy/bin/lifedash-openclaw ]] || fail "missing openclaw wrapper"
+grep -q 'OPENCLAW_HOME=/var/lib/lifedash/openclaw' "$root/deploy/bin/lifedash-openclaw" || fail "wrapper pins the openclaw home"
 
 page=$root/templates/hermes.php
 grep -q 'lifedash-coder' "$page" || fail "the chat page names the model"

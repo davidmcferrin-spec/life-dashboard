@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\Agents\LocalAgents;
 use Dashboard\Auth\OAuthClientEndpoint;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Auth\PgOAuthStore;
@@ -651,6 +652,7 @@ final class ExtendedApi
         $this->registerPantry($r);
         $this->registerOllama($r);
         $this->registerHermes($r);
+        $this->registerAgents($r);
         (new DigestApi($this->runner, $this->svc))->register($r);
     }
 
@@ -697,6 +699,59 @@ final class ExtendedApi
 
             return $ollama()->queue('ollama-remove', (string) ($this->runner->body()['model'] ?? ''));
         }, 202, true));
+    }
+
+    private function registerAgents(Router $r): void
+    {
+        $agents = function (): LocalAgents {
+            return new LocalAgents(
+                Gateway::fromEnv(),
+                new PreferenceChatMemory(new PreferenceService($this->svc->db))
+            );
+        };
+        $r->get('/api/v1/agents/hermes/status', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->hermesStatus();
+        }));
+        $r->get('/api/v1/agents/hermes/sessions', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->hermesSessions($u);
+        }));
+        $r->post('/api/v1/agents/hermes/sessions', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+            $title = (string) ($this->runner->body()['title'] ?? '');
+
+            return $agents()->hermesStart($u, $title);
+        }, 201, true));
+        $r->post('/api/v1/agents/hermes/runs', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+            $body = $this->runner->body();
+            $session = isset($body['session_id']) ? (string) $body['session_id'] : null;
+
+            return $agents()->hermesSend($u, (string) ($body['message'] ?? ''), $session);
+        }, 202, true));
+        $r->get('/api/v1/agents/hermes/runs/{id}', fn (array $p) => $this->run(function (int $u) use ($agents, $p): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->hermesPoll($u, (string) ($p['id'] ?? ''));
+        }));
+        $r->get('/api/v1/agents/opencode/status', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->opencodeStatus();
+        }));
+        $r->get('/api/v1/agents/openclaw/status', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->openclawStatus();
+        }));
+        $r->post('/api/v1/agents/openclaw/ask', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->openclawAsk((string) ($this->runner->body()['prompt'] ?? ''));
+        }, 200, true, 'agents:read'));
     }
 
     private function registerHermes(Router $r): void
@@ -1072,6 +1127,17 @@ final class ExtendedApi
         $flag = $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
         if ((int) $flag !== 1) {
             throw new ForbiddenException('Hermes chat requires an admin session.');
+        }
+    }
+
+    private function assertAgentsAdmin(int $userId): void
+    {
+        if ($this->runner->grantedScopes() !== null) {
+            return;
+        }
+        $flag = $this->svc->db->fetchScalar('SELECT is_admin FROM users WHERE id = ?', [$userId]);
+        if ((int) $flag !== 1) {
+            throw new ForbiddenException('Local agents require an admin session.');
         }
     }
 

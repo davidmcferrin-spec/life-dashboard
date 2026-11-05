@@ -1,4 +1,4 @@
-# Hermes Agent and OpenCode on the existing loopback Ollama. Sourced, not executed.
+# Hermes Agent, OpenCode, and OpenClaw on the existing loopback Ollama. Sourced, not executed.
 # shellcheck shell=bash
 #
 # Model: qwen2.5-coder:7b, published as lifedash-coder with num_ctx 65536.
@@ -107,14 +107,62 @@ lifedash_opencode_config() {
 EOF
 }
 
-# Install both CLIs, point them at loopback Ollama, and start the gateway.
+# OpenClaw talks to Ollama's native API, not the OpenAI-compatible /v1 URL.
+# The gateway block is loopback-only and this installer does not start it.
+# ollama-local is the documented placeholder for a local daemon, not a secret.
+lifedash_openclaw_config() {
+    local model context
+    model=$(lifedash_agent_model)
+    context=$(lifedash_agent_context)
+    cat <<EOF
+{
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "http://127.0.0.1:11434",
+        "apiKey": "ollama-local",
+        "api": "ollama",
+        "models": [
+          {
+            "id": "$model",
+            "name": "Life-Dashboard coder",
+            "input": ["text"],
+            "contextTokens": $context,
+            "params": {
+              "num_ctx": $context
+            }
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "ollama/$model"
+      }
+    }
+  },
+  "gateway": {
+    "mode": "local",
+    "bind": "loopback",
+    "port": 18789
+  }
+}
+EOF
+}
+
+# Install the CLIs, point them at loopback Ollama, and start the Hermes gateway.
+# OpenClaw is the CLI only: no onboarding, no channel login, no gateway daemon.
 # A failed upstream installer does not stop deploy. Ollama itself is untouched.
 lifedash_local_agents_ensure() {
     local app=${1:-/srv/lifedash/app}
     local hermes_home=/var/lib/lifedash/hermes
     local opencode_home=/var/lib/lifedash/opencode
+    local openclaw_home=/var/lib/lifedash/openclaw
     local hermes_bin=$hermes_home/.local/bin/hermes
     local opencode_bin=$opencode_home/.opencode/bin/opencode
+    local openclaw_bin=$openclaw_home/bin/openclaw
     local envfile=$hermes_home/.env
     local key python plan
     [[ $EUID -eq 0 ]] || {
@@ -127,6 +175,7 @@ lifedash_local_agents_ensure() {
     fi
     install -d -o lifedash -g lifedash -m 0750 "$hermes_home"
     install -d -o lifedash -g lifedash -m 0755 "$opencode_home"
+    install -d -o lifedash -g lifedash -m 0750 "$openclaw_home"
     install -d -m 0755 /etc/lifedash
     if ! key=$(lifedash_hermes_existing_key "$envfile"); then
         key=$(openssl rand -hex 32)
@@ -164,18 +213,36 @@ lifedash_local_agents_ensure() {
             fi
         fi
     fi
+    if [[ ! -x $openclaw_bin ]]; then
+        if ! command -v curl >/dev/null 2>&1; then
+            echo "openclaw: curl is not installed, so the installer did not run"
+        else
+            echo "openclaw: installing the CLI under $openclaw_home (no gateway daemon)"
+            if ! curl -fsSL --proto '=https' --tlsv1.2 https://openclaw.ai/install-cli.sh \
+                | env HOME="$openclaw_home" OPENCLAW_HOME="$openclaw_home" OPENCLAW_NO_ONBOARD=1 \
+                    DEBIAN_FRONTEND=noninteractive \
+                    bash -s -- --no-onboard --prefix "$openclaw_home"; then
+                echo "openclaw: the installer failed"
+            fi
+        fi
+    fi
 
     # The installer keeps an existing config.yaml. Write again so a re-run
     # still pins the Ollama endpoint after the installer has created the tree.
     lifedash_hermes_config > "$hermes_home/config.yaml"
     chmod 0640 "$hermes_home/config.yaml"
-    chown -R lifedash:lifedash "$hermes_home" "$opencode_home"
-    chmod 0750 "$hermes_home"
+    lifedash_openclaw_config > "$openclaw_home/openclaw.json"
+    install -d -o lifedash -g lifedash -m 0750 "$openclaw_home/.openclaw"
+    lifedash_openclaw_config > "$openclaw_home/.openclaw/openclaw.json"
+    chmod 0640 "$openclaw_home/openclaw.json" "$openclaw_home/.openclaw/openclaw.json"
+    chown -R lifedash:lifedash "$hermes_home" "$opencode_home" "$openclaw_home"
+    chmod 0750 "$hermes_home" "$openclaw_home"
     chmod 0600 "$envfile" 2>/dev/null || true
     chmod 0755 "$opencode_home"
 
     install -m 0755 "$app/deploy/bin/lifedash-hermes" /usr/local/bin/hermes
     install -m 0755 "$app/deploy/bin/lifedash-opencode" /usr/local/bin/opencode
+    install -m 0755 "$app/deploy/bin/lifedash-openclaw" /usr/local/bin/openclaw
     install -m 0644 "$app/deploy/systemd/lifedash-hermes-gateway.service" /etc/systemd/system/lifedash-hermes-gateway.service
     install -m 0644 "$app/deploy/systemd/lifedash-agent-model.service" /etc/systemd/system/lifedash-agent-model.service
     install -m 0644 "$app/deploy/systemd/lifedash-agent-model.timer" /etc/systemd/system/lifedash-agent-model.timer
@@ -194,6 +261,11 @@ lifedash_local_agents_ensure() {
         echo "opencode: installed ($(basename "$opencode_bin") on PATH via /usr/local/bin/opencode)"
     else
         echo "opencode: the command is missing"
+    fi
+    if [[ -x $openclaw_bin ]]; then
+        echo "openclaw: CLI installed (gateway daemon not started)"
+    else
+        echo "openclaw: the command is missing"
     fi
     systemctl enable lifedash-agent-model.timer >/dev/null
     systemctl start --no-block lifedash-agent-model.timer >/dev/null || true

@@ -106,6 +106,10 @@ final class HermesChatTest extends TestCase
     {
         self::assertTrue(Scope::sessionOnly('/api/v1/hermes/chat'));
         self::assertFalse(Scope::sessionOnly('/api/v1/ollama/generate'));
+        self::assertFalse(Scope::sessionOnly('/api/v1/agents/hermes/runs'));
+        self::assertSame('agents:read', Scope::forPath('/api/v1/agents/hermes/status', false));
+        self::assertSame('agents:write', Scope::forPath('/api/v1/agents/hermes/runs', true));
+        self::assertContains('agents:read', \Dashboard\Auth\OAuthRules::known(false));
     }
 
     /**
