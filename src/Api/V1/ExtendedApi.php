@@ -654,6 +654,7 @@ final class ExtendedApi
         $this->registerHermes($r);
         $this->registerAgents($r);
         (new DigestApi($this->runner, $this->svc))->register($r);
+        (new PlatformApi($this->runner, $this->svc))->register($r);
     }
 
     private function registerOllama(Router $r): void
@@ -737,6 +738,11 @@ final class ExtendedApi
 
             return $agents()->hermesPoll($u, (string) ($p['id'] ?? ''));
         }));
+        $r->post('/api/v1/agents/hermes/runs/{id}/stop', fn (array $p) => $this->run(function (int $u) use ($agents, $p): array {
+            $this->assertAgentsAdmin($u);
+
+            return $agents()->hermesStop($u, (string) ($p['id'] ?? ''));
+        }, 200, true));
         $r->get('/api/v1/agents/opencode/status', fn () => $this->run(function (int $u) use ($agents): array {
             $this->assertAgentsAdmin($u);
 

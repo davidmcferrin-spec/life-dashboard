@@ -167,6 +167,10 @@ final class MoneyPlanTest extends PgsqlTestCase
         $open = $this->svc->tokens->create($this->user, 'everything', ['*']);
         self::assertNull($open['expires_at']);
 
+        $this->db->execute(
+            'INSERT INTO sector_grants (user_id, principal_kind, principal_id, sector, mode) VALUES (?, \'token\', ?, \'money\', \'always\')',
+            [$this->user, (int) $picked['id']]
+        );
         $runner = new ApiRunner(new Auth($this->db), $this->svc->tokens, $this->svc->audit);
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $picked['token'];
         $_SERVER['HTTP_X_LIFEDASH_TOOL'] = 'list_transactions';

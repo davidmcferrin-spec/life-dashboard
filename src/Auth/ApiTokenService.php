@@ -201,6 +201,8 @@ final class ApiTokenService
             'scopes'  => self::parseScopes((string) $row['scopes']),
             'id'      => (int) $row['id'],
             'name'    => (string) $row['name'],
+            'principal_kind' => 'token',
+            'principal_id' => (int) $row['id'],
         ];
     }
 

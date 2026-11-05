@@ -22,7 +22,7 @@ final class Scope
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
-        'spotify', 'ollama', 'digest', 'agents',
+        'spotify', 'ollama', 'digest', 'agents', 'health', 'home', 'mail',
     ];
 
     public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday'];
@@ -41,6 +41,10 @@ final class Scope
 
     public const DIGEST_ENTITIES = ['digest'];
 
+    public const HEALTH_ENTITIES = ['health_point', 'health_workout'];
+
+    public const BRIEF_ENTITIES = ['brief'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -53,6 +57,8 @@ final class Scope
         'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component', 'meal_plan_day',
         'spotify',
         'digest',
+        'health_point', 'health_workout',
+        'brief',
         'deploy',
     ];
 
@@ -110,6 +116,12 @@ final class Scope
         if (str_contains($path, '/spotify/playback')) {
             return 'spotify:playback';
         }
+        if (str_contains($path, '/api/v1/graph')) {
+            return 'pages:' . ($write ? 'write' : 'read');
+        }
+        if (str_contains($path, '/api/v1/brief')) {
+            return 'digest:' . ($write ? 'write' : 'read');
+        }
         $area = 'metrics';
         foreach (self::AREAS as $candidate) {
             if (str_contains($path, '/' . $candidate)) {
@@ -134,7 +146,8 @@ final class Scope
     {
         return str_contains($path, '/api/v1/tokens')
             || str_contains($path, '/api/v1/oauth/clients')
-            || str_contains($path, '/api/v1/hermes');
+            || str_contains($path, '/api/v1/hermes')
+            || (str_contains($path, '/api/v1/grants') && !str_contains($path, '/grants/mine'));
     }
 
     /**
@@ -208,7 +221,10 @@ final class Scope
             $allow = array_merge($allow, self::SPOTIFY_ENTITIES);
         }
         if (self::allows($granted, 'digest:read')) {
-            $allow = array_merge($allow, self::DIGEST_ENTITIES);
+            $allow = array_merge($allow, self::DIGEST_ENTITIES, self::BRIEF_ENTITIES);
+        }
+        if (self::allows($granted, 'health:read')) {
+            $allow = array_merge($allow, self::HEALTH_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

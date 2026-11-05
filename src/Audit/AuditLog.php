@@ -266,6 +266,9 @@ final class AuditLog
         'pantry_category' => ['%/pantry/categories%'],
         'meal_plan_day'   => ['%/pantry/meals/days%'],
         'meal_component'  => ['%/pantry/meals%'],
+        'health_point'    => ['%/health%'],
+        'health_workout'  => ['%/health/workouts%'],
+        'brief'           => ['%/brief%'],
         'deploy'        => ['%/system/deploy%'],
     ];
 

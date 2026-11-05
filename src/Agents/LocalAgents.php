@@ -153,6 +153,36 @@ final class LocalAgents
     }
 
     /**
+     * @return array{run_id: string, supported: bool, stopped: bool, detail: string}
+     */
+    public function hermesStop(int $userId, string $runId): array
+    {
+        if (!self::idOk($runId) || !in_array($runId, $this->runs($userId), true)) {
+            throw new NotFoundException('That Hermes turn was not found.');
+        }
+        $this->requireGateway();
+        $res = $this->gateway->call('POST', '/v1/runs/' . $runId . '/cancel', [], 10);
+        if (in_array($res['status'], [404, 405, 501], true)) {
+            return [
+                'run_id'    => $runId,
+                'supported' => false,
+                'stopped'   => false,
+                'detail'    => 'This Hermes gateway does not support stop.',
+            ];
+        }
+        if ($res['status'] !== 200 && $res['status'] !== 202) {
+            throw ValidationException::withFields(['run_id' => 'Hermes did not stop the turn.']);
+        }
+
+        return [
+            'run_id'    => $runId,
+            'supported' => true,
+            'stopped'   => true,
+            'detail'    => 'Hermes accepted the stop.',
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function opencodeStatus(): array
