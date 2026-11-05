@@ -19,7 +19,10 @@ final class Chat
 
     public const MAX_MESSAGE = 8000;
 
-    private const HISTORY = 40;
+    /** Newest messages painted on first load. Older rows arrive on scroll-up. */
+    public const PAGE = 40;
+
+    private const PAGE_MAX = 100;
 
     public function __construct(
         private readonly Gateway $gateway,
@@ -28,10 +31,16 @@ final class Chat
     }
 
     /**
-     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{role: string, content: string}>}
+     * Newest page of the gateway session. Pass the oldest id already on screen
+     * as $beforeId to read the previous page. The session store is the history;
+     * this does not keep a second copy.
+     *
+     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
      */
-    public function thread(int $userId): array
+    public function thread(int $userId, string $beforeId = '', int $limit = self::PAGE): array
     {
+        $beforeId = $this->cursor($beforeId);
+        $limit = $this->pageSize($limit);
         $run = $this->memory->read($userId, self::RUN);
         if (!$this->gateway->configured()) {
             return $this->quiet('Hermes is not configured on this machine yet.', $run);
@@ -40,13 +49,15 @@ final class Chat
             return $this->quiet('Hermes is not answering on 127.0.0.1:8642.', $run);
         }
         $session = $this->liveSession($userId);
+        $history = $session === ''
+            ? ['messages' => [], 'has_more' => false, 'next_before_id' => '']
+            : $this->history($session, $limit, $beforeId);
 
         return [
             'reachable' => true,
             'detail'    => 'Hermes gateway answered.',
             'run_id'    => $run,
-            'messages'  => $session === '' ? [] : $this->messages($session),
-        ];
+        ] + $history;
     }
 
     /**
@@ -117,7 +128,7 @@ final class Chat
         ];
     }
 
-    /** @return array{reachable: bool, detail: string, run_id: string, messages: list<array{role: string, content: string}>} */
+    /** @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string} */
     public function reset(int $userId): array
     {
         $this->memory->write($userId, self::SESSION, '');
@@ -173,16 +184,157 @@ final class Chat
         return $id;
     }
 
-    /**
-     * @return list<array{role: string, content: string}>
-     */
-    private function messages(string $session): array
+    private function cursor(string $beforeId): string
     {
-        $res = $this->gateway->call('GET', '/api/sessions/' . $session . '/messages', null, 15);
-        $rows = is_array($res['json']) ? ($res['json']['data'] ?? null) : null;
-        if ($res['status'] !== 200 || !is_array($rows)) {
-            return [];
+        $beforeId = trim($beforeId);
+        if ($beforeId === '') {
+            return '';
         }
+        if (preg_match('/^[A-Za-z0-9_.:-]{1,80}$/', $beforeId) !== 1) {
+            throw ValidationException::withFields(['before_id' => 'That history cursor is not valid.']);
+        }
+
+        return $beforeId;
+    }
+
+    private function pageSize(int $limit): int
+    {
+        if ($limit < 1) {
+            return self::PAGE;
+        }
+
+        return min($limit, self::PAGE_MAX);
+    }
+
+    /**
+     * Ask the gateway for the newest page (`order=latest` plus `before_id`).
+     * A gateway that still returns the whole transcript is windowed here.
+     * A gateway that pages with `offset` and ignores `before_id` is walked
+     * backward from the cursor. An empty page means there is nothing older.
+     *
+     * @return array{messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
+     */
+    private function history(string $session, int $limit, string $beforeId): array
+    {
+        $query = ['limit' => $limit, 'order' => 'latest'];
+        if ($beforeId !== '') {
+            $query['before_id'] = $beforeId;
+        }
+        $loaded = $this->load($session, $query);
+        if ($loaded === null) {
+            return ['messages' => [], 'has_more' => false, 'next_before_id' => ''];
+        }
+        $visible = $this->visible($loaded['rows']);
+        if ($beforeId === '' && $this->pageOrder($loaded['json']) === 'oldest' && count($visible) <= $limit) {
+            $again = $this->load($session, []);
+            if ($again !== null) {
+                $loaded = $again;
+                $visible = $this->visible($loaded['rows']);
+            }
+        }
+
+        $paged = $this->window($visible, $limit, $beforeId, $loaded['json']);
+        if ($beforeId !== '' && $paged['messages'] === [] && count($visible) === $limit) {
+            $walked = $this->olderByOffset($session, $limit, $beforeId);
+            if ($walked !== null) {
+                return $walked;
+            }
+        }
+
+        return $paged;
+    }
+
+    /**
+     * Latest-page gateways that ignore before_id still honor offset.
+     * Walk back until the page holds rows older than the cursor.
+     *
+     * @return ?array{messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
+     */
+    private function olderByOffset(string $session, int $limit, string $beforeId): ?array
+    {
+        if (preg_match('/^\d+$/', $beforeId) !== 1) {
+            return null;
+        }
+        $offset = $limit;
+        $seen = '';
+        for ($guard = 0; $guard < 25; $guard++) {
+            $loaded = $this->load($session, ['limit' => $limit, 'order' => 'latest', 'offset' => $offset]);
+            if ($loaded === null) {
+                return ['messages' => [], 'has_more' => false, 'next_before_id' => ''];
+            }
+            $visible = $this->visible($loaded['rows']);
+            if ($visible === []) {
+                return $this->pack([], false);
+            }
+            $signature = $visible[0]['id'] . ':' . $visible[count($visible) - 1]['id'];
+            if ($signature === $seen) {
+                return $this->pack([], false);
+            }
+            $seen = $signature;
+            $older = $this->rowsOlderThan($visible, $beforeId);
+            if ($older === null) {
+                return null;
+            }
+            if ($older !== []) {
+                if (count($older) > $limit) {
+                    $older = array_values(array_slice($older, -$limit));
+                }
+
+                return $this->pack($older, count($visible) >= $limit);
+            }
+            if (count($visible) < $limit) {
+                return $this->pack([], false);
+            }
+            $offset += $limit;
+        }
+
+        return $this->pack([], false);
+    }
+
+    /**
+     * @param array<string, int|string> $query
+     * @return ?array{rows: list<mixed>, json: array<string, mixed>}
+     */
+    private function load(string $session, array $query): ?array
+    {
+        $path = '/api/sessions/' . $session . '/messages';
+        if ($query !== []) {
+            $path .= '?' . http_build_query($query);
+        }
+        $res = $this->gateway->call('GET', $path, null, 15);
+        $json = is_array($res['json']) ? $res['json'] : null;
+        $rows = $this->rows($json);
+        if ($res['status'] !== 200 || $rows === null) {
+            return null;
+        }
+
+        return ['rows' => $rows, 'json' => $json];
+    }
+
+    /**
+     * @param ?array<string, mixed> $json
+     * @return ?list<mixed>
+     */
+    private function rows(?array $json): ?array
+    {
+        if ($json === null) {
+            return null;
+        }
+        foreach (['data', 'messages'] as $key) {
+            if (isset($json[$key]) && is_array($json[$key])) {
+                return array_values($json[$key]);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<mixed> $rows
+     * @return list<array{id: string, role: string, content: string, ts: string}>
+     */
+    private function visible(array $rows): array
+    {
         $out = [];
         foreach ($rows as $row) {
             if (!is_array($row)) {
@@ -192,17 +344,233 @@ final class Chat
             if ($role !== 'user' && $role !== 'assistant') {
                 continue;
             }
-            $text = $this->text($row['content'] ?? '');
+            $text = $this->visibleText($row);
             if ($text === '') {
                 continue;
             }
-            $out[] = ['role' => $role, 'content' => mb_substr($text, 0, self::MAX_MESSAGE)];
+            $out[] = [
+                'id'      => $this->messageId($row),
+                'role'    => $role,
+                'content' => mb_substr($text, 0, self::MAX_MESSAGE),
+                'ts'      => $this->stamp($row),
+            ];
         }
-        if (count($out) > self::HISTORY) {
-            $out = array_slice($out, -self::HISTORY);
+        $out = $this->chronological($out);
+        foreach ($out as $i => $row) {
+            if ($row['id'] === '') {
+                $out[$i]['id'] = 'i' . $i;
+            }
         }
 
-        return array_values($out);
+        return $out;
+    }
+
+    /**
+     * @param list<array{id: string, role: string, content: string, ts: string}> $clean
+     * @param array<string, mixed> $json
+     * @return array{messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
+     */
+    private function window(array $clean, int $limit, string $beforeId, array $json): array
+    {
+        $at = $beforeId === '' ? null : $this->indexOf($clean, $beforeId);
+        if (count($clean) > $limit) {
+            if ($at !== null) {
+                $start = max(0, $at - $limit);
+
+                return $this->pack(array_values(array_slice($clean, $start, $at - $start)), $start > 0);
+            }
+            if ($beforeId !== '') {
+                return $this->pack([], false);
+            }
+            $start = count($clean) - $limit;
+
+            return $this->pack(array_values(array_slice($clean, $start)), true);
+        }
+
+        if ($beforeId !== '' && $at === null) {
+            $older = $this->rowsOlderThan($clean, $beforeId);
+            if ($older !== null) {
+                if ($older === []) {
+                    return $this->pack([], false);
+                }
+                if (count($older) > $limit) {
+                    $older = array_values(array_slice($older, -$limit));
+                }
+
+                return $this->pack($older, count($clean) >= $limit);
+            }
+        }
+        $page = $at === null ? $clean : array_values(array_slice($clean, 0, $at));
+        if ($page === []) {
+            return $this->pack([], false);
+        }
+        $filled = count($clean) >= $limit;
+
+        return $this->pack($page, $this->metaHasMore($json, $filled));
+    }
+
+    /**
+     * Rows strictly older than a numeric cursor. Null when an id is not numeric.
+     *
+     * @param list<array{id: string, role: string, content: string, ts: string}> $clean
+     * @return ?list<array{id: string, role: string, content: string, ts: string}>
+     */
+    private function rowsOlderThan(array $clean, string $beforeId): ?array
+    {
+        if (preg_match('/^\d+$/', $beforeId) !== 1) {
+            return null;
+        }
+        $cursor = (int) $beforeId;
+        $older = [];
+        foreach ($clean as $row) {
+            if (preg_match('/^\d+$/', $row['id']) !== 1) {
+                return null;
+            }
+            if ((int) $row['id'] < $cursor) {
+                $older[] = $row;
+            }
+        }
+
+        return $older;
+    }
+
+    /**
+     * @param list<array{id: string, role: string, content: string, ts: string}> $slice
+     * @return array{messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
+     */
+    private function pack(array $slice, bool $hasMore): array
+    {
+        return [
+            'messages'       => $slice,
+            'has_more'       => $hasMore,
+            'next_before_id' => $hasMore && $slice !== [] ? $slice[0]['id'] : '',
+        ];
+    }
+
+    /**
+     * @param list<array{id: string, role: string, content: string, ts: string}> $clean
+     */
+    private function indexOf(array $clean, string $id): ?int
+    {
+        foreach ($clean as $i => $row) {
+            if ($row['id'] === $id) {
+                return $i;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Newest-first numeric ids are flipped so the page stays oldest-first.
+     *
+     * @param list<array{id: string, role: string, content: string, ts: string}> $rows
+     * @return list<array{id: string, role: string, content: string, ts: string}>
+     */
+    private function chronological(array $rows): array
+    {
+        $ids = [];
+        foreach ($rows as $row) {
+            if (preg_match('/^\d+$/', $row['id']) !== 1) {
+                return $rows;
+            }
+            $ids[] = (int) $row['id'];
+        }
+        if (count($ids) >= 2 && $ids[0] > $ids[count($ids) - 1]) {
+            return array_values(array_reverse($rows));
+        }
+
+        return $rows;
+    }
+
+    /** @param array<string, mixed> $json */
+    private function pageOrder(array $json): string
+    {
+        $page = $json['pagination'] ?? null;
+        if (!is_array($page)) {
+            return '';
+        }
+
+        return (string) ($page['order'] ?? '');
+    }
+
+    /** @param array<string, mixed> $json */
+    private function metaHasMore(array $json, bool $fallback): bool
+    {
+        if (array_key_exists('has_more', $json)) {
+            return (bool) $json['has_more'];
+        }
+        $page = $json['pagination'] ?? null;
+        if (is_array($page) && array_key_exists('has_more', $page)) {
+            return (bool) $page['has_more'];
+        }
+        $cursor = '';
+        if (isset($json['next_before_id']) && is_scalar($json['next_before_id'])) {
+            $cursor = (string) $json['next_before_id'];
+        } elseif (is_array($page) && isset($page['next_before_id']) && is_scalar($page['next_before_id'])) {
+            $cursor = (string) $page['next_before_id'];
+        }
+        if ($cursor !== '') {
+            return true;
+        }
+        if (is_array($page) && isset($page['returned'], $page['limit']) && is_numeric($page['returned']) && is_numeric($page['limit'])) {
+            return (int) $page['returned'] > 0 && (int) $page['returned'] >= (int) $page['limit'];
+        }
+
+        return $fallback;
+    }
+
+    /** @param array<string, mixed> $row */
+    private function messageId(array $row): string
+    {
+        if (!array_key_exists('id', $row)) {
+            return '';
+        }
+        $id = $row['id'];
+        if (is_int($id)) {
+            return (string) $id;
+        }
+        if (is_string($id) && preg_match('/^[A-Za-z0-9_.:-]{1,80}$/', $id) === 1) {
+            return $id;
+        }
+
+        return '';
+    }
+
+    /** @param array<string, mixed> $row */
+    private function visibleText(array $row): string
+    {
+        if (isset($row['display_content']) && is_string($row['display_content']) && trim($row['display_content']) !== '') {
+            return trim($row['display_content']);
+        }
+
+        return $this->text($row['content'] ?? '');
+    }
+
+    /** @param array<string, mixed> $row */
+    private function stamp(array $row): string
+    {
+        $value = $row['timestamp'] ?? $row['created_at'] ?? $row['ts'] ?? null;
+        if (is_int($value) || is_float($value) || (is_string($value) && preg_match('/^\d{10,13}$/', $value) === 1)) {
+            $n = (int) $value;
+            if ($n > 9999999999) {
+                $n = (int) floor($n / 1000);
+            }
+            if ($n < 1) {
+                return '';
+            }
+
+            return gmdate('c', $n);
+        }
+        if (!is_string($value) || trim($value) === '') {
+            return '';
+        }
+        $parsed = strtotime(trim($value));
+        if ($parsed === false) {
+            return '';
+        }
+
+        return gmdate('c', $parsed);
     }
 
     private function text(mixed $content): string
@@ -248,15 +616,17 @@ final class Chat
     }
 
     /**
-     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{role: string, content: string}>}
+     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
      */
     private function quiet(string $detail, string $run): array
     {
         return [
-            'reachable' => false,
-            'detail'    => $detail,
-            'run_id'    => $run,
-            'messages'  => [],
+            'reachable'      => false,
+            'detail'         => $detail,
+            'run_id'         => $run,
+            'messages'       => [],
+            'has_more'       => false,
+            'next_before_id' => '',
         ];
     }
 

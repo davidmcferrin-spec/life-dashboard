@@ -8,12 +8,12 @@
 $pageTitle = 'Hermes';
 ?>
 <?php require __DIR__ . '/partials/head.php'; ?>
-<body class="page min-h-screen">
+<body class="page hermes-chat min-h-screen">
 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 
 <main class="hermes-page" id="hermes-app">
-    <header>
+    <header class="hermes-head">
         <p class="hermes-kicker">Local agent</p>
         <h1 class="hermes-title">Hermes</h1>
         <p class="hermes-lede">
@@ -25,12 +25,13 @@ $pageTitle = 'Hermes';
         </p>
     </header>
     <p class="hermes-status" data-hermes-status role="status"></p>
-    <div class="hermes-log" data-hermes-log role="log" aria-live="polite" aria-relevant="additions">
+    <div class="hermes-log" data-hermes-log data-page="<?= (int) \Dashboard\Hermes\Chat::PAGE ?>" role="log" aria-relevant="additions">
         <p class="hermes-empty">Loading…</p>
     </div>
     <form class="hermes-form" data-hermes-form>
         <label class="text-sm" for="hermes-message">Message</label>
-        <textarea id="hermes-message" class="input" name="message" maxlength="8000" placeholder="Ask Hermes…" required></textarea>
+        <textarea id="hermes-message" class="input" name="message" maxlength="8000" placeholder="Ask Hermes…" aria-describedby="hermes-hint" required></textarea>
+        <p class="hermes-hint" id="hermes-hint">Enter adds a line. Ctrl+Enter sends.</p>
         <div class="hermes-actions">
             <button type="submit" class="btn-primary" data-hermes-send>Send</button>
             <button type="button" class="btn" data-hermes-new>New chat</button>

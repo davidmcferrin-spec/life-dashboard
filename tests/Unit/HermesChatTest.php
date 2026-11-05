@@ -24,24 +24,161 @@ final class HermesChatTest extends TestCase
         unlink($env);
         self::assertSame('', Gateway::keyFromEnv($env));
 
+        $seen = [];
         $memory = new ArrayChatMemory();
         $chat = $this->chat($memory, $key, [
             ['GET', '/health', 200, ['status' => 'ok']],
             ['GET', '/api/sessions/api_1', 200, ['session' => ['id' => 'api_1']]],
             ['GET', '/api/sessions/api_1/messages', 200, ['data' => [
-                ['role' => 'user', 'content' => 'Hello'],
+                ['role' => 'user', 'content' => 'Hello', 'timestamp' => 1700000000],
                 ['role' => 'tool', 'content' => 'hidden ' . $key],
-                ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'Hi']]],
+                ['role' => 'assistant', 'content' => [['type' => 'text', 'text' => 'secret']], 'display_content' => 'Hi'],
             ]]],
-        ]);
+        ], $seen);
         $memory->write(7, Chat::SESSION, 'api_1');
         $thread = $chat->thread(7);
         self::assertTrue($thread['reachable']);
+        self::assertFalse($thread['has_more']);
+        self::assertSame('', $thread['next_before_id']);
         self::assertSame([
-            ['role' => 'user', 'content' => 'Hello'],
-            ['role' => 'assistant', 'content' => 'Hi'],
+            ['id' => 'i0', 'role' => 'user', 'content' => 'Hello', 'ts' => gmdate('c', 1700000000)],
+            ['id' => 'i1', 'role' => 'assistant', 'content' => 'Hi', 'ts' => ''],
         ], $thread['messages']);
         self::assertStringNotContainsString($key, json_encode($thread, JSON_THROW_ON_ERROR));
+        $messageUrls = $this->messageUrls($seen);
+        self::assertCount(1, $messageUrls);
+        self::assertStringContainsString('limit=' . Chat::PAGE, $messageUrls[0]);
+        self::assertStringContainsString('order=latest', $messageUrls[0]);
+    }
+
+    public function testScrollUpReadsOlderPagesFromTheSession(): void
+    {
+        $rows = [];
+        for ($i = 1; $i <= 5; $i++) {
+            $rows[] = ['id' => $i, 'role' => $i % 2 === 1 ? 'user' : 'assistant', 'content' => 'm' . $i];
+        }
+        $seen = [];
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_1');
+        $script = [];
+        for ($n = 0; $n < 4; $n++) {
+            $script[] = ['GET', '/health', 200, ['status' => 'ok']];
+            $script[] = ['GET', '/api/sessions/api_1', 200, ['session' => ['id' => 'api_1']]];
+            $script[] = ['GET', '/api/sessions/api_1/messages', 200, ['messages' => array_reverse($rows)]];
+        }
+        $chat = $this->chat($memory, str_repeat('a', 32), $script, $seen);
+
+        $newest = $chat->thread(7, '', 2);
+        self::assertSame(['m4', 'm5'], array_column($newest['messages'], 'content'));
+        self::assertTrue($newest['has_more']);
+        self::assertSame('4', $newest['next_before_id']);
+
+        $older = $chat->thread(7, '4', 2);
+        self::assertSame(['m2', 'm3'], array_column($older['messages'], 'content'));
+        self::assertTrue($older['has_more']);
+        self::assertSame('2', $older['next_before_id']);
+
+        $rest = $chat->thread(7, '2', 2);
+        self::assertSame(['m1'], array_column($rest['messages'], 'content'));
+        self::assertFalse($rest['has_more']);
+        self::assertSame('', $rest['next_before_id']);
+
+        $done = $chat->thread(7, '1', 2);
+        self::assertSame([], $done['messages']);
+        self::assertFalse($done['has_more']);
+
+        $urls = $this->messageUrls($seen);
+        self::assertStringContainsString('order=latest', $urls[0]);
+        self::assertStringNotContainsString('before_id', $urls[0]);
+        self::assertStringContainsString('before_id=4', $urls[1]);
+        self::assertStringContainsString('before_id=1', $urls[3]);
+    }
+
+    public function testOffsetPagesWhenTheGatewayIgnoresTheCursor(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_1');
+        $latest = [
+            'messages' => [
+                ['id' => 4, 'role' => 'user', 'content' => 'm4'],
+                ['id' => 5, 'role' => 'assistant', 'content' => 'm5'],
+            ],
+            'pagination' => ['order' => 'latest', 'limit' => 2, 'offset' => 0, 'returned' => 2],
+        ];
+        $seen = [];
+        $script = [];
+        $push = function (array $messages, int $offset) use (&$script): void {
+            $script[] = ['GET', '/health', 200, ['status' => 'ok']];
+            $script[] = ['GET', '/api/sessions/api_1', 200, ['session' => ['id' => 'api_1']]];
+            $script[] = ['GET', '/api/sessions/api_1/messages', 200, [
+                'messages' => $messages,
+                'pagination' => ['order' => 'latest', 'limit' => 2, 'offset' => $offset, 'returned' => count($messages)],
+            ]];
+        };
+        $push($latest['messages'], 0);
+        $push($latest['messages'], 0);
+        $script[] = ['GET', '/api/sessions/api_1/messages', 200, [
+            'messages' => [
+                ['id' => 2, 'role' => 'user', 'content' => 'm2'],
+                ['id' => 3, 'role' => 'assistant', 'content' => 'm3'],
+            ],
+            'pagination' => ['order' => 'latest', 'limit' => 2, 'offset' => 2, 'returned' => 2],
+        ]];
+        $chat = $this->chat($memory, str_repeat('a', 32), $script, $seen);
+
+        $newest = $chat->thread(7, '', 2);
+        self::assertSame(['m4', 'm5'], array_column($newest['messages'], 'content'));
+        self::assertTrue($newest['has_more']);
+
+        $older = $chat->thread(7, '4', 2);
+        self::assertSame(['m2', 'm3'], array_column($older['messages'], 'content'));
+        self::assertTrue($older['has_more']);
+        self::assertSame('2', $older['next_before_id']);
+
+        $urls = $this->messageUrls($seen);
+        self::assertStringContainsString('before_id=4', $urls[1]);
+        self::assertStringContainsString('offset=2', $urls[2]);
+        self::assertStringNotContainsString('before_id', $urls[2]);
+    }
+
+    public function testOldestGatewayPageIsNotTheOpeningView(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_1');
+        $seen = [];
+        $chat = $this->chat($memory, str_repeat('b', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_1', 200, ['session' => ['id' => 'api_1']]],
+            ['GET', '/api/sessions/api_1/messages', 200, [
+                'messages' => [['id' => 1, 'role' => 'user', 'content' => 'Old']],
+                'pagination' => ['order' => 'oldest', 'limit' => 1, 'returned' => 1, 'offset' => 0],
+            ]],
+            ['GET', '/api/sessions/api_1/messages', 200, ['data' => [
+                ['id' => 1, 'role' => 'user', 'content' => 'Old'],
+                ['id' => 2, 'role' => 'assistant', 'content' => 'New'],
+            ]]],
+        ], $seen);
+
+        $thread = $chat->thread(7, '', 1);
+        self::assertSame(['New'], array_column($thread['messages'], 'content'));
+        self::assertTrue($thread['has_more']);
+        self::assertSame('2', $thread['next_before_id']);
+        $urls = $this->messageUrls($seen);
+        self::assertCount(2, $urls);
+        self::assertStringContainsString('order=latest', $urls[0]);
+        self::assertStringNotContainsString('?', $urls[1]);
+    }
+
+    public function testBadHistoryCursorIsRejected(): void
+    {
+        $seen = [];
+        $chat = $this->chat(new ArrayChatMemory(), str_repeat('c', 32), [], $seen);
+        $this->expectException(ValidationException::class);
+        try {
+            $chat->thread(1, '../secret', 10);
+        } finally {
+            self::assertSame([], $seen);
+        }
     }
 
     public function testSendStartsARunOnANewSession(): void
@@ -100,6 +237,7 @@ final class HermesChatTest extends TestCase
         $thread = $chat->thread(1);
         self::assertFalse($thread['reachable']);
         self::assertSame([], $thread['messages']);
+        self::assertFalse($thread['has_more']);
     }
 
     public function testBearerTokensCannotCallHermes(): void
@@ -123,13 +261,30 @@ final class HermesChatTest extends TestCase
             $step = array_shift($script);
             self::assertIsArray($step);
             self::assertSame($step[0], $method);
-            self::assertStringEndsWith($step[1], $url);
+            $path = parse_url($url, PHP_URL_PATH);
+            self::assertSame($step[1], $path);
             self::assertGreaterThan(0, $timeout);
 
             return ['status' => $step[2], 'json' => $step[3]];
         });
 
         return new Chat($gateway, $memory);
+    }
+
+    /**
+     * @param list<array{0: string, 1: string, 2: ?string}> $seen
+     * @return list<string>
+     */
+    private function messageUrls(array $seen): array
+    {
+        $urls = [];
+        foreach ($seen as $row) {
+            if (str_contains($row[1], '/messages')) {
+                $urls[] = $row[1];
+            }
+        }
+
+        return $urls;
     }
 }
 

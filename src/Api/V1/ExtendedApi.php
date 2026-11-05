@@ -770,8 +770,10 @@ final class ExtendedApi
         };
         $r->get('/api/v1/hermes/thread', fn () => $this->run(function (int $u) use ($chat): array {
             $this->assertHermesAdmin($u);
+            $before = isset($_GET['before_id']) ? (string) $_GET['before_id'] : '';
+            $limit = array_key_exists('limit', $_GET) ? (int) $_GET['limit'] : Chat::PAGE;
 
-            return $chat()->thread($u);
+            return $chat()->thread($u, $before, $limit);
         }));
         $r->post('/api/v1/hermes/chat', fn () => $this->run(function (int $u) use ($chat): array {
             $this->assertHermesAdmin($u);
