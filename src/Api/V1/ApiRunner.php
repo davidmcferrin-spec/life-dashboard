@@ -338,6 +338,9 @@ final class ApiRunner
     public static function entityFromPath(string $path): ?string
     {
         $map = [
+            '/money/payday'         => 'payday',
+            '/money/bills'          => 'bill',
+            '/money/envelopes'      => 'envelope',
             '/money/category-caps'  => 'budget',
             '/money/sinking-funds'  => 'sinking_fund',
             '/money/transactions'   => 'transaction',
@@ -377,7 +380,7 @@ final class ApiRunner
      */
     public static function entityIdFromPayload(array $payload): ?int
     {
-        foreach (['debt', 'account', 'sinking_fund', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt'] as $key) {
+        foreach (['debt', 'account', 'sinking_fund', 'bill', 'envelope', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt'] as $key) {
             $row = $payload[$key] ?? null;
             if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
                 return (int) $row['id'];
@@ -393,7 +396,7 @@ final class ApiRunner
 
     public static function entityIdFromPath(string $path): ?int
     {
-        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts)/(\d+)\b#', $path, $m) === 1) {
+        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts)/(\d+)\b#', $path, $m) === 1) {
             return (int) $m[1];
         }
         return null;

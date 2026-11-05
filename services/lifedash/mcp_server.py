@@ -737,6 +737,251 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "list_bills",
+        "description": (
+            "Recurring bills for this cycle: amount, due date, pay-from account, autopay, status, and risk flags. "
+            "A bill linked to a debt is the payment event. The snowball balance stays on the debt. "
+            "Does not pay anything."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_bill",
+        "description": "One bill, including recent paid or skipped cycles. Does not pay anything.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"bill_id": {"type": "integer"}},
+            "required": ["bill_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_bill",
+        "description": (
+            "Create a recurring bill. cadence is monthly, biweekly, or yearly. "
+            "Monthly needs due_day. Yearly needs due_month and due_day. Biweekly needs anchor_on (YYYY-MM-DD). "
+            "pay_from_account_id is an existing account. debt_id links a snowball debt without copying its balance. "
+            "statement_min is the card minimum when amount is unknown. Does not pay the bill or move money."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "amount": {"type": "number"},
+                "estimated": {"type": "boolean"},
+                "cadence": {"type": "string", "enum": ["monthly", "biweekly", "yearly"]},
+                "due_day": {"type": "integer"},
+                "due_month": {"type": "integer"},
+                "anchor_on": {"type": "string"},
+                "pay_from_account_id": {"type": ["integer", "null"]},
+                "pay_from_label": {"type": ["string", "null"]},
+                "autopay": {"type": "boolean"},
+                "debt_id": {"type": ["integer", "null"]},
+                "category_id": {"type": ["integer", "null"]},
+                "statement_min": {"type": ["number", "null"]},
+                "default_notice": {"type": "boolean"},
+                "cancelled_charging": {"type": "boolean"},
+                "notes": {"type": ["string", "null"]},
+            },
+            "required": ["name", "amount", "cadence"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_bill",
+        "description": (
+            "Update a bill definition. Null clears pay_from_account_id, debt_id, category_id, or statement_min. "
+            "Does not pay the bill or move money."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bill_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "amount": {"type": "number"},
+                "estimated": {"type": "boolean"},
+                "cadence": {"type": "string", "enum": ["monthly", "biweekly", "yearly"]},
+                "due_day": {"type": ["integer", "null"]},
+                "due_month": {"type": ["integer", "null"]},
+                "anchor_on": {"type": ["string", "null"]},
+                "pay_from_account_id": {"type": ["integer", "null"]},
+                "pay_from_label": {"type": ["string", "null"]},
+                "autopay": {"type": "boolean"},
+                "debt_id": {"type": ["integer", "null"]},
+                "category_id": {"type": ["integer", "null"]},
+                "statement_min": {"type": ["number", "null"]},
+                "default_notice": {"type": "boolean"},
+                "cancelled_charging": {"type": "boolean"},
+                "notes": {"type": ["string", "null"]},
+            },
+            "required": ["bill_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_bill",
+        "description": "Archive a bill. It leaves the active list. The row stays. Does not move money.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"bill_id": {"type": "integer"}},
+            "required": ["bill_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "mark_bill_paid",
+        "description": (
+            "Record a bill cycle as paid or skipped. status defaults to paid. "
+            "cycle_due_on and paid_on are YYYY-MM-DD. This does not create a transaction, pay the bill, or move money."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bill_id": {"type": "integer"},
+                "status": {"type": "string", "enum": ["paid", "skipped"]},
+                "cycle_due_on": {"type": "string"},
+                "paid_on": {"type": "string"},
+                "amount": {"type": "number"},
+                "note": {"type": "string"},
+            },
+            "required": ["bill_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_envelopes",
+        "description": (
+            "Envelopes: name, job type, target, funded amount, and progress. "
+            "A linked account balance is the funded amount. Otherwise the manual amount is used. "
+            "Does not move money. Weekly food is not an envelope."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_envelope",
+        "description": "One envelope. Linked account balance wins over the manual funded amount. Does not move money.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"envelope_id": {"type": "integer"}},
+            "required": ["envelope_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "create_envelope",
+        "description": (
+            "Create an envelope. job_type is sinking, buffer, gifts, trip, escrow, deep_clean, or other. "
+            "account_id links one real account, such as an X Money bucket. "
+            "funded_amount is the manual amount used when no account is linked. Does not transfer money."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "job_type": {"type": "string", "enum": ["sinking", "buffer", "gifts", "trip", "escrow", "deep_clean", "other"]},
+                "target_amount": {"type": "number"},
+                "funded_amount": {"type": "number"},
+                "target_on": {"type": ["string", "null"]},
+                "account_id": {"type": ["integer", "null"]},
+                "notes": {"type": ["string", "null"]},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_envelope",
+        "description": (
+            "Update an envelope definition. account_id null unlinks the account. "
+            "Does not transfer money. A linked balance still wins on read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "envelope_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "job_type": {"type": "string"},
+                "target_amount": {"type": "number"},
+                "funded_amount": {"type": "number"},
+                "target_on": {"type": ["string", "null"]},
+                "account_id": {"type": ["integer", "null"]},
+                "notes": {"type": ["string", "null"]},
+            },
+            "required": ["envelope_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_envelope_funded",
+        "description": (
+            "Set the manual funded amount on an envelope. Does not transfer money and does not change the account balance. "
+            "When an account is linked, reads still show that balance."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "envelope_id": {"type": "integer"},
+                "funded_amount": {"type": "number"},
+            },
+            "required": ["envelope_id", "funded_amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_envelope",
+        "description": "Archive an envelope. It leaves the active list. The row stays. Does not move money.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"envelope_id": {"type": "integer"}},
+            "required": ["envelope_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_payday_pressure",
+        "description": (
+            "Bills and autopays between today and the next payday, unlinked debt minimums, and unassigned leftover. "
+            "Unassigned is paycheck minus those pulls, those minimums, and the living float. "
+            "Weekly food is reported beside this and is not subtracted. Does not move money."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "save_payday",
+        "description": (
+            "Save payday settings: cadence (weekly, biweekly, monthly), anchor_on, next_on, paycheck_amount, and living_float. "
+            "Living float is a reserve on this check, not a food envelope. Does not move money."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cadence": {"type": "string", "enum": ["weekly", "biweekly", "monthly"]},
+                "anchor_on": {"type": ["string", "null"]},
+                "next_on": {"type": ["string", "null"]},
+                "paycheck_amount": {"type": ["number", "null"]},
+                "living_float": {"type": ["number", "null"]},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_envelope_assignment",
+        "description": (
+            "Propose assigning an amount from unassigned leftover to an envelope on a payday. "
+            "Returns a proposal object only. Does not transfer, update funded, or change a balance."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "envelope_id": {"type": "integer"},
+                "amount": {"type": "number"},
+                "payday_on": {"type": "string"},
+            },
+            "required": ["envelope_id", "amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "set_category_cap",
         "description": (
             "Set a weekly and/or monthly spending cap for a category, starting on effective_from (YYYY-MM-DD). "
@@ -798,7 +1043,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "get_audit_log",
         "description": (
             "Audit trail. Filters: since, until, actor (ai, user, system, integration; source is the same filter), "
-            "tool, entity (debt, account, transaction, budget, sinking_fund, todo, todo_category), entity_id, limit. "
+            "tool, entity (debt, account, transaction, budget, sinking_fund, bill, envelope, payday, todo, todo_category), entity_id, limit. "
             "A money-only token sees money entities. A todos-only token sees todos. audit:read sees every entity. "
             "Rows do not include notes, titles, payees, or full account numbers."
         ),
@@ -2123,6 +2368,55 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "POST", f"/api/v1/money/sinking-funds/{int(args['sinking_fund_id'])}", body
     if name == "archive_sinking_fund":
         return "POST", f"/api/v1/money/sinking-funds/{int(args['sinking_fund_id'])}/archive", {}
+    if name == "list_bills":
+        return "GET", "/api/v1/money/bills", None
+    if name == "get_bill":
+        return "GET", f"/api/v1/money/bills/{int(args['bill_id'])}", None
+    if name == "create_bill":
+        body = {k: args[k] for k in (
+            "name", "amount", "estimated", "cadence", "due_day", "due_month", "anchor_on",
+            "pay_from_account_id", "pay_from_label", "autopay", "debt_id", "category_id",
+            "statement_min", "default_notice", "cancelled_charging", "notes",
+        ) if k in args}
+        return "POST", "/api/v1/money/bills", body
+    if name == "update_bill":
+        body = {k: args[k] for k in (
+            "name", "amount", "estimated", "cadence", "due_day", "due_month", "anchor_on",
+            "pay_from_account_id", "pay_from_label", "autopay", "debt_id", "category_id",
+            "statement_min", "default_notice", "cancelled_charging", "notes",
+        ) if k in args}
+        return "POST", f"/api/v1/money/bills/{int(args['bill_id'])}", body
+    if name == "archive_bill":
+        return "POST", f"/api/v1/money/bills/{int(args['bill_id'])}/archive", {}
+    if name == "mark_bill_paid":
+        body = {k: args[k] for k in ("status", "cycle_due_on", "paid_on", "amount", "note") if k in args}
+        return "POST", f"/api/v1/money/bills/{int(args['bill_id'])}/paid", body
+    if name == "list_envelopes":
+        return "GET", "/api/v1/money/envelopes", None
+    if name == "get_envelope":
+        return "GET", f"/api/v1/money/envelopes/{int(args['envelope_id'])}", None
+    if name == "create_envelope":
+        body = {k: args[k] for k in (
+            "name", "job_type", "target_amount", "funded_amount", "target_on", "account_id", "notes",
+        ) if k in args}
+        return "POST", "/api/v1/money/envelopes", body
+    if name == "update_envelope":
+        body = {k: args[k] for k in (
+            "name", "job_type", "target_amount", "funded_amount", "target_on", "account_id", "notes",
+        ) if k in args}
+        return "POST", f"/api/v1/money/envelopes/{int(args['envelope_id'])}", body
+    if name == "update_envelope_funded":
+        return "POST", f"/api/v1/money/envelopes/{int(args['envelope_id'])}/funded", {"funded_amount": args["funded_amount"]}
+    if name == "archive_envelope":
+        return "POST", f"/api/v1/money/envelopes/{int(args['envelope_id'])}/archive", {}
+    if name == "get_payday_pressure":
+        return "GET", "/api/v1/money/payday-pressure", None
+    if name == "save_payday":
+        body = {k: args[k] for k in ("cadence", "anchor_on", "next_on", "paycheck_amount", "living_float") if k in args}
+        return "POST", "/api/v1/money/payday", body
+    if name == "propose_envelope_assignment":
+        body = {k: args[k] for k in ("envelope_id", "amount", "payday_on") if k in args}
+        return "POST", "/api/v1/money/envelopes/propose", body
     if name == "set_category_cap":
         body = {k: args[k] for k in ("category", "weekly_cap", "monthly_cap", "effective_from") if k in args}
         return "POST", "/api/v1/money/category-caps", body

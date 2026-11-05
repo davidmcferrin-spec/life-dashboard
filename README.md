@@ -51,7 +51,7 @@ These frames use a fictional demo account. Nothing in them is from a live server
 - **RSS News Feed** — 30+ built-in sources across tech, developer, mobile, hardware, enterprise, Microsoft, broadcast, and news categories; merged timeline; `/news` reader
 - **Reddit** — track subreddits on Settings → Reddit (hot/new/top, keyword filters). Posts are saved on the server and shown at `/reddit` and on the Reddit reader widget. An assistant reads them through MCP. A token can be limited to Reddit only. The rotating Reddit card is separate and still uses the list typed into that widget
 - **Spotify** — connect a Premium account, sync playlists and play history, stage playlist edits, and play in the browser. See [Spotify](#spotify)
-- **Money** — accounts, transactions, budget, debt snowball, sinking funds, Baby Step, food week, bills due, retirement vs 15%, and credit score. A one-time CSV import copies a spreadsheet into Postgres (`docs/money-import.md`). A money-only agent token expires in 90 days
+- **Money** — accounts, transactions, budget, debt snowball, recurring bills, envelopes, payday pressure, sinking funds, Baby Step, food week, bills due, retirement vs 15%, and credit score. A one-time CSV import copies a spreadsheet into Postgres (`docs/money-import.md`). A money-only agent token expires in 90 days
 - **Weather Widget** — OpenWeatherMap free tier, browser geolocation
 - **Bookmarks** — per-user folders with favicons, bookmarklet capture, collapsible links
 - **Flight Watches** — OpenSky ADS-B (optional FlightAware); polls 24h before departure via cron

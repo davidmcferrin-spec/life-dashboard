@@ -25,7 +25,7 @@ final class Scope
         'spotify', 'ollama', 'digest',
     ];
 
-    public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund'];
+    public const MONEY_ENTITIES = ['debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday'];
 
     public const TODO_ENTITIES = ['todo', 'todo_category'];
 
@@ -47,7 +47,7 @@ final class Scope
     public const SYSTEM_ENTITIES = ['deploy'];
 
     public const AUDIT_ENTITIES = [
-        'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'todo', 'todo_category', 'habit',
+        'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday', 'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',
         'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component', 'meal_plan_day',

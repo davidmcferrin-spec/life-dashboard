@@ -540,12 +540,62 @@ final class MoneyPlanService
     public function billsDue(int $userId): array
     {
         $today = new \DateTimeImmutable($this->clock->today());
+        $todayIso = $today->format('Y-m-d');
+        $horizon = $today->modify('+9 days')->format('Y-m-d');
         $days = [];
         for ($i = 0; $i < 10; $i++) {
             $day = $today->modify('+' . $i . ' days');
             $days[(int) $day->format('j')][] = $day;
         }
         $out = [];
+        $billOnDate = [];
+        $linkedDebts = [];
+        $billRows = $this->db->fetchAll(
+            'SELECT id, name, amount, statement_min, cadence, due_day, due_month, anchor_on, debt_id
+             FROM money_bills WHERE user_id = ? AND archived_at IS NULL',
+            [$userId]
+        );
+        $settled = [];
+        foreach ($this->db->fetchAll(
+            'SELECT bill_id, cycle_due_on, status FROM money_bill_cycles
+             WHERE user_id = ? AND cycle_due_on >= ? AND cycle_due_on <= ?',
+            [$userId, $todayIso, $horizon]
+        ) as $cycle) {
+            if (in_array((string) $cycle['status'], ['paid', 'skipped'], true)) {
+                $settled[(int) $cycle['bill_id'] . '|' . substr((string) $cycle['cycle_due_on'], 0, 10)] = true;
+            }
+        }
+        foreach ($billRows as $bill) {
+            $dates = BillSchedule::occurrences(
+                $todayIso,
+                $horizon,
+                (string) $bill['cadence'],
+                $bill['due_day'] !== null && $bill['due_day'] !== '' ? (int) $bill['due_day'] : null,
+                $bill['due_month'] !== null && $bill['due_month'] !== '' ? (int) $bill['due_month'] : null,
+                $bill['anchor_on'] !== null && $bill['anchor_on'] !== '' ? substr((string) $bill['anchor_on'], 0, 10) : null,
+            );
+            $amount = (float) $bill['amount'];
+            if ($amount <= 0 && $bill['statement_min'] !== null && $bill['statement_min'] !== '') {
+                $amount = (float) $bill['statement_min'];
+            }
+            $added = false;
+            foreach ($dates as $date) {
+                if (isset($settled[(int) $bill['id'] . '|' . $date])) {
+                    continue;
+                }
+                $out[] = [
+                    'name'   => (string) $bill['name'],
+                    'amount' => $amount,
+                    'due_on' => $date,
+                    'kind'   => 'bill',
+                ];
+                $billOnDate[strtolower((string) $bill['name']) . '|' . $date] = true;
+                $added = true;
+            }
+            if ($added && $bill['debt_id'] !== null && $bill['debt_id'] !== '') {
+                $linkedDebts[(int) $bill['debt_id']] = true;
+            }
+        }
         $year = (int) $today->format('Y');
         $month = (int) $today->format('n');
         $next = $today->modify('first day of next month');
@@ -561,17 +611,21 @@ final class MoneyPlanService
             $due = (int) $line['due_day'];
             foreach ($days[$due] ?? [] as $date) {
                 if ((int) $date->format('Y') === (int) $line['year'] && (int) $date->format('n') === (int) $line['month']) {
+                    $dueOn = $date->format('Y-m-d');
+                    if (isset($billOnDate[strtolower((string) $line['name']) . '|' . $dueOn])) {
+                        continue;
+                    }
                     $out[] = [
                         'name'   => (string) $line['name'],
                         'amount' => (float) $line['amount'],
-                        'due_on' => $date->format('Y-m-d'),
+                        'due_on' => $dueOn,
                         'kind'   => 'budget',
                     ];
                 }
             }
         }
         foreach ($this->debts($userId) as $debt) {
-            if ($debt['due_day'] === null) {
+            if ($debt['due_day'] === null || isset($linkedDebts[(int) $debt['id']])) {
                 continue;
             }
             foreach ($days[(int) $debt['due_day']] ?? [] as $date) {
