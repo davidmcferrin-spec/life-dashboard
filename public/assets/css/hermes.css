@@ -1,15 +1,45 @@
 /* Hermes chat. The transcript uses the shared Inter face; status stays mono. */
 
-.hermes-page {
+body.hermes-chat {
+    height: 100vh;
+    overflow: hidden;
+}
+
+body.hermes-chat .app-shell {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+body.hermes-chat .app-main,
+body.hermes-chat .app-content {
+    min-height: 0;
+    overflow: hidden;
+}
+
+body.hermes-chat .app-content {
     display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+}
+
+.hermes-page {
+    box-sizing: border-box;
+    display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     gap: var(--sp-4);
     margin: 0 auto;
     max-width: 46rem;
-    padding: var(--sp-6) var(--sp-4) var(--sp-8);
+    min-height: 0;
+    overflow: hidden;
+    padding: var(--sp-6) var(--sp-4) var(--sp-4);
+    width: 100%;
 }
 
 .hermes-mono { font-family: var(--font-mono); }
+
+.hermes-head { flex: 0 1 auto; min-height: 0; }
 
 .hermes-kicker {
     color: var(--text-muted);
@@ -38,6 +68,7 @@
 
 .hermes-status {
     color: var(--text-muted);
+    flex: 0 0 auto;
     font-family: var(--font-mono);
     font-size: var(--fs-xs);
     margin: 0;
@@ -51,11 +82,13 @@
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-lg);
     display: flex;
+    flex: 1 1 50vh;
     flex-direction: column;
     gap: var(--sp-3);
-    max-height: min(60vh, 36rem);
-    min-height: 16rem;
+    max-height: 50vh;
+    min-height: 0;
     overflow: auto;
+    overflow-anchor: none;
     padding: var(--sp-4);
 }
 
@@ -68,19 +101,22 @@
 }
 
 .hermes-msg {
-    border-radius: var(--radius);
+    border-radius: var(--radius-lg);
+    display: flex;
+    flex-direction: column;
     font-family: var(--font-sans);
     font-size: var(--fs-sm);
+    gap: var(--sp-1);
     line-height: 1.5;
-    max-width: min(100%, 34rem);
+    max-width: min(85%, 34rem);
     padding: var(--sp-3) var(--sp-4);
-    white-space: pre-wrap;
     word-break: break-word;
 }
 
 .hermes-msg-user {
     align-self: flex-end;
     background: var(--accent-soft);
+    border-bottom-right-radius: var(--radius-sm);
     color: var(--text-primary);
 }
 
@@ -88,13 +124,34 @@
     align-self: flex-start;
     background: var(--surface-raised);
     border: 1px solid var(--border-soft);
+    border-bottom-left-radius: var(--radius-sm);
     color: var(--text-primary);
 }
 
+.hermes-msg-who,
+.hermes-msg-time {
+    color: var(--text-muted);
+    font-size: var(--fs-xs);
+    line-height: 1.3;
+    margin: 0;
+}
+
+.hermes-msg-user .hermes-msg-who,
+.hermes-msg-user .hermes-msg-time { text-align: right; }
+
+.hermes-msg-body {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.hermes-msg-pending .hermes-msg-body { color: var(--text-muted); }
+
 .hermes-form {
     display: flex;
+    flex: 0 0 auto;
     flex-direction: column;
     gap: var(--sp-3);
+    margin-top: auto;
 }
 
 .hermes-form textarea {
@@ -104,6 +161,13 @@
     width: 100%;
 }
 
+.hermes-hint {
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: var(--fs-xs);
+    margin: 0;
+}
+
 .hermes-actions {
     display: flex;
     flex-wrap: wrap;
@@ -111,6 +175,16 @@
 }
 
 @media (max-width: 699px) {
-    .hermes-page { padding: var(--sp-4) var(--sp-3) var(--sp-6); }
+    .hermes-page { padding: var(--sp-4) var(--sp-3) var(--sp-4); }
     .hermes-msg { max-width: 100%; }
+}
+
+@media (max-height: 760px) {
+    .hermes-lede {
+        -webkit-box-orient: vertical;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        overflow: hidden;
+    }
 }
