@@ -640,8 +640,7 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     # A narrow token still receives the whole registry. PHP enforces scope on the call.
     assert listed("Bearer money-only", None) == full
     assert listed("Bearer full-token", "2025-06-18") == full
-    pages = (len(TOOLS) + 79) // 80
-    assert probes["n"] == pages + 1 + pages
+    assert probes["n"] == 3
     assert "create_habit" in full
     assert "create_debt" in full
     assert "list_todos" in full
@@ -929,6 +928,104 @@ def _listen_v4(port: int) -> set[str]:
                 continue
             found.add(socket.inet_ntoa(bytes.fromhex(ip_hex)[::-1]))
     return found
+
+
+def test_public_bind_still_requires_a_bearer_and_honors_plain_http_off():
+    """0.0.0.0 does not skip auth, and plain HTTP off still refuses the call."""
+    public = "https://mcp.example.com/mcp"
+    seen = {"n": 0}
+    flag = {"on": True}
+
+    def fetch(method, path, body, authorization, tool):
+        seen["n"] += 1
+        seen["path"] = path
+        seen["tool"] = tool
+        if authorization != "Bearer ld_ok":
+            return 401, {"error": "Invalid or expired token."}
+        if path == "/api/v1/agent-prompt":
+            return 200, {"prompt": "ok"}
+        if path == "/api/v1/health/status":
+            return 403, {"error": "Token is missing the health:read scope."}
+        return 200, {"ok": True}
+
+    handler = make_handler(
+        fetch,
+        RequestLimiter(),
+        mcp_public_url=public,
+        issuer="https://dash.example.com",
+        allow_plain_http=lambda: flag["on"],
+    )
+    bind = PublicBind(0, handler, loopback_only=False, plain_http=True)
+    bind.start()
+    try:
+        port = bind.port
+        assert bind.host() == "0.0.0.0"
+        assert _listen_v4(port) == {"0.0.0.0"}
+
+        def post(payload, headers):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{port}/mcp",
+                data=json.dumps(payload).encode(),
+                headers={"Content-Type": "application/json", **headers},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return res.status, json.loads(res.read().decode())
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read().decode())
+
+        before = seen["n"]
+        status, body = post({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, {})
+        assert status == 401
+        assert body["error"]["code"] == -32001
+        assert_no_tool_names(body)
+        assert seen["n"] == before
+
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            {"Authorization": "Bearer nope"},
+        )
+        assert status == 401
+        assert body["error"]["message"] == "Invalid or expired token."
+        assert_no_tool_names(body)
+
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "health_status", "arguments": {}}},
+            {"Authorization": "Bearer ld_ok"},
+        )
+        assert status == 200
+        assert body["result"]["isError"] is True
+        assert "health:read" in body["result"]["content"][0]["text"]
+
+        flag["on"] = False
+        assert bind.apply(False) == "0.0.0.0"
+        assert _listen_v4(port) == {"0.0.0.0"}
+        blocked_at = seen["n"]
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "health_status", "arguments": {}}},
+            {"Authorization": "Bearer ld_ok"},
+        )
+        assert status == 403
+        assert body["error"]["code"] == -32003
+        assert public in body["error"]["message"]
+        assert seen["n"] == blocked_at
+
+        status, body = post(
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/list"},
+            {"Authorization": "Bearer ld_ok", "X-Forwarded-Proto": "https"},
+        )
+        assert status == 200
+        names = [tool["name"] for tool in body["result"]["tools"]]
+        assert "hermes_send" in names
+        assert "health_status" in names
+        assert "nextCursor" not in body["result"]
+
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
+            assert res.status == 200
+            assert json.loads(res.read().decode())["ok"] is True
+    finally:
+        bind.close()
 
 
 def test_plain_http_off_keeps_the_public_listener():

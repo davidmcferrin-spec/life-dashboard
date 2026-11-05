@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Tests\Unit;
 
 use Dashboard\Api\V1\ApiRunner;
+use Dashboard\Api\V1\Scope;
 use Dashboard\Brief\BriefText;
 use Dashboard\Graph\GraphService;
 use Dashboard\Health\Authority;
@@ -22,6 +23,28 @@ final class PlatformBundleTest extends TestCase
         self::assertSame('agents', ApiRunner::sectorFromPath('/api/v1/agents/hermes/runs'));
         self::assertSame('home', ApiRunner::sectorFromPath('/api/v1/home/status'));
         self::assertNull(ApiRunner::sectorFromPath('/api/v1/digest/items'));
+    }
+
+    public function testKeyScopesAndSessionRulesStay(): void
+    {
+        self::assertSame('health:read', Scope::forPath('/api/v1/health/status', false));
+        self::assertSame('health:write', Scope::forPath('/api/v1/health/sync', true));
+        self::assertSame('agents:read', Scope::forPath('/api/v1/agents/hermes/status', false));
+        self::assertSame('agents:write', Scope::forPath('/api/v1/agents/hermes/runs', true));
+        self::assertSame('money:read', Scope::forPath('/api/v1/money/bills', false));
+        self::assertSame('home:read', Scope::forPath('/api/v1/home/status', false));
+        self::assertFalse(Scope::allows(['money:read', 'money:write'], 'health:read'));
+        self::assertFalse(Scope::allows(['money:read', 'money:write'], 'agents:write'));
+        self::assertTrue(Scope::allows(['health:read'], 'health:read'));
+        self::assertFalse(Scope::allows(['*'], 'system:deploy'));
+        self::assertFalse(Scope::allows(['*'], 'system:read'));
+        self::assertTrue(Scope::allows(['system:deploy'], 'system:deploy'));
+        self::assertTrue(Scope::sessionOnly('/api/v1/tokens/4/revoke'));
+        self::assertTrue(Scope::sessionOnly('/api/v1/oauth/clients/3/update'));
+        self::assertTrue(Scope::sessionOnly('/api/v1/hermes/chat'));
+        self::assertFalse(Scope::sessionOnly('/api/v1/health/status'));
+        self::assertFalse(Scope::sessionOnly('/api/v1/agents/hermes/runs'));
+        self::assertFalse(Scope::sessionOnly('/api/v1/money/bills'));
     }
 
     public function testSamsungOutranksGarminAndManualMealsWin(): void

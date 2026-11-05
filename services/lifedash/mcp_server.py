@@ -7,10 +7,12 @@ Each tool call is an HTTP request to the PHP ``/api/v1`` API with the caller's
 bearer token and ``X-Lifedash-Tool``.
 This process does not hold a token of its own and does not place trades.
 The tool registry is the ``TOOLS`` list in this module: one list for every
-authenticated caller, not a per-session cache and not a filter on protocol
-version, token scope, or sector. A JSON-RPC method is answered only after the
-PHP API accepts the bearer. Discovery, client registration metadata, and
-``/healthz`` stay open.
+authenticated caller, not a per-session cache. ``tools/list`` does not filter
+that list by protocol version, token scope, or sector. Calling a tool still
+requires a bearer the PHP API accepts, and PHP still enforces that key's
+scopes, session-only routes, and the user id on the key. Plain HTTP off
+rejects the JSON-RPC call before that check. Discovery documents and
+``/healthz`` stay open. ``/healthz`` does not run a tool.
 """
 from __future__ import annotations
 
@@ -39,9 +41,8 @@ LOG = logging.getLogger("lifedash.mcp")
 PROTOCOL = "2025-03-26"
 # Echo the client's version when we know it. The tool list does not change with it.
 SUPPORTED_PROTOCOLS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28")
-# The full registry is about 95KB. A stdio client that cannot finish that read
-# keeps an older catalog (181 names, from before these tools) and never asks
-# again unless this response carries nextCursor.
+# Page size only when the client sends a cursor. The default response is the
+# whole registry: some clients keep the first tools/list page and ignore nextCursor.
 TOOL_PAGE = 80
 
 Fetch = Callable[[str, str, dict[str, Any] | None, str, str], tuple[int, Any]]
@@ -3077,14 +3078,18 @@ def watch_plain_http(
 
 
 def tools_page(cursor: Any) -> dict[str, Any]:
-    """One page of the registry. The cursor is a decimal offset, or absent for the start."""
+    """Every tool when the client did not ask for a page.
+
+    A missing cursor is the whole registry and has no nextCursor, so a client
+    that does not paginate still sees Hermes and the platform tools. A cursor
+    is a decimal offset on TOOL_PAGE boundaries and is only honored when sent.
+    """
     if cursor in (None, ""):
-        start = 0
-    elif isinstance(cursor, str) and cursor.isascii() and cursor.isdigit():
-        start = int(cursor)
-    else:
+        return {"tools": list(TOOLS)}
+    if not isinstance(cursor, str) or not cursor.isascii() or not cursor.isdigit():
         raise ValueError("This server does not recognize that tools/list cursor.")
-    if start != 0 and (start < 0 or start >= len(TOOLS) or start % TOOL_PAGE != 0):
+    start = int(cursor)
+    if start < 0 or start >= len(TOOLS) or start % TOOL_PAGE != 0:
         raise ValueError("This server does not recognize that tools/list cursor.")
     page = TOOLS[start:start + TOOL_PAGE]
     result: dict[str, Any] = {"tools": page}
@@ -3194,7 +3199,7 @@ def handle_message(
     if method == "ping":
         return reply({})
     if method == "tools/list":
-        # Names are not filtered by scope or sector. A valid key may call any of them.
+        # The list is not filtered. The call still needs a bearer and the key's scopes.
         params = message.get("params") or {}
         cursor = params.get("cursor") if isinstance(params, dict) else None
         try:

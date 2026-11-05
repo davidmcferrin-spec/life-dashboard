@@ -68,6 +68,27 @@ final class PlatformBundleTest extends PgsqlTestCase
         self::assertStringNotContainsString('Readiness 0', (string) $brief['brief']['body']);
     }
 
+    public function testHealthRowsStayWithTheUserWhoStoredThem(): void
+    {
+        $this->db->execute(
+            'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
+            ['bea', 'bea@x', 'h']
+        );
+        $other = (int) $this->db->lastInsertId();
+        $this->svc->health->logBody($this->user, ['weight_lb' => 180, 'day' => '2026-11-05']);
+
+        $mine = $this->svc->health->metrics($this->user, 'body', '2026-11-01', '2026-11-06');
+        $theirs = $this->svc->health->metrics($other, 'body', '2026-11-01', '2026-11-06');
+        self::assertCount(1, $mine['points']);
+        self::assertSame(180.0, (float) $mine['points'][0]['value']);
+        self::assertSame([], $theirs['points']);
+
+        $token = $this->svc->tokens->create($other, 'watch', ['health:read']);
+        $foreign = $this->call((string) $token['token'], 'GET', '/api/v1/health/status', false);
+        self::assertSame(200, $foreign->status);
+        self::assertSame([], $this->svc->health->metrics($other, 'body', '2026-11-01', '2026-11-06')['points']);
+    }
+
     public function testGraphLinksAWikilink(): void
     {
         $this->svc->pages->create($this->user, ['title' => 'Rent plan', 'body' => 'See [[Payday]]'], 'user', null);
