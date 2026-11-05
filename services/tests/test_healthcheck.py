@@ -289,10 +289,11 @@ def test_public_bind_stays_ok_when_plain_http_is_allowed():
     assert "plain HTTP" not in row["detail"]
 
 
-def test_public_bind_warns_when_plain_http_is_disabled():
+def test_public_bind_stays_ok_when_plain_http_is_disabled():
     row = _healthy_mcp(plain_http=False)
-    assert row["status"] == "warn"
-    assert "listen 0.0.0.0:8765 (plain HTTP disabled)" in row["detail"]
+    assert row["status"] == "ok"
+    assert "listen 0.0.0.0:8765;" in row["detail"]
+    assert "plain HTTP" not in row["detail"]
 
 
 def test_plain_http_check_uses_the_saved_flag(monkeypatch):

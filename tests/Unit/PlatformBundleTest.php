@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Dashboard\Tests\Unit;
 
+use Dashboard\Api\V1\ApiRunner;
 use Dashboard\Brief\BriefText;
-use Dashboard\Grants\SectorMap;
 use Dashboard\Graph\GraphService;
 use Dashboard\Health\Authority;
 use Dashboard\Health\DailyRollup;
@@ -15,21 +15,13 @@ use PHPUnit\Framework\TestCase;
 
 final class PlatformBundleTest extends TestCase
 {
-    public function testMoneyAndHealthReadsAreGatedAndAgentStatusIsNot(): void
+    public function testSectorIsLabeledFromThePath(): void
     {
-        $money = SectorMap::match('/api/v1/money/bills', false);
-        $health = SectorMap::match('/api/v1/health/sync', true);
-        $agents = SectorMap::match('/api/v1/agents/hermes/status', false);
-        $send = SectorMap::match('/api/v1/agents/hermes/runs', true);
-        self::assertNotNull($money);
-        self::assertTrue($money['gated']);
-        self::assertNotNull($health);
-        self::assertTrue($health['gated']);
-        self::assertNotNull($agents);
-        self::assertFalse($agents['gated']);
-        self::assertNotNull($send);
-        self::assertTrue($send['gated']);
-        self::assertStringStartsWith('needs-grant:', SectorMap::needsGrant('health', true));
+        self::assertSame('money', ApiRunner::sectorFromPath('/api/v1/money/bills'));
+        self::assertSame('health', ApiRunner::sectorFromPath('/api/v1/health/sync'));
+        self::assertSame('agents', ApiRunner::sectorFromPath('/api/v1/agents/hermes/runs'));
+        self::assertSame('home', ApiRunner::sectorFromPath('/api/v1/home/status'));
+        self::assertNull(ApiRunner::sectorFromPath('/api/v1/digest/items'));
     }
 
     public function testSamsungOutranksGarminAndManualMealsWin(): void
@@ -120,14 +112,14 @@ final class PlatformBundleTest extends TestCase
         $text = BriefText::render([
             'calendar' => ['connected' => false],
             'digests' => [],
-            'money' => ['omitted' => 'needs-grant'],
-            'home' => ['omitted' => 'needs-grant'],
+            'money' => ['configured' => false],
+            'home' => ['configured' => false],
             'music' => ['connected' => false],
-            'health' => ['omitted' => 'needs-grant'],
+            'health' => ['configured' => false, 'stored' => false],
         ]);
         self::assertStringContainsString('no calendar is connected', $text);
-        self::assertStringContainsString('needs a money grant', $text);
-        self::assertStringContainsString('needs a health grant', $text);
+        self::assertStringContainsString('Payday: not saved yet', $text);
+        self::assertStringContainsString('Open Wearables is not connected', $text);
         self::assertStringContainsString('Nothing was transferred.', $text);
         self::assertStringNotContainsString('$', $text);
         self::assertDoesNotMatchRegularExpression('/\b\d{2,}\b/', $text);

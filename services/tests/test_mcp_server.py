@@ -38,6 +38,24 @@ def assert_no_tool_names(payload):
         assert tool["name"] not in blob
 
 
+def collect_tool_names(fetch, token: str) -> list[str]:
+    names: list[str] = []
+    cursor = None
+    for _ in range(30):
+        params = {} if cursor is None else {"cursor": cursor}
+        reply = handle_message(
+            {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": params},
+            token,
+            fetch,
+        )
+        assert "error" not in reply
+        names.extend(tool["name"] for tool in reply["result"]["tools"])
+        cursor = reply["result"].get("nextCursor")
+        if not cursor:
+            return names
+    raise AssertionError("tools/list did not finish")
+
+
 def test_tools_cover_the_platform_and_never_a_trade():
     names = [tool["name"] for tool in TOOLS]
     assert "invest_scorecard" in names
@@ -581,8 +599,8 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
     assert listen_host("127.0.0.1", "all") == "0.0.0.0"
     assert listen_host("10.1.1.5", "loopback") == "127.0.0.1"
     assert listen_host(None, "localhost") == "127.0.0.1"
-    assert listen_host(None, None, False) == "127.0.0.1"
-    assert listen_host("10.1.1.5", "all", False) == "127.0.0.1"
+    assert listen_host(None, None, False) == "0.0.0.0"
+    assert listen_host("10.1.1.5", "all", False) == "0.0.0.0"
     assert listen_host(None, "loopback", True) == "127.0.0.1"
     assert listen_host(None, "loopback", False) == "127.0.0.1"
     assert listen_host("127.0.0.1", None, True) == "0.0.0.0"
@@ -616,14 +634,14 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
                 fetch,
             )
             assert init["result"]["protocolVersion"] == protocol
-        reply = handle_message({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, token, fetch)
-        return [tool["name"] for tool in reply["result"]["tools"]]
+        return collect_tool_names(fetch, token)
 
     full = [tool["name"] for tool in TOOLS]
     # A narrow token still receives the whole registry. PHP enforces scope on the call.
     assert listed("Bearer money-only", None) == full
     assert listed("Bearer full-token", "2025-06-18") == full
-    assert probes["n"] == 3
+    pages = (len(TOOLS) + 79) // 80
+    assert probes["n"] == pages + 1 + pages
     assert "create_habit" in full
     assert "create_debt" in full
     assert "list_todos" in full
@@ -676,12 +694,24 @@ def test_tools_list_requires_a_bearer_and_ignores_session_and_protocol():
         assert body["error"]["message"] == "Invalid or expired token."
         assert_no_tool_names(body)
 
-        status, headers, body = post(
-            {"jsonrpc": "2.0", "id": 4, "method": "tools/list"},
-            {"Authorization": "Bearer full-token", "Mcp-Session-Id": "stale"},
-        )
-        assert status == 200
-        assert [tool["name"] for tool in body["result"]["tools"]] == full
+        names = []
+        cursor = None
+        for _ in range(30):
+            payload = {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}
+            if cursor is not None:
+                payload["params"] = {"cursor": cursor}
+            status, headers, body = post(
+                payload,
+                {"Authorization": "Bearer full-token", "Mcp-Session-Id": "stale"},
+            )
+            assert status == 200
+            names.extend(tool["name"] for tool in body["result"]["tools"])
+            cursor = body["result"].get("nextCursor")
+            if not cursor:
+                break
+        else:
+            raise AssertionError("tools/list did not finish")
+        assert names == full
 
         try:
             urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{port}/mcp", method="GET"))
@@ -901,18 +931,10 @@ def _listen_v4(port: int) -> set[str]:
     return found
 
 
-def _wait_host(bind: PublicBind, host: str) -> None:
-    deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        if bind.host() == host:
-            return
-        time.sleep(0.05)
-    assert bind.host() == host
-
-
-def test_plain_http_off_drops_the_public_listener_and_keeps_loopback():
+def test_plain_http_off_keeps_the_public_listener():
     public = "https://mcp.example.com/mcp"
     seen = {}
+    flag = {"on": True}
 
     def fetch(method, path, body, authorization, tool):
         seen["transport"] = current_transport()
@@ -926,7 +948,7 @@ def test_plain_http_off_drops_the_public_listener_and_keeps_loopback():
         port=lambda: running["bind"].port,
         mcp_public_url=public,
         issuer="https://dash.example.com",
-        allow_plain_http=lambda: running["bind"].host() == "0.0.0.0",
+        allow_plain_http=lambda: flag["on"],
     )
     bind = PublicBind(0, handler, loopback_only=False, plain_http=True)
     running["bind"] = bind
@@ -939,11 +961,9 @@ def test_plain_http_off_drops_the_public_listener_and_keeps_loopback():
             body = json.loads(res.read().decode())
         assert body["listen"] == f"0.0.0.0:{port}"
 
-        assert bind.apply(False) == "127.0.0.1"
-        assert _listen_v4(port) == {"127.0.0.1"}
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/healthz") as res:
-            body = json.loads(res.read().decode())
-        assert body["listen"] == f"127.0.0.1:{port}"
+        flag["on"] = False
+        assert bind.apply(False) == "0.0.0.0"
+        assert _listen_v4(port) == {"0.0.0.0"}
 
         init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
 
@@ -967,15 +987,15 @@ def test_plain_http_off_drops_the_public_listener_and_keeps_loopback():
         assert status == 200
         assert seen["transport"] == "https"
 
+        flag["on"] = True
         assert bind.apply(True) == "0.0.0.0"
-        assert _listen_v4(port) == {"0.0.0.0"}
         status, body = post({})
         assert status == 200
     finally:
         bind.close()
 
 
-def test_plain_http_watcher_moves_the_listener_without_a_restart():
+def test_plain_http_watcher_leaves_the_public_listener():
     def fetch(method, path, body, authorization, tool):
         return 200, {"ok": True}
 
@@ -993,13 +1013,14 @@ def test_plain_http_watcher_moves_the_listener_without_a_restart():
     try:
         assert bind.host() == "0.0.0.0"
         flag["on"] = False
-        _wait_host(bind, "127.0.0.1")
-        assert _listen_v4(bind.port) == {"127.0.0.1"}
+        time.sleep(0.2)
+        assert bind.host() == "0.0.0.0"
+        assert _listen_v4(bind.port) == {"0.0.0.0"}
         with urllib.request.urlopen(f"http://127.0.0.1:{bind.port}/healthz") as res:
             assert res.status == 200
         flag["on"] = True
-        _wait_host(bind, "0.0.0.0")
-        assert _listen_v4(bind.port) == {"0.0.0.0"}
+        time.sleep(0.2)
+        assert bind.host() == "0.0.0.0"
     finally:
         stop.set()
         watcher.join(timeout=2)
@@ -1023,7 +1044,7 @@ def test_loopback_bind_stays_loopback_when_plain_http_is_on():
         fixed.close()
 
 
-def test_a_failed_flag_read_does_not_reopen_the_public_listener():
+def test_a_failed_flag_read_does_not_move_the_public_listener():
     def fetch(method, path, body, authorization, tool):
         return 200, {}
 
@@ -1039,10 +1060,11 @@ def test_a_failed_flag_read_does_not_reopen_the_public_listener():
     bind = PublicBind(0, handler, loopback_only=False, plain_http=gate.allowed())
     bind.start()
     try:
-        assert bind.host() == "127.0.0.1"
+        assert bind.host() == "0.0.0.0"
+        assert gate.allowed() is False
         state["fail"] = True
-        assert bind.apply(gate.allowed()) == "127.0.0.1"
-        assert "0.0.0.0" not in _listen_v4(bind.port)
+        assert bind.apply(gate.allowed()) == "0.0.0.0"
+        assert _listen_v4(bind.port) == {"0.0.0.0"}
     finally:
         bind.close()
 
@@ -1287,9 +1309,7 @@ def test_jsonrpc_accepts_only_tokens_the_api_accepts():
 
     for header, kind in ((api, "api"), (oauth, "oauth")):
         calls.clear()
-        listed = handle_message(listing, header, fetch)
-        assert listed.http_status == 200
-        assert [tool["name"] for tool in listed["result"]["tools"]] == full
+        assert collect_tool_names(fetch, header) == full
         ping = handle_message(rpc("ping"), header, fetch)
         assert ping["result"] == {}
         called = handle_message(calling, header, fetch)
@@ -1377,9 +1397,22 @@ def test_jsonrpc_accepts_only_tokens_the_api_accepts():
                 assert "tools" not in parsed
 
         for header in ({"Authorization": api}, {"Authorization": oauth}):
-            status, raw = post(listing, header)
-            assert status == 200
-            assert [tool["name"] for tool in json.loads(raw)["result"]["tools"]] == full
+            names = []
+            cursor = None
+            for _ in range(30):
+                payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+                if cursor is not None:
+                    payload["params"] = {"cursor": cursor}
+                status, raw = post(payload, header)
+                assert status == 200
+                result = json.loads(raw)["result"]
+                names.extend(tool["name"] for tool in result["tools"])
+                cursor = result.get("nextCursor")
+                if not cursor:
+                    break
+            else:
+                raise AssertionError("tools/list did not finish")
+            assert names == full
             status, raw = post(calling, header)
             assert status == 200
             assert json.loads(raw)["result"]["isError"] is False

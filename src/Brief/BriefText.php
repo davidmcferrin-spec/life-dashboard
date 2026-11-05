@@ -114,9 +114,6 @@ final class BriefText
      */
     private static function money(array $facts): string
     {
-        if (($facts['omitted'] ?? '') === 'needs-grant') {
-            return 'Money was left out: this key needs a money grant. Nothing was transferred.';
-        }
         if (!empty($facts['error'])) {
             return 'Payday pressure did not load. Nothing was transferred.';
         }
@@ -164,9 +161,6 @@ final class BriefText
      */
     private static function home(array $facts): string
     {
-        if (($facts['omitted'] ?? '') === 'needs-grant') {
-            return 'Home was left out: this key needs a home grant.';
-        }
         if (empty($facts['configured'])) {
             return 'Home: Home Assistant is not connected.';
         }
@@ -233,9 +227,6 @@ final class BriefText
      */
     private static function healthSection(array $facts): string
     {
-        if (($facts['omitted'] ?? '') === 'needs-grant') {
-            return 'Health was left out: this key needs a health grant.';
-        }
         if (empty($facts['configured']) && empty($facts['stored'])) {
             return 'Health: Open Wearables is not connected, and no vitals are stored.';
         }

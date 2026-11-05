@@ -183,10 +183,6 @@ final class MoneyAgentTest extends PgsqlTestCase
         self::assertNull($todos['expires_at']);
         self::assertTrue(\Dashboard\Auth\ApiTokenService::isTodosOnly($todos['scopes']));
 
-        $this->db->execute(
-            'INSERT INTO sector_grants (user_id, principal_kind, principal_id, sector, mode) VALUES (?, \'token\', ?, \'money\', \'always\')',
-            [$this->user, (int) $money['id']]
-        );
         $runner = new ApiRunner(new Auth($this->db), $this->svc->tokens, $this->svc->audit);
         $_SERVER['HTTP_AUTHORIZATION'] = 'Bearer ' . $money['token'];
         $_SERVER['HTTP_X_LIFEDASH_TOOL'] = 'create_debt';

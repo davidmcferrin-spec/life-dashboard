@@ -11,9 +11,6 @@ use Dashboard\Auth\Auth;
 use Dashboard\Auth\BearerTokens;
 use Dashboard\Auth\OAuthRules;
 use Dashboard\Auth\OAuthService;
-use Dashboard\DB\Database;
-use Dashboard\Grants\SectorGate;
-use Dashboard\Grants\SectorMap;
 use Dashboard\Support\PublicUrl;
 use Dashboard\Money\AccountNumberGuard;
 use Dashboard\Support\ForbiddenException;
@@ -41,9 +38,6 @@ final class ApiRunner
     private ?string $principalKind = null;
 
     private ?int $principalId = null;
-
-    /** @var array{sector: string, mode: string}|null */
-    private ?array $grantStamp = null;
 
     public function __construct(
         private readonly Auth $auth,
@@ -97,15 +91,6 @@ final class ApiRunner
         try {
             $userId = $this->authenticate($mutating, $scope);
             $payload = $fn($userId);
-            if ($this->grantStamp !== null && $this->principalKind !== null && $this->principalId !== null) {
-                (new SectorGate(Database::getInstance()))->consume(
-                    $userId,
-                    $this->principalKind,
-                    $this->principalId,
-                    $this->grantStamp['sector'],
-                    $this->grantStamp['mode']
-                );
-            }
             $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
             $statusOut = $status;
             if (isset($payload['http_status']) && is_int($payload['http_status'])) {
@@ -164,7 +149,6 @@ final class ApiRunner
         $this->grantedScopes = null;
         $this->principalKind = null;
         $this->principalId = null;
-        $this->grantStamp = null;
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
         $path = is_string($path) ? $path : '/';
         $bearer = self::bearerToken();
@@ -183,7 +167,6 @@ final class ApiRunner
             if (Scope::sessionOnly($path)) {
                 $message = match (true) {
                     str_contains($path, '/api/v1/hermes') => 'Hermes chat requires a signed-in browser session.',
-                    str_contains($path, '/api/v1/grants') => 'Grant and revoke stays on a signed-in browser session.',
                     default => 'Creating, editing, revoking, and deleting tokens or OAuth clients requires a signed-in browser session.',
                 };
                 throw new ForbiddenException($message);
@@ -196,9 +179,8 @@ final class ApiRunner
             $this->principalKind = in_array($kind, ['token', 'oauth'], true) ? $kind : 'token';
             $this->principalId = isset($row['principal_id']) ? (int) $row['principal_id'] : (int) $row['id'];
             $legacyAudit = str_contains($path, '/audit') && !str_contains($path, '/audit/log');
-            $grantMine = str_contains($path, '/grants/mine');
             $mailStatus = str_contains($path, '/api/v1/mail/status');
-            if (!str_contains($path, '/agent-prompt') && !$legacyAudit && !$grantMine && !$mailStatus) {
+            if (!str_contains($path, '/agent-prompt') && !$legacyAudit && !$mailStatus) {
                 $required = $scope ?? Scope::forPath($path, $mutating);
                 $allowed = is_array($required)
                     ? self::allowsAny($row['scopes'], $required)
@@ -208,7 +190,6 @@ final class ApiRunner
                     throw new ForbiddenException('Token is missing the ' . $label . ' scope.');
                 }
             }
-            $this->holdGrant($row['user_id'], $path, $mutating);
             return $row['user_id'];
         }
 
@@ -294,9 +275,9 @@ final class ApiRunner
                 $extra['filter'] = $filter;
             }
         }
-        if ($this->grantStamp !== null) {
-            $extra['sector'] = $this->grantStamp['sector'];
-            $extra['grant_mode'] = $this->grantStamp['mode'];
+        $sector = self::sectorFromPath($path);
+        if ($sector !== null) {
+            $extra['sector'] = $sector;
         }
         $entity = self::entityFromPath($path);
         if ($entity !== null) {
@@ -505,30 +486,15 @@ final class ApiRunner
         return null;
     }
 
-    private function holdGrant(int $userId, string $path, bool $mutating): void
+    public static function sectorFromPath(string $path): ?string
     {
-        $match = SectorMap::match($path, $mutating);
-        if ($match === null || !$match['gated'] || $this->principalKind === null || $this->principalId === null) {
-            return;
+        foreach (['money', 'health', 'home', 'mail', 'agents'] as $sector) {
+            if (str_contains($path, '/api/v1/' . $sector)) {
+                return $sector;
+            }
         }
-        $gate = new SectorGate(Database::getInstance(), $this->audit);
-        $mode = $gate->mode($userId, $this->principalKind, $this->principalId, $match['sector']);
-        if ($mode === 'deny') {
-            $this->audit->record(
-                $userId,
-                'ai',
-                $this->actor()?->tool,
-                'deny',
-                self::safePath(),
-                TokenStamp::detail($this->tokenId, $this->tokenName, $match['read'] ? 'read' : 'write', [
-                    'sector'      => $match['sector'],
-                    'grant_mode'  => 'deny',
-                    'needs_grant' => true,
-                ])
-            );
-            throw new ForbiddenException(SectorMap::needsGrant($match['sector'], $match['read']));
-        }
-        $this->grantStamp = ['sector' => $match['sector'], 'mode' => $mode];
+
+        return null;
     }
 
     private function auditDeployFailure(string $message): void

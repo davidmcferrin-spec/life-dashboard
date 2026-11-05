@@ -1,7 +1,8 @@
-"""MCP tools for grants, the morning brief, the link graph, and health.
+"""MCP tools for the morning brief, the link graph, and health.
 
 Health device data is read from Open Wearables. These tools do not call Samsung.
 Money tools stay proposal-only. This module does not add a transfer.
+A valid key can call every tool here. The act is still written to the audit log.
 """
 
 from __future__ import annotations
@@ -14,20 +15,11 @@ _DAY = {"type": "string"}
 
 PLATFORM_TOOLS: list[dict[str, Any]] = [
     {
-        "name": "grants_status",
-        "description": (
-            "Show this key's sector grants: money, home, mail, agents, and health. "
-            "Each is deny, once, or always. Deny is the default. This does not change a grant."
-        ),
-        "inputSchema": _EMPTY,
-    },
-    {
         "name": "brief_me",
         "description": (
-            "Write a short morning brief from stored digests, payday pressure, Home Assistant when granted, "
+            "Write a short morning brief from stored digests, payday pressure, Home Assistant when it is connected, "
             "Spotify when connected, and health readiness when health data is stored. "
             "Calendar is included only when a calendar is connected. Missing facts are named, not invented. "
-            "Money, health, and home sections are omitted with a needs-grant line when this key is deny. "
             "Nothing is transferred."
         ),
         "inputSchema": _EMPTY,
@@ -42,8 +34,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Search the Postgres link graph. q matches a label. "
             "Nodes are pages, bills, envelopes, digests, health days, and briefs. "
-            "Bill and envelope nodes need a money grant. Health nodes need a health grant. "
-            "Omitted kinds are listed. There is no Neo4j."
+            "There is no Neo4j."
         ),
         "inputSchema": {
             "type": "object",
@@ -54,8 +45,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     {
         "name": "graph_neighbors",
         "description": (
-            "One hop from a graph node. kind is page, bill, envelope, digest, health, or brief. ref is that row's id. "
-            "Money and health nodes need the matching grant."
+            "One hop from a graph node. kind is page, bill, envelope, digest, health, or brief. ref is that row's id."
         ),
         "inputSchema": {
             "type": "object",
@@ -83,7 +73,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         "name": "health_status",
         "description": (
             "Open Wearables connection (URL and user id, never the API key), last sync, and the latest stored day. "
-            "Needs a health grant. Samsung stays behind Open Wearables."
+            "Samsung stays behind Open Wearables."
         ),
         "inputSchema": _EMPTY,
     },
@@ -91,8 +81,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         "name": "health_readiness",
         "description": (
             "Readiness score and confidence for one day, or the latest stored day. "
-            "Score uses only stored sleep, HRV with a baseline, and steps. Missing inputs are not treated as zero. "
-            "Needs a health grant."
+            "Score uses only stored sleep, HRV with a baseline, and steps. Missing inputs are not treated as zero."
         ),
         "inputSchema": {
             "type": "object",
@@ -102,7 +91,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "health_sleep",
-        "description": "Stored sleep points between from and to (YYYY-MM-DD), with authority and provenance. Needs a health grant.",
+        "description": "Stored sleep points between from and to (YYYY-MM-DD), with authority and provenance.",
         "inputSchema": {
             "type": "object",
             "properties": {"from": _DAY, "to": _DAY},
@@ -111,7 +100,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "health_workouts",
-        "description": "Stored workouts between from and to, including manual logs. Needs a health grant.",
+        "description": "Stored workouts between from and to, including manual logs.",
         "inputSchema": {
             "type": "object",
             "properties": {"from": _DAY, "to": _DAY},
@@ -122,7 +111,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         "name": "health_metrics",
         "description": (
             "Stored points for sleep, hrv, resting_hr, steps, body, or meal. "
-            "Each point has authority and provenance. Needs a health grant."
+            "Each point has authority and provenance."
         ),
         "inputSchema": {
             "type": "object",
@@ -135,13 +124,13 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Pull the last 7 days from Open Wearables into stored points. "
             "Samsung Health and Health Connect outrank Garmin, WHOOP, and Oura when a day has more than one source. "
-            "Needs a health grant. Does not call Samsung."
+            "Does not call Samsung."
         ),
         "inputSchema": _EMPTY,
     },
     {
         "name": "health_log_workout",
-        "description": "Store a manual workout. title and minutes are required. day is optional. Needs a health grant. Does not call Samsung.",
+        "description": "Store a manual workout. title and minutes are required. day is optional. Does not call Samsung.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -156,7 +145,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "health_log_meal",
-        "description": "Store a manual meal note. calories is optional. Needs a health grant. Does not call Samsung.",
+        "description": "Store a manual meal note. calories is optional. Does not call Samsung.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -170,7 +159,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "health_log_body",
-        "description": "Store a manual body weight in pounds. Needs a health grant. Does not call Samsung.",
+        "description": "Store a manual body weight in pounds. Does not call Samsung.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -184,7 +173,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "home_status",
-        "description": "Read Home Assistant when a URL and token are saved. Needs a home grant. Does not invent states.",
+        "description": "Read Home Assistant when a URL and token are saved. Does not invent states.",
         "inputSchema": _EMPTY,
     },
     {
@@ -196,9 +185,6 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
 
 
 def resolve_platform(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str, Any] | None] | None:
-    if name == "grants_status":
-        _empty(name, args)
-        return "GET", "/api/v1/grants/mine", None
     if name == "brief_me":
         _empty(name, args)
         return "POST", "/api/v1/brief", {}
@@ -313,7 +299,7 @@ def resolve_platform(name: str, args: dict[str, Any]) -> tuple[str, str, dict[st
     if name == "mail_status":
         _empty(name, args)
         return "GET", "/api/v1/mail/status", None
-    if name.startswith(("brief_", "graph_", "health_", "grants_", "home_", "mail_")):
+    if name.startswith(("brief_", "graph_", "health_", "home_", "mail_")):
         raise ValueError(f"Unknown tool {name}")
     return None
 

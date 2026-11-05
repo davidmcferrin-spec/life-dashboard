@@ -26,7 +26,7 @@ if (!function_exists('settings_nav_groups')) {
             'Account' => [
                 'general' => ['Dashboard', '/settings'],
                 'tokens'      => ['Auto-login tokens', '/settings/tokens'],
-                'permissions' => ['Permissions', '/settings/permissions'],
+                'audit' => ['Audit', '/settings/audit'],
             ],
             'Life' => [
                 'life'     => ['Life', '/settings/life'],

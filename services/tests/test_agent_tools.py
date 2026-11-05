@@ -61,34 +61,39 @@ def test_agent_tools_reject_shell_and_bad_ids():
         resolve("openclaw_ask", {"prompt": "x" * 4001})
 
 
-def test_tools_list_is_one_complete_page():
+def _listed_names(fetch, token="Bearer token"):
     from lifedash.mcp_server import handle_message
+
+    names = []
+    cursor = None
+    for _ in range(20):
+        params = {} if cursor is None else {"cursor": cursor}
+        reply = handle_message(
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": params},
+            token,
+            fetch,
+        )
+        result = reply["result"]
+        names.extend(tool["name"] for tool in result["tools"])
+        cursor = result.get("nextCursor")
+        if cursor is None:
+            return names, result
+    raise AssertionError("tools/list did not finish")
+
+
+def test_tools_list_includes_every_registered_tool():
+    from lifedash.mcp_server import TOOL_PAGE, handle_message
 
     def fetch(method, path, body, authorization, tool):
         assert path == "/api/v1/agent-prompt"
         return 200, {"prompt": "ok"}
 
-    reply = handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-        "Bearer token",
-        fetch,
-    )
-    result = reply["result"]
-    names = [tool["name"] for tool in result["tools"]]
-    assert result["resultType"] == "complete"
-    assert result["ttlMs"] == 0
-    assert result["cacheScope"] == "public"
-    assert "nextCursor" not in result
-    assert len(names) == len(TOOLS)
-    for name in (
-        "list_bills",
-        "create_bill",
-        "list_envelopes",
-        "get_payday_pressure",
-        "propose_envelope_assignment",
-        "hermes_status",
-        "openclaw_ask",
-    ):
+    names, last = _listed_names(fetch)
+    assert last.get("nextCursor") is None
+    assert "ttlMs" not in last
+    assert names == [tool["name"] for tool in TOOLS]
+    assert len(names) > TOOL_PAGE
+    for name in ("hermes_send", "brief_me", "health_status", "list_bills", "ollama_status"):
         assert name in names
     init = handle_message(
         {
@@ -109,3 +114,10 @@ def test_tools_list_is_one_complete_page():
     )
     assert bad["error"]["code"] == -32602
     assert "result" not in bad
+    first = handle_message(
+        {"jsonrpc": "2.0", "id": 4, "method": "tools/list"},
+        "Bearer token",
+        fetch,
+    )
+    assert first["result"]["nextCursor"] == str(TOOL_PAGE)
+    assert len(first["result"]["tools"]) == TOOL_PAGE

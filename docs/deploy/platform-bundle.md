@@ -1,22 +1,16 @@
 # Platform bundle
 
-Permissions, the agents fleet, the morning brief, the link graph, and health. Nothing in this bundle transfers money. `propose_envelope_assignment` still returns a proposal with `moves_money` false.
+The agents fleet, the morning brief, the link graph, and health. Nothing in this bundle transfers money. `propose_envelope_assignment` still returns a proposal with `moves_money` false.
 
-## Permissions
+## Audit
 
-Sectors are money, home, mail, agents, and health. Each API token and each OAuth client starts at deny. Settings → Permissions sets deny, allow once, or allow always.
-
-Allow once is spent after one successful act and returns to deny. Allow always does not ask again. Every allowed act, and every denial, is written to the audit log.
-
-Money reads and changes, health reads and changes, and live Home Assistant reads fail closed with `needs-grant` until that key is granted. Agent status can be read without a grant. Sending, stopping, and OpenClaw ask cannot. Mail has no mailbox yet. `mail_status` says so.
-
-Creating a token does not grant a sector. Health writes and money movement are never granted by another save.
+Sector grants are not used. A valid key can call every registered tool, including money, health, home, mail, and the agent tools. Each of those calls is still written to `audit_events`. Settings → Audit is that log, and it is read-only. `get_audit_log` reads the same table. Mail has no mailbox yet. `mail_status` says so.
 
 ## Agents
 
 `/agents` is the fleet page for an admin session: Hermes status, sessions, send, poll, and stop; OpenCode status only; OpenClaw ask. Stop is shown only as far as the Hermes gateway supports cancel. If it answers 404, 405, or 501, the page says stop is not supported.
 
-A connecting key needs an agents grant for those changes.
+A valid key can send, stop, and ask. Those calls are audited.
 
 ## Morning brief
 
@@ -59,4 +53,4 @@ Sleep minutes, HRV (RMSSD, or SDNN when RMSSD is absent), steps, and resting hea
 
 Manual workout, meal, and body logs stay on this server with authority `manual`. They do not call Samsung. The daily health line is stored and shown on Grok Digest and inside the morning brief.
 
-MCP names: `health_status`, `health_readiness`, `health_sleep`, `health_workouts`, `health_metrics`, `health_sync`, `health_log_workout`, `health_log_meal`, `health_log_body`. Each needs a health grant on the calling key.
+MCP names: `health_status`, `health_readiness`, `health_sleep`, `health_workouts`, `health_metrics`, `health_sync`, `health_log_workout`, `health_log_meal`, `health_log_body`. A valid key can call them. The call is audited.

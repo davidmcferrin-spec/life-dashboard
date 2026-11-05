@@ -146,8 +146,7 @@ final class Scope
     {
         return str_contains($path, '/api/v1/tokens')
             || str_contains($path, '/api/v1/oauth/clients')
-            || str_contains($path, '/api/v1/hermes')
-            || (str_contains($path, '/api/v1/grants') && !str_contains($path, '/grants/mine'));
+            || str_contains($path, '/api/v1/hermes');
     }
 
     /**
