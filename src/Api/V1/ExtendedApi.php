@@ -793,6 +793,13 @@ final class ExtendedApi
 
             return $agents()->hermesSessions($u);
         }));
+        $r->get('/api/v1/agents/hermes/thread', fn () => $this->run(function (int $u) use ($agents): array {
+            $this->assertAgentsAdmin($u);
+            $before = isset($_GET['before_id']) ? (string) $_GET['before_id'] : '';
+            $limit = array_key_exists('limit', $_GET) ? (int) $_GET['limit'] : Chat::PAGE;
+
+            return $agents()->hermesThread($u, $before, $limit);
+        }));
         $r->post('/api/v1/agents/hermes/sessions', fn () => $this->run(function (int $u) use ($agents): array {
             $this->assertAgentsAdmin($u);
             $title = (string) ($this->runner->body()['title'] ?? '');
@@ -803,8 +810,9 @@ final class ExtendedApi
             $this->assertAgentsAdmin($u);
             $body = $this->runner->body();
             $session = isset($body['session_id']) ? (string) $body['session_id'] : null;
+            $token = $this->runner->actor()->kind === 'ai' ? $this->runner->tokenName() : null;
 
-            return $agents()->hermesSend($u, (string) ($body['message'] ?? ''), $session);
+            return $agents()->hermesSend($u, (string) ($body['message'] ?? ''), $session, $token);
         }, 202, true));
         $r->get('/api/v1/agents/hermes/runs/{id}', fn (array $p) => $this->run(function (int $u) use ($agents, $p): array {
             $this->assertAgentsAdmin($u);

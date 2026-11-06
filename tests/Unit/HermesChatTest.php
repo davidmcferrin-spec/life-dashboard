@@ -41,8 +41,8 @@ final class HermesChatTest extends TestCase
         self::assertFalse($thread['has_more']);
         self::assertSame('', $thread['next_before_id']);
         self::assertSame([
-            ['id' => 'i0', 'role' => 'user', 'content' => 'Hello', 'ts' => gmdate('c', 1700000000)],
-            ['id' => 'i1', 'role' => 'assistant', 'content' => 'Hi', 'ts' => ''],
+            ['id' => 'i0', 'role' => 'user', 'content' => 'Hello', 'ts' => gmdate('c', 1700000000), 'sender' => 'You', 'origin' => 'you'],
+            ['id' => 'i1', 'role' => 'assistant', 'content' => 'Hi', 'ts' => '', 'sender' => 'Hermes', 'origin' => 'hermes'],
         ], $thread['messages']);
         self::assertStringNotContainsString($key, json_encode($thread, JSON_THROW_ON_ERROR));
         $messageUrls = $this->messageUrls($seen);
@@ -222,6 +222,150 @@ final class HermesChatTest extends TestCase
         $chat->poll(3, 'run_other');
     }
 
+    public function testLegacyMcpHistoryShowsInTheSharedRoom(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_dash');
+        $memory->write(7, Chat::LEGACY, 'api_mcp');
+        $youAt = 1700000000;
+        $agentAt = 1700000100;
+        $seen = [];
+        $chat = $this->chat($memory, str_repeat('a', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_dash', 200, ['session' => ['id' => 'api_dash']]],
+            ['GET', '/api/sessions/api_mcp', 200, ['session' => ['id' => 'api_mcp']]],
+            ['GET', '/api/sessions/api_dash/messages', 200, ['messages' => [
+                ['id' => 1, 'role' => 'user', 'content' => 'From the browser', 'timestamp' => $youAt],
+                ['id' => 2, 'role' => 'assistant', 'content' => 'Browser reply', 'timestamp' => $youAt + 5],
+            ]]],
+            ['GET', '/api/sessions/api_mcp/messages', 200, ['messages' => [
+                ['id' => 1, 'role' => 'user', 'content' => 'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.', 'timestamp' => $agentAt],
+                ['id' => 2, 'role' => 'assistant', 'content' => 'Hello from Hermes.', 'timestamp' => $agentAt + 5],
+            ]]],
+        ], $seen);
+
+        $thread = $chat->thread(7);
+        self::assertSame([
+            'From the browser',
+            'Browser reply',
+            'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.',
+            'Hello from Hermes.',
+        ], array_column($thread['messages'], 'content'));
+        self::assertSame(['You', 'Hermes', 'AI Agent (MCP)', 'Hermes'], array_column($thread['messages'], 'sender'));
+        self::assertSame(['you', 'hermes', 'mcp', 'hermes'], array_column($thread['messages'], 'origin'));
+        self::assertSame('api_mcp', $memory->read(7, Chat::PRIOR));
+        self::assertFalse($thread['has_more']);
+        self::assertStringStartsWith('d.', $thread['messages'][0]['id']);
+        self::assertStringStartsWith('m.', $thread['messages'][2]['id']);
+    }
+
+    public function testMergedRoomPagesOlderRowsWithoutDroppingEitherSide(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_dash');
+        $memory->write(7, Chat::LEGACY, 'api_mcp');
+        $dash = [];
+        $mcp = [];
+        for ($i = 1; $i <= 4; $i++) {
+            $dash[] = ['id' => $i, 'role' => $i % 2 === 1 ? 'user' : 'assistant', 'content' => 'd' . $i, 'timestamp' => 1700000000 + ($i * 10)];
+            $mcp[] = ['id' => $i, 'role' => $i % 2 === 1 ? 'user' : 'assistant', 'content' => 'm' . $i, 'timestamp' => 1700000005 + ($i * 10)];
+        }
+        $full = function (string $session, array $rows): array {
+            return ['GET', '/api/sessions/' . $session . '/messages', 200, ['messages' => array_reverse($rows)]];
+        };
+        $open = [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_dash', 200, ['session' => ['id' => 'api_dash']]],
+            ['GET', '/api/sessions/api_mcp', 200, ['session' => ['id' => 'api_mcp']]],
+        ];
+        $seen = [];
+        $chat = $this->chat($memory, str_repeat('b', 32), array_merge(
+            $open,
+            [$full('api_dash', $dash), $full('api_mcp', $mcp)],
+            $open,
+            [$full('api_dash', $dash), $full('api_mcp', $mcp), $full('api_mcp', $mcp)]
+        ), $seen);
+
+        $newest = $chat->thread(7, '', 2);
+        self::assertSame(['d4', 'm4'], array_column($newest['messages'], 'content'));
+        self::assertTrue($newest['has_more']);
+        $cursor = $newest['next_before_id'];
+        self::assertStringStartsWith('d.', $cursor);
+
+        $older = $chat->thread(7, $cursor, 2);
+        self::assertSame(['d3', 'm3'], array_column($older['messages'], 'content'));
+        self::assertTrue($older['has_more']);
+        self::assertNotSame($cursor, $older['messages'][0]['id']);
+    }
+
+    public function testNewChatDoesNotBringBackTheMcpTranscript(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(7, Chat::SESSION, 'api_dash');
+        $memory->write(7, Chat::LEGACY, 'api_mcp');
+        $memory->write(7, Chat::WATCH, 'run_old');
+        $seen = [];
+        $chat = $this->chat($memory, str_repeat('c', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/health', 200, ['status' => 'ok']],
+        ], $seen);
+
+        $fresh = $chat->reset(7);
+        self::assertSame([], $fresh['messages']);
+        self::assertSame('', $fresh['run_id']);
+        self::assertSame('1', $memory->read(7, Chat::PRIOR_CLOSED));
+        self::assertSame('', $memory->read(7, Chat::PRIOR));
+        self::assertSame('', $memory->read(7, Chat::LEGACY));
+
+        $memory->write(7, Chat::LEGACY, 'api_mcp');
+        $again = $chat->thread(7);
+        self::assertSame([], $again['messages']);
+        self::assertSame('', $memory->read(7, Chat::PRIOR));
+        $urls = $this->messageUrls($seen);
+        self::assertSame([], $urls);
+    }
+
+    public function testLedgerLabelsTheMatchingTurn(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(4, Chat::SESSION, 'api_dash');
+        $now = time();
+        $seen = [];
+        $chat = $this->chat($memory, str_repeat('d', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_dash', 200, ['session' => ['id' => 'api_dash']]],
+            ['GET', '/api/sessions/api_dash/messages', 200, ['data' => [
+                ['id' => 1, 'role' => 'user', 'content' => 'Ping', 'timestamp' => $now - 5000],
+                ['id' => 2, 'role' => 'assistant', 'content' => 'Pong', 'timestamp' => $now - 4990],
+                ['id' => 3, 'role' => 'user', 'content' => 'Ping', 'timestamp' => $now],
+                ['id' => 4, 'role' => 'assistant', 'content' => 'Here.', 'timestamp' => $now + 2],
+            ]]],
+        ], $seen);
+        $chat->notePrompt(4, 'api_dash', 'Ping', 'mcp', 'MCP · Grok Bot v3');
+
+        $thread = $chat->thread(4);
+        self::assertSame(['You', 'Hermes', 'MCP · Grok Bot v3', 'Hermes'], array_column($thread['messages'], 'sender'));
+        self::assertSame(['you', 'hermes', 'mcp', 'hermes'], array_column($thread['messages'], 'origin'));
+    }
+
+    public function testBrowserPollFollowsAnMcpRunOnTheSharedSession(): void
+    {
+        $memory = new ArrayChatMemory();
+        $memory->write(4, Chat::SESSION, 'api_dash');
+        $memory->write(4, Chat::WATCH, 'run_mcp');
+        $chat = $this->chat($memory, str_repeat('e', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/v1/runs/run_mcp', 200, [
+                'status' => 'completed',
+                'output' => 'Done.',
+                'session_id' => 'api_dash',
+            ]],
+        ]);
+        $done = $chat->poll(4, 'run_mcp');
+        self::assertSame('completed', $done['status']);
+        self::assertSame('', $memory->read(4, Chat::WATCH));
+    }
+
     public function testBlankMessageIsRejected(): void
     {
         $chat = $this->chat(new ArrayChatMemory(), str_repeat('e', 32), []);
@@ -245,6 +389,8 @@ final class HermesChatTest extends TestCase
         self::assertTrue(Scope::sessionOnly('/api/v1/hermes/chat'));
         self::assertFalse(Scope::sessionOnly('/api/v1/ollama/generate'));
         self::assertFalse(Scope::sessionOnly('/api/v1/agents/hermes/runs'));
+        self::assertFalse(Scope::sessionOnly('/api/v1/agents/hermes/thread'));
+        self::assertSame('agents:read', Scope::forPath('/api/v1/agents/hermes/thread', false));
         self::assertSame('agents:read', Scope::forPath('/api/v1/agents/hermes/status', false));
         self::assertSame('agents:write', Scope::forPath('/api/v1/agents/hermes/runs', true));
         self::assertContains('agents:read', \Dashboard\Auth\OAuthRules::known(false));

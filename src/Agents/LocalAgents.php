@@ -55,6 +55,14 @@ final class LocalAgents
     }
 
     /**
+     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array<string, mixed>>, has_more: bool, next_before_id: string}
+     */
+    public function hermesThread(int $userId, string $beforeId, int $limit): array
+    {
+        return $this->chat()->thread($userId, $beforeId, $limit);
+    }
+
+    /**
      * @return array{sessions: list<array{id: string, title: string}>}
      */
     public function hermesSessions(int $userId): array
@@ -64,9 +72,7 @@ final class LocalAgents
         if ($res['status'] === 200) {
             return ['sessions' => $this->sessionsFrom($res['json'])];
         }
-        $id = $this->memory->read($userId, self::SESSION);
-
-        return ['sessions' => self::idOk($id) ? [['id' => $id, 'title' => 'MCP']] : []];
+        return ['sessions' => $this->rememberedSessions($userId)];
     }
 
     /**
@@ -82,6 +88,7 @@ final class LocalAgents
             throw ValidationException::withFields(['title' => 'Use a short title without line breaks.']);
         }
         $this->requireGateway();
+        $this->chat()->prepare($userId);
         $res = $this->gateway->call('POST', '/api/sessions', ['title' => $title], 10);
         $id = is_array($res['json']) ? (string) ($res['json']['session']['id'] ?? $res['json']['id'] ?? '') : '';
         if (($res['status'] !== 200 && $res['status'] !== 201) || !self::idOk($id)) {
@@ -95,7 +102,7 @@ final class LocalAgents
     /**
      * @return array{run_id: string, status: string, session_id: string}
      */
-    public function hermesSend(int $userId, string $message, ?string $sessionId): array
+    public function hermesSend(int $userId, string $message, ?string $sessionId, ?string $tokenName = null): array
     {
         $message = trim($message);
         if ($message === '') {
@@ -105,9 +112,10 @@ final class LocalAgents
             throw ValidationException::withFields(['message' => 'That message is too long.']);
         }
         $this->requireGateway();
-        $session = $sessionId === null || $sessionId === ''
-            ? $this->ensureSession($userId)
-            : $this->ownedSession($userId, $sessionId);
+        $custom = $sessionId !== null && $sessionId !== '';
+        $session = $custom
+            ? $this->ownedSession($sessionId)
+            : $this->chat()->sharedSession($userId);
         $res = $this->gateway->call('POST', '/v1/runs', [
             'input'      => $message,
             'session_id' => $session,
@@ -120,6 +128,10 @@ final class LocalAgents
             throw ValidationException::withFields(['message' => 'Hermes did not start a turn.']);
         }
         $this->rememberRun($userId, $run);
+        if (!$custom && $session === $this->memory->read($userId, Chat::SESSION)) {
+            $this->chat()->notePrompt($userId, $session, $message, 'mcp', $this->mcpLabel($tokenName));
+            $this->chat()->watch($userId, $run);
+        }
         $status = is_array($res['json']) ? (string) ($res['json']['status'] ?? 'started') : 'started';
 
         return ['run_id' => $run, 'status' => $status, 'session_id' => $session];
@@ -142,11 +154,15 @@ final class LocalAgents
             throw ValidationException::withFields(['run_id' => 'Hermes did not report the turn.']);
         }
         $body = $res['json'];
+        $status = (string) ($body['status'] ?? '');
+        if (in_array($status, ['completed', 'failed', 'cancelled', 'interrupted', 'unknown'], true)) {
+            $this->chat()->clearWatch($userId, $runId);
+        }
         $output = $body['output'] ?? '';
 
         return [
             'run_id' => $runId,
-            'status' => (string) ($body['status'] ?? ''),
+            'status' => $status,
             'output' => is_string($output) ? mb_substr($this->gateway->redact($output), 0, Chat::MAX_MESSAGE) : '',
             'error'  => $this->gateway->redact($this->errorText($body, '')),
         ];
@@ -309,20 +325,25 @@ final class LocalAgents
         return 'Hermes gateway answered.';
     }
 
-    private function ensureSession(int $userId): string
+    private function chat(): Chat
     {
-        $existing = $this->memory->read($userId, self::SESSION);
-        if (self::idOk($existing)) {
-            $res = $this->gateway->call('GET', '/api/sessions/' . $existing, null, 8);
-            if ($res['status'] === 200) {
-                return $existing;
-            }
-        }
-
-        return $this->hermesStart($userId, 'MCP')['session_id'];
+        return new Chat($this->gateway, $this->memory);
     }
 
-    private function ownedSession(int $userId, string $sessionId): string
+    private function mcpLabel(?string $tokenName): string
+    {
+        $name = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) $tokenName) ?? '');
+        if ($name === '') {
+            return 'AI Agent (MCP)';
+        }
+
+        return 'MCP · ' . mb_substr($name, 0, 60);
+    }
+
+    /**
+     * A caller-supplied session stays off the shared /hermes room.
+     */
+    private function ownedSession(string $sessionId): string
     {
         if (!self::idOk($sessionId)) {
             throw ValidationException::withFields(['session_id' => 'That session id is not valid.']);
@@ -331,9 +352,26 @@ final class LocalAgents
         if ($res['status'] !== 200) {
             throw new NotFoundException('That Hermes session was not found.');
         }
-        $this->memory->write($userId, self::SESSION, $sessionId);
 
         return $sessionId;
+    }
+
+    /**
+     * @return list<array{id: string, title: string}>
+     */
+    private function rememberedSessions(int $userId): array
+    {
+        $out = [];
+        $shared = $this->memory->read($userId, Chat::SESSION);
+        if (self::idOk($shared)) {
+            $out[] = ['id' => $shared, 'title' => 'Dashboard'];
+        }
+        $id = $this->memory->read($userId, self::SESSION);
+        if (self::idOk($id) && $id !== $shared) {
+            $out[] = ['id' => $id, 'title' => 'MCP'];
+        }
+
+        return $out;
     }
 
     private function rememberRun(int $userId, string $run): void

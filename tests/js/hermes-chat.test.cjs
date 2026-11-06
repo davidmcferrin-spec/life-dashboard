@@ -172,8 +172,10 @@ function boot(handlers) {
             },
             createElement: element,
         },
+        timers: [],
         setTimeout(fn) {
-            return fn;
+            sandbox.timers.push(fn);
+            return sandbox.timers.length;
         },
         clearTimeout() {},
         LD: {
@@ -200,13 +202,19 @@ function boot(handlers) {
     }
     sandbox.window = sandbox;
     vm.runInNewContext(script, sandbox);
-    return { gets, posts, field, sendBtn, form, log, status, newBtn };
+    return { gets, posts, field, sendBtn, form, log, status, newBtn, timers: sandbox.timers };
 }
 
 function bodies(log) {
     return log.children
         .filter((node) => node.dataset && node.dataset.id)
         .map((node) => node.children.find((child) => classes(child).has('hermes-msg-body')).textContent);
+}
+
+function whos(log) {
+    return log.children
+        .filter((node) => node.dataset && node.dataset.id)
+        .map((node) => node.children.find((child) => classes(child).has('hermes-msg-who')).textContent);
 }
 
 function key(extra) {
@@ -233,6 +241,7 @@ test('the hermes page keeps the composer on screen and describes Ctrl+Enter', ()
     assert.match(css, /max-height:\s*50vh/);
     assert.match(css, /overflow:\s*auto/);
     assert.match(css, /\.hermes-msg-user[\s\S]*align-self:\s*flex-end/);
+    assert.match(css, /\.hermes-msg-agent[\s\S]*align-self:\s*flex-end/);
     assert.match(css, /\.hermes-msg-assistant[\s\S]*align-self:\s*flex-start/);
     assert.match(css, /body\.hermes-chat[\s\S]*overflow:\s*hidden/);
     assert.equal(script.includes('localStorage'), false);
@@ -331,4 +340,105 @@ test('Ctrl+Enter sends once and stays disabled while Hermes is working', async (
     ui.field.value = 'Still waiting';
     ui.field.listeners.keydown(key({ ctrlKey: true }));
     assert.equal(ui.posts.length, 1);
+});
+
+test('agent turns stay labeled and a tail refresh does not duplicate them', async () => {
+    const first = {
+        reachable: true,
+        has_more: true,
+        run_id: '',
+        messages: [
+            { id: 'd.1.1', role: 'user', origin: 'you', sender: 'You', content: 'Hello', ts: '' },
+            { id: 'm.2.1', role: 'user', origin: 'mcp', sender: 'AI Agent (MCP)', content: 'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.', ts: '' },
+            { id: 'm.3.2', role: 'assistant', origin: 'hermes', sender: 'Hermes', content: 'Hello from Hermes.', ts: '' },
+        ],
+    };
+    const tail = {
+        reachable: true,
+        has_more: true,
+        run_id: 'run_mcp',
+        messages: first.messages.concat([
+            { id: 'd.4.3', role: 'user', origin: 'mcp', sender: 'MCP · Grok Bot v3', content: 'One more check.', ts: '' },
+        ]),
+    };
+    const ui = boot({
+        get: [first, tail, tail],
+        post: [],
+    });
+    await Promise.resolve();
+
+    assert.deepEqual(whos(ui.log), ['You', 'AI Agent (MCP)', 'Hermes']);
+    assert.equal(classes(ui.log.children[0]).has('hermes-msg-user'), true);
+    assert.equal(classes(ui.log.children[1]).has('hermes-msg-agent'), true);
+    assert.equal(classes(ui.log.children[2]).has('hermes-msg-assistant'), true);
+
+    const tailTimer = ui.timers[ui.timers.length - 1];
+    tailTimer();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.deepEqual(bodies(ui.log), [
+        'Hello',
+        'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.',
+        'Hello from Hermes.',
+        'One more check.',
+    ]);
+    assert.equal(whos(ui.log)[3], 'MCP · Grok Bot v3');
+    assert.equal(classes(ui.log.children[3]).has('hermes-msg-agent'), true);
+    const pending = ui.log.children.find((node) => node.dataset && node.dataset.hermesPending);
+    assert.ok(pending);
+
+    const again = ui.timers[ui.timers.length - 1];
+    again();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(bodies(ui.log), [
+        'Hello',
+        'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.',
+        'Hello from Hermes.',
+        'One more check.',
+    ]);
+    assert.equal(ui.log.children.filter((node) => node.dataset && node.dataset.id === 'd.4.3').length, 1);
+});
+
+test('a refresh already in flight cannot restore a new chat', async () => {
+    let release = () => {};
+    const pending = new Promise((resolve) => {
+        release = resolve;
+    });
+    const ui = boot({
+        get: [
+            {
+                reachable: true,
+                has_more: false,
+                messages: [{ id: 'a', role: 'user', origin: 'you', sender: 'You', content: 'Hello', ts: '' }],
+            },
+            pending,
+        ],
+        post: [Promise.resolve({ reachable: true, has_more: false, messages: [] })],
+        modal: { confirm() { return Promise.resolve(true); } },
+    });
+    await Promise.resolve();
+    assert.deepEqual(bodies(ui.log), ['Hello']);
+
+    const tail = ui.timers[ui.timers.length - 1];
+    tail();
+    ui.newBtn.listeners.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(bodies(ui.log), []);
+
+    release({
+        reachable: true,
+        has_more: false,
+        messages: [
+            { id: 'a', role: 'user', origin: 'you', sender: 'You', content: 'Hello', ts: '' },
+            { id: 'm', role: 'user', origin: 'mcp', sender: 'AI Agent (MCP)', content: 'old agent', ts: '' },
+        ],
+    });
+    await pending;
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.deepEqual(bodies(ui.log), []);
+    assert.equal(ui.log.querySelector('.hermes-empty').textContent, 'No messages yet. Ask Hermes something.');
 });

@@ -14,6 +14,7 @@ def test_agent_tools_are_in_the_catalog():
         "hermes_start_session",
         "hermes_send",
         "hermes_poll",
+        "hermes_thread",
         "opencode_status",
         "openclaw_status",
         "openclaw_ask",
@@ -36,6 +37,13 @@ def test_hermes_and_openclaw_routes():
         {"message": "Hello", "session_id": "api_1"},
     )
     assert resolve("hermes_poll", {"run_id": "run_1"}) == ("GET", "/api/v1/agents/hermes/runs/run_1", None)
+    assert resolve("hermes_send", {"message": "Hello"})[1] == "/api/v1/agents/hermes/runs"
+    assert resolve("hermes_thread", {}) == ("GET", "/api/v1/agents/hermes/thread", None)
+    assert resolve("hermes_thread", {"before_id": "d.1700000000.4", "limit": 20}) == (
+        "GET",
+        "/api/v1/agents/hermes/thread?before_id=d.1700000000.4&limit=20",
+        None,
+    )
     assert resolve("opencode_status", {})[1] == "/api/v1/agents/opencode/status"
     method, path, body = resolve("openclaw_ask", {"prompt": "Reply with ok"})
     assert (method, path, body) == ("POST", "/api/v1/agents/openclaw/ask", {"prompt": "Reply with ok"})
@@ -49,6 +57,12 @@ def test_agent_tools_reject_shell_and_bad_ids():
         resolve("hermes_poll", {"run_id": "../etc/passwd"})
     with pytest.raises(ValueError):
         resolve("hermes_send", {"message": "hi", "session_id": "bad id"})
+    with pytest.raises(ValueError):
+        resolve("hermes_thread", {"before_id": "../secret"})
+    with pytest.raises(ValueError):
+        resolve("hermes_thread", {"limit": 0})
+    with pytest.raises(ValueError):
+        resolve("hermes_thread", {"command": "ls"})
     with pytest.raises(ValueError):
         resolve("openclaw_ask", {"prompt": "ok", "model": "other"})
     with pytest.raises(ValueError):
