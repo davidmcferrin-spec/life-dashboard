@@ -6,6 +6,7 @@ namespace Dashboard\Tests\Unit;
 
 use Dashboard\Agents\Command;
 use Dashboard\Agents\LocalAgents;
+use Dashboard\Hermes\Chat;
 use Dashboard\Hermes\ChatMemory;
 use Dashboard\Hermes\Gateway;
 use Dashboard\Mcp\AgentPrompt;
@@ -43,27 +44,96 @@ final class LocalAgentsTest extends TestCase
     {
         $key = str_repeat('cd', 16);
         $seen = [];
+        $memory = new LocalAgentMemory();
         $agents = $this->agents($key, [
             ['GET', '/health', 200, ['status' => 'ok']],
-            ['GET', '/health', 200, ['status' => 'ok']],
-            ['POST', '/api/sessions', 201, ['session' => ['id' => 'api_mcp']]],
+            ['POST', '/api/sessions', 201, ['session' => ['id' => 'api_dash']]],
             ['POST', '/v1/runs', 202, ['run_id' => 'run_mcp', 'status' => 'started']],
             ['GET', '/health', 200, ['status' => 'ok']],
             ['GET', '/v1/runs/run_mcp', 200, [
                 'status' => 'completed',
                 'output' => 'Done ' . $key,
-                'session_id' => 'api_mcp',
+                'session_id' => 'api_dash',
             ]],
-        ], $seen);
+        ], $seen, $memory);
 
-        $started = $agents->hermesSend(4, '  Plan the week  ', null);
+        $started = $agents->hermesSend(4, '  Plan the week  ', null, 'Grok Bot v3');
         self::assertSame('run_mcp', $started['run_id']);
-        self::assertSame('api_mcp', $started['session_id']);
-        $body = json_decode((string) $seen[3][2], true);
+        self::assertSame('api_dash', $started['session_id']);
+        self::assertSame('api_dash', $memory->read(4, Chat::SESSION));
+        self::assertSame('', $memory->read(4, LocalAgents::SESSION));
+        self::assertSame('run_mcp', $memory->read(4, Chat::WATCH));
+        $opened = json_decode((string) $seen[1][2], true);
+        self::assertSame('Dashboard', $opened['title']);
+        $body = json_decode((string) $seen[2][2], true);
         self::assertSame('Plan the week', $body['input']);
+        self::assertSame('api_dash', $body['session_id']);
         $polled = $agents->hermesPoll(4, 'run_mcp');
+        self::assertSame('', $memory->read(4, Chat::WATCH));
         self::assertSame('Done [redacted]', $polled['output']);
         self::assertStringNotContainsString($key, json_encode($polled, JSON_THROW_ON_ERROR));
+    }
+
+    public function testOmittedSendJoinsTheDashboardSession(): void
+    {
+        $memory = new LocalAgentMemory();
+        $memory->write(4, Chat::SESSION, 'api_dash');
+        $memory->write(4, LocalAgents::SESSION, 'api_mcp');
+        $seen = [];
+        $agents = $this->agents(str_repeat('a', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_dash', 200, ['session' => ['id' => 'api_dash']]],
+            ['POST', '/v1/runs', 202, ['run_id' => 'run_join', 'status' => 'started']],
+        ], $seen, $memory);
+
+        $started = $agents->hermesSend(4, 'Hi Hermes! Checking in from Chief of Staff via Life-Dashboard.', null, 'Grok Bot v3');
+        self::assertSame('api_dash', $started['session_id']);
+        self::assertSame('api_mcp', $memory->read(4, Chat::PRIOR));
+        self::assertSame('api_mcp', $memory->read(4, LocalAgents::SESSION));
+        $ledger = json_decode($memory->read(4, Chat::LEDGER), true);
+        self::assertSame('mcp', $ledger[0]['origin']);
+        self::assertSame('MCP · Grok Bot v3', $ledger[0]['label']);
+        $body = json_decode((string) $seen[2][2], true);
+        self::assertSame('api_dash', $body['session_id']);
+    }
+
+    public function testOnlyTheMcpSessionIsAdoptedAsTheSharedRoom(): void
+    {
+        $memory = new LocalAgentMemory();
+        $memory->write(4, LocalAgents::SESSION, 'api_mcp');
+        $seen = [];
+        $agents = $this->agents(str_repeat('b', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_mcp', 200, ['session' => ['id' => 'api_mcp']]],
+            ['POST', '/v1/runs', 202, ['run_id' => 'run_old', 'status' => 'started']],
+        ], $seen, $memory);
+
+        $started = $agents->hermesSend(4, 'Still there?', null);
+        self::assertSame('api_mcp', $started['session_id']);
+        self::assertSame('api_mcp', $memory->read(4, Chat::SESSION));
+        self::assertSame('api_mcp', $memory->read(4, Chat::AGENT_SESSION));
+        self::assertSame('', $memory->read(4, Chat::PRIOR));
+    }
+
+    public function testExplicitSessionStaysOutOfTheSharedRoom(): void
+    {
+        $memory = new LocalAgentMemory();
+        $memory->write(4, Chat::SESSION, 'api_dash');
+        $memory->write(4, LocalAgents::SESSION, 'api_mcp');
+        $seen = [];
+        $agents = $this->agents(str_repeat('c', 32), [
+            ['GET', '/health', 200, ['status' => 'ok']],
+            ['GET', '/api/sessions/api_side', 200, ['session' => ['id' => 'api_side']]],
+            ['POST', '/v1/runs', 202, ['run_id' => 'run_side', 'status' => 'started']],
+        ], $seen, $memory);
+
+        $started = $agents->hermesSend(4, 'Side thread', 'api_side', 'Grok Bot v3');
+        self::assertSame('api_side', $started['session_id']);
+        self::assertSame('api_dash', $memory->read(4, Chat::SESSION));
+        self::assertSame('api_mcp', $memory->read(4, LocalAgents::SESSION));
+        self::assertSame('', $memory->read(4, Chat::WATCH));
+        self::assertSame('', $memory->read(4, Chat::LEDGER));
+        self::assertSame(Chat::LEGACY, LocalAgents::SESSION);
     }
 
     public function testPollRejectsARunThisTokenDidNotStart(): void
@@ -150,7 +220,7 @@ final class LocalAgentsTest extends TestCase
     {
         $prompt = AgentPrompt::text();
         foreach ([
-            'hermes_status', 'hermes_list_sessions', 'hermes_start_session', 'hermes_send', 'hermes_poll', 'hermes_stop',
+            'hermes_status', 'hermes_list_sessions', 'hermes_start_session', 'hermes_send', 'hermes_poll', 'hermes_stop', 'hermes_thread',
             'opencode_status', 'openclaw_status', 'openclaw_ask',
         ] as $name) {
             self::assertStringContainsString($name, $prompt);
@@ -163,7 +233,7 @@ final class LocalAgentsTest extends TestCase
      * @param list<array{0: string, 1: string, 2: int, 3: ?array<string, mixed>}> $script
      * @param list<array{0: string, 1: string, 2: ?string}> $seen
      */
-    private function agents(string $key, array $script, array &$seen = []): LocalAgents
+    private function agents(string $key, array $script, array &$seen = [], ?ChatMemory $memory = null): LocalAgents
     {
         $gateway = new Gateway($key, function (string $method, string $url, ?string $body, int $timeout) use (&$script, &$seen): array {
             $seen[] = [$method, $url, $body];
@@ -176,7 +246,7 @@ final class LocalAgentsTest extends TestCase
             return ['status' => $step[2], 'json' => $step[3]];
         });
 
-        return new LocalAgents($gateway, new LocalAgentMemory());
+        return new LocalAgents($gateway, $memory ?? new LocalAgentMemory());
     }
 }
 

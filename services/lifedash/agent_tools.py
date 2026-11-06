@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+_CURSOR = re.compile(r"^[A-Za-z0-9_.:-]{1,120}$")
 _EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 
 AGENT_TOOLS: list[dict[str, Any]] = [
@@ -39,7 +40,9 @@ AGENT_TOOLS: list[dict[str, Any]] = [
         "name": "hermes_send",
         "description": (
             "Start one Hermes turn and return its run id. Poll hermes_poll for the reply. "
-            "session_id is optional. This does not run a shell command."
+            "Omit session_id to continue the /hermes chat shared with the signed-in user. "
+            "Pass session_id only for a separate session from hermes_start_session. "
+            "This does not run a shell command."
         ),
         "inputSchema": {
             "type": "object",
@@ -58,6 +61,21 @@ AGENT_TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {"run_id": {"type": "string"}},
             "required": ["run_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "hermes_thread",
+        "description": (
+            "Read the shared Hermes chat shown on /hermes. Each message includes sender. "
+            "before_id and limit are optional. Does not run a shell command."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "before_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+            },
             "additionalProperties": False,
         },
     },
@@ -147,6 +165,25 @@ def resolve_agent(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str, 
         if not isinstance(run_id, str) or _ID.fullmatch(run_id) is None:
             raise ValueError("run_id is not valid.")
         return "GET", f"/api/v1/agents/hermes/runs/{run_id}", None
+    if name == "hermes_thread":
+        unknown = set(args) - {"before_id", "limit"}
+        if unknown:
+            raise ValueError("hermes_thread accepts only before_id and limit.")
+        query: list[str] = []
+        before = args.get("before_id")
+        if before not in (None, ""):
+            if not isinstance(before, str) or _CURSOR.fullmatch(before) is None:
+                raise ValueError("before_id is not valid.")
+            query.append("before_id=" + before)
+        limit = args.get("limit")
+        if limit is not None:
+            if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > 100:
+                raise ValueError("limit must be from 1 to 100.")
+            query.append("limit=" + str(limit))
+        path = "/api/v1/agents/hermes/thread"
+        if query:
+            path += "?" + "&".join(query)
+        return "GET", path, None
     if name == "hermes_stop":
         if set(args) != {"run_id"}:
             raise ValueError("hermes_stop accepts only run_id.")

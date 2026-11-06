@@ -17,10 +17,12 @@
     const newBtn = root.querySelector('[data-hermes-new]');
     const page = Math.max(1, parseInt(log.dataset.page || '40', 10) || 40);
     let timer = 0;
+    let tailTimer = 0;
     let posting = false;
     let activeRun = '';
     let hasMore = false;
     let loadingOlder = false;
+    let generation = 0;
 
     function setStatus(text, failed) {
         status.textContent = text || '';
@@ -49,14 +51,29 @@
         });
     }
 
+    function kindOf(row) {
+        const origin = row && row.origin;
+        if (origin === 'mcp') return 'agent';
+        if (origin === 'you' || (row && row.role === 'user')) return 'user';
+        return 'assistant';
+    }
+
+    function whoLabel(row, kind) {
+        if (row && row.sender) return String(row.sender);
+        if (kind === 'agent') return 'AI Agent (MCP)';
+        if (kind === 'user') return 'You';
+        return 'Hermes';
+    }
+
     function bubble(row) {
-        const role = row && row.role === 'user' ? 'user' : 'assistant';
+        const kind = kindOf(row);
         const item = document.createElement('div');
-        item.className = 'hermes-msg hermes-msg-' + role;
+        item.className = 'hermes-msg hermes-msg-' + kind;
         item.dataset.id = row && row.id ? String(row.id) : '';
+        item.dataset.origin = kind;
         const who = document.createElement('p');
         who.className = 'hermes-msg-who';
-        who.textContent = role === 'user' ? 'You' : 'Hermes';
+        who.textContent = whoLabel(row, kind);
         const body = document.createElement('p');
         body.className = 'hermes-msg-body';
         body.textContent = row && row.content ? String(row.content) : '';
@@ -172,6 +189,7 @@
     }
 
     function paint(data, mode, force) {
+        data = data || {};
         const messages = Array.isArray(data.messages) ? data.messages : [];
         const stick = !!force || nearBottom();
         if (mode === 'reset') {
@@ -224,6 +242,17 @@
         timer = window.setTimeout(function () { poll(runId); }, 2000);
     }
 
+    function armTail() {
+        window.clearTimeout(tailTimer);
+        tailTimer = window.setTimeout(function () {
+            if (loadingOlder || posting) {
+                armTail();
+                return;
+            }
+            refresh(false).then(armTail, armTail);
+        }, 2500);
+    }
+
     function poll(runId) {
         if (activeRun !== runId) return;
         window.LD.api.get('/hermes/runs/' + encodeURIComponent(runId)).then(function (data) {
@@ -249,10 +278,14 @@
     }
 
     function refresh(force) {
+        const gen = generation;
         return window.LD.api.get(threadPath('')).then(function (data) {
+            if (gen !== generation) return data;
             paint(data, 'tail', force);
             return data;
-        }).catch(fail);
+        }).catch(function (error) {
+            if (gen === generation) fail(error);
+        });
     }
 
     function loadOlder() {
@@ -263,9 +296,11 @@
             return;
         }
         loadingOlder = true;
+        const gen = generation;
         const prevHeight = log.scrollHeight;
         const prevTop = log.scrollTop;
         window.LD.api.get(threadPath(before)).then(function (data) {
+            if (gen !== generation) return;
             const rows = Array.isArray(data.messages) ? data.messages : [];
             const added = prependMessages(rows);
             if (!added || rows.length === 0) hasMore = false;
@@ -324,6 +359,7 @@
             : Promise.resolve(window.confirm('Start a fresh Hermes session?'));
         ask.then(function (yes) {
             if (!yes) return;
+            generation += 1;
             window.clearTimeout(timer);
             activeRun = '';
             hasMore = false;
@@ -336,5 +372,6 @@
     window.LD.api.get(threadPath('')).then(function (data) {
         paint(data, 'reset', true);
         if (hasMore && log.scrollTop <= 48) loadOlder();
+        armTail();
     }).catch(fail);
 })();

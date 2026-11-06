@@ -17,6 +17,22 @@ final class Chat
 
     public const RUN = 'hermes_run_id';
 
+    /** Legacy MCP-only session. Shown beside the shared room until New chat. */
+    public const LEGACY = 'hermes_mcp_session_id';
+
+    public const PRIOR = 'hermes_prior_session_id';
+
+    public const PRIOR_CLOSED = 'hermes_room_closed';
+
+    public const READY = 'hermes_room_ready';
+
+    /** Shared session whose unlabeled user turns came from MCP before this room existed. */
+    public const AGENT_SESSION = 'hermes_agent_session_id';
+
+    public const LEDGER = 'hermes_sender_ledger';
+
+    public const WATCH = 'hermes_watch_run';
+
     public const MAX_MESSAGE = 8000;
 
     /** Newest messages painted on first load. Older rows arrive on scroll-up. */
@@ -35,29 +51,46 @@ final class Chat
      * as $beforeId to read the previous page. The session store is the history;
      * this does not keep a second copy.
      *
-     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string}
+     * @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string, sender: string, origin: string}>, has_more: bool, next_before_id: string}
      */
     public function thread(int $userId, string $beforeId = '', int $limit = self::PAGE): array
     {
         $beforeId = $this->cursor($beforeId);
         $limit = $this->pageSize($limit);
-        $run = $this->memory->read($userId, self::RUN);
+        $run = $this->activeRun($userId);
         if (!$this->gateway->configured()) {
             return $this->quiet('Hermes is not configured on this machine yet.', $run);
         }
         if (!$this->gateway->healthy()) {
             return $this->quiet('Hermes is not answering on 127.0.0.1:8642.', $run);
         }
+        $this->prepare($userId);
         $session = $this->liveSession($userId);
-        $history = $session === ''
-            ? ['messages' => [], 'has_more' => false, 'next_before_id' => '']
-            : $this->history($session, $limit, $beforeId);
+        $prior = $this->priorSession($userId, $session);
+        if ($session === '' && $prior !== '') {
+            $session = $prior;
+            $prior = '';
+        }
+        if ($prior === '') {
+            $history = $session === ''
+                ? ['messages' => [], 'has_more' => false, 'next_before_id' => '']
+                : $this->history($session, $limit, $beforeId);
+            if ($session !== '') {
+                $history['messages'] = $this->attribute($userId, $session, $history['messages'], $this->fallback($userId, $session));
+            }
+
+            return [
+                'reachable' => true,
+                'detail'    => 'Hermes gateway answered.',
+                'run_id'    => $run,
+            ] + $history;
+        }
 
         return [
             'reachable' => true,
             'detail'    => 'Hermes gateway answered.',
             'run_id'    => $run,
-        ] + $history;
+        ] + $this->merged($userId, $session, $prior, $limit, $beforeId);
     }
 
     /**
@@ -86,6 +119,7 @@ final class Chat
             throw ValidationException::withFields(['message' => 'Hermes did not start a turn.']);
         }
         $this->memory->write($userId, self::RUN, $run);
+        $this->notePrompt($userId, $session, $message, 'you', 'You');
         $status = is_array($res['json']) ? (string) ($res['json']['status'] ?? 'started') : 'started';
 
         return ['run_id' => $run, 'status' => $status];
@@ -96,13 +130,15 @@ final class Chat
      */
     public function poll(int $userId, string $runId): array
     {
-        if (self::idOk($runId) !== true || $this->memory->read($userId, self::RUN) !== $runId) {
+        $browserRun = $this->memory->read($userId, self::RUN);
+        $watch = $this->memory->read($userId, self::WATCH);
+        if (self::idOk($runId) !== true || ($browserRun !== $runId && $watch !== $runId)) {
             throw new NotFoundException('That Hermes turn was not found.');
         }
         $this->requireGateway();
         $res = $this->gateway->call('GET', '/v1/runs/' . $runId, null, 10);
         if ($res['status'] === 404) {
-            $this->memory->write($userId, self::RUN, '');
+            $this->forgetRun($userId, $runId);
             throw new NotFoundException('That Hermes turn was not found.');
         }
         if ($res['status'] !== 200 || !is_array($res['json'])) {
@@ -110,13 +146,13 @@ final class Chat
         }
         $body = $res['json'];
         $session = (string) ($body['session_id'] ?? '');
-        $ours = $this->memory->read($userId, self::SESSION);
-        if ($session !== '' && $session !== $ours) {
+        $allowed = $this->openSessions($userId);
+        if ($session !== '' && !in_array($session, $allowed, true)) {
             throw new NotFoundException('That Hermes turn was not found.');
         }
         $status = (string) ($body['status'] ?? '');
         if (in_array($status, ['completed', 'failed', 'cancelled', 'interrupted', 'unknown'], true)) {
-            $this->memory->write($userId, self::RUN, '');
+            $this->forgetRun($userId, $runId);
         }
         $output = $body['output'] ?? '';
 
@@ -128,13 +164,89 @@ final class Chat
         ];
     }
 
-    /** @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string}>, has_more: bool, next_before_id: string} */
+    /** @return array{reachable: bool, detail: string, run_id: string, messages: list<array{id: string, role: string, content: string, ts: string, sender: string, origin: string}>, has_more: bool, next_before_id: string} */
     public function reset(int $userId): array
     {
         $this->memory->write($userId, self::SESSION, '');
         $this->memory->write($userId, self::RUN, '');
+        $this->memory->write($userId, self::PRIOR, '');
+        $this->memory->write($userId, self::AGENT_SESSION, '');
+        $this->memory->write($userId, self::LEDGER, '');
+        $this->memory->write($userId, self::WATCH, '');
+        $this->memory->write($userId, self::LEGACY, '');
+        $this->memory->write($userId, self::PRIOR_CLOSED, '1');
+        $this->memory->write($userId, self::READY, '1');
 
         return $this->thread($userId);
+    }
+
+    /**
+     * Remember which transcript to fold in. Runs once, then New chat keeps it shut.
+     */
+    public function prepare(int $userId): void
+    {
+        if ($this->memory->read($userId, self::PRIOR_CLOSED) === '1') {
+            return;
+        }
+        if ($this->memory->read($userId, self::READY) === '1') {
+            return;
+        }
+        $legacy = $this->memory->read($userId, self::LEGACY);
+        $dash = $this->memory->read($userId, self::SESSION);
+        $legacyOk = self::idOk($legacy);
+        $dashOk = self::idOk($dash);
+        if ($legacyOk && !$dashOk) {
+            $this->memory->write($userId, self::SESSION, $legacy);
+            $this->memory->write($userId, self::AGENT_SESSION, $legacy);
+        } elseif ($legacyOk && $dashOk && $legacy === $dash) {
+            $this->memory->write($userId, self::AGENT_SESSION, $legacy);
+        } elseif ($legacyOk && $dashOk) {
+            $this->memory->write($userId, self::PRIOR, $legacy);
+        }
+        $this->memory->write($userId, self::READY, '1');
+    }
+
+    public function sharedSession(int $userId): string
+    {
+        return $this->ensureSession($userId);
+    }
+
+    public function notePrompt(int $userId, string $sessionId, string $message, string $origin, string $label): void
+    {
+        if (self::idOk($sessionId) !== true) {
+            return;
+        }
+        $message = trim($message);
+        if ($message === '') {
+            return;
+        }
+        $origin = $origin === 'mcp' ? 'mcp' : 'you';
+        $rows = $this->ledger($userId);
+        $rows[] = [
+            'session' => $sessionId,
+            'hash'    => self::digest($message),
+            'origin'  => $origin,
+            'label'   => $this->cleanLabel($label, $origin),
+            'at'      => time(),
+        ];
+        if (count($rows) > 200) {
+            $rows = array_slice($rows, -200);
+        }
+        $this->memory->write($userId, self::LEDGER, json_encode(array_values($rows), JSON_THROW_ON_ERROR));
+    }
+
+    public function watch(int $userId, string $runId): void
+    {
+        if (self::idOk($runId)) {
+            $this->memory->write($userId, self::WATCH, $runId);
+        }
+    }
+
+    public function clearWatch(int $userId, string $runId): void
+    {
+        if ($this->memory->read($userId, self::WATCH) === $runId) {
+            $this->memory->write($userId, self::WATCH, '');
+        }
     }
 
     private function requireGateway(): void
@@ -170,6 +282,7 @@ final class Chat
 
     private function ensureSession(int $userId): string
     {
+        $this->prepare($userId);
         $session = $this->liveSession($userId);
         if ($session !== '') {
             return $session;
@@ -190,7 +303,7 @@ final class Chat
         if ($beforeId === '') {
             return '';
         }
-        if (preg_match('/^[A-Za-z0-9_.:-]{1,80}$/', $beforeId) !== 1) {
+        if (preg_match('/^[A-Za-z0-9_.:-]{1,120}$/', $beforeId) !== 1) {
             throw ValidationException::withFields(['before_id' => 'That history cursor is not valid.']);
         }
 
@@ -628,6 +741,351 @@ final class Chat
             'has_more'       => false,
             'next_before_id' => '',
         ];
+    }
+
+    private function activeRun(int $userId): string
+    {
+        $run = $this->memory->read($userId, self::RUN);
+        if ($run !== '') {
+            return $run;
+        }
+
+        return $this->memory->read($userId, self::WATCH);
+    }
+
+    private function forgetRun(int $userId, string $runId): void
+    {
+        if ($this->memory->read($userId, self::RUN) === $runId) {
+            $this->memory->write($userId, self::RUN, '');
+        }
+        $this->clearWatch($userId, $runId);
+    }
+
+    /** @return list<string> */
+    private function openSessions(int $userId): array
+    {
+        $out = [];
+        foreach ([self::SESSION, self::PRIOR] as $key) {
+            $id = $this->memory->read($userId, $key);
+            if ($id !== '') {
+                $out[] = $id;
+            }
+        }
+
+        return $out;
+    }
+
+    private function priorSession(int $userId, string $session): string
+    {
+        if ($this->memory->read($userId, self::PRIOR_CLOSED) === '1') {
+            return '';
+        }
+        $prior = $this->memory->read($userId, self::PRIOR);
+        if (self::idOk($prior) !== true || $prior === $session) {
+            return '';
+        }
+        $res = $this->gateway->call('GET', '/api/sessions/' . $prior, null, 8);
+        if ($res['status'] === 200) {
+            return $prior;
+        }
+        if ($res['status'] === 404) {
+            $this->memory->write($userId, self::PRIOR, '');
+        }
+
+        return '';
+    }
+
+    private function fallback(int $userId, string $session): string
+    {
+        return $this->memory->read($userId, self::AGENT_SESSION) === $session ? 'mcp' : 'you';
+    }
+
+    /**
+     * Newest page across the shared session and the legacy MCP session.
+     * Ids carry the slot and timestamp so a later page can step backward.
+     *
+     * @return array{messages: list<array{id: string, role: string, content: string, ts: string, sender: string, origin: string}>, has_more: bool, next_before_id: string}
+     */
+    private function merged(int $userId, string $primary, string $prior, int $limit, string $beforeId): array
+    {
+        $cursor = $beforeId === '' ? null : $this->cursorMark($beforeId);
+        if ($beforeId !== '' && $cursor === null) {
+            return $this->pack([], false);
+        }
+        $left = $this->pull($userId, $primary, 'd', $this->fallback($userId, $primary), $limit, $cursor);
+        $right = $this->pull($userId, $prior, 'm', 'mcp', $limit, $cursor);
+        $rows = array_merge($left['rows'], $right['rows']);
+        usort($rows, [$this, 'byTime']);
+        $more = $left['has_more'] || $right['has_more'] || count($rows) > $limit;
+        if (count($rows) > $limit) {
+            $rows = array_values(array_slice($rows, -$limit));
+        }
+        $messages = [];
+        foreach ($rows as $row) {
+            $messages[] = $this->publish($row);
+        }
+
+        return $this->pack($messages, $more);
+    }
+
+    /**
+     * @param ?array{slot: string, sort_ts: int, raw: string} $cursor
+     * @return array{rows: list<array<string, mixed>>, has_more: bool}
+     */
+    private function pull(int $userId, string $session, string $slot, string $fallback, int $limit, ?array $cursor): array
+    {
+        $gatewayBefore = ($cursor !== null && $cursor['slot'] === $slot) ? $cursor['raw'] : '';
+        $pool = [];
+        $gatewayMore = false;
+        for ($guard = 0; $guard < 8; $guard++) {
+            $page = $this->history($session, $limit, $gatewayBefore);
+            if ($page['messages'] === []) {
+                $gatewayMore = false;
+                break;
+            }
+            $batch = [];
+            foreach ($this->attribute($userId, $session, $page['messages'], $fallback) as $message) {
+                $batch[] = $this->marked($message, $slot);
+            }
+            $oldest = $batch[0]['raw'];
+            foreach ($batch as $row) {
+                if ($cursor === null || $this->byTime($row, $cursor) < 0) {
+                    $pool[$row['id']] = $row;
+                }
+            }
+            $gatewayMore = $page['has_more'];
+            if (!$gatewayMore || count($pool) >= $limit) {
+                break;
+            }
+            if ($oldest === '' || $oldest === $gatewayBefore) {
+                break;
+            }
+            $gatewayBefore = $oldest;
+        }
+        $rows = array_values($pool);
+        usort($rows, [$this, 'byTime']);
+        $more = $gatewayMore || count($rows) > $limit;
+        if (count($rows) > $limit) {
+            $rows = array_values(array_slice($rows, -$limit));
+        }
+
+        return ['rows' => $rows, 'has_more' => $more];
+    }
+
+    /**
+     * @param array{id: string, role: string, content: string, ts: string, sender?: string, origin?: string} $message
+     * @return array<string, mixed>
+     */
+    private function marked(array $message, string $slot): array
+    {
+        $raw = (string) $message['id'];
+        $ts = 0;
+        if ($message['ts'] !== '') {
+            $parsed = strtotime($message['ts']);
+            if ($parsed !== false && $parsed > 0) {
+                $ts = $parsed;
+            }
+        }
+        $message['raw'] = $raw;
+        $message['slot'] = $slot;
+        $message['sort_ts'] = $ts;
+        $message['id'] = $slot . '.' . $ts . '.' . $raw;
+
+        return $message;
+    }
+
+    /**
+     * @return ?array{slot: string, sort_ts: int, raw: string}
+     */
+    private function cursorMark(string $beforeId): ?array
+    {
+        $parts = explode('.', $beforeId, 3);
+        if (count($parts) !== 3) {
+            return null;
+        }
+        if (($parts[0] !== 'd' && $parts[0] !== 'm') || preg_match('/^\d{1,16}$/', $parts[1]) !== 1) {
+            return null;
+        }
+        if (preg_match('/^[A-Za-z0-9_.:-]{1,80}$/', $parts[2]) !== 1) {
+            return null;
+        }
+
+        return ['slot' => $parts[0], 'sort_ts' => (int) $parts[1], 'raw' => $parts[2]];
+    }
+
+    /**
+     * @param array<string, mixed> $a
+     * @param array<string, mixed> $b
+     */
+    private function byTime(array $a, array $b): int
+    {
+        $ts = ((int) $a['sort_ts']) <=> ((int) $b['sort_ts']);
+        if ($ts !== 0) {
+            return $ts;
+        }
+        $slot = (($a['slot'] ?? '') === 'd' ? 0 : 1) <=> (($b['slot'] ?? '') === 'd' ? 0 : 1);
+        if ($slot !== 0) {
+            return $slot;
+        }
+        $left = (string) ($a['raw'] ?? '');
+        $right = (string) ($b['raw'] ?? '');
+        if (preg_match('/^\d+$/', $left) === 1 && preg_match('/^\d+$/', $right) === 1) {
+            return ((int) $left) <=> ((int) $right);
+        }
+
+        return strcmp($left, $right);
+    }
+
+    /**
+     * @param list<array{id: string, role: string, content: string, ts: string}> $rows
+     * @return list<array{id: string, role: string, content: string, ts: string, sender: string, origin: string}>
+     */
+    private function attribute(int $userId, string $session, array $rows, string $fallback): array
+    {
+        $ledger = [];
+        foreach ($this->ledger($userId) as $entry) {
+            if (($entry['session'] ?? '') === $session) {
+                $ledger[] = $entry;
+            }
+        }
+        $used = [];
+        $out = [];
+        foreach ($rows as $row) {
+            $sender = 'Hermes';
+            $origin = 'hermes';
+            if ($row['role'] === 'user') {
+                $match = $this->matchLedger($row, $ledger, $used);
+                if ($match !== null) {
+                    $sender = $match['label'];
+                    $origin = $match['origin'];
+                } elseif ($fallback === 'mcp') {
+                    $sender = 'AI Agent (MCP)';
+                    $origin = 'mcp';
+                } else {
+                    $sender = 'You';
+                    $origin = 'you';
+                }
+            }
+            $out[] = [
+                'id'      => $row['id'],
+                'role'    => $row['role'],
+                'content' => $row['content'],
+                'ts'      => $row['ts'],
+                'sender'  => $sender,
+                'origin'  => $origin,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param array{id: string, role: string, content: string, ts: string} $message
+     * @param list<array{session: string, hash: string, origin: string, label: string, at: int}> $ledger
+     * @param array<int, true> $used
+     * @return ?array{session: string, hash: string, origin: string, label: string, at: int}
+     */
+    private function matchLedger(array $message, array $ledger, array &$used): ?array
+    {
+        if ($message['ts'] === '') {
+            return null;
+        }
+        $parsed = strtotime($message['ts']);
+        if ($parsed === false || $parsed <= 0) {
+            return null;
+        }
+        $hash = self::digest($message['content']);
+        $best = null;
+        $bestDelta = 181;
+        foreach ($ledger as $i => $entry) {
+            if (isset($used[$i]) || $entry['hash'] !== $hash) {
+                continue;
+            }
+            $delta = abs($parsed - $entry['at']);
+            if ($delta > 180 || $delta >= $bestDelta) {
+                continue;
+            }
+            $best = $i;
+            $bestDelta = $delta;
+        }
+        if ($best === null) {
+            return null;
+        }
+        $used[$best] = true;
+
+        return $ledger[$best];
+    }
+
+    /**
+     * @return list<array{session: string, hash: string, origin: string, label: string, at: int}>
+     */
+    private function ledger(int $userId): array
+    {
+        $raw = $this->memory->read($userId, self::LEDGER);
+        if ($raw === '') {
+            return [];
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $out = [];
+        foreach ($decoded as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $session = (string) ($row['session'] ?? '');
+            $hash = (string) ($row['hash'] ?? '');
+            $origin = (string) ($row['origin'] ?? '');
+            $label = (string) ($row['label'] ?? '');
+            $at = $row['at'] ?? 0;
+            if (self::idOk($session) !== true || preg_match('/^[a-f0-9]{16}$/', $hash) !== 1) {
+                continue;
+            }
+            if (($origin !== 'you' && $origin !== 'mcp') || $label === '' || !is_numeric($at)) {
+                continue;
+            }
+            $out[] = [
+                'session' => $session,
+                'hash'    => $hash,
+                'origin'  => $origin,
+                'label'   => $label,
+                'at'      => (int) $at,
+            ];
+        }
+
+        return $out;
+    }
+
+    private function cleanLabel(string $label, string $origin): string
+    {
+        $label = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', $label) ?? '');
+        if ($label === '') {
+            return $origin === 'mcp' ? 'AI Agent (MCP)' : 'You';
+        }
+
+        return mb_substr($label, 0, 80);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array{id: string, role: string, content: string, ts: string, sender: string, origin: string}
+     */
+    private function publish(array $row): array
+    {
+        return [
+            'id'      => (string) $row['id'],
+            'role'    => (string) $row['role'],
+            'content' => (string) $row['content'],
+            'ts'      => (string) $row['ts'],
+            'sender'  => (string) ($row['sender'] ?? ''),
+            'origin'  => (string) ($row['origin'] ?? ''),
+        ];
+    }
+
+    private static function digest(string $text): string
+    {
+        return substr(hash('sha256', $text), 0, 16);
     }
 
     private static function idOk(string $id): bool

@@ -136,8 +136,18 @@ body.hermes-chat .app-content {
     margin: 0;
 }
 
+.hermes-msg-agent {
+    align-self: flex-end;
+    background: var(--warn-soft);
+    border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+    border-bottom-right-radius: var(--radius-sm);
+    color: var(--text-primary);
+}
+
 .hermes-msg-user .hermes-msg-who,
-.hermes-msg-user .hermes-msg-time { text-align: right; }
+.hermes-msg-user .hermes-msg-time,
+.hermes-msg-agent .hermes-msg-who,
+.hermes-msg-agent .hermes-msg-time { text-align: right; }
 
 .hermes-msg-body {
     margin: 0;
