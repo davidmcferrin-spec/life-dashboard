@@ -105,6 +105,32 @@
     padding: 4px 8px 8px;
 }
 .brain-pins[hidden] { display: none !important; }
+.brain-pin-heading { margin: 0; }
+.brain-pin-toggle {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    font-size: var(--fs-2xs);
+    gap: 6px;
+    letter-spacing: 0.08em;
+    min-height: 44px;
+    padding: 0 4px;
+    text-align: left;
+    text-transform: uppercase;
+    width: 100%;
+}
+.brain-pin-toggle:hover,
+.brain-pin-toggle:focus-visible { color: var(--text-primary); }
+.brain-pin-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.brain-pin-toggle .brain-chevron { transform: rotate(90deg); }
+.brain-pin-toggle[aria-expanded="false"] .brain-chevron { transform: rotate(0deg); }
+.brain-pin-name { flex: 1; min-width: 0; }
+.brain-pin-count { letter-spacing: 0; }
+.brain-pin-list[hidden] { display: none !important; }
 .brain-pin,
 #brain-mentions .brain-back {
     background: transparent;
