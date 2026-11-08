@@ -258,6 +258,48 @@
         button.disabled = !page;
     }
 
+    function pinLayout() {
+        let narrow = false;
+        let coarse = false;
+        try {
+            narrow = window.matchMedia('(max-width: 900px)').matches;
+            coarse = window.matchMedia('(pointer: coarse) and (max-width: 1200px)').matches;
+        } catch (err) {
+            narrow = false;
+            coarse = false;
+        }
+        return { narrow: narrow, coarse: coarse };
+    }
+
+    function pinStorage() {
+        try {
+            return window.localStorage;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    let pinControl = null;
+
+    function pinsControl() {
+        const host = optional('brain-pins');
+        if (!host || !window.BrainPins || typeof window.BrainPins.mount !== 'function') return null;
+        if (!pinControl) {
+            pinControl = window.BrainPins.mount(host, {
+                storage: pinStorage,
+                layout: pinLayout,
+                favorites: () => favorites,
+                recent: () => {
+                    const favIds = new Set(favorites.map((page) => page.id));
+                    return recents.filter((page) => !favIds.has(page.id)).slice(0, 8);
+                },
+                chevron: () => treeIcon('brain-icon-chevron'),
+                onOpen: (id) => openPage(id).catch((err) => setStatus(err.message)),
+            });
+        }
+        return pinControl;
+    }
+
     function paintPins() {
         const host = optional('brain-pins');
         if (!host) return;
@@ -268,11 +310,13 @@
             host.innerHTML = '';
             return;
         }
-        const section = (label, rows) => rows.length
-            ? `<p class="brain-kicker">${esc(label)}</p>` + rows.map((page) => `<button type="button" class="brain-pin" data-id="${page.id}">${esc(page.title)}</button>`).join('')
-            : '';
+        const control = pinsControl();
+        if (!control) {
+            host.hidden = true;
+            return;
+        }
         host.hidden = false;
-        host.innerHTML = section('Favorites', favorites) + section('Recent', recent);
+        control.paint(favorites, recent, treeIcon('brain-icon-chevron'));
     }
 
     function linksFromGraph(page, graph) {
@@ -1261,12 +1305,6 @@
         const btn = event.target && event.target.closest ? event.target.closest('[data-mention]') : null;
         if (!btn) return;
         openPage(Number(btn.dataset.mention)).catch((err) => setStatus(err.message));
-    });
-    const pinsEl = optional('brain-pins');
-    if (pinsEl) pinsEl.addEventListener('click', (event) => {
-        const btn = event.target && event.target.closest ? event.target.closest('[data-id]') : null;
-        if (!btn) return;
-        openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
     });
     const quickBtn = optional('brain-quick');
     if (quickBtn) quickBtn.addEventListener('click', () => openSwitcher());

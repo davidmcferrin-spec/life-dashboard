@@ -163,6 +163,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 <?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
+<script src="/assets/js/brain-pins.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-markdown.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-blocks.js?v=<?= e($assetVer) ?>"></script>
