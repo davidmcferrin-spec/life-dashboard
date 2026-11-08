@@ -271,9 +271,33 @@
         return { narrow: narrow, coarse: coarse };
     }
 
-    function pinState() {
-        if (!window.BrainPins) return { favorites: false, recent: false };
-        return window.BrainPins.read(window.localStorage, pinLayout());
+    function pinStorage() {
+        try {
+            return window.localStorage;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    let pinControl = null;
+
+    function pinsControl() {
+        const host = optional('brain-pins');
+        if (!host || !window.BrainPins || typeof window.BrainPins.mount !== 'function') return null;
+        if (!pinControl) {
+            pinControl = window.BrainPins.mount(host, {
+                storage: pinStorage,
+                layout: pinLayout,
+                favorites: () => favorites,
+                recent: () => {
+                    const favIds = new Set(favorites.map((page) => page.id));
+                    return recents.filter((page) => !favIds.has(page.id)).slice(0, 8);
+                },
+                chevron: () => treeIcon('brain-icon-chevron'),
+                onOpen: (id) => openPage(id).catch((err) => setStatus(err.message)),
+            });
+        }
+        return pinControl;
     }
 
     function paintPins() {
@@ -286,26 +310,13 @@
             host.innerHTML = '';
             return;
         }
-        const state = pinState();
-        const chevron = treeIcon('brain-icon-chevron');
-        const parts = [];
-        if (favorites.length && window.BrainPins) {
-            parts.push(window.BrainPins.section('favorites', 'Favorites', favorites, state.favorites, chevron));
+        const control = pinsControl();
+        if (!control) {
+            host.hidden = true;
+            return;
         }
-        if (recent.length && window.BrainPins) {
-            parts.push(window.BrainPins.section('recent', 'Recent', recent, state.recent, chevron));
-        }
-        host.hidden = parts.length === 0;
-        host.innerHTML = parts.join('');
-    }
-
-    function togglePin(kind) {
-        if (!window.BrainPins) return;
-        const next = window.BrainPins.toggle(pinState(), kind);
-        window.BrainPins.write(window.localStorage, next);
-        paintPins();
-        const button = optional('brain-pins') && optional('brain-pins').querySelector('[data-pin-toggle="' + kind + '"]');
-        if (button && typeof button.focus === 'function') button.focus();
+        host.hidden = false;
+        control.paint(favorites, recent, treeIcon('brain-icon-chevron'));
     }
 
     function linksFromGraph(page, graph) {
@@ -1294,36 +1305,6 @@
         const btn = event.target && event.target.closest ? event.target.closest('[data-mention]') : null;
         if (!btn) return;
         openPage(Number(btn.dataset.mention)).catch((err) => setStatus(err.message));
-    });
-    const pinsEl = optional('brain-pins');
-    let pinFromKey = false;
-    if (pinsEl) pinsEl.addEventListener('keydown', (event) => {
-        const toggle = event.target && event.target.closest ? event.target.closest('[data-pin-toggle]') : null;
-        if (!toggle || !window.BrainPins) return;
-        const current = pinState();
-        const next = window.BrainPins.press(current, toggle.dataset.pinToggle, event.key);
-        if (next === current) return;
-        pinFromKey = true;
-        if (event.preventDefault) event.preventDefault();
-        window.BrainPins.write(window.localStorage, next);
-        paintPins();
-        const button = pinsEl.querySelector('[data-pin-toggle="' + toggle.dataset.pinToggle + '"]');
-        if (button && typeof button.focus === 'function') button.focus();
-    });
-    if (pinsEl) pinsEl.addEventListener('click', (event) => {
-        const toggle = event.target && event.target.closest ? event.target.closest('[data-pin-toggle]') : null;
-        if (toggle) {
-            if (pinFromKey) {
-                pinFromKey = false;
-                return;
-            }
-            if (event.preventDefault) event.preventDefault();
-            togglePin(toggle.dataset.pinToggle);
-            return;
-        }
-        const btn = event.target && event.target.closest ? event.target.closest('[data-id]') : null;
-        if (!btn) return;
-        openPage(Number(btn.dataset.id)).catch((err) => setStatus(err.message));
     });
     const quickBtn = optional('brain-quick');
     if (quickBtn) quickBtn.addEventListener('click', () => openSwitcher());

@@ -70,6 +70,94 @@
         return toggle(state, kind);
     }
 
+    function safeCall(fn) {
+        try {
+            return fn();
+        } catch (err) {
+            return null;
+        }
+    }
+
+    /**
+     * One controller for the sidebar. The in-memory state is what the
+     * headers show. Storage is only a copy, read once, and a failed write
+     * does not put the sections back.
+     * A header is a button, so Enter and Space arrive as click.
+     */
+    function mount(host, options) {
+        const opts = options || {};
+        let memory = null;
+        let lastFavorites = [];
+        let lastRecent = [];
+
+        function storage() {
+            if (typeof opts.storage !== 'function') return null;
+            return safeCall(opts.storage);
+        }
+
+        function layout() {
+            if (typeof opts.layout !== 'function') return { narrow: false, coarse: false };
+            const value = safeCall(opts.layout);
+            return value || { narrow: false, coarse: false };
+        }
+
+        function ensure() {
+            if (memory === null) memory = read(storage(), layout());
+            return memory;
+        }
+
+        function paint(favorites, recent, chevron) {
+            const current = ensure();
+            lastFavorites = favorites || [];
+            lastRecent = recent || [];
+            const mark = chevron || '';
+            let html = '';
+            if (lastFavorites.length) {
+                html += section('favorites', 'Favorites', lastFavorites, current.favorites, mark);
+            }
+            if (lastRecent.length) {
+                html += section('recent', 'Recent', lastRecent, current.recent, mark);
+            }
+            host.innerHTML = html;
+            return current;
+        }
+
+        function apply(kind) {
+            memory = toggle(ensure(), kind);
+            write(storage(), memory);
+            return memory;
+        }
+
+        host.addEventListener('click', (event) => {
+            const target = event.target;
+            if (!target || typeof target.closest !== 'function') return;
+            const header = target.closest('[data-pin-toggle]');
+            if (header && typeof host.contains === 'function' && host.contains(header)) {
+                if (typeof event.preventDefault === 'function') event.preventDefault();
+                const kind = header.getAttribute ? header.getAttribute('data-pin-toggle') : header.dataset.pinToggle;
+                apply(kind);
+                paint(
+                    typeof opts.favorites === 'function' ? opts.favorites() : lastFavorites,
+                    typeof opts.recent === 'function' ? opts.recent() : lastRecent,
+                    typeof opts.chevron === 'function' ? (safeCall(opts.chevron) || '') : ''
+                );
+                const button = host.querySelector('[data-pin-toggle="' + kind + '"]');
+                if (button && typeof button.focus === 'function') button.focus();
+                return;
+            }
+            const page = target.closest('[data-id]');
+            if (page && typeof host.contains === 'function' && host.contains(page) && typeof opts.onOpen === 'function') {
+                const id = page.getAttribute ? page.getAttribute('data-id') : page.dataset.id;
+                opts.onOpen(Number(id));
+            }
+        });
+
+        return {
+            state: ensure,
+            paint: paint,
+        };
+    }
+
     function section(kind, label, rows, collapsed, chevron) {
         const listId = 'brain-pin-' + kind;
         const open = !collapsed;
@@ -105,5 +193,6 @@
         toggle: toggle,
         press: press,
         section: section,
+        mount: mount,
     };
 });
