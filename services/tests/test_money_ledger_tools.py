@@ -8,6 +8,10 @@ def test_money_ledger_tools_resolve_onto_the_money_api():
     assert (method, path, body) == ("POST", "/api/v1/money/accounts/refresh", {})
     method, path, body = resolve("refresh_accounts", {"account_id": 4})
     assert (method, path, body) == ("POST", "/api/v1/money/accounts/4/refresh", {})
+    method, path, body = resolve("list_plaid_items", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/plaid/items", None)
+    method, path, body = resolve("get_sync_status", {})
+    assert (method, path, body) == ("GET", "/api/v1/money/plaid/status", None)
     method, path, body = resolve("set_debt_components", {"debt_id": 3, "principal": 80, "unapplied_funds": None})
     assert (method, path) == ("POST", "/api/v1/money/debts/3/components")
     assert body["principal"] == 80
@@ -75,7 +79,8 @@ def test_money_ledger_tools_resolve_onto_the_money_api():
     assert body["eaten_on"] == "2026-11-23"
     names = [tool["name"] for tool in TOOLS]
     for name in (
-        "get_money_summary", "refresh_accounts", "set_debt_components", "get_debt_components",
+        "get_money_summary", "refresh_accounts", "list_plaid_items", "get_sync_status",
+        "set_debt_components", "get_debt_components",
         "add_payment", "update_payment", "list_payments",
         "add_expected_inflow", "update_expected_inflow", "list_expected_inflows", "mark_inflow_received",
         "get_credit_utilization", "list_benefit_pots", "save_benefit_pot",

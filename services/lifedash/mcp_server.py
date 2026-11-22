@@ -787,7 +787,8 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "refresh_accounts",
         "description": (
-            "Ask for a live balance sync for one account or every account. Returns last_synced_at and stale. "
+            "Refresh one account or every account. A linked Plaid account calls /accounts/balance/get, "
+            "then imports new transactions and liability fields. Returns last_synced_at and stale. "
             "When no live sync is connected, the result says so and does not change the stored timestamps. "
             "Requires money:write."
         ),
@@ -796,6 +797,22 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {"account_id": {"type": "integer"}},
             "additionalProperties": False,
         },
+    },
+    {
+        "name": "list_plaid_items",
+        "description": (
+            "Linked banks: institution, status, last sync, sync error, and which dashboard account each Plaid account maps to. "
+            "The access token is not included. Requires money:read."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_sync_status",
+        "description": (
+            "Whether Plaid is configured, each linked item, account freshness, and sync errors. "
+            "Does not return the client secret or the access token. Requires money:read."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "set_debt_components",
@@ -3111,6 +3128,10 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args.get("account_id"):
             return "POST", f"/api/v1/money/accounts/{int(args['account_id'])}/refresh", {}
         return "POST", "/api/v1/money/accounts/refresh", {}
+    if name == "list_plaid_items":
+        return "GET", "/api/v1/money/plaid/items", None
+    if name == "get_sync_status":
+        return "GET", "/api/v1/money/plaid/status", None
     if name == "set_debt_components":
         body = {}
         for key in ("principal", "unapplied_funds", "late_charges", "fees", "interest"):

@@ -107,7 +107,7 @@ date_default_timezone_set(Config::get('APP_TIMEZONE', 'America/Chicago'));
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: strict-origin-when-cross-origin');
-header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://sdk.scdn.co; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.spotify.com https://api-partner.spotify.com https://accounts.spotify.com https://*.scdn.co wss://*.spotify.com; media-src 'self' blob: https://*.scdn.co; worker-src 'self' blob:");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://sdk.scdn.co https://cdn.plaid.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: https:; connect-src 'self' https://api.spotify.com https://api-partner.spotify.com https://accounts.spotify.com https://*.scdn.co wss://*.spotify.com https://cdn.plaid.com https://sandbox.plaid.com https://development.plaid.com https://production.plaid.com; frame-src https://cdn.plaid.com https://sandbox.plaid.com https://development.plaid.com https://production.plaid.com; media-src 'self' blob: https://*.scdn.co; worker-src 'self' blob:");
 
 // -------------------------------------------------------
 // Global helper functions

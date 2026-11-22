@@ -406,6 +406,51 @@ $finIcon = static function (string $name): void {
         <div id="money-inflows" aria-live="polite"></div>
     </section>
 
+    <section class="fin-card" id="money-plaid" aria-labelledby="money-plaid-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">Plaid</span>
+                    <h2 id="money-plaid-title">Bank connection</h2>
+                </div>
+            </div>
+            <button type="button" class="btn" id="money-plaid-link" hidden>Link a bank</button>
+        </header>
+        <p class="fin-note">The client id and secret are stored encrypted. Leave a field blank to keep the saved value. Link, then map each bank account. Refresh reads the balance after that.</p>
+        <form id="money-plaid-settings" class="space-y-3">
+            <?php
+            $secretId = 'plaid-client-id';
+            $secretName = 'client_id';
+            $secretLabel = 'Client id';
+            $secretHint = '';
+            $secretValue = '';
+            $secretPlaceholder = '';
+            $secretAutocomplete = 'off';
+            $secretHidden = false;
+            require __DIR__ . '/partials/secret-field.php';
+            $secretId = 'plaid-secret';
+            $secretName = 'secret';
+            $secretLabel = 'Secret';
+            $secretHint = '';
+            $secretValue = '';
+            $secretPlaceholder = '';
+            $secretAutocomplete = 'new-password';
+            $secretHidden = false;
+            require __DIR__ . '/partials/secret-field.php';
+            ?>
+            <label class="block ld-field"><span>Environment</span>
+                <select name="environment" class="input w-full">
+                    <option value="sandbox">Sandbox</option>
+                    <option value="development">Development</option>
+                    <option value="production">Production</option>
+                </select>
+            </label>
+            <button type="submit" class="btn">Save Plaid keys</button>
+            <p id="money-plaid-settings-error" class="ld-field-error hidden" role="alert"></p>
+        </form>
+        <div id="money-plaid-items" aria-live="polite"></div>
+    </section>
+
     <section class="fin-card" aria-labelledby="money-import-title">
         <header class="fin-card-head">
             <div class="fin-card-title">
@@ -434,5 +479,6 @@ $finIcon = static function (string $name): void {
 <script src="/assets/js/settings-money.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/money-bills.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/money-ledger.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/money-plaid.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ final class Scope
 
     public const MONEY_ENTITIES = [
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday',
-        'payment', 'inflow', 'benefit_pot', 'money_options',
+        'payment', 'inflow', 'benefit_pot', 'money_options', 'plaid',
     ];
 
     public const TODO_ENTITIES = ['todo', 'todo_category'];
@@ -55,7 +55,7 @@ final class Scope
 
     public const AUDIT_ENTITIES = [
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday',
-        'payment', 'inflow', 'benefit_pot', 'money_options',
+        'payment', 'inflow', 'benefit_pot', 'money_options', 'plaid',
         'todo', 'todo_category', 'habit',
         'shopping_list', 'shopping_item',
         'call', 'contact', 'vetted_agency',

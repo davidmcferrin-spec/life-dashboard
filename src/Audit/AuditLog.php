@@ -256,6 +256,7 @@ final class AuditLog
         'inflow'        => ['%/money/inflows%'],
         'benefit_pot'   => ['%/money/benefit-pots%'],
         'money_options' => ['%/money/options%'],
+        'plaid'         => ['%/money/plaid%'],
         'todo'          => ['%/todos/items%'],
         'todo_category' => ['%/todos/categories%'],
         'habit'         => ['%/habits%'],

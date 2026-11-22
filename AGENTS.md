@@ -25,6 +25,10 @@ PostgreSQL integration tests need `LIFEDASH_TEST_PG_DB` ending in `_test`. Pytho
 
 More detail is in `README.md`. Cloud-agent setup is in `.cursor/CLOUD.md`.
 
+## Plaid
+
+Bank balances use Plaid. Keys are not environment variables. On the [Plaid dashboard](https://dashboard.plaid.com/developers/keys), create a key for Sandbox while trying the connection, then Development or Production when the institution should be the real one. On Money, enter the client id, the secret, and that environment, then click Link and sign in at the bank. Map each Plaid account onto a dashboard account before Refresh. The access token stays encrypted and is not shown again. `cron/sync_plaid.php` (`lifedash-job plaid`) repeats the sync every 3 hours.
+
 ## MCP
 
 `lifedash-mcp` listens on `0.0.0.0:8765` unless `MCP_BIND=loopback`. Plain HTTP off returns 403 and does not move that socket. `tools/list` with no cursor returns every registered tool. A cursor asks for one page. The list is not filtered by scope. A call still needs a valid key, that key's scopes, and the user id on the key. Session-only routes and `system:deploy` stay as they were. Those calls are written to `audit_events`. Settings → AI connections (`/settings/agents`) is where a person sets a key's scopes and revokes it. Settings → Audit (`/settings/audit`) is read-only. `get_audit_log` reads the same log. Token create, edit, and revoke stay on a signed-in browser session.

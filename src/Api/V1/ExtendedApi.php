@@ -564,6 +564,34 @@ final class ExtendedApi
         $r->get('/api/v1/money/overview', fn () => $this->run(fn (int $u) => [
             'summary' => $this->svc->ledger->summary($u),
         ]));
+        $r->get('/api/v1/money/plaid/settings', fn () => $this->run(fn (int $u) => [
+            'plaid' => $this->svc->plaid->settingsView($u),
+        ]));
+        $r->post('/api/v1/money/plaid/settings', fn () => $this->run(fn (int $u) => [
+            'plaid' => $this->svc->plaid->saveSettings($u, $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/plaid/link-token', fn () => $this->run(fn (int $u) => $this->svc->plaid->linkToken($u), 200, true));
+        $r->post('/api/v1/money/plaid/exchange', fn () => $this->run(fn (int $u) => [
+            'plaid_item' => $this->svc->plaid->exchange($u, $this->runner->body()),
+        ], 201, true));
+        $r->get('/api/v1/money/plaid/items', fn () => $this->run(fn (int $u) => $this->svc->plaid->items($u)));
+        $r->get('/api/v1/money/plaid/status', fn () => $this->run(fn (int $u) => [
+            'status' => $this->svc->plaid->syncStatus($u),
+        ]));
+        $r->post('/api/v1/money/plaid/items/{id}/disconnect', fn (array $p) => $this->run(fn (int $u) => [
+            'plaid_item' => $this->svc->plaid->disconnect($u, self::id($p)),
+        ], 200, true));
+        $r->post('/api/v1/money/plaid/items/{id}/link-token', fn (array $p) => $this->run(
+            fn (int $u) => $this->svc->plaid->linkToken($u, self::id($p)),
+            200,
+            true
+        ));
+        $r->post('/api/v1/money/plaid/items/{id}/relinked', fn (array $p) => $this->run(fn (int $u) => [
+            'plaid_item' => $this->svc->plaid->markRelinked($u, self::id($p)),
+        ], 200, true));
+        $r->post('/api/v1/money/plaid/accounts/{id}/map', fn (array $p) => $this->run(fn (int $u) => [
+            'plaid_account' => $this->svc->plaid->mapAccount($u, self::id($p), $this->runner->body()),
+        ], 200, true));
         $r->post('/api/v1/money/accounts/refresh', fn () => $this->run(function (int $u): array {
             $id = $this->runner->body()['account_id'] ?? null;
             return $this->svc->ledger->refreshAccounts($u, is_numeric($id) && (int) $id > 0 ? (int) $id : null);

@@ -32,6 +32,7 @@ final class MoneyLedgerService
         private readonly Clock $clock,
         private readonly MoneyService $money,
         private readonly MoneyPlanService $plan,
+        private readonly ?PlaidSync $plaid = null,
     ) {}
 
     /**
@@ -42,12 +43,14 @@ final class MoneyLedgerService
      */
     public function refreshAccounts(int $userId, ?int $accountId): array
     {
+        if ($this->plaid !== null) {
+            return $this->plaid->refresh($userId, $accountId);
+        }
         $accounts = $accountId === null
             ? $this->money->accounts($userId)
             : [$this->money->account($userId, $accountId)];
         $out = [];
         foreach ($accounts as $account) {
-            $provider = $this->syncProvider($userId, (int) $account['id']);
             $out[] = [
                 'id'             => (int) $account['id'],
                 'name'           => (string) $account['name'],
@@ -55,9 +58,7 @@ final class MoneyLedgerService
                 'stale'          => (bool) $account['stale'],
                 'refreshed'      => false,
                 'live_sync'      => false,
-                'message'        => $provider === null
-                    ? 'No live sync is connected for this account.'
-                    : 'No live sync is connected for this account (' . $provider . ').',
+                'message'        => 'No live sync is connected for this account.',
             ];
         }
 
@@ -567,6 +568,10 @@ final class MoneyLedgerService
             }
         }
         $options = $this->options($userId);
+        $syncErrors = $this->plaid !== null ? $this->plaid->syncErrors($userId) : [];
+        if ($syncErrors !== []) {
+            $stale = true;
+        }
         $upcoming = array_values(array_filter(
             $this->payments($userId),
             static fn (array $row): bool => in_array($row['status'], ['scheduled', 'pending'], true)
@@ -586,22 +591,9 @@ final class MoneyLedgerService
             'freshness'          => [
                 'threshold_hours' => $options['stale_hours'],
                 'stale'           => $stale,
+                'sync_errors'     => $syncErrors,
             ],
         ];
-    }
-
-    private function syncProvider(int $userId, int $accountId): ?string
-    {
-        $row = $this->db->fetchOne(
-            'SELECT sync_provider FROM money_accounts WHERE id = ? AND user_id = ?',
-            [$accountId, $userId]
-        );
-        if ($row === null || $row['sync_provider'] === null) {
-            return null;
-        }
-        $provider = trim((string) $row['sync_provider']);
-
-        return $provider === '' ? null : $provider;
     }
 
     /**
