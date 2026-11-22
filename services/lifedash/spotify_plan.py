@@ -14,8 +14,11 @@ READ_ONLY = "This playlist is read-only. Only playlists you own can be edited or
 PRIVATE_SCOPE = "playlist-modify-private"
 SCOPE_ERROR = (
     "Reconnect Spotify to grant playlist-modify-private. "
-    "Without that scope Spotify saves a private playlist as public."
+    "Open Settings, choose Spotify, and click Reconnect."
 )
+STILL_PUBLIC = "Spotify accepted the update but still reports this playlist as public."
+# Three reads. The waits between them add up to about five seconds.
+READ_BACK_DELAYS = (0, 2, 3)
 ITEM_FORBIDDEN = "Spotify does not return tracks for a playlist you do not own."
 ITEM_UNREADABLE = "Spotify reported tracks, but none of them could be read."
 ITEM_FAILED = "Spotify did not return this playlist's tracks."
@@ -300,14 +303,16 @@ def create_body(payload: dict) -> dict:
 
 
 def details_body(payload: dict) -> dict:
-    """A privacy change also clears collaborative. Public and collaborative cannot both be true."""
+    """Change-details body. public is its own field.
+
+    Spotify's update call drops public false when collaborative is in the same
+    body, so a private edit sends public on its own.
+    """
     body: dict = {}
     if "name" in payload:
         body["name"] = payload["name"]
     if "public" in payload:
-        public = bool(payload["public"])
-        body["public"] = public
-        body["collaborative"] = False
+        body["public"] = bool(payload["public"])
     return body
 
 
@@ -322,11 +327,30 @@ def spotify_is_public(remote: dict) -> bool | None:
     return None
 
 
-def privacy_followup(wanted_public: bool, remote: dict) -> dict | None:
-    """PUT body when the playlist Spotify returned does not match the write. None when it already matches."""
-    if spotify_is_public(remote) is wanted_public:
-        return None
-    return {"public": wanted_public, "collaborative": False}
+def privacy_corrections(wanted_public: bool, remote: dict) -> list[dict]:
+    """PUT bodies when Spotify's playlist does not match. Empty when it already does.
+
+    A collaborative playlist is cleared first. public is then sent alone:
+    PUT /playlists/{id} with {"public": false}. The field name is public.
+    """
+    actual = spotify_is_public(remote)
+    collaborative = remote.get("collaborative") is True
+    if actual is wanted_public and not (wanted_public is False and collaborative):
+        return []
+    steps: list[dict] = []
+    if wanted_public is False and collaborative:
+        steps.append({"collaborative": False})
+    steps.append({"public": wanted_public})
+    return steps
+
+
+def granted_scopes(payload: dict, previous: str | None) -> str:
+    """Scopes from a token response. A missing scope field does not invent a grant."""
+    raw = payload.get("scope") if isinstance(payload, dict) else None
+    if isinstance(raw, str) and raw.strip():
+        return " ".join(raw.replace(",", " ").split())
+    text = (previous or "").strip()
+    return " ".join(text.replace(",", " ").split())
 
 
 def privacy_verdict(wanted_public: bool, remote: dict) -> dict:

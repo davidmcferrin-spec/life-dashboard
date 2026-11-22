@@ -42,4 +42,26 @@ final class SpotifyPlaylistAccessTest extends TestCase
         self::assertTrue(SpotifyLibrary::requestedPublic(['public' => true]));
         self::assertContains('playlist-modify-private', SpotifyAccount::SCOPES);
     }
+
+    public function testTokenScopeIsTheGrantAndAMissingFieldDoesNotInventOne(): void
+    {
+        self::assertSame(
+            'playlist-modify-public',
+            SpotifyAccount::grantedScopes('playlist-modify-public', 'playlist-modify-private playlist-modify-public')
+        );
+        self::assertSame(
+            'playlist-modify-public',
+            SpotifyAccount::grantedScopes(null, 'playlist-modify-public')
+        );
+        self::assertSame('', SpotifyAccount::grantedScopes(null, null));
+        self::assertNotContains(
+            'playlist-modify-private',
+            SpotifyAccount::missingAccountScopes(['playlist-modify-private', 'streaming', 'user-read-email', 'user-read-private'])
+        );
+        self::assertContains('playlist-modify-private', SpotifyAccount::missingAccountScopes(['playlist-modify-public']));
+        $page = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/settings/spotify.php');
+        self::assertStringContainsString('playlist-modify-private', $page);
+        self::assertStringContainsString('>Reconnect<', $page);
+        self::assertStringContainsString('/settings/spotify/connect', $page);
+    }
 }
