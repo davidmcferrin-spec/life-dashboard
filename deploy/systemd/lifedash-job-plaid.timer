@@ -1,0 +1,13 @@
+# bank sync every 3 h
+[Unit]
+Description=life-dashboard schedule: plaid (bank sync every 3 h)
+
+[Timer]
+OnCalendar=00/3:20
+Unit=lifedash-job@plaid.service
+Persistent=true
+RandomizedDelaySec=90s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

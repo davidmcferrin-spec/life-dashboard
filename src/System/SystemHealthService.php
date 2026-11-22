@@ -80,6 +80,12 @@ class SystemHealthService
             'staleMinutes'  => 45,
             'scheduleHint'  => 'Every ~15 min',
         ],
+        'plaid' => [
+            'label'         => 'Bank sync',
+            'log'           => 'plaid.log',
+            'staleMinutes'  => 240,
+            'scheduleHint'  => 'Every 3 hours',
+        ],
     ];
 
     private const TAIL_CHUNK_BYTES = 65536;

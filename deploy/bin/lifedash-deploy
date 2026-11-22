@@ -120,6 +120,13 @@ log "hermes and opencode"
 log "record revision"
 lifedash_write_revision "$APP_DIR" || die "could not record the deployed revision"
 
+if [[ -f $APP_DIR/deploy/systemd/lifedash-job-plaid.timer ]]; then
+    install -m 0644 "$APP_DIR/deploy/systemd/lifedash-job@.service" /etc/systemd/system/
+    install -m 0644 "$APP_DIR/deploy/systemd/lifedash-job-plaid.timer" /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now lifedash-job-plaid.timer >/dev/null || log "WARNING: plaid timer was not enabled"
+fi
+
 log "restart realtime push and MCP"
 systemctl enable lifedash-push.service >/dev/null
 systemctl restart lifedash-push.service

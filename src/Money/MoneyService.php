@@ -105,6 +105,11 @@ final class MoneyService
         return $row === null ? null : $this->formatAccount($row);
     }
 
+    public function recordSnapshot(int $userId): void
+    {
+        $this->touchSnapshot($userId);
+    }
+
     public function archiveAccount(int $userId, int $id): void
     {
         $this->account($userId, $id);
@@ -540,6 +545,12 @@ final class MoneyService
             'last4'            => $last4 !== null && trim((string) $last4) !== '' ? trim((string) $last4) : null,
             'credit_limit'     => $limit,
             'available_credit' => $stored ?? ($limit !== null ? round($limit - $balance, 2) : null),
+            'available_balance'=> isset($row['available_balance']) && $row['available_balance'] !== null && $row['available_balance'] !== ''
+                ? (float) $row['available_balance']
+                : null,
+            'sync_provider'    => isset($row['sync_provider']) && $row['sync_provider'] !== null && $row['sync_provider'] !== ''
+                ? (string) $row['sync_provider']
+                : null,
             'archived'         => $row['archived_at'] !== null,
             'last_synced_at'   => $fresh['last_synced_at'],
             'stale'            => $fresh['stale'],

@@ -21,6 +21,7 @@ use Dashboard\Money\BillsService;
 use Dashboard\Money\MoneyLedgerService;
 use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
+use Dashboard\Money\PlaidSync;
 use Dashboard\Pantry\MealBuilder;
 use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
@@ -49,6 +50,7 @@ final class Services
     public readonly MoneyPlanService $plan;
     public readonly BillsService $bills;
     public readonly MoneyLedgerService $ledger;
+    public readonly PlaidSync $plaid;
     public readonly InvestService $invest;
     public readonly SearchService $search;
     public readonly RedditService $reddit;
@@ -79,7 +81,8 @@ final class Services
         $this->money   = new MoneyService($db, $clock, $this->pages);
         $this->plan    = new MoneyPlanService($db, $clock, $this->money);
         $this->bills   = new BillsService($db, $clock, $this->money);
-        $this->ledger  = new MoneyLedgerService($db, $clock, $this->money, $this->plan);
+        $this->plaid   = PlaidSync::make($db, $clock, $this->money, $this->plan);
+        $this->ledger  = new MoneyLedgerService($db, $clock, $this->money, $this->plan, $this->plaid);
         $this->invest  = new InvestService($db);
         $this->search  = new SearchService($db);
         $this->reddit  = new RedditService($db);

@@ -868,9 +868,12 @@
         const food = d.food_week || {};
         const util = d.utilization && d.utilization.overall ? d.utilization.overall.utilization_percent : null;
         const fresh = d.freshness && d.freshness.stale ? ' · stale' : '';
+        const syncError = d.freshness && d.freshness.sync_errors && d.freshness.sync_errors[0]
+            ? `<p>${esc(d.freshness.sync_errors[0].institution)}: ${esc(d.freshness.sync_errors[0].sync_error)}</p>`
+            : '';
         const pots = (d.benefit_pots || []).length;
         const incoming = (d.expected_inflows || []).length;
-        ctx.body.innerHTML = `<div class="ld-money ld-money-worth"><div class="ld-money-hero"><strong>${esc(fmt.money(d.net_worth))}</strong><span>net worth${esc(fresh)}</span></div><footer><span class="ld-money-account"><em>Cash</em><strong>${esc(fmt.money(d.cash))}</strong></span><span class="ld-money-account"><em>Debts</em><strong>${esc(fmt.money(d.debts && d.debts.total))}</strong></span><span class="ld-money-account"><em>Utilization</em><strong>${util == null ? '—' : esc(String(util) + '%')}</strong></span><span class="ld-money-account"><em>Food</em><strong>${food.total ? esc(fmt.money(food.total.spent)) : '—'}</strong></span><span class="ld-money-account"><em>Pots</em><strong>${esc(String(pots))}</strong></span><span class="ld-money-account"><em>Inflows</em><strong>${esc(String(incoming))}</strong></span></footer></div>`;
+        ctx.body.innerHTML = `<div class="ld-money ld-money-worth"><div class="ld-money-hero"><strong>${esc(fmt.money(d.net_worth))}</strong><span>net worth${esc(fresh)}</span></div><footer><span class="ld-money-account"><em>Cash</em><strong>${esc(fmt.money(d.cash))}</strong></span><span class="ld-money-account"><em>Debts</em><strong>${esc(fmt.money(d.debts && d.debts.total))}</strong></span><span class="ld-money-account"><em>Utilization</em><strong>${util == null ? '—' : esc(String(util) + '%')}</strong></span><span class="ld-money-account"><em>Food</em><strong>${food.total ? esc(fmt.money(food.total.spent)) : '—'}</strong></span><span class="ld-money-account"><em>Pots</em><strong>${esc(String(pots))}</strong></span><span class="ld-money-account"><em>Inflows</em><strong>${esc(String(incoming))}</strong></span></footer>${syncError}</div>`;
     }
 
     function portfolio(ctx) {
