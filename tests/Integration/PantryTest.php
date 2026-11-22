@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Tests\Integration;
 
 use Dashboard\Support\Clock;
+use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
 use Dashboard\Tracking\Services;
 use DateTimeImmutable;
@@ -169,16 +170,100 @@ final class PantryTest extends PgsqlTestCase
         $tossed = $this->svc->pantry->toss($this->user, [$past['id']], 'david')['tossed'];
         self::assertSame('tossed', $tossed[0]['status']);
         $event = $this->db->fetchOne(
-            "SELECT action, by_name FROM pantry_events WHERE lot_id = ? AND action = 'toss'",
+            "SELECT action, by_name, note FROM pantry_events WHERE lot_id = ? AND action = 'toss'",
             [$past['id']]
         );
         self::assertSame('toss', $event['action']);
         self::assertSame('david', $event['by_name']);
+        self::assertNull($event['note']);
         $still = $this->svc->pantry->listLots($this->user, ['status' => 'on_hand'])['lots'];
         self::assertSame([$soon['id']], array_column($still, 'id'));
         $any = $this->svc->pantry->listLots($this->user, ['status' => 'any'])['lots'];
         self::assertNotContains($past['id'], array_column($any, 'id'));
         self::assertContains($soon['id'], array_column($any, 'id'));
+    }
+
+    public function testTossAcceptsAUsedLotAndKeepsTheEarlierEvent(): void
+    {
+        $product = $this->sausage();
+        $lot = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $product['id'],
+            'quantity' => 1,
+            'location' => 'fridge',
+        ]], 'david')['lots'][0];
+        $used = $this->svc->pantry->adjust($this->user, $lot['id'], ['quantity' => 0], 'david')['lot'];
+        self::assertSame('used', $used['status']);
+
+        $tossed = $this->svc->pantry->toss($this->user, [$lot['id']], 'claire')['tossed'][0];
+        self::assertSame('tossed', $tossed['status']);
+        $toss = $this->db->fetchOne(
+            "SELECT note FROM pantry_events WHERE lot_id = ? AND action = 'toss'",
+            [$lot['id']]
+        );
+        self::assertSame('Was used', $toss['note']);
+        $earlier = $this->db->fetchOne(
+            "SELECT action FROM pantry_events WHERE lot_id = ? AND action = 'adjust'",
+            [$lot['id']]
+        );
+        self::assertSame('adjust', $earlier['action']);
+        $usedLots = $this->svc->pantry->listLots($this->user, ['status' => 'used'])['lots'];
+        self::assertNotContains($lot['id'], array_column($usedLots, 'id'));
+        $tossedLots = $this->svc->pantry->listLots($this->user, ['status' => 'tossed'])['lots'];
+        self::assertContains($lot['id'], array_column($tossedLots, 'id'));
+
+        $expired = $this->svc->pantry->addItems($this->user, [[
+            'product_id' => $product['id'],
+            'quantity' => 1,
+            'location' => 'fridge',
+        ]], 'david')['lots'][0];
+        $this->db->execute("UPDATE pantry_lots SET status = 'expired', quantity = 0 WHERE id = ?", [$expired['id']]);
+        try {
+            $this->svc->pantry->toss($this->user, [$expired['id']], 'claire');
+            self::fail('an expired lot stays closed');
+        } catch (ValidationException $e) {
+            self::assertStringContainsString('expired', $e->getMessage());
+        }
+
+        $this->db->execute("INSERT INTO users (username, email, password_hash) VALUES ('ada', 'a@x', 'h')");
+        $other = (int) $this->db->lastInsertId();
+        $this->expectException(NotFoundException::class);
+        $this->svc->pantry->toss($other, [$lot['id']], 'ada');
+    }
+
+    public function testFoodPreferencesReadTheVaultPageAndDoNotCopyIt(): void
+    {
+        $body = "## Likes\n- shrimp\n- [[San Marzano tomatoes|San Marzano]]\n- shrimp\n\n## Dislikes\n- cilantro\n- **no oats**\n\n## Notes\n- not a preference\n\n| UPC | Name |\n| --- | --- |\n| 012345678905 | Vault beans |\n";
+        $this->db->execute(
+            "INSERT INTO pages (user_id, title, slug, kind, body) VALUES (?, 'David — Shopping Preferences', 'shopping-preferences', 'reference', ?)",
+            [$this->user, $body]
+        );
+        $read = $this->svc->pantry->foodPreferences($this->user);
+        self::assertSame('vault', $read['source']);
+        self::assertSame('David — Shopping Preferences', $read['page']['title']);
+        self::assertSame(['shrimp', 'San Marzano'], $read['likes']);
+        self::assertSame(['cilantro', 'no oats'], $read['dislikes']);
+        self::assertSame('012345678905', $read['products'][0]['upc']);
+        self::assertSame($body, $read['body']);
+        self::assertSame(0, (int) $this->db->fetchScalar(
+            'SELECT COUNT(*) FROM pantry_products WHERE user_id = ? AND upc = ?',
+            [$this->user, '012345678905']
+        ));
+        self::assertSame($body, $this->db->fetchScalar(
+            'SELECT body FROM pages WHERE user_id = ? AND title = ?',
+            [$this->user, 'David — Shopping Preferences']
+        ));
+
+        $this->db->execute("INSERT INTO users (username, email, password_hash) VALUES ('ada', 'ada-pref@x', 'h')");
+        $other = (int) $this->db->lastInsertId();
+        $empty = $this->svc->pantry->foodPreferences($other);
+        self::assertNull($empty['page']);
+        self::assertSame([], $empty['likes']);
+
+        $this->db->execute(
+            "UPDATE pages SET archived_at = (now() AT TIME ZONE 'UTC') WHERE user_id = ? AND title = ?",
+            [$this->user, 'David — Shopping Preferences']
+        );
+        self::assertNull($this->svc->pantry->foodPreferences($this->user)['page']);
     }
 
     public function testLowStockSkipsAnUncheckedShoppingName(): void

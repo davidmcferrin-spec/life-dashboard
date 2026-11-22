@@ -1100,6 +1100,14 @@
             return `<div class="ld-shop-cat">${esc(group.category)}</div>${rows}`;
         }).join('') : '';
 
+        const deferred = list ? (list.deferred || []) : [];
+        const deferredOpen = host && host.dataset.shopDeferred === '1';
+        const deferredRows = deferred.map((item) => shopRow(item, false)).join('');
+        const deferredBlock = deferred.length
+            ? `<button type="button" class="ld-shop-deferred-toggle" data-shop-deferred aria-expanded="${deferredOpen}">Deferred · ${deferred.length}</button>
+               <div class="ld-shop-deferred${deferredOpen ? '' : ' hidden'}">${deferredRows}</div>`
+            : '';
+
         const bought = list ? (list.bought || []) : [];
         const boughtRows = bought.map((item) => shopRow(item, true)).join('');
         const boughtBlock = bought.length
@@ -1107,7 +1115,7 @@
                <div class="ld-shop-bought${boughtOpen ? '' : ' hidden'}">${boughtRows}</div>`
             : '';
 
-        const empty = list && !(list.groups || []).length
+        const empty = list && !(list.groups || []).length && !deferred.length
             ? emptyPanel('Nothing open', 'Add an item below.')
             : '';
 
@@ -1118,7 +1126,7 @@
                     <input class="input" name="text" maxlength="160" placeholder="2 lb chicken" aria-label="Add item" autocomplete="off">
                     <button type="submit" class="btn text-xs">Add</button>
                 </form>
-                <div class="ld-shop-items">${groups}${empty}${boughtBlock}</div>
+                <div class="ld-shop-items">${groups}${empty}${deferredBlock}${boughtBlock}</div>
             </div>`;
 
         ctx.body.querySelectorAll('[data-shop-tab]').forEach((btn) => {
@@ -1162,11 +1170,20 @@
                 shopping(ctx);
             });
         }
+        const later = ctx.body.querySelector('[data-shop-deferred]');
+        if (later) {
+            later.addEventListener('click', () => {
+                if (host) host.dataset.shopDeferred = host.dataset.shopDeferred === '1' ? '0' : '1';
+                shopping(ctx);
+            });
+        }
     }
 
     function shopRow(item, bought) {
         const qty = shopQty(item);
-        const meta = [qty, item.store || '', item.notes || ''].filter(Boolean).join(' · ');
+        const wave = item.order_wave && String(item.order_wave).toLowerCase() !== 'deferred' ? item.order_wave : '';
+        const when = item.needed_by ? 'by ' + item.needed_by : '';
+        const meta = [qty, item.store || '', wave, when, item.notes || ''].filter(Boolean).join(' · ');
         return `<div class="ld-shop-row${bought ? ' is-bought' : ''}">
             <button type="button" class="ld-check${bought ? ' is-done' : ''}" data-shop-check="${item.id}" data-bought="${bought ? '1' : '0'}"
                 aria-pressed="${bought}" aria-label="${esc(bought ? 'Return' : 'Buy')} ${esc(item.name)}"></button>
