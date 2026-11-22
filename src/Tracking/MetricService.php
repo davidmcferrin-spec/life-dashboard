@@ -11,7 +11,7 @@ use Dashboard\Support\ValidationException;
 /**
  * MetricService — what a user tracks. Kinds:
  *
- *   habit     one 0/1 entry per local day            config: emoji, color, target_per_week, description, goal_metric_id, goal_threshold
+ *   habit     check-off, or a daily count            config: emoji, color, target_per_week, description, goal_metric_id, goal_threshold, daily_target
  *   scale     bounded integer rating (e.g. mood 1–5) config: min, max, labels{value:label}, emoji
  *   number    free numeric value                     config: decimals, goal, goal_direction
  *   duration  seconds                                config: goal_seconds
@@ -221,7 +221,7 @@ final class MetricService
     public static function validateConfig(string $kind, array $config): array
     {
         $allowed = match ($kind) {
-            'habit'    => ['emoji', 'color', 'target_per_week', 'description', 'goal_metric_id', 'goal_threshold'],
+            'habit'    => ['emoji', 'color', 'target_per_week', 'description', 'goal_metric_id', 'goal_threshold', 'daily_target'],
             'scale'    => ['min', 'max', 'labels', 'emoji', 'color', 'description'],
             'number'   => ['decimals', 'goal', 'goal_direction', 'color', 'description'],
             'duration' => ['goal_seconds', 'color', 'description'],
@@ -273,6 +273,16 @@ final class MetricService
                         throw ValidationException::withFields(['config.goal_threshold' => 'Threshold must be a number.']);
                     }
                     $out['goal_threshold'] = (float) $config['goal_threshold'];
+                }
+                if (array_key_exists('daily_target', $config) && $config['daily_target'] !== null && $config['daily_target'] !== '') {
+                    if (!is_numeric($config['daily_target'])) {
+                        throw ValidationException::withFields(['config.daily_target' => 'Daily target must be a number.']);
+                    }
+                    $daily = (float) $config['daily_target'];
+                    if ($daily <= 0.0 || $daily > 100000) {
+                        throw ValidationException::withFields(['config.daily_target' => 'Daily target must be greater than 0 and at most 100000.']);
+                    }
+                    $out['daily_target'] = $daily;
                 }
                 break;
 

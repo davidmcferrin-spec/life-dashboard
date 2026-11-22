@@ -172,6 +172,194 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "log_meal",
+        "description": (
+            "Store what was eaten. meal_type is breakfast, lunch, dinner, snack, or other. "
+            "items is an optional list of names or {name, quantity}. eaten_out defaults to false. "
+            "place and cost are optional. A matching meal habit is checked, and an eat-at-home habit "
+            "is checked only when eaten_out is false. Does not change the pantry. Uses health:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": _DAY,
+                "meal_type": {"type": "string"},
+                "description": {"type": "string"},
+                "items": {"type": "array"},
+                "eaten_out": {"type": "boolean"},
+                "place": {"type": "string"},
+                "cost": {"type": "number"},
+            },
+            "required": ["meal_type", "description"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_meals",
+        "description": "Meals logged between from and to (YYYY-MM-DD). Omit both for the last 14 days. Uses health:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"from": _DAY, "to": _DAY},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "log_blood_pressure",
+        "description": (
+            "Store a blood pressure reading. systolic and diastolic are required whole numbers, systolic higher. "
+            "pulse, taken_at, arm (left or right), position (sitting, standing, or lying), and notes are optional. "
+            "taken_at defaults to now. Uses health:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "systolic": {"type": "integer"},
+                "diastolic": {"type": "integer"},
+                "pulse": {"type": "integer"},
+                "taken_at": {"type": "string"},
+                "arm": {"type": "string"},
+                "position": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["systolic", "diastolic"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_blood_pressure",
+        "description": (
+            "Blood pressure readings between from and to, plus average systolic, diastolic, and pulse. "
+            "Omit both dates for the last 30 days. Uses health:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"from": _DAY, "to": _DAY},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_medication",
+        "description": (
+            "Add a medication. name is required. dose, schedule, active (default true), "
+            "started_on, stopped_on, and notes are optional. Uses health:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "dose": {"type": "string"},
+                "schedule": {"type": "string"},
+                "active": {"type": "boolean"},
+                "started_on": _DAY,
+                "stopped_on": _DAY,
+                "notes": {"type": "string"},
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_medication",
+        "description": "Change a medication. Omitted fields stay. active false stops it from the active list. Uses health:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "medication_id": {"type": "integer"},
+                "name": {"type": "string"},
+                "dose": {"type": "string"},
+                "schedule": {"type": "string"},
+                "active": {"type": "boolean"},
+                "started_on": _DAY,
+                "stopped_on": _DAY,
+                "notes": {"type": "string"},
+            },
+            "required": ["medication_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_medications",
+        "description": "Medications for this user. active true returns only current ones. Omit active for all. Uses health:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"active": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "log_medication_dose",
+        "description": "Record that a dose was taken. taken_at defaults to now. The medication must belong to this user. Uses health:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "medication_id": {"type": "integer"},
+                "taken_at": {"type": "string"},
+                "notes": {"type": "string"},
+            },
+            "required": ["medication_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_appointment",
+        "description": (
+            "Add an appointment. provider and starts_at (or datetime) are required. "
+            "specialty, location, reason, status (scheduled, completed, cancelled, missed), and follow_up are optional. "
+            "Uses health:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "provider": {"type": "string"},
+                "specialty": {"type": "string"},
+                "starts_at": {"type": "string"},
+                "datetime": {"type": "string"},
+                "location": {"type": "string"},
+                "reason": {"type": "string"},
+                "status": {"type": "string"},
+                "follow_up": {"type": "string"},
+            },
+            "required": ["provider"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_appointment",
+        "description": "Change an appointment. Omitted fields stay. status can be scheduled, completed, cancelled, or missed. Uses health:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "appointment_id": {"type": "integer"},
+                "provider": {"type": "string"},
+                "specialty": {"type": "string"},
+                "starts_at": {"type": "string"},
+                "datetime": {"type": "string"},
+                "location": {"type": "string"},
+                "reason": {"type": "string"},
+                "status": {"type": "string"},
+                "follow_up": {"type": "string"},
+            },
+            "required": ["appointment_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_appointments",
+        "description": (
+            "Appointments. upcoming true returns scheduled visits from now on. "
+            "Otherwise from and to limit the day range. Uses health:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "upcoming": {"type": "boolean"},
+                "from": _DAY,
+                "to": _DAY,
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "home_status",
         "description": "Read Home Assistant when a URL and token are saved. Does not invent states.",
         "inputSchema": _EMPTY,
@@ -293,6 +481,59 @@ def resolve_platform(name: str, args: dict[str, Any]) -> tuple[str, str, dict[st
                 raise ValueError("note must be text.")
             body["note"] = args["note"]
         return "POST", "/api/v1/health/body", body
+    if name == "log_meal":
+        return "POST", "/api/v1/health/meal-log", _meal_log_body(args)
+    if name == "list_meals":
+        _only(name, args, {"from", "to"})
+        return "GET", "/api/v1/health/meal-log" + _days(args, ("from", "to")), None
+    if name == "log_blood_pressure":
+        return "POST", "/api/v1/health/blood-pressure", _pressure_body(args)
+    if name == "list_blood_pressure":
+        _only(name, args, {"from", "to"})
+        return "GET", "/api/v1/health/blood-pressure" + _days(args, ("from", "to")), None
+    if name == "add_medication":
+        return "POST", "/api/v1/health/medications", _medication_body(args, False)
+    if name == "update_medication":
+        med_id = _positive(args.get("medication_id"), "medication_id")
+        return "POST", f"/api/v1/health/medications/{med_id}/update", _medication_body(args, True)
+    if name == "list_medications":
+        _only(name, args, {"active"})
+        if "active" not in args or args["active"] is None:
+            return "GET", "/api/v1/health/medications", None
+        if not isinstance(args["active"], bool):
+            raise ValueError("active must be true or false.")
+        return "GET", "/api/v1/health/medications?" + urlencode({"active": "1" if args["active"] else "0"}), None
+    if name == "log_medication_dose":
+        _only(name, args, {"medication_id", "taken_at", "notes"})
+        med_id = _positive(args.get("medication_id"), "medication_id")
+        body: dict[str, Any] = {}
+        if args.get("taken_at") not in (None, ""):
+            if not isinstance(args["taken_at"], str):
+                raise ValueError("taken_at must be a date and time.")
+            body["taken_at"] = args["taken_at"]
+        if args.get("notes") not in (None, ""):
+            if not isinstance(args["notes"], str):
+                raise ValueError("notes must be text.")
+            body["notes"] = args["notes"]
+        return "POST", f"/api/v1/health/medications/{med_id}/doses", body
+    if name == "add_appointment":
+        return "POST", "/api/v1/health/appointments", _appointment_body(args, False)
+    if name == "update_appointment":
+        appt_id = _positive(args.get("appointment_id"), "appointment_id")
+        return "POST", f"/api/v1/health/appointments/{appt_id}/update", _appointment_body(args, True)
+    if name == "list_appointments":
+        _only(name, args, {"upcoming", "from", "to"})
+        query: dict[str, Any] = {}
+        if "upcoming" in args and args["upcoming"] is not None:
+            if not isinstance(args["upcoming"], bool):
+                raise ValueError("upcoming must be true or false.")
+            if args["upcoming"]:
+                query["upcoming"] = "1"
+        for key in ("from", "to"):
+            if args.get(key) not in (None, ""):
+                query[key] = _day(args[key], key)
+        suffix = ("?" + urlencode(query)) if query else ""
+        return "GET", "/api/v1/health/appointments" + suffix, None
     if name == "home_status":
         _empty(name, args)
         return "GET", "/api/v1/home/status", None
@@ -302,6 +543,133 @@ def resolve_platform(name: str, args: dict[str, Any]) -> tuple[str, str, dict[st
     if name.startswith(("brief_", "graph_", "health_", "home_", "mail_")):
         raise ValueError(f"Unknown tool {name}")
     return None
+
+
+def _positive(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} must be a positive id.")
+    return value
+
+
+def _meal_log_body(args: dict[str, Any]) -> dict[str, Any]:
+    _only("log_meal", args, {"date", "meal_type", "description", "items", "eaten_out", "place", "cost"})
+    meal_type = args.get("meal_type")
+    if not isinstance(meal_type, str) or meal_type.strip().lower() not in ("breakfast", "lunch", "dinner", "snack", "other"):
+        raise ValueError("meal_type must be breakfast, lunch, dinner, snack, or other.")
+    description = args.get("description")
+    if not isinstance(description, str) or description.strip() == "":
+        raise ValueError("description is required.")
+    body: dict[str, Any] = {"meal_type": meal_type.strip().lower(), "description": description}
+    if args.get("date") not in (None, ""):
+        body["date"] = _day(args["date"], "date")
+    if "items" in args and args["items"] is not None:
+        if not isinstance(args["items"], list):
+            raise ValueError("items must be a list.")
+        body["items"] = args["items"]
+    if "eaten_out" in args and args["eaten_out"] is not None:
+        if not isinstance(args["eaten_out"], bool):
+            raise ValueError("eaten_out must be true or false.")
+        body["eaten_out"] = args["eaten_out"]
+    if args.get("place") not in (None, ""):
+        if not isinstance(args["place"], str):
+            raise ValueError("place must be text.")
+        body["place"] = args["place"]
+    if args.get("cost") not in (None, ""):
+        cost = args["cost"]
+        if isinstance(cost, bool) or not isinstance(cost, (int, float)) or cost < 0 or cost > 100000:
+            raise ValueError("cost must be from 0 to 100000.")
+        body["cost"] = cost
+    return body
+
+
+def _pressure_body(args: dict[str, Any]) -> dict[str, Any]:
+    _only("log_blood_pressure", args, {"systolic", "diastolic", "pulse", "taken_at", "arm", "position", "notes"})
+    systolic = _whole(args.get("systolic"), "systolic", 50, 300)
+    diastolic = _whole(args.get("diastolic"), "diastolic", 30, 200)
+    if systolic <= diastolic:
+        raise ValueError("systolic must be higher than diastolic.")
+    body: dict[str, Any] = {"systolic": systolic, "diastolic": diastolic}
+    if args.get("pulse") not in (None, ""):
+        body["pulse"] = _whole(args.get("pulse"), "pulse", 20, 250)
+    if args.get("taken_at") not in (None, ""):
+        if not isinstance(args["taken_at"], str):
+            raise ValueError("taken_at must be a date and time.")
+        body["taken_at"] = args["taken_at"]
+    if args.get("arm") not in (None, ""):
+        if args["arm"] not in ("left", "right"):
+            raise ValueError("arm must be left or right.")
+        body["arm"] = args["arm"]
+    if args.get("position") not in (None, ""):
+        if args["position"] not in ("sitting", "standing", "lying"):
+            raise ValueError("position must be sitting, standing, or lying.")
+        body["position"] = args["position"]
+    if args.get("notes") not in (None, ""):
+        if not isinstance(args["notes"], str):
+            raise ValueError("notes must be text.")
+        body["notes"] = args["notes"]
+    return body
+
+
+def _medication_body(args: dict[str, Any], updating: bool) -> dict[str, Any]:
+    allowed = {"name", "dose", "schedule", "active", "started_on", "stopped_on", "notes"}
+    if updating:
+        allowed.add("medication_id")
+    _only("update_medication" if updating else "add_medication", args, allowed)
+    body: dict[str, Any] = {}
+    if not updating or "name" in args:
+        name = args.get("name")
+        if not isinstance(name, str) or name.strip() == "":
+            raise ValueError("name is required.")
+        body["name"] = name
+    for key in ("dose", "schedule", "notes"):
+        if key in args and args[key] is not None:
+            if not isinstance(args[key], str):
+                raise ValueError(f"{key} must be text.")
+            body[key] = args[key]
+    if "active" in args and args["active"] is not None:
+        if not isinstance(args["active"], bool):
+            raise ValueError("active must be true or false.")
+        body["active"] = args["active"]
+    for key in ("started_on", "stopped_on"):
+        if args.get(key) not in (None, ""):
+            body[key] = _day(args[key], key)
+    return body
+
+
+def _appointment_body(args: dict[str, Any], updating: bool) -> dict[str, Any]:
+    allowed = {"provider", "specialty", "starts_at", "datetime", "location", "reason", "status", "follow_up"}
+    if updating:
+        allowed.add("appointment_id")
+    _only("update_appointment" if updating else "add_appointment", args, allowed)
+    body: dict[str, Any] = {}
+    if not updating or "provider" in args:
+        provider = args.get("provider")
+        if not isinstance(provider, str) or provider.strip() == "":
+            raise ValueError("provider is required.")
+        body["provider"] = provider
+    when = args.get("starts_at", args.get("datetime"))
+    if not updating and when in (None, ""):
+        raise ValueError("starts_at is required.")
+    if when not in (None, ""):
+        if not isinstance(when, str):
+            raise ValueError("starts_at must be a date and time.")
+        body["starts_at"] = when
+    for key in ("specialty", "location", "reason", "follow_up"):
+        if key in args and args[key] is not None:
+            if not isinstance(args[key], str):
+                raise ValueError(f"{key} must be text.")
+            body[key] = args[key]
+    if args.get("status") not in (None, ""):
+        if args["status"] not in ("scheduled", "completed", "cancelled", "missed"):
+            raise ValueError("status must be scheduled, completed, cancelled, or missed.")
+        body["status"] = args["status"]
+    return body
+
+
+def _whole(value: Any, field: str, low: int, high: int) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < low or value > high:
+        raise ValueError(f"{field} must be a whole number from {low} to {high}.")
+    return value
 
 
 def _empty(name: str, args: dict[str, Any]) -> None:

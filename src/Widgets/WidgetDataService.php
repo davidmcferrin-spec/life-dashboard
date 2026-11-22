@@ -582,17 +582,22 @@ final class WidgetDataService
         $today = $this->clock->today();
         $entry = GoalLog::logEntry($config, $metric);
         $key = GoalLog::dedupeKey(GoalLog::prefix($entry, $metric), $today);
-        $current = $this->points->valueForDedupe($userId, $metricId, $key);
-        if ($current === null) {
+        // The first add can adopt a total that was stored under another key.
+        // Later adds update that same row in one statement.
+        $existing = $this->points->valueForDedupe($userId, $metricId, $key);
+        if ($existing === null) {
             $current = $this->points->aggregate($userId, $metricId, 'last', $today, $today) ?? 0.0;
+            $next = max(0.0, $current + (float) $delta);
+            $this->points->record($userId, $metricId, [
+                'value'      => $next,
+                'date'       => $today,
+                'source'     => $source,
+                'dedupe_key' => $key,
+            ]);
+        } else {
+            $stored = $this->points->addToDay($userId, $metricId, (float) $delta, $today, $source, $key);
+            $next = (float) $stored['value'];
         }
-        $next = max(0.0, $current + (float) $delta);
-        $this->points->record($userId, $metricId, [
-            'value'      => $next,
-            'date'       => $today,
-            'source'     => $source,
-            'dedupe_key' => $key,
-        ]);
 
         return [
             'dedupe_key' => $key,

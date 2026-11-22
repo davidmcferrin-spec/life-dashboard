@@ -7,13 +7,15 @@ namespace Dashboard\Tracking;
 use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
+use Dashboard\Widgets\GoalLog;
 
 /**
  * HabitService — daily check-ins, streaks and weekly progress.
  *
- * A habit is "done" on a local calendar day when it has a datapoint with
- * value 1 for that day. A streak stays alive through today until midnight:
- * if today is not done yet, the streak counts back from yesterday.
+ * A check-off habit is done when its value is 1. A count habit (daily_target)
+ * is done only when the day's total reaches that target. A streak stays alive
+ * through today until midnight: if today is not done yet, it counts back from
+ * yesterday. See HabitProgress::DONE_MEANS.
  */
 final class HabitService
 {
@@ -49,79 +51,174 @@ final class HabitService
             $habits = array_values(array_filter($habits, static fn (array $m): bool => isset($wanted[$m['id']])));
         }
 
-        $weekStart = self::weekStart($today);
         $out = [];
         foreach ($habits as $h) {
-            $done = $this->points->datesWithValue(
-                $userId,
-                (int) $h['id'],
-                Clock::shiftDate($today, self::STREAK_WINDOW_DAYS),
-                $today
-            );
-            $doneSet = array_flip($done);
-            $weekCount = count(array_filter($done, static fn (string $d): bool => $d >= $weekStart));
-
-            $out[] = [
-                'id'              => $h['id'],
-                'key'             => $h['key'],
-                'name'            => $h['name'],
-                'emoji'           => $h['config']['emoji'] ?? null,
-                'color'           => $h['config']['color'] ?? null,
-                'target_per_week' => $h['config']['target_per_week'] ?? null,
-                'goal_metric_id'  => isset($h['config']['goal_metric_id']) ? (int) $h['config']['goal_metric_id'] : null,
-                'goal_threshold'  => isset($h['config']['goal_threshold']) ? (float) $h['config']['goal_threshold'] : null,
-                'done_today'      => isset($doneSet[$today]),
-                'streak'          => self::currentStreak($done, $today),
-                'best_streak'     => self::bestStreak($done),
-                'week_count'      => $weekCount,
-                'history'         => array_map(static fn (string $d): bool => isset($doneSet[$d]), $range),
-            ];
+            $out[] = $this->habitRow($userId, $h, $today, $range);
         }
 
         return ['today' => $today, 'days' => $range, 'habits' => $out];
     }
 
     /**
-     * Flip a habit for a day (default today). Returns the new state.
+     * Every active habit and every number metric that has a goal, for today.
      *
-     * @return array{metric_id: int, date: string, done: bool}
+     * @return array{today: string, done_means: string, items: list<array<string, mixed>>}
      */
-    public function toggle(int $userId, int $metricId, ?string $date = null, string $source = 'widget'): array
+    public function todayStatus(int $userId): array
     {
-        $metric = $this->metrics->get($userId, $metricId);
-        if ($metric['kind'] !== 'habit') {
-            throw ValidationException::withFields(['metric' => 'Not a habit.']);
+        $today = $this->clock->today();
+        $items = [];
+        foreach ($this->metrics->list($userId, 'habit') as $habit) {
+            $row = $this->habitRow($userId, $habit, $today, [$today]);
+            unset($row['history']);
+            $items[] = $row;
         }
-        $date = $this->checkDate($date);
-
-        $isDone = in_array($date, $this->points->datesWithValue($userId, $metricId, $date, $date), true);
-        if ($isDone) {
-            $this->points->deleteForDay($userId, $metricId, $date);
-        } else {
-            $this->points->record($userId, $metricId, ['value' => 1, 'date' => $date, 'source' => $source]);
+        foreach ($this->metrics->list($userId, 'number') as $metric) {
+            $goal = $metric['config']['goal'] ?? null;
+            if (!is_numeric($goal) || (float) $goal <= 0.0) {
+                continue;
+            }
+            $items[] = $this->goalRow($userId, $metric, $today);
         }
 
-        return ['metric_id' => $metricId, 'date' => $date, 'done' => !$isDone];
+        return [
+            'today'      => $today,
+            'done_means' => HabitProgress::DONE_MEANS,
+            'items'      => $items,
+        ];
     }
 
     /**
-     * Set a habit explicitly (idempotent — for integrations and AI).
+     * Add $amount to a count habit or a number goal in one write.
      *
-     * @return array{metric_id: int, date: string, done: bool}
+     * A habit linked to a number metric adds to that metric. A check-off habit
+     * stops at 1. A count habit keeps the running total.
+     *
+     * @return array<string, mixed>
+     */
+    public function incrementDatapoint(int $userId, ?int $metricId, ?string $key, float $amount, ?string $date, string $source): array
+    {
+        if (($metricId === null || $metricId < 1) && ($key === null || trim($key) === '')) {
+            throw ValidationException::withFields(['metric_id' => 'Pass a metric id or a key.']);
+        }
+        if (!is_finite($amount) || $amount == 0.0 || abs($amount) > 1e9) {
+            throw ValidationException::withFields(['amount' => 'Amount must be a non-zero number.']);
+        }
+        $metric = $metricId !== null && $metricId > 0
+            ? $this->metrics->get($userId, $metricId)
+            : $this->metrics->findByKey($userId, MetricService::cleanKey((string) $key));
+        if ($metric === null) {
+            throw new NotFoundException('Metric not found.');
+        }
+        if ($metric['archived']) {
+            throw new ValidationException('Metric is archived.');
+        }
+        if ($metric['kind'] === 'habit') {
+            $date = $this->checkDate($date);
+            $linked = $metric['config']['goal_metric_id'] ?? null;
+            if ($linked !== null) {
+                $target = $this->metrics->get($userId, (int) $linked);
+                if ($target['kind'] !== 'number' || $target['archived']) {
+                    throw ValidationException::withFields(['metric_id' => 'The linked metric is not a number goal.']);
+                }
+                $this->addNumber($userId, $target, $amount, $date, $source);
+            } else {
+                $cap = $this->isCountHabit($metric) ? null : 1.0;
+                $this->points->addToDay(
+                    $userId,
+                    (int) $metric['id'],
+                    $amount,
+                    $date,
+                    $source,
+                    'day:' . $date,
+                    $cap
+                );
+            }
+
+            return $this->habitState($userId, $metric, $date) + ['amount' => $amount];
+        }
+        if ($metric['kind'] === 'number') {
+            $date = $this->goalDate($date);
+            $stored = $this->addNumber($userId, $metric, $amount, $date, $source);
+
+            return $this->goalRow($userId, $metric, $date) + [
+                'amount'     => $amount,
+                'value'      => (float) $stored['value'],
+                'dedupe_key' => $stored['dedupe_key'],
+            ];
+        }
+
+        throw ValidationException::withFields(['metric_id' => 'Increment a habit or a number goal.']);
+    }
+
+    /**
+     * Check off habits that match this meal. Eat-at-home is skipped when the meal was out.
+     *
+     * @return list<array{id: int, key: string, name: string}>
+     */
+    public function markForMeal(int $userId, string $date, string $mealType, bool $eatenOut, string $source): array
+    {
+        $marked = [];
+        foreach ($this->metrics->list($userId, 'habit') as $habit) {
+            if (!HabitProgress::matchesMeal((string) $habit['name'], (string) $habit['key'], $mealType, $eatenOut)) {
+                continue;
+            }
+            try {
+                $this->set($userId, (int) $habit['id'], true, $date, $source);
+            } catch (ValidationException) {
+                continue;
+            }
+            $marked[] = [
+                'id'   => (int) $habit['id'],
+                'key'  => (string) $habit['key'],
+                'name' => (string) $habit['name'],
+            ];
+        }
+
+        return $marked;
+    }
+
+    /**
+     * Flip a habit for a day (default today) and return the resulting state.
+     *
+     * A count habit that is still short of its target is set to that target.
+     * Clearing a day removes the total.
+     *
+     * @return array<string, mixed>
+     */
+    public function toggle(int $userId, int $metricId, ?string $date = null, string $source = 'widget'): array
+    {
+        $metric = $this->requireHabit($userId, $metricId);
+        $date = $this->checkDate($date);
+        $state = $this->habitState($userId, $metric, $date);
+        if ($state['done']) {
+            $this->points->deleteForDay($userId, $metricId, $date);
+        } else {
+            $this->markDone($userId, $metric, $date, $source);
+        }
+
+        return $this->habitState($userId, $metric, $date);
+    }
+
+    /**
+     * Set a habit explicitly. Calling it again with the same done flag changes nothing.
+     *
+     * @return array<string, mixed>
      */
     public function set(int $userId, int $metricId, bool $done, ?string $date = null, string $source = 'api'): array
     {
-        $metric = $this->metrics->get($userId, $metricId);
-        if ($metric['kind'] !== 'habit') {
-            throw ValidationException::withFields(['metric' => 'Not a habit.']);
-        }
+        $metric = $this->requireHabit($userId, $metricId);
         $date = $this->checkDate($date);
         if ($done) {
-            $this->points->record($userId, $metricId, ['value' => 1, 'date' => $date, 'source' => $source]);
+            $state = $this->habitState($userId, $metric, $date);
+            if (!$state['done']) {
+                $this->markDone($userId, $metric, $date, $source);
+            }
         } else {
             $this->points->deleteForDay($userId, $metricId, $date);
         }
-        return ['metric_id' => $metricId, 'date' => $date, 'done' => $done];
+
+        return $this->habitState($userId, $metric, $date);
     }
 
     /**
@@ -329,6 +426,254 @@ final class HabitService
         };
     }
 
+    /**
+     * @param array<string, mixed> $metric
+     * @param list<string> $range
+     * @return array<string, mixed>
+     */
+    private function habitRow(int $userId, array $metric, string $today, array $range): array
+    {
+        $picture = $this->picture($userId, $metric, $today);
+        $done = $picture['done_dates'];
+        $doneSet = array_flip($done);
+        $weekStart = self::weekStart($today);
+        $weekCount = count(array_filter($done, static fn (string $d): bool => $d >= $weekStart));
+        $state = $picture['state'];
+        $config = is_array($metric['config']) ? $metric['config'] : [];
+
+        return [
+            'id'              => (int) $metric['id'],
+            'metric_id'       => (int) $metric['id'],
+            'key'             => (string) $metric['key'],
+            'name'            => (string) $metric['name'],
+            'kind'            => 'habit',
+            'date'            => $today,
+            'emoji'           => $config['emoji'] ?? null,
+            'color'           => $config['color'] ?? null,
+            'target_per_week' => $config['target_per_week'] ?? null,
+            'goal_metric_id'  => isset($config['goal_metric_id']) ? (int) $config['goal_metric_id'] : null,
+            'goal_threshold'  => isset($config['goal_threshold']) ? (float) $config['goal_threshold'] : null,
+            'daily_target'    => isset($config['daily_target']) ? (float) $config['daily_target'] : null,
+            'target'          => $state['target'],
+            'threshold'       => $state['threshold'],
+            'progress'        => $state['progress'],
+            'done'            => $state['done'],
+            'done_today'      => $state['done'],
+            'remaining'       => $state['remaining'],
+            'streak'          => self::currentStreak($done, $today),
+            'best_streak'     => self::bestStreak($done),
+            'week_count'      => $weekCount,
+            'history'         => array_map(static fn (string $d): bool => isset($doneSet[$d]), $range),
+        ];
+    }
+
+    /**
+     * State for $date. The streak is still anchored on today.
+     *
+     * @param array<string, mixed> $metric
+     * @return array<string, mixed>
+     */
+    private function habitState(int $userId, array $metric, string $date): array
+    {
+        $today = $this->clock->today();
+        $row = $this->habitRow($userId, $metric, $today, [$today]);
+        unset($row['history']);
+        if ($date === $today) {
+            return $row;
+        }
+        $state = $this->picture($userId, $metric, $date)['state'];
+        $row['date'] = $date;
+        $row['target'] = $state['target'];
+        $row['threshold'] = $state['threshold'];
+        $row['progress'] = $state['progress'];
+        $row['done'] = $state['done'];
+        $row['remaining'] = $state['remaining'];
+
+        return $row;
+    }
+
+    /**
+     * @param array<string, mixed> $metric
+     * @return array{state: array{target: float, threshold: float, progress: float, done: bool, remaining: float}, done_dates: list<string>}
+     */
+    private function picture(int $userId, array $metric, string $date): array
+    {
+        $today = $this->clock->today();
+        $end = $date > $today ? $date : $today;
+        $values = $this->points->valuesByDate(
+            $userId,
+            (int) $metric['id'],
+            Clock::shiftDate($end, self::STREAK_WINDOW_DAYS),
+            $end
+        );
+        $value = (float) ($values[$date] ?? 0.0);
+        $linked = isset($metric['config']['goal_metric_id']) ? $this->linkedTarget($userId, $metric) : null;
+        if ($linked !== null) {
+            $progress = $linked['missing'] ? 0.0 : $this->linkedValue($userId, $linked['id'], $date);
+            $checked = HabitProgress::countsAsChecked($value, 1.0, false);
+            $state = HabitProgress::state($progress, $linked['target'], $checked);
+            $doneDates = $this->datesWhere($values, static fn (float $v): bool => HabitProgress::countsAsChecked($v, 1.0, false));
+        } elseif ($this->isCountHabit($metric)) {
+            $target = (float) $metric['config']['daily_target'];
+            $checked = HabitProgress::countsAsChecked($value, $target, true);
+            $state = HabitProgress::state($value, $target, $checked);
+            $doneDates = $this->datesWhere($values, static fn (float $v): bool => HabitProgress::countsAsChecked($v, $target, true));
+        } else {
+            $checked = HabitProgress::countsAsChecked($value, 1.0, false);
+            $state = HabitProgress::state($checked ? 1.0 : 0.0, 1.0, $checked);
+            $doneDates = $this->datesWhere($values, static fn (float $v): bool => HabitProgress::countsAsChecked($v, 1.0, false));
+        }
+
+        return ['state' => $state, 'done_dates' => $doneDates];
+    }
+
+    /**
+     * @param array<string, mixed> $metric
+     * @return array<string, mixed>
+     */
+    private function goalRow(int $userId, array $metric, string $date): array
+    {
+        $today = $this->clock->today();
+        $end = $date > $today ? $date : $today;
+        $values = $this->points->valuesByDate(
+            $userId,
+            (int) $metric['id'],
+            Clock::shiftDate($end, self::STREAK_WINDOW_DAYS),
+            $end
+        );
+        $goal = (float) ($metric['config']['goal'] ?? 0);
+        $down = ($metric['config']['goal_direction'] ?? 'up') === 'down';
+        $has = array_key_exists($date, $values);
+        $progress = $has ? (float) $values[$date] : 0.0;
+        $met = $has && $progress + 1e-9 >= $goal;
+        $state = $down
+            ? HabitProgress::downState($progress, $goal, $has)
+            : HabitProgress::state($progress, $goal, $met);
+        $doneDates = $this->datesWhere($values, static function (float $value) use ($down, $goal): bool {
+            return $down ? $value <= $goal + 1e-9 : $value + 1e-9 >= $goal;
+        });
+
+        return [
+            'kind'       => 'goal',
+            'id'         => (int) $metric['id'],
+            'metric_id'  => (int) $metric['id'],
+            'key'        => (string) $metric['key'],
+            'name'       => (string) $metric['name'],
+            'date'       => $date,
+            'unit'       => $metric['unit'] ?? null,
+            'target'     => $state['target'],
+            'threshold'  => $state['threshold'],
+            'progress'   => $state['progress'],
+            'done'       => $state['done'],
+            'done_today' => $date === $today && $state['done'],
+            'remaining'  => $state['remaining'],
+            'streak'     => self::currentStreak($doneDates, $today),
+        ];
+    }
+
+    /**
+     * @param array<string, float> $values
+     * @param callable(float): bool $met
+     * @return list<string>
+     */
+    private function datesWhere(array $values, callable $met): array
+    {
+        $dates = [];
+        foreach ($values as $day => $value) {
+            if ($met((float) $value)) {
+                $dates[] = (string) $day;
+            }
+        }
+
+        return $dates;
+    }
+
+    /**
+     * @param array<string, mixed> $metric
+     */
+    private function isCountHabit(array $metric): bool
+    {
+        if (isset($metric['config']['goal_metric_id'])) {
+            return false;
+        }
+        $target = $metric['config']['daily_target'] ?? null;
+
+        return is_numeric($target) && (float) $target > 0.0;
+    }
+
+    /**
+     * @param array<string, mixed> $metric
+     */
+    private function markDone(int $userId, array $metric, string $date, string $source): void
+    {
+        if ($this->isCountHabit($metric)) {
+            $this->points->putDaily(
+                $userId,
+                (int) $metric['id'],
+                (float) $metric['config']['daily_target'],
+                $date,
+                $source,
+                'day:' . $date
+            );
+            return;
+        }
+        $this->points->record($userId, (int) $metric['id'], ['value' => 1, 'date' => $date, 'source' => $source]);
+    }
+
+    /**
+     * @param array<string, mixed> $metric
+     * @return array<string, mixed>
+     */
+    private function addNumber(int $userId, array $metric, float $amount, string $date, string $source): array
+    {
+        $key = GoalLog::dedupeKey(GoalLog::prefix([], $metric), $date);
+
+        return $this->points->addToDay($userId, (int) $metric['id'], $amount, $date, $source, $key, null);
+    }
+
+    /**
+     * @param array<string, mixed> $habit
+     * @return array{id: int, target: float, missing: bool}
+     */
+    private function linkedTarget(int $userId, array $habit): array
+    {
+        $id = (int) $habit['config']['goal_metric_id'];
+        try {
+            $metric = $this->metrics->get($userId, $id);
+        } catch (NotFoundException) {
+            return ['id' => $id, 'target' => 1.0, 'missing' => true];
+        }
+        $threshold = $habit['config']['goal_threshold'] ?? ($metric['config']['goal'] ?? null);
+        $target = is_numeric($threshold) && (float) $threshold > 0 ? (float) $threshold : 1.0;
+
+        return ['id' => $id, 'target' => $target, 'missing' => $metric['kind'] !== 'number' || $metric['archived']];
+    }
+
+    private function linkedValue(int $userId, int $metricId, string $date): float
+    {
+        $values = $this->points->valuesByDate($userId, $metricId, $date, $date);
+
+        return (float) ($values[$date] ?? 0.0);
+    }
+
+    private function goalDate(?string $date): string
+    {
+        $today = $this->clock->today();
+        if ($date === null || $date === '') {
+            return $today;
+        }
+        try {
+            $date = Clock::normalizeDate($date);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withFields(['date' => $e->getMessage()]);
+        }
+        if ($date > $today) {
+            throw ValidationException::withFields(['date' => 'Date cannot be in the future.']);
+        }
+
+        return $date;
+    }
+
     // ------------------------------------------------------------------
     // Pure helpers (unit-tested)
     // ------------------------------------------------------------------
@@ -391,6 +736,7 @@ final class HabitService
             'target_per_week' => $target,
             'goal_metric_id'  => isset($config['goal_metric_id']) ? (int) $config['goal_metric_id'] : null,
             'goal_threshold'  => isset($config['goal_threshold']) ? (float) $config['goal_threshold'] : null,
+            'daily_target'    => isset($config['daily_target']) ? (float) $config['daily_target'] : null,
             'sort_order'      => (int) $metric['sort_order'],
             'archived'        => (bool) ($metric['archived'] ?? false),
         ];
@@ -481,6 +827,14 @@ final class HabitService
                 $config['goal_threshold'] = $threshold;
             }
         }
+        if (array_key_exists('daily_target', $input)) {
+            $daily = $input['daily_target'];
+            if ($daily === null || $daily === '' || $daily === 0 || $daily === '0') {
+                unset($config['daily_target']);
+            } else {
+                $config['daily_target'] = $daily;
+            }
+        }
         return MetricService::validateConfig('habit', $config);
     }
 
@@ -507,7 +861,7 @@ final class HabitService
      */
     private static function touchesAppearance(array $input): bool
     {
-        foreach (['icon', 'emoji', 'color', 'frequency', 'target', 'target_per_week', 'goal_metric_id', 'goal_threshold'] as $key) {
+        foreach (['icon', 'emoji', 'color', 'frequency', 'target', 'target_per_week', 'goal_metric_id', 'goal_threshold', 'daily_target'] as $key) {
             if (array_key_exists($key, $input) && $input[$key] !== null) {
                 return true;
             }

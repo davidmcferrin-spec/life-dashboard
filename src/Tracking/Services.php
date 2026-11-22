@@ -9,6 +9,7 @@ use Dashboard\Calls\CallService;
 use Dashboard\Brief\MorningBriefService;
 use Dashboard\Digest\DigestService;
 use Dashboard\Graph\GraphService;
+use Dashboard\Health\HealthLogService;
 use Dashboard\Health\HealthService;
 use Dashboard\Auth\ApiTokenService;
 use Dashboard\DB\Database;
@@ -56,6 +57,7 @@ final class Services
     public readonly MealBuilder $meals;
     public readonly DigestService $digest;
     public readonly HealthService $health;
+    public readonly HealthLogService $healthLog;
     public readonly GraphService $graph;
     public readonly MorningBriefService $briefs;
 
@@ -85,6 +87,7 @@ final class Services
         $this->meals = new MealBuilder($db, $this->shopping, $this->pantry);
         $this->digest = new DigestService($db);
         $this->health = new HealthService($db, $clock);
+        $this->healthLog = new HealthLogService($db, $clock, $this->habits);
         $this->graph = new GraphService($db);
         $this->briefs = new MorningBriefService($db, $clock, $this->bills, $this->digest, $this->health);
         $this->widgetData = new WidgetDataService(
