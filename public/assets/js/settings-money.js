@@ -232,11 +232,14 @@
         const icon = walletIcon();
         const accountRows = (accounts.accounts || []).map((account) => {
             const mask = maskLast4(account.last4);
-            const meta = [account.kind, mask].filter(Boolean).join(' · ');
+            const synced = account.last_synced_at ? 'synced ' + account.last_synced_at : 'not synced';
+            const stale = account.stale ? ' · stale' : '';
+            const meta = [account.kind, mask, synced + stale].filter(Boolean).join(' · ');
             const mark = icon ? '<span class="fin-icon" aria-hidden="true">' + icon + '</span>' : '';
+            const staleClass = account.stale ? ' fin-stale' : '';
             return '<div class="fin-account">' + mark
-                + '<span><strong class="fin-account-name">' + esc(account.name) + '</strong><small class="fin-account-meta">' + esc(meta) + '</small></span>'
-                + '<span class="fin-account-side"><b class="fin-account-balance">' + esc(fmt.money(account.balance)) + '</b>'
+                + '<span><strong class="fin-account-name">' + esc(account.name) + '</strong><small class="fin-account-meta' + staleClass + '">' + esc(meta) + '</small></span>'
+                + '<span class="fin-account-side"><b class="fin-account-balance' + staleClass + '">' + esc(fmt.money(account.balance)) + '</b>'
                 + '<button type="button" class="btn" data-edit-account="' + esc(account.id) + '" data-balance="' + esc(account.balance) + '">Edit</button></span></div>';
         }).join('');
         document.getElementById('money-accounts').innerHTML = accountRows || emptyPanel(
@@ -252,12 +255,14 @@
             // Payee text is the stored label. "Creator subscription" stays as written.
             const payee = row.payee ? String(row.payee) : '—';
             const category = row.category ? String(row.category) : '—';
+            const rawNote = row.category_overridden && row.raw_category ? ' (was ' + row.raw_category + ')' : '';
+            const eaten = row.eaten_on && row.eaten_on !== row.date ? ' · eaten ' + row.eaten_on : '';
             const menuItems = [];
             if (row.payee) menuItems.push({ act: 'merchant', label: 'Filter merchant' });
             if (row.category) menuItems.push({ act: 'category', label: 'Filter category' });
             const menu = window.FinTable ? window.FinTable.rowMenu(menuItems) : '';
             return '<tr data-filter="' + esc([row.date, payee, category].join(' ')) + '" data-payee="' + esc(payee) + '" data-category="' + esc(category) + '"><td>'
-                + esc(row.date) + '</td><td>' + esc(payee) + '</td><td>' + esc(category) + '</td>'
+                + esc(row.date) + esc(eaten) + '</td><td>' + esc(payee) + '</td><td>' + esc(category) + esc(rawNote) + '</td>'
                 + '<td class="fin-num ' + tone + '">' + esc(fmt.money(amount)) + '</td><td class="fin-actions">' + menu + '</td></tr>';
         }).join('');
         const tx = document.getElementById('money-tx');
@@ -292,6 +297,25 @@
     }
 
     document.getElementById('money-account-open').addEventListener('click', openAdd);
+
+    const refresh = document.getElementById('money-refresh');
+    if (refresh) {
+        refresh.addEventListener('click', async () => {
+            const status = document.getElementById('money-refresh-status');
+            refresh.disabled = true;
+            try {
+                const res = await api.post('/money/accounts/refresh', {});
+                const note = (res.accounts || []).map((row) => row.message).filter(Boolean)[0] || 'Refresh finished.';
+                if (status) status.textContent = note;
+                await load();
+                document.dispatchEvent(new CustomEvent('money-ledger-reload'));
+            } catch (err) {
+                if (status) status.textContent = err && err.message ? err.message : 'Could not refresh.';
+            } finally {
+                refresh.disabled = false;
+            }
+        });
+    }
 
     document.getElementById('money-tx').addEventListener('click', (event) => {
         const item = event.target.closest('[data-fin-act]');

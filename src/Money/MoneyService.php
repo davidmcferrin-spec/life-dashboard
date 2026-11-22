@@ -54,9 +54,10 @@ final class MoneyService
         if ($this->db->fetchOne('SELECT 1 FROM money_accounts WHERE user_id = ? AND name = ?', [$userId, $name]) !== null) {
             throw ValidationException::withFields(['name' => 'An account with that name already exists.']);
         }
+        $synced = $this->clock->utcString($this->clock->now());
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO money_accounts (user_id, name, kind, balance, institution, last4, credit_limit, available_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
-            [$userId, $name, $kind, $balance, $institution, $last4, $limit, $available]
+            'INSERT INTO money_accounts (user_id, name, kind, balance, institution, last4, credit_limit, available_credit, last_synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $name, $kind, $balance, $institution, $last4, $limit, $available, $synced]
         );
         $this->linkCreditDebts($userId, $id, $kind, $last4, $limit);
         $this->touchSnapshot($userId);
@@ -83,9 +84,12 @@ final class MoneyService
         $available = array_key_exists('available_credit', $input)
             ? $this->optionalAvailable($input['available_credit'])
             : $this->storedAvailable($rawAvailable ?? []);
+        $synced = array_key_exists('balance', $input)
+            ? $this->clock->utcString($this->clock->now())
+            : ($account['last_synced_at'] ?? null);
         $this->db->execute(
-            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, institution = ?, last4 = ?, credit_limit = ?, available_credit = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$name, $kind, $balance, $institution, $last4, $limit, $available, $id, $userId]
+            "UPDATE money_accounts SET name = ?, kind = ?, balance = ?, institution = ?, last4 = ?, credit_limit = ?, available_credit = ?, last_synced_at = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$name, $kind, $balance, $institution, $last4, $limit, $available, $synced, $id, $userId]
         );
         $this->linkCreditDebts($userId, $id, $kind, $last4, $limit);
         $this->touchSnapshot($userId);
@@ -144,7 +148,14 @@ final class MoneyService
                       note = EXCLUDED.note, source = EXCLUDED.source
                RETURNING id';
         $id = (int) $this->db->fetchScalar($sql, $params);
-        return $this->transaction($userId, $id);
+        if (array_key_exists('eaten_on', $input)) {
+            $eaten = $input['eaten_on'] === null || $input['eaten_on'] === '' ? null : $this->cleanDate($input['eaten_on']);
+            $this->db->execute(
+                'UPDATE money_transactions SET eaten_on = ? WHERE id = ? AND user_id = ?',
+                [$eaten, $id, $userId]
+            );
+        }
+        return $this->applyMerchantRule($userId, $this->transaction($userId, $id), $source);
     }
 
     /**
@@ -206,8 +217,10 @@ final class MoneyService
         ?string $account = null,
     ): array {
         $limit = max(1, min(500, $limit));
-        $sql = 'SELECT t.*, a.name AS account_name FROM money_transactions t
+        $sql = 'SELECT t.*, a.name AS account_name, o.category AS override_category
+                FROM money_transactions t
                 JOIN money_accounts a ON a.id = t.account_id
+                LEFT JOIN money_category_overrides o ON o.transaction_id = t.id AND o.user_id = t.user_id
                 WHERE t.user_id = ?';
         $params = [$userId];
         if ($from !== null && $from !== '') {
@@ -219,7 +232,7 @@ final class MoneyService
             $params[] = $to;
         }
         if ($category !== null && $category !== '') {
-            $sql .= ' AND lower(t.category) = lower(?)';
+            $sql .= ' AND lower(COALESCE(o.category, t.category)) = lower(?)';
             $params[] = $category;
         }
         if ($account !== null && $account !== '') {
@@ -231,17 +244,7 @@ final class MoneyService
         if (count($rows) > $limit) {
             $rows = array_slice($rows, 0, $limit);
         }
-        return array_map(static function (array $row): array {
-            return [
-                'id'       => (int) $row['id'],
-                'account'  => (string) $row['account_name'],
-                'date'     => (string) $row['posted_on'],
-                'amount'   => (float) $row['amount'],
-                'payee'    => $row['payee'] !== null ? (string) $row['payee'] : null,
-                'category' => (string) $row['category'],
-                'note'     => $row['note'] !== null ? (string) $row['note'] : null,
-            ];
-        }, $rows);
+        return array_map(fn (array $row): array => $this->formatTransaction($row), $rows);
     }
 
     /**
@@ -365,9 +368,11 @@ final class MoneyService
             'category' => (string) $row['category'],
             'total'    => (float) $row['total'],
         ], $this->db->fetchAll(
-            'SELECT category, SUM(-amount) AS total FROM money_transactions
-             WHERE user_id = ? AND posted_on >= ? AND posted_on <= ? AND amount < 0
-             GROUP BY category ORDER BY total DESC',
+            'SELECT COALESCE(o.category, t.category) AS category, SUM(-t.amount) AS total
+             FROM money_transactions t
+             LEFT JOIN money_category_overrides o ON o.transaction_id = t.id AND o.user_id = t.user_id
+             WHERE t.user_id = ? AND t.posted_on >= ? AND t.posted_on <= ? AND t.amount < 0
+             GROUP BY COALESCE(o.category, t.category) ORDER BY total DESC',
             [$userId, $from, $to]
         ));
         $accounts = $this->accounts($userId);
@@ -445,7 +450,7 @@ final class MoneyService
     /**
      * @return array<string, mixed>
      */
-    private function account(int $userId, int $id): array
+    public function account(int $userId, int $id): array
     {
         $row = $this->db->fetchOne('SELECT * FROM money_accounts WHERE id = ? AND user_id = ?', [$id, $userId]);
         if ($row === null) {
@@ -457,31 +462,21 @@ final class MoneyService
     /**
      * @return array<string, mixed>
      */
-    private function transaction(int $userId, int $id): array
+    public function transaction(int $userId, int $id): array
     {
-        $rows = $this->transactions($userId);
-        foreach ($rows as $row) {
-            if ($row['id'] === $id) {
-                return $row;
-            }
-        }
         $one = $this->db->fetchOne(
-            'SELECT t.*, a.name AS account_name FROM money_transactions t
-             JOIN money_accounts a ON a.id = t.account_id WHERE t.id = ? AND t.user_id = ?',
+            'SELECT t.*, a.name AS account_name, o.category AS override_category
+             FROM money_transactions t
+             JOIN money_accounts a ON a.id = t.account_id
+             LEFT JOIN money_category_overrides o ON o.transaction_id = t.id AND o.user_id = t.user_id
+             WHERE t.id = ? AND t.user_id = ?',
             [$id, $userId]
         );
         if ($one === null) {
             throw new NotFoundException('Transaction not found.');
         }
-        return [
-            'id'       => (int) $one['id'],
-            'account'  => (string) $one['account_name'],
-            'date'     => (string) $one['posted_on'],
-            'amount'   => (float) $one['amount'],
-            'payee'    => $one['payee'] !== null ? (string) $one['payee'] : null,
-            'category' => (string) $one['category'],
-            'note'     => $one['note'] !== null ? (string) $one['note'] : null,
-        ];
+
+        return $this->formatTransaction($one);
     }
 
     /**
@@ -531,6 +526,11 @@ final class MoneyService
         $limit = $limit !== null && $limit !== '' ? (float) $limit : null;
         $balance = (float) $row['balance'];
         $stored = $this->storedAvailable($row);
+        $fresh = MoneyFreshness::describe(
+            $row['last_synced_at'] ?? null,
+            $this->staleHours((int) $row['user_id']),
+            $this->clock->now()
+        );
         return [
             'id'               => (int) $row['id'],
             'name'             => (string) $row['name'],
@@ -541,7 +541,73 @@ final class MoneyService
             'credit_limit'     => $limit,
             'available_credit' => $stored ?? ($limit !== null ? round($limit - $balance, 2) : null),
             'archived'         => $row['archived_at'] !== null,
+            'last_synced_at'   => $fresh['last_synced_at'],
+            'stale'            => $fresh['stale'],
         ];
+    }
+
+    /**
+     * A merchant rule applies on import. The category column stays the imported value.
+     *
+     * @param array<string, mixed> $txn
+     * @return array<string, mixed>
+     */
+    private function applyMerchantRule(int $userId, array $txn, string $source): array
+    {
+        if (!in_array($source, ['import', 'ai'], true) || !empty($txn['category_overridden'])) {
+            return $txn;
+        }
+        $payee = $txn['payee'] ?? null;
+        if (!is_string($payee) || trim($payee) === '') {
+            return $txn;
+        }
+        $rule = $this->db->fetchOne(
+            'SELECT category, category_id FROM money_merchant_rules WHERE user_id = ? AND lower(merchant) = lower(?)',
+            [$userId, trim($payee)]
+        );
+        if ($rule === null) {
+            return $txn;
+        }
+        $this->db->execute(
+            'INSERT INTO money_category_overrides (user_id, transaction_id, category, category_id)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (user_id, transaction_id) DO NOTHING',
+            [$userId, (int) $txn['id'], (string) $rule['category'], $rule['category_id']]
+        );
+
+        return $this->transaction($userId, (int) $txn['id']);
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function formatTransaction(array $row): array
+    {
+        $raw = (string) $row['category'];
+        $override = isset($row['override_category']) && $row['override_category'] !== null && $row['override_category'] !== ''
+            ? (string) $row['override_category']
+            : null;
+        $eaten = $row['eaten_on'] ?? null;
+
+        return [
+            'id'                  => (int) $row['id'],
+            'account_id'          => (int) $row['account_id'],
+            'account'             => (string) $row['account_name'],
+            'date'                => substr((string) $row['posted_on'], 0, 10),
+            'eaten_on'            => $eaten !== null && $eaten !== '' ? substr((string) $eaten, 0, 10) : null,
+            'amount'              => (float) $row['amount'],
+            'payee'               => $row['payee'] !== null ? (string) $row['payee'] : null,
+            'category'            => $override ?? $raw,
+            'raw_category'        => $raw,
+            'category_overridden' => $override !== null,
+            'note'                => $row['note'] !== null ? (string) $row['note'] : null,
+        ];
+    }
+
+    private function staleHours(int $userId): int
+    {
+        return MoneyOptions::read($this->db, $userId)['stale_hours'];
     }
 
     private function cleanName(mixed $name): string

@@ -283,12 +283,16 @@
             root.innerHTML = emptyPanel('No debts in the snowball', 'Balances and payoff order stay here, separate from this cycle’s bills.');
             return;
         }
-        root.innerHTML = debts.map((debt, index) =>
-            '<div class="fin-bill"><span><strong class="fin-bill-name">' + (index + 1) + '. ' + esc(debt.name) + '</strong>'
-            + '<small class="fin-bill-meta">' + esc(String(debt.apr_percent)) + '% · min ' + esc(fmt.money(debt.minimum_payment))
-            + (debt.target_payoff_on ? ' · target ' + esc(debt.target_payoff_on) : '') + '</small></span>'
-            + '<span class="mono">' + esc(fmt.money(debt.balance)) + '</span><span></span></div>'
-        ).join('');
+        root.innerHTML = debts.map((debt, index) => {
+            const flags = [];
+            if (debt.stale) flags.push(debt.last_synced_at ? 'stale since ' + debt.last_synced_at : 'not synced');
+            if (debt.components_mismatch) flags.push('components do not match the balance');
+            const flag = flags.length ? ' · ' + flags.join(' · ') : '';
+            return '<div class="fin-bill"><span><strong class="fin-bill-name">' + (index + 1) + '. ' + esc(debt.name) + '</strong>'
+            + '<small class="fin-bill-meta' + (debt.stale || debt.components_mismatch ? ' fin-stale' : '') + '">' + esc(String(debt.apr_percent)) + '% · min ' + esc(fmt.money(debt.minimum_payment))
+            + (debt.target_payoff_on ? ' · target ' + esc(debt.target_payoff_on) : '') + esc(flag) + '</small></span>'
+            + '<span class="mono' + (debt.stale ? ' fin-stale' : '') + '">' + esc(fmt.money(debt.balance)) + '</span><span></span></div>';
+        }).join('');
     }
 
     function render() {

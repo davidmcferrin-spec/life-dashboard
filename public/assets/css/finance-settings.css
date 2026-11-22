@@ -290,6 +290,10 @@
     margin-top: 2px;
 }
 
+.fin-stale {
+    color: var(--warn);
+}
+
 .fin-account-side {
     align-items: center;
     display: flex;

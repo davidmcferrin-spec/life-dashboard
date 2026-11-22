@@ -200,6 +200,12 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 3, 'h' => 3], 'min' => ['w' => 2, 'h' => 2],
                 'fields' => [],
             ],
+            'money_summary' => [
+                'label' => 'Money summary', 'category' => 'money', 'singleton' => false,
+                'description' => 'Net worth, cash, debts, utilization, payments, inflows, benefit pots, and the food week.',
+                'size' => ['w' => 6, 'h' => 5], 'min' => ['w' => 4, 'h' => 3],
+                'fields' => [],
+            ],
             'budget_actual' => [
                 'label' => 'Budget vs actual', 'category' => 'money', 'singleton' => false,
                 'description' => 'This month\'s planned lines against what was spent.',
@@ -375,6 +381,7 @@ final class WidgetTypeRegistry
             'baby_step' => 'trophy',
             'debt_snowball' => 'credit-card',
             'food_week' => 'utensils',
+            'money_summary' => 'landmark',
             'budget_actual' => 'chart-column',
             'sinking_funds' => 'piggy-bank',
             'bills_due' => 'calendar-days',

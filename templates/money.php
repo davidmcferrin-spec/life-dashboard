@@ -109,7 +109,9 @@ $finIcon = static function (string $name): void {
                         <h2 id="money-accounts-title">Accounts</h2>
                     </div>
                 </div>
+                <button type="button" class="btn" id="money-refresh">Refresh</button>
             </header>
+            <p id="money-refresh-status" class="fin-status" role="status"></p>
             <div id="money-accounts"></div>
         </section>
     </div>
@@ -325,6 +327,85 @@ $finIcon = static function (string $name): void {
         </div>
     </div>
 
+    <section class="fin-card" id="money-ledger" aria-labelledby="money-ledger-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">One read</span>
+                    <h2 id="money-ledger-title">Summary</h2>
+                </div>
+            </div>
+        </header>
+        <div id="money-ledger-body" aria-live="polite"></div>
+        <form id="money-options" class="fin-tools">
+            <label class="ld-field">Stale after (hours)
+                <input name="stale_hours" type="number" min="1" max="8760" class="input" value="24">
+            </label>
+            <label class="ld-field">Groceries / week
+                <input name="groceries_weekly" type="number" min="0" step="0.01" class="input" value="150">
+            </label>
+            <label class="ld-field">Eating out / week
+                <input name="eating_out_weekly" type="number" min="0" step="0.01" class="input" value="125">
+            </label>
+            <button type="submit" class="btn">Save targets</button>
+            <p id="money-options-error" class="ld-field-error hidden" role="alert"></p>
+        </form>
+    </section>
+
+    <section class="fin-card" aria-labelledby="money-pots-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">FSA and HSA</span>
+                    <h2 id="money-pots-title">Benefit pots</h2>
+                </div>
+            </div>
+        </header>
+        <form id="money-pot-form" class="fin-tools">
+            <label class="ld-field">Kind
+                <select name="kind" class="input">
+                    <option value="fsa">FSA</option>
+                    <option value="hsa">HSA</option>
+                </select>
+            </label>
+            <label class="ld-field">Name<input name="name" class="input" maxlength="80" required></label>
+            <label class="ld-field">Balance<input name="balance" type="number" min="0" step="0.01" class="input" value="0"></label>
+            <label class="ld-field">Plan year<input name="plan_year" type="number" min="2000" max="2100" class="input" required></label>
+            <label class="ld-field">Deadline<input name="deadline" type="date" class="input"></label>
+            <label class="ld-field">Use it or lose it<input name="use_it_or_lose_it" type="number" min="0" step="0.01" class="input"></label>
+            <button type="submit" class="btn-primary">Add pot</button>
+            <p id="money-pot-error" class="ld-field-error hidden" role="alert"></p>
+        </form>
+        <div id="money-pots" aria-live="polite"></div>
+    </section>
+
+    <section class="fin-card" aria-labelledby="money-inflows-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">Expected</span>
+                    <h2 id="money-inflows-title">Money coming in</h2>
+                </div>
+            </div>
+        </header>
+        <form id="money-inflow-form" class="fin-tools">
+            <label class="ld-field">Kind
+                <select name="kind" class="input">
+                    <option value="reimbursement">Reimbursement</option>
+                    <option value="paycheck">Paycheck</option>
+                    <option value="refund">Refund</option>
+                    <option value="other">Other</option>
+                </select>
+            </label>
+            <label class="ld-field">Source<input name="source" class="input" maxlength="160" required></label>
+            <label class="ld-field">Amount<input name="amount" type="number" min="0" step="0.01" class="input" required></label>
+            <label class="ld-field">Expected<input name="expected_on" type="date" class="input" required></label>
+            <button type="submit" class="btn-primary">Add inflow</button>
+            <p id="money-inflow-error" class="ld-field-error hidden" role="alert"></p>
+        </form>
+        <div id="money-inflows" aria-live="polite"></div>
+    </section>
+
     <section class="fin-card" aria-labelledby="money-import-title">
         <header class="fin-card-head">
             <div class="fin-card-title">
@@ -352,5 +433,6 @@ $finIcon = static function (string $name): void {
 <script src="/assets/js/fin-table.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/settings-money.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/money-bills.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/money-ledger.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>
