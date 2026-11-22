@@ -29,37 +29,84 @@ final class PageService
     /**
      * @return list<array<string, mixed>>
      */
-    public function list(int $userId, ?string $query = null, int $limit = 100, ?int $folderId = null, bool $folderSet = false): array
-    {
+    public function list(
+        int $userId,
+        ?string $query = null,
+        int $limit = 100,
+        ?int $folderId = null,
+        bool $folderSet = false,
+        bool $includeArchived = false,
+        ?string $updatedSince = null,
+    ): array {
         $limit = max(1, min(200, $limit));
         $query = $query !== null ? trim($query) : '';
         [$clause, $folderParams] = $this->folderClause($userId, $folderId, $folderSet, 'folder_id');
+        $live = $includeArchived ? '' : ' AND archived_at IS NULL';
+        $sinceSql = '';
+        $sinceParams = [];
+        if ($updatedSince !== null && trim($updatedSince) !== '') {
+            $sinceSql = ' AND updated_at >= ?';
+            $sinceParams[] = PageQuery::since($updatedSince);
+        }
+        $columns = 'id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at';
         if ($query === '') {
             return array_map(
                 fn (array $row): array => $this->brief($row),
                 $this->db->fetchAll(
-                    "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at FROM pages
-                     WHERE user_id = ? AND archived_at IS NULL {$clause}
+                    "SELECT {$columns} FROM pages
+                     WHERE user_id = ?{$live}{$clause}{$sinceSql}
                      ORDER BY updated_at DESC, id DESC LIMIT {$limit}",
-                    array_merge([$userId], $folderParams)
+                    array_merge([$userId], $folderParams, $sinceParams)
                 )
             );
         }
 
-        $fts = array_map(
-            fn (array $row): array => $this->brief($row),
-            $this->db->fetchAll(
-                "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at,
-                        ts_rank(to_tsvector('english', title || ' ' || body), plainto_tsquery('english', ?)) AS rank
-                 FROM pages
-                 WHERE user_id = ? AND archived_at IS NULL {$clause}
-                   AND to_tsvector('english', title || ' ' || body) @@ plainto_tsquery('english', ?)
-                 ORDER BY rank DESC, updated_at DESC
-                 LIMIT {$limit}",
-                array_merge([$query, $userId], $folderParams, [$query])
-            )
+        $like = mb_strlen($query) >= 3
+            ? '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $query) . '%'
+            : null;
+        $phraseSql = $like === null
+            ? ''
+            : ' OR title ILIKE ? OR body ILIKE ?';
+        $phraseParams = $like === null ? [] : [$like, $like];
+        $orderPhrase = $like === null
+            ? ''
+            : ' WHEN title ILIKE ? THEN 2 WHEN body ILIKE ? THEN 1';
+        $orderParams = array_merge([$query], $phraseParams);
+        $fts = $this->db->fetchAll(
+            "SELECT {$columns}, body
+             FROM pages
+             WHERE user_id = ?{$live}{$clause}{$sinceSql}
+               AND (
+                 to_tsvector('english', title || ' ' || body) @@ plainto_tsquery('english', ?)
+                 OR lower(title) = lower(?)
+                 {$phraseSql}
+               )
+             ORDER BY CASE WHEN lower(title) = lower(?) THEN 3{$orderPhrase} ELSE 0 END DESC, updated_at DESC
+             LIMIT 200",
+            array_merge([$userId], $folderParams, $sinceParams, [$query, $query], $phraseParams, $orderParams)
         );
-        $semantic = $this->semantic($userId, $query, $limit);
+        $byId = [];
+        foreach ($fts as $row) {
+            $id = (int) $row['id'];
+            $row['former'] = [];
+            $row['lexical'] = true;
+            $byId[$id] = $row;
+        }
+        foreach ($this->aliasHits($userId, $query, $like) as $row) {
+            if (!$this->rowVisible($row, $includeArchived, $folderSet, $folderId, $folderParams, $sinceParams[0] ?? null)) {
+                continue;
+            }
+            $id = (int) $row['id'];
+            $former = (string) $row['former_title'];
+            if (!isset($byId[$id])) {
+                $row['former'] = [$former];
+                $row['lexical'] = true;
+                $byId[$id] = $row;
+                continue;
+            }
+            $byId[$id]['former'][] = $former;
+        }
+        $semantic = $this->semantic($userId, $query, $limit, $includeArchived);
         if ($folderSet) {
             $allowed = array_flip($folderParams);
             $semantic = array_values(array_filter(
@@ -73,7 +120,44 @@ final class PageService
                 }
             ));
         }
-        return $this->mergeHits($fts, $semantic, $limit);
+        foreach ($semantic as $row) {
+            if ($sinceParams !== [] && (string) $row['updated_at'] < $sinceParams[0]) {
+                continue;
+            }
+            $id = (int) $row['id'];
+            if (isset($byId[$id])) {
+                continue;
+            }
+            $row['body'] = '';
+            $row['former'] = [];
+            $row['lexical'] = false;
+            $byId[$id] = $row;
+        }
+        $ranked = [];
+        foreach ($byId as $row) {
+            $row['rank'] = PageRank::score(
+                $query,
+                (string) $row['title'],
+                (string) ($row['body'] ?? ''),
+                $row['former'] ?? [],
+                (bool) ($row['lexical'] ?? true)
+            );
+            $ranked[] = $row;
+        }
+        usort($ranked, static function (array $a, array $b): int {
+            if ($a['rank'] !== $b['rank']) {
+                return $b['rank'] <=> $a['rank'];
+            }
+            $time = strcmp((string) $b['updated_at'], (string) $a['updated_at']);
+            if ($time !== 0) {
+                return $time;
+            }
+            return $b['id'] <=> $a['id'];
+        });
+        return array_map(
+            fn (array $row): array => $this->brief($row),
+            array_slice($ranked, 0, $limit)
+        );
     }
 
     /**
@@ -95,7 +179,7 @@ final class PageService
     {
         $limit = max(1, min(50, $limit));
         $rows = $this->db->fetchAll(
-            "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, last_opened_at
+            "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at, last_opened_at
              FROM pages
              WHERE user_id = ? AND archived_at IS NULL AND last_opened_at IS NOT NULL
              ORDER BY last_opened_at DESC, id DESC
@@ -116,7 +200,7 @@ final class PageService
         return array_map(
             fn (array $row): array => $this->brief($row),
             $this->db->fetchAll(
-                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at
+                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at
                  FROM pages
                  WHERE user_id = ? AND archived_at IS NULL AND favorited_at IS NOT NULL
                  ORDER BY favorited_at DESC, id DESC',
@@ -136,6 +220,7 @@ final class PageService
             throw new NotFoundException('Page not found.');
         }
         $page = $this->full($row);
+        $page['former_titles'] = $this->formerTitles($userId, $id);
         $page['backlinks'] = $this->backlinks($userId, $id);
         $page['links'] = $this->outgoing($userId, $id);
         $page['revisions'] = $this->revisions($userId, $id);
@@ -150,7 +235,7 @@ final class PageService
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    public function create(int $userId, array $input, string $actor = 'user', ?string $tool = null): array
+    public function create(int $userId, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
         $title = $this->cleanTitle($input['title'] ?? null);
         $this->assertUniqueTitle($userId, $title, null);
@@ -163,24 +248,29 @@ final class PageService
             $parent = $this->requireLivePage($userId, $parentId);
             $folderId = $parent['folder_id'];
         }
+        $editor = $this->editorLabel($editor, $actor);
 
         $id = (int) $this->db->fetchScalar(
-            'INSERT INTO pages (user_id, title, slug, kind, body, folder_id, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id',
-            [$userId, $title, $slug, $kind, $body, $folderId, $parentId]
+            'INSERT INTO pages (user_id, title, slug, kind, body, folder_id, parent_id, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+            [$userId, $title, $slug, $kind, $body, $folderId, $parentId, $editor]
         );
         $this->addRevision($userId, $id, 1, $title, $body);
         $this->syncLinks($userId, $id, $body);
         $this->relink($userId);
         $this->maybeEmbed($userId, $id, $title, $body);
         $this->audit->record($userId, $actor, $tool, 'page.create', 'page:' . $id, ['title' => $title]);
-        return $this->get($userId, $id);
+        $page = $this->get($userId, $id);
+        if ($folderId === null) {
+            $page['suggested_folder'] = $this->suggestedFolder($userId, $title);
+        }
+        return $page;
     }
 
     /**
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
-    public function update(int $userId, int $id, array $input, string $actor = 'user', ?string $tool = null): array
+    public function update(int $userId, int $id, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
         $page = $this->get($userId, $id);
         $oldTitle = (string) $page['title'];
@@ -192,20 +282,22 @@ final class PageService
             $body = Wikilinks::rewrite($body, $oldTitle, $title);
         }
         if ($this->inputHasFolder($input)) {
-            $this->movePage($userId, $id, $this->folderFromInput($userId, $input), $actor, $tool);
+            $this->movePage($userId, $id, $this->folderFromInput($userId, $input), $actor, $tool, $editor);
             $page = $this->get($userId, $id);
         }
         if ($title === $page['title'] && $kind === $page['kind'] && $body === $page['body']) {
             return $page;
         }
+        $editor = $this->editorLabel($editor, $actor);
         $version = (int) $this->db->fetchScalar('SELECT COALESCE(MAX(version), 0) + 1 FROM page_revisions WHERE page_id = ?', [$id]);
         $this->db->execute(
-            "UPDATE pages SET title = ?, kind = ?, body = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$title, $kind, $body, $id, $userId]
+            "UPDATE pages SET title = ?, kind = ?, body = ?, updated_by = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$title, $kind, $body, $editor, $id, $userId]
         );
         $this->addRevision($userId, $id, $version, $title, $body);
         $this->syncLinks($userId, $id, $body);
         if ($title !== $oldTitle) {
+            $this->rememberTitle($userId, $id, $oldTitle, (string) $page['slug']);
             $this->renameIncoming($userId, $id, $oldTitle, $title, $actor, $tool);
         }
         $this->relink($userId);
@@ -219,16 +311,17 @@ final class PageService
      *
      * @return array<string, mixed>
      */
-    public function upsertSlug(int $userId, string $slug, string $title, string $body, string $kind, string $actor = 'user'): array
+    public function upsertSlug(int $userId, string $slug, string $title, string $body, string $kind, string $actor = 'user', ?string $editor = null): array
     {
         $row = $this->db->fetchOne('SELECT id FROM pages WHERE user_id = ? AND slug = ?', [$userId, $slug]);
         if ($row === null) {
             $title = $this->cleanTitle($title);
             $body  = $this->cleanBody($body);
             $kind  = $this->cleanKind($kind);
+            $label = $this->editorLabel($editor, $actor);
             $id = (int) $this->db->fetchScalar(
-                'INSERT INTO pages (user_id, title, slug, kind, body) VALUES (?, ?, ?, ?, ?) RETURNING id',
-                [$userId, $title, $slug, $kind, $body]
+                'INSERT INTO pages (user_id, title, slug, kind, body, updated_by) VALUES (?, ?, ?, ?, ?, ?) RETURNING id',
+                [$userId, $title, $slug, $kind, $body, $label]
             );
             $this->addRevision($userId, $id, 1, $title, $body);
             $this->syncLinks($userId, $id, $body);
@@ -237,13 +330,13 @@ final class PageService
             $this->audit->record($userId, $actor, null, 'page.create', 'page:' . $id, ['title' => $title]);
             return $this->get($userId, $id);
         }
-        return $this->update($userId, (int) $row['id'], ['title' => $title, 'body' => $body, 'kind' => $kind], $actor);
+        return $this->update($userId, (int) $row['id'], ['title' => $title, 'body' => $body, 'kind' => $kind], $actor, null, $editor);
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function restore(int $userId, int $id, int $version, string $actor = 'user', ?string $tool = null): array
+    public function restore(int $userId, int $id, int $version, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
         $this->get($userId, $id);
         $rev = $this->db->fetchOne(
@@ -253,7 +346,7 @@ final class PageService
         if ($rev === null) {
             throw new NotFoundException('Revision not found.');
         }
-        return $this->update($userId, $id, ['title' => $rev['title'], 'body' => $rev['body']], $actor, $tool);
+        return $this->update($userId, $id, ['title' => $rev['title'], 'body' => $rev['body']], $actor, $tool, $editor);
     }
 
     /**
@@ -285,19 +378,152 @@ final class PageService
         ];
     }
 
-    public function archive(int $userId, int $id, string $actor = 'user'): void
+    public function archive(int $userId, int $id, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
         $page = $this->get($userId, $id);
+        if ($page['archived'] === true) {
+            return $page;
+        }
         $parentId = $page['parent_id'];
+        $label = $this->editorLabel($editor, $actor);
         $this->db->execute(
-            'UPDATE pages SET parent_id = ? WHERE user_id = ? AND parent_id = ?',
+            'UPDATE pages SET parent_id = ? WHERE user_id = ? AND parent_id = ? AND archived_at IS NULL',
             [$parentId, $userId, $id]
         );
         $this->db->execute(
-            "UPDATE pages SET archived_at = (now() AT TIME ZONE 'UTC'), updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$id, $userId]
+            "UPDATE pages SET archived_at = (now() AT TIME ZONE 'UTC'), updated_by = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$label, $id, $userId]
         );
-        $this->audit->record($userId, $actor, null, 'page.archive', 'page:' . $id);
+        $this->audit->record($userId, $actor, $tool, 'page.archive', 'page:' . $id);
+        return $this->get($userId, $id);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function archiveIdentified(int $userId, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
+    {
+        $page = $this->find($userId, $this->optionalPageId($input), $this->optionalString($input, 'title'), $this->optionalString($input, 'slug'));
+        return $this->archive($userId, (int) $page['id'], $actor, $tool, $editor);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function unarchiveIdentified(int $userId, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
+    {
+        $page = $this->find($userId, $this->optionalPageId($input), $this->optionalString($input, 'title'), $this->optionalString($input, 'slug'));
+        return $this->unarchive($userId, (int) $page['id'], $actor, $tool, $editor);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function unarchive(int $userId, int $id, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
+    {
+        $page = $this->get($userId, $id);
+        if ($page['archived'] !== true) {
+            return $page;
+        }
+        $label = $this->editorLabel($editor, $actor);
+        $this->db->execute(
+            "UPDATE pages SET archived_at = NULL, updated_by = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$label, $id, $userId]
+        );
+        $this->audit->record($userId, $actor, $tool, 'page.unarchive', 'page:' . $id);
+        return $this->get($userId, $id);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function find(int $userId, ?int $id, ?string $title, ?string $slug): array
+    {
+        if ($id !== null) {
+            return $this->get($userId, $id);
+        }
+        $title = trim((string) $title);
+        $slug = trim((string) $slug);
+        if ($title === '' && $slug === '') {
+            throw ValidationException::withFields(['title' => 'Pass page_id, title, or slug.']);
+        }
+        if ($title !== '') {
+            $live = $this->db->fetchOne(
+                'SELECT id FROM pages WHERE user_id = ? AND archived_at IS NULL AND lower(title) = lower(?)',
+                [$userId, $title]
+            );
+            if ($live !== null) {
+                return $this->get($userId, (int) $live['id']);
+            }
+        }
+        if ($slug !== '') {
+            $bySlug = $this->db->fetchOne(
+                'SELECT id FROM pages WHERE user_id = ? AND slug = ?',
+                [$userId, $slug]
+            );
+            if ($bySlug !== null) {
+                return $this->get($userId, (int) $bySlug['id']);
+            }
+        }
+        $needle = $title !== '' ? $title : $slug;
+        $seen = [];
+        foreach ($this->db->fetchAll(
+            "SELECT p.id, p.title
+             FROM page_titles t
+             JOIN pages p ON p.id = t.page_id AND p.user_id = t.user_id
+             WHERE t.user_id = ? AND (lower(t.title) = lower(?) OR lower(COALESCE(t.slug, '')) = lower(?))
+             ORDER BY t.created_at DESC, t.id DESC",
+            [$userId, $needle, $needle]
+        ) as $row) {
+            $seen[(int) $row['id']] = (string) $row['title'];
+        }
+        if ($title !== '') {
+            foreach ($this->db->fetchAll(
+                'SELECT id, title FROM pages WHERE user_id = ? AND archived_at IS NOT NULL AND lower(title) = lower(?)',
+                [$userId, $title]
+            ) as $row) {
+                $seen[(int) $row['id']] = (string) $row['title'];
+            }
+        }
+        if (count($seen) === 1) {
+            return $this->get($userId, (int) array_key_first($seen));
+        }
+        if (count($seen) > 1) {
+            $bits = [];
+            foreach ($seen as $pageId => $current) {
+                $bits[] = $pageId . ' ' . $current;
+            }
+            throw ValidationException::withFields([
+                'title' => 'That title matches more than one page. Pass page_id: ' . implode(', ', $bits) . '.',
+            ]);
+        }
+        throw new NotFoundException('Page not found.');
+    }
+
+    /**
+     * Append, prepend, or change one section, then save a revision the same way a full write does.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function patch(int $userId, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
+    {
+        $page = $this->find(
+            $userId,
+            $this->optionalPageId($input),
+            $this->optionalString($input, 'title'),
+            $this->optionalString($input, 'slug')
+        );
+        $body = PagePatch::apply(
+            (string) $page['body'],
+            (string) ($input['mode'] ?? ''),
+            (string) ($input['text'] ?? ''),
+            isset($input['heading']) ? (string) $input['heading'] : null,
+            isset($input['position']) ? (string) $input['position'] : 'end'
+        );
+        return $this->update($userId, (int) $page['id'], ['body' => $body], $actor, $tool, $editor);
     }
 
     /**
@@ -381,7 +607,7 @@ final class PageService
     /**
      * @return array<string, mixed>
      */
-    public function setParent(int $userId, int $id, ?int $parentId, string $actor = 'user', ?string $tool = null): array
+    public function setParent(int $userId, int $id, ?int $parentId, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
         $page = $this->requireLivePage($userId, $id);
         if ($parentId === $id) {
@@ -397,9 +623,10 @@ final class PageService
         if ($current === $parentId && $page['folder_id'] === $folderId) {
             return $this->get($userId, $id);
         }
+        $label = $this->editorLabel($editor, $actor);
         $this->db->execute(
-            "UPDATE pages SET parent_id = ?, folder_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$parentId, $folderId, $id, $userId]
+            "UPDATE pages SET parent_id = ?, folder_id = ?, updated_by = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$parentId, $folderId, $label, $id, $userId]
         );
         $this->audit->record($userId, $actor, $tool, 'page.parent', 'page:' . $id, [
             'parent_id' => $parentId,
@@ -600,7 +827,7 @@ final class PageService
         $this->audit->record($userId, $actor, $tool, 'folder.delete', 'folder:' . $id, ['folder_id' => $id, 'parent_id' => $parentId]);
     }
 
-    public function movePage(int $userId, int $pageId, ?int $folderId, string $actor = 'user', ?string $tool = null): void
+    public function movePage(int $userId, int $pageId, ?int $folderId, string $actor = 'user', ?string $tool = null, ?string $editor = null): void
     {
         $page = $this->get($userId, $pageId);
         if ($folderId !== null) {
@@ -610,34 +837,147 @@ final class PageService
         if ($current === $folderId) {
             return;
         }
+        $label = $this->editorLabel($editor, $actor);
         $this->db->execute(
-            "UPDATE pages SET folder_id = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
-            [$folderId, $pageId, $userId]
+            "UPDATE pages SET folder_id = ?, updated_by = ?, updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
+            [$folderId, $label, $pageId, $userId]
         );
         $this->audit->record($userId, $actor, $tool, 'page.move', 'page:' . $pageId, ['page_id' => $pageId, 'folder_id' => $folderId]);
     }
 
+    /**
+     * A single name resolves when it is unique anywhere in the tree.
+     * A path with slashes still starts at the root. Ambiguous and missing
+     * names include full paths so the caller can retry.
+     */
     public function folderIdByPath(int $userId, string $path): int
     {
-        $parts = array_values(array_filter(array_map('trim', explode('/', str_replace('\\', '/', $path))), static fn (string $part): bool => $part !== ''));
+        $parts = array_values(array_filter(
+            array_map('trim', explode('/', str_replace('\\', '/', $path))),
+            static fn (string $part): bool => $part !== ''
+        ));
         if ($parts === []) {
             throw ValidationException::withFields(['folder' => 'Folder path is empty.']);
+        }
+        $catalog = $this->folderCatalog($userId);
+        if (count($parts) === 1) {
+            $matches = array_values(array_filter(
+                $catalog,
+                static fn (array $folder): bool => strcasecmp($folder['name'], $parts[0]) === 0
+            ));
+            if (count($matches) === 1) {
+                return (int) $matches[0]['id'];
+            }
+            if (count($matches) > 1) {
+                throw ValidationException::withFields([
+                    'folder' => $this->folderPathMessage($parts[0], array_column($matches, 'path'), true),
+                ]);
+            }
+            throw new NotFoundException($this->folderPathMessage($parts[0], $this->suggestPaths($catalog, $parts[0]), false));
         }
         $parent = null;
         $id = 0;
         foreach ($parts as $part) {
-            $row = $this->db->fetchOne(
-                'SELECT id FROM page_folders WHERE user_id = ? AND lower(name) = lower(?) AND '
-                . ($parent === null ? 'parent_id IS NULL' : 'parent_id = ?'),
-                $parent === null ? [$userId, $part] : [$userId, $part, $parent]
-            );
-            if ($row === null) {
-                throw new NotFoundException('Folder not found.');
+            $found = null;
+            foreach ($catalog as $folder) {
+                if ($folder['parent_id'] === $parent && strcasecmp($folder['name'], $part) === 0) {
+                    $found = $folder;
+                    break;
+                }
             }
-            $id = (int) $row['id'];
+            if ($found === null) {
+                throw new NotFoundException($this->folderPathMessage($part, $this->suggestPaths($catalog, $parts[array_key_last($parts)]), false));
+            }
+            $id = (int) $found['id'];
             $parent = $id;
         }
         return $id;
+    }
+
+    /**
+     * The folder itself, plus its own pages and child folders. An empty folder still returns the folder.
+     *
+     * @return array{folder: array<string, mixed>, pages: list<array<string, mixed>>, folders: list<array<string, mixed>>}
+     */
+    public function folderContents(int $userId, ?int $folderId, bool $includeArchived = false): array
+    {
+        $catalog = $this->folderCatalog($userId);
+        $folder = [
+            'id'        => null,
+            'name'      => 'root',
+            'parent_id' => null,
+            'path'      => '',
+        ];
+        if ($folderId !== null) {
+            $this->requireFolder($userId, $folderId);
+            $match = null;
+            foreach ($catalog as $row) {
+                if ($row['id'] === $folderId) {
+                    $match = $row;
+                    break;
+                }
+            }
+            if ($match === null) {
+                throw new NotFoundException('Folder not found.');
+            }
+            $folder = [
+                'id'        => $match['id'],
+                'name'      => $match['name'],
+                'parent_id' => $match['parent_id'],
+                'path'      => $match['path'],
+            ];
+        }
+        $live = $includeArchived ? '' : ' AND archived_at IS NULL';
+        $columns = 'id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at';
+        if ($folderId === null) {
+            $pages = $this->db->fetchAll(
+                "SELECT {$columns} FROM pages WHERE user_id = ? AND folder_id IS NULL{$live} ORDER BY lower(title) ASC, id ASC",
+                [$userId]
+            );
+        } else {
+            $pages = $this->db->fetchAll(
+                "SELECT {$columns} FROM pages WHERE user_id = ? AND folder_id = ?{$live} ORDER BY lower(title) ASC, id ASC",
+                [$userId, $folderId]
+            );
+        }
+        $children = [];
+        foreach ($catalog as $row) {
+            if ($row['parent_id'] === $folderId) {
+                $children[] = [
+                    'id'        => $row['id'],
+                    'name'      => $row['name'],
+                    'parent_id' => $row['parent_id'],
+                    'path'      => $row['path'],
+                ];
+            }
+        }
+        usort($children, static fn (array $a, array $b): int => strcasecmp($a['name'], $b['name']));
+        return [
+            'folder'  => $folder,
+            'pages'   => array_map(fn (array $row): array => $this->brief($row), $pages),
+            'folders' => $children,
+        ];
+    }
+
+    /**
+     * @return array{id: ?int, name: string, parent_id: ?int, path: string}
+     */
+    public function folderSummary(int $userId, ?int $folderId): array
+    {
+        if ($folderId === null) {
+            return ['id' => null, 'name' => 'root', 'parent_id' => null, 'path' => ''];
+        }
+        foreach ($this->folderCatalog($userId) as $row) {
+            if ($row['id'] === $folderId) {
+                return [
+                    'id'        => $row['id'],
+                    'name'      => $row['name'],
+                    'parent_id' => $row['parent_id'],
+                    'path'      => $row['path'],
+                ];
+            }
+        }
+        throw new NotFoundException('Folder not found.');
     }
 
     /**
@@ -848,7 +1188,7 @@ final class PageService
         return array_map(
             fn (array $row): array => $this->brief($row),
             $this->db->fetchAll(
-                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at
+                'SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at
                  FROM pages
                  WHERE user_id = ? AND parent_id = ? AND archived_at IS NULL
                  ORDER BY lower(title) ASC, id ASC',
@@ -1059,7 +1399,7 @@ final class PageService
     /**
      * @return list<array<string, mixed>>
      */
-    private function semantic(int $userId, string $query, int $limit): array
+    private function semantic(int $userId, string $query, int $limit, bool $includeArchived = false): array
     {
         $target = OllamaSettings::effective((new OllamaSettings($this->db))->get(), null);
         $queryVec = (new OllamaClient())->embeddings(
@@ -1071,10 +1411,11 @@ final class PageService
         if (!is_array($queryVec) || $queryVec === []) {
             return [];
         }
+        $live = $includeArchived ? '' : ' AND p.archived_at IS NULL';
         $rows = $this->db->fetchAll(
-            'SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.parent_id, p.favorited_at, p.updated_at, e.embedding
+            "SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.parent_id, p.favorited_at, p.updated_at, p.updated_by, p.archived_at, e.embedding
              FROM page_embeddings e JOIN pages p ON p.id = e.page_id
-             WHERE e.user_id = ? AND p.archived_at IS NULL',
+             WHERE e.user_id = ?{$live}",
             [$userId]
         );
         $scored = [];
@@ -1087,31 +1428,202 @@ final class PageService
             if ($score < 0.25) {
                 continue;
             }
-            $brief = $this->brief($row);
-            $brief['score'] = $score;
-            $scored[] = $brief;
+            $row['score'] = $score;
+            $scored[] = $row;
         }
         usort($scored, static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
         return array_slice($scored, 0, $limit);
     }
 
     /**
-     * @param list<array<string, mixed>> $fts
-     * @param list<array<string, mixed>> $semantic
      * @return list<array<string, mixed>>
      */
-    private function mergeHits(array $fts, array $semantic, int $limit): array
+    private function aliasHits(int $userId, string $query, ?string $like): array
     {
-        $byId = [];
-        foreach ($fts as $row) {
-            $byId[$row['id']] = $row;
+        $flag = $like === null ? '0' : '1';
+        $pattern = $like ?? '%';
+        return $this->db->fetchAll(
+            "SELECT p.id, p.title, p.slug, p.kind, p.folder_id, p.parent_id, p.favorited_at,
+                    p.updated_at, p.updated_by, p.archived_at, p.body, t.title AS former_title
+             FROM page_titles t
+             JOIN pages p ON p.id = t.page_id AND p.user_id = t.user_id
+             WHERE t.user_id = ? AND (lower(t.title) = lower(?) OR (? = '1' AND t.title ILIKE ?))
+             ORDER BY t.created_at DESC, t.id DESC
+             LIMIT 200",
+            [$userId, $query, $flag, $pattern]
+        );
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @param list<int> $folderParams
+     */
+    private function rowVisible(array $row, bool $includeArchived, bool $folderSet, ?int $folderId, array $folderParams, ?string $since): bool
+    {
+        if (!$includeArchived && isset($row['archived_at']) && $row['archived_at'] !== null && $row['archived_at'] !== '') {
+            return false;
         }
-        foreach ($semantic as $row) {
-            if (!isset($byId[$row['id']])) {
-                $byId[$row['id']] = $row;
+        if ($since !== null && (string) $row['updated_at'] < $since) {
+            return false;
+        }
+        if (!$folderSet) {
+            return true;
+        }
+        $id = isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== '' ? (int) $row['folder_id'] : null;
+        if ($folderId === null) {
+            return $id === null;
+        }
+        return $id !== null && in_array($id, $folderParams, true);
+    }
+
+    private function editorLabel(?string $editor, string $actor): string
+    {
+        $label = trim((string) $editor);
+        if ($label === '') {
+            $label = $actor === 'ai' ? 'Agent' : ($actor !== '' ? $actor : 'user');
+        }
+        return mb_substr($label, 0, 80);
+    }
+
+    private function rememberTitle(int $userId, int $pageId, string $title, ?string $slug): void
+    {
+        $this->db->execute(
+            'INSERT INTO page_titles (user_id, page_id, title, slug) VALUES (?, ?, ?, ?)',
+            [$userId, $pageId, $title, $slug]
+        );
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function formerTitles(int $userId, int $pageId): array
+    {
+        $out = [];
+        foreach ($this->db->fetchAll(
+            'SELECT title FROM page_titles WHERE user_id = ? AND page_id = ? ORDER BY created_at DESC, id DESC LIMIT 20',
+            [$userId, $pageId]
+        ) as $row) {
+            $title = (string) $row['title'];
+            $key = mb_strtolower($title);
+            if (!isset($out[$key])) {
+                $out[$key] = $title;
             }
         }
-        return array_slice(array_values($byId), 0, $limit);
+        return array_values($out);
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function optionalPageId(array $input): ?int
+    {
+        if (!array_key_exists('page_id', $input) || $input['page_id'] === null || $input['page_id'] === '') {
+            return null;
+        }
+        if (!is_numeric($input['page_id']) || (int) $input['page_id'] < 1) {
+            throw ValidationException::withFields(['page_id' => 'page_id must be a page id.']);
+        }
+        return (int) $input['page_id'];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function optionalString(array $input, string $key): ?string
+    {
+        if (!array_key_exists($key, $input) || $input[$key] === null) {
+            return null;
+        }
+        $value = trim((string) $input[$key]);
+        return $value === '' ? null : $value;
+    }
+
+    /**
+     * @return list<array{id: int, name: string, parent_id: ?int, path: string}>
+     */
+    private function folderCatalog(int $userId): array
+    {
+        $byId = [];
+        foreach ($this->db->fetchAll(
+            'SELECT id, parent_id, name FROM page_folders WHERE user_id = ? ORDER BY id ASC',
+            [$userId]
+        ) as $row) {
+            $id = (int) $row['id'];
+            $byId[$id] = [
+                'id'        => $id,
+                'name'      => (string) $row['name'],
+                'parent_id' => $row['parent_id'] !== null && $row['parent_id'] !== '' ? (int) $row['parent_id'] : null,
+            ];
+        }
+        $pathOf = function (int $id) use (&$pathOf, $byId): string {
+            $folder = $byId[$id];
+            if ($folder['parent_id'] === null || !isset($byId[$folder['parent_id']])) {
+                return $folder['name'];
+            }
+            return $pathOf($folder['parent_id']) . '/' . $folder['name'];
+        };
+        $out = [];
+        foreach ($byId as $id => $folder) {
+            $folder['path'] = $pathOf($id);
+            $out[] = $folder;
+        }
+        return $out;
+    }
+
+    /**
+     * @param list<string> $paths
+     */
+    private function folderPathMessage(string $label, array $paths, bool $ambiguous): string
+    {
+        $shown = array_slice($paths, 0, 8);
+        $list = implode(', ', array_map(static fn (string $path): string => '"' . $path . '"', $shown));
+        if ($ambiguous) {
+            return 'Folder "' . $label . '" matches more than one folder. Pass a full path: ' . $list . '.';
+        }
+        if ($shown === []) {
+            return 'Folder not found. Pass a full path such as "Parent/' . $label . '".';
+        }
+        return 'Folder not found. Pass a full path such as ' . $list . '.';
+    }
+
+    /**
+     * @param list<array{id: int, name: string, parent_id: ?int, path: string}> $catalog
+     * @return list<string>
+     */
+    private function suggestPaths(array $catalog, string $leaf): array
+    {
+        $exact = [];
+        $partial = [];
+        foreach ($catalog as $folder) {
+            if (strcasecmp($folder['name'], $leaf) === 0) {
+                $exact[] = $folder['path'];
+            } elseif ($leaf !== '' && (mb_stripos($folder['name'], $leaf) !== false || mb_stripos($leaf, $folder['name']) !== false)) {
+                $partial[] = $folder['path'];
+            }
+        }
+        if ($exact !== []) {
+            return $exact;
+        }
+        if ($partial !== []) {
+            return $partial;
+        }
+        return array_slice(array_column($catalog, 'path'), 0, 8);
+    }
+
+    /**
+     * @return array{id: int, name: string, path: string}|null
+     */
+    private function suggestedFolder(int $userId, string $title): ?array
+    {
+        $folders = [];
+        foreach ($this->folderCatalog($userId) as $folder) {
+            $folders[] = [
+                'id'   => $folder['id'],
+                'name' => $folder['name'],
+                'path' => $folder['path'],
+            ];
+        }
+        return FolderSuggest::suggest($title, $folders);
     }
 
     private function assertUniqueTitle(int $userId, string $title, ?int $exceptId): void
@@ -1350,15 +1862,19 @@ final class PageService
      */
     private function brief(array $row): array
     {
+        $id = (int) $row['id'];
         return [
-            'id'         => (int) $row['id'],
-            'title'      => (string) $row['title'],
-            'slug'       => (string) $row['slug'],
-            'kind'       => (string) $row['kind'],
-            'folder_id'  => isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== '' ? (int) $row['folder_id'] : null,
-            'parent_id'  => $this->nullableInt($row['parent_id'] ?? null),
-            'favorite'   => isset($row['favorited_at']) && $row['favorited_at'] !== null && $row['favorited_at'] !== '',
-            'updated_at' => (string) $row['updated_at'],
+            'id'          => $id,
+            'title'       => (string) $row['title'],
+            'slug'        => (string) $row['slug'],
+            'kind'        => (string) $row['kind'],
+            'folder_id'   => isset($row['folder_id']) && $row['folder_id'] !== null && $row['folder_id'] !== '' ? (int) $row['folder_id'] : null,
+            'parent_id'   => $this->nullableInt($row['parent_id'] ?? null),
+            'favorite'    => isset($row['favorited_at']) && $row['favorited_at'] !== null && $row['favorited_at'] !== '',
+            'updated_at'  => (string) $row['updated_at'],
+            'last_editor' => isset($row['updated_by']) ? (string) $row['updated_by'] : '',
+            'archived'    => isset($row['archived_at']) && $row['archived_at'] !== null && $row['archived_at'] !== '',
+            'url'         => PageUrl::forId($id),
         ];
     }
 
@@ -1370,7 +1886,6 @@ final class PageService
     {
         return $this->brief($row) + [
             'body'           => (string) $row['body'],
-            'archived'       => $row['archived_at'] !== null,
             'last_opened_at' => isset($row['last_opened_at']) && $row['last_opened_at'] !== null && $row['last_opened_at'] !== ''
                 ? (string) $row['last_opened_at']
                 : null,

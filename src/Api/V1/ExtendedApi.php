@@ -188,11 +188,25 @@ final class ExtendedApi
 
         $r->get('/api/v1/pages', fn () => $this->run(function (int $u): array {
             [$folderId, $folderSet] = $this->folderFilter($u);
-            return ['pages' => $this->svc->pages->list($u, self::strParam('q'), (int) ($_GET['limit'] ?? 100), $folderId, $folderSet)];
+            $since = self::strParam('updated_since') ?? self::strParam('since');
+            $pages = $this->svc->pages->list(
+                $u,
+                self::strParam('q'),
+                (int) ($_GET['limit'] ?? 100),
+                $folderId,
+                $folderSet,
+                self::flag('include_archived'),
+                $since
+            );
+            $out = ['pages' => $pages];
+            if ($folderSet) {
+                $out['folder'] = $this->svc->pages->folderSummary($u, $folderId);
+            }
+            return $out;
         }));
         $r->post('/api/v1/pages', fn () => $this->run(function (int $u): array {
             $actor = $this->runner->actor();
-            return ['page' => $this->svc->pages->create($u, $this->runner->body(), $actor->kind, $actor->tool)];
+            return ['page' => $this->svc->pages->create($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 201, true));
         $r->get('/api/v1/pages/folders', fn () => $this->run(fn (int $u) => [
             'folders' => $this->svc->pages->folderTree($u),
@@ -261,6 +275,25 @@ final class ExtendedApi
         $r->get('/api/v1/pages/resolve', fn () => $this->run(fn (int $u) => [
             'link' => $this->svc->pages->resolveLink($u, (string) (self::strParam('q') ?? '')),
         ]));
+        $r->get('/api/v1/pages/lookup', fn () => $this->run(function (int $u): array {
+            return ['page' => $this->svc->pages->find($u, self::optionalPageId(), self::strParam('title'), self::strParam('slug'))];
+        }));
+        $r->get('/api/v1/pages/folders/contents', fn () => $this->run(function (int $u): array {
+            [$folderId, $folderSet] = $this->folderFilter($u);
+            return $this->svc->pages->folderContents($u, $folderSet ? $folderId : null, self::flag('include_archived'));
+        }));
+        $r->post('/api/v1/pages/patch', fn () => $this->run(function (int $u): array {
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->patch($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
+        }, 200, true));
+        $r->post('/api/v1/pages/archive', fn () => $this->run(function (int $u): array {
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->archiveIdentified($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
+        }, 200, true));
+        $r->post('/api/v1/pages/unarchive', fn () => $this->run(function (int $u): array {
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->unarchiveIdentified($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
+        }, 200, true));
         $r->get('/api/v1/pages/graph', fn () => $this->run(fn (int $u) => $this->svc->pages->graph($u)));
         $r->get('/api/v1/pages/graph/access', fn () => $this->run(fn (int $u) => [
             'events'     => $this->svc->pages->graphAccess($u, (int) ($_GET['limit'] ?? 80)),
@@ -284,7 +317,7 @@ final class ExtendedApi
                 throw ValidationException::withFields(['parent_id' => 'parent_id is required. Use null for the top level.']);
             }
             $actor = $this->runner->actor();
-            return ['page' => $this->svc->pages->setParent($u, self::id($p), self::nullablePageId($b['parent_id']), $actor->kind, $actor->tool)];
+            return ['page' => $this->svc->pages->setParent($u, self::id($p), self::nullablePageId($b['parent_id']), $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 200, true));
         $r->post('/api/v1/pages/{id}/favorite', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $b = $this->runner->body();
@@ -308,12 +341,12 @@ final class ExtendedApi
                 throw ValidationException::withFields(['folder_id' => 'folder_id is required. Use null for the root.']);
             }
             $actor = $this->runner->actor();
-            $this->svc->pages->movePage($u, self::id($p), $this->svc->pages->folderFromInput($u, $b), $actor->kind, $actor->tool);
+            $this->svc->pages->movePage($u, self::id($p), $this->svc->pages->folderFromInput($u, $b), $actor->kind, $actor->tool, $this->runner->editorName());
             return ['page' => $this->svc->pages->get($u, self::id($p))];
         }, 200, true));
         $r->post('/api/v1/pages/{id}/update', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $actor = $this->runner->actor();
-            return ['page' => $this->svc->pages->update($u, self::id($p), $this->runner->body(), $actor->kind, $actor->tool)];
+            return ['page' => $this->svc->pages->update($u, self::id($p), $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 200, true));
         $r->get('/api/v1/pages/{id}/revisions/{version}', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $v = filter_var($p['version'] ?? null, FILTER_VALIDATE_INT);
@@ -328,11 +361,15 @@ final class ExtendedApi
                 throw ValidationException::withFields(['version' => 'version must be a positive integer.']);
             }
             $actor = $this->runner->actor();
-            return ['page' => $this->svc->pages->restore($u, self::id($p), $v, $actor->kind, $actor->tool)];
+            return ['page' => $this->svc->pages->restore($u, self::id($p), $v, $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 200, true));
         $r->post('/api/v1/pages/{id}/archive', fn (array $p) => $this->run(function (int $u) use ($p): array {
-            $this->svc->pages->archive($u, self::id($p), $this->runner->actor()->kind);
-            return ['ok' => true];
+            $actor = $this->runner->actor();
+            return ['ok' => true, 'page' => $this->svc->pages->archive($u, self::id($p), $actor->kind, $actor->tool, $this->runner->editorName())];
+        }, 200, true));
+        $r->post('/api/v1/pages/{id}/unarchive', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $actor = $this->runner->actor();
+            return ['ok' => true, 'page' => $this->svc->pages->unarchive($u, self::id($p), $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 200, true));
         $r->post('/api/v1/pages/{id}/embedding', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $b = $this->runner->body();
@@ -1205,6 +1242,26 @@ final class ExtendedApi
     {
         $v = $_GET[$name] ?? null;
         return is_string($v) && $v !== '' ? $v : null;
+    }
+
+    private static function flag(string $name): bool
+    {
+        if (!array_key_exists($name, $_GET)) {
+            return false;
+        }
+        return filter_var($_GET[$name], FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private static function optionalPageId(): ?int
+    {
+        $raw = $_GET['page_id'] ?? null;
+        if ($raw === null || $raw === '') {
+            return null;
+        }
+        if (!is_numeric($raw) || (int) $raw < 1) {
+            throw ValidationException::withFields(['page_id' => 'page_id must be a page id.']);
+        }
+        return (int) $raw;
     }
 
     private function deploy(): DeployService

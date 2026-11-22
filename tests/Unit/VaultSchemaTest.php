@@ -27,4 +27,19 @@ final class VaultSchemaTest extends TestCase
         self::assertStringContainsString("CHECK (ext IN ('jpg', 'png', 'gif', 'webp'))", $images);
         self::assertStringNotContainsString('share', strtolower($images));
     }
+
+    public function testLookupMigrationKeepsBodiesAndRevisions(): void
+    {
+        $names = array_keys(Schema::pgsqlMigrationFiles());
+        self::assertContains('0057_vault_lookup', $names);
+        $sql = (string) file_get_contents(Schema::pgsqlMigrationsDir() . '/0057_vault_lookup.sql');
+        self::assertStringContainsString('ADD COLUMN updated_by', $sql);
+        self::assertStringContainsString('CREATE TABLE page_titles', $sql);
+        self::assertStringContainsString('INSERT INTO page_titles', $sql);
+        self::assertStringNotContainsString('page_revisions SET', strtolower($sql));
+        self::assertStringNotContainsString('SET body', strtolower($sql));
+        self::assertStringNotContainsString('SET title', strtolower($sql));
+        self::assertStringNotContainsString('DELETE FROM', $sql);
+        self::assertStringNotContainsString('DROP TABLE', $sql);
+    }
 }
