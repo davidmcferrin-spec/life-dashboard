@@ -31,9 +31,44 @@ $pageTitle = 'Health';
         </form>
         <form class="platform-card platform-form" id="health-meal-form">
             <p class="platform-kicker">Log meal</p>
-            <input class="input" name="note" placeholder="What you ate" required maxlength="500">
-            <input class="input" name="calories" type="number" min="0" max="20000" step="1" placeholder="Calories, optional">
+            <select class="input" name="meal_type" aria-label="Meal" required>
+                <option value="breakfast">Breakfast</option>
+                <option value="lunch">Lunch</option>
+                <option value="dinner">Dinner</option>
+                <option value="snack">Snack</option>
+                <option value="other">Other</option>
+            </select>
+            <input class="input" name="description" placeholder="What you ate" required maxlength="500">
+            <input class="input" name="place" placeholder="Place, optional" maxlength="160">
+            <input class="input" name="cost" type="number" min="0" max="100000" step="0.01" placeholder="Cost, optional">
+            <label class="platform-meta"><input type="checkbox" name="eaten_out"> Eaten out</label>
             <button class="btn-primary" type="submit">Save meal</button>
+            <div id="health-meals"></div>
+        </form>
+        <form class="platform-card platform-form" id="health-bp-form">
+            <p class="platform-kicker">Blood pressure</p>
+            <div id="health-bp"></div>
+            <input class="input" name="systolic" type="number" min="50" max="300" step="1" placeholder="Systolic" required>
+            <input class="input" name="diastolic" type="number" min="30" max="200" step="1" placeholder="Diastolic" required>
+            <input class="input" name="pulse" type="number" min="20" max="250" step="1" placeholder="Pulse, optional">
+            <button class="btn-primary" type="submit">Save reading</button>
+        </form>
+        <form class="platform-card platform-form" id="health-med-form">
+            <p class="platform-kicker">Medications</p>
+            <div id="health-meds"></div>
+            <input class="input" name="name" placeholder="Name" required maxlength="160">
+            <input class="input" name="dose" placeholder="Dose" maxlength="80">
+            <input class="input" name="schedule" placeholder="Schedule" maxlength="160">
+            <button class="btn-primary" type="submit">Add medication</button>
+        </form>
+        <form class="platform-card platform-form" id="health-appt-form">
+            <p class="platform-kicker">Appointments</p>
+            <div id="health-appts"></div>
+            <input class="input" name="provider" placeholder="Provider" required maxlength="160">
+            <input class="input" name="specialty" placeholder="Specialty" maxlength="80">
+            <input class="input" name="starts_at" type="datetime-local" aria-label="When" required>
+            <input class="input" name="location" placeholder="Location" maxlength="200">
+            <button class="btn-primary" type="submit">Add appointment</button>
         </form>
         <form class="platform-card platform-form" id="health-body-form">
             <p class="platform-kicker">Log body</p>

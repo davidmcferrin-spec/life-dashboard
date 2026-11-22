@@ -127,6 +127,133 @@ final class DatapointService
     }
 
     /**
+     * Add $amount to the one row for this dedupe key.
+     *
+     * One INSERT … ON CONFLICT statement so two writers cannot both read the
+     * same total and drop a count. $cap keeps a check-off habit at 1.
+     *
+     * @return array<string, mixed>
+     */
+    public function addToDay(
+        int $userId,
+        int $metricId,
+        float $amount,
+        string $localDate,
+        string $source,
+        string $dedupeKey,
+        ?float $cap = null,
+    ): array {
+        $metric = $this->metrics->get($userId, $metricId);
+        if ($metric['archived']) {
+            throw new ValidationException('Metric is archived.');
+        }
+        if (!is_finite($amount) || $amount == 0.0 || abs($amount) > 1e9) {
+            throw ValidationException::withFields(['amount' => 'Amount must be a non-zero number.']);
+        }
+        if (!in_array($source, self::SOURCES, true)) {
+            throw ValidationException::withFields(['source' => 'Invalid source.']);
+        }
+        if ($dedupeKey === '' || mb_strlen($dedupeKey) > 128 || preg_match('/^[\x21-\x7e]+$/', $dedupeKey) !== 1) {
+            throw ValidationException::withFields(['dedupe_key' => 'dedupe_key must be 1–128 printable ASCII characters.']);
+        }
+        try {
+            $localDate = Clock::normalizeDate($localDate);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withFields(['date' => $e->getMessage()]);
+        }
+        if ($localDate > $this->clock->today()) {
+            throw ValidationException::withFields(['date' => 'Date cannot be in the future.']);
+        }
+        $ts = $localDate === $this->clock->today() ? $this->clock->now() : $this->clock->noonOf($localDate);
+        $utc = $this->clock->utcString($ts);
+
+        if ($cap === null) {
+            $id = $this->db->fetchScalar(
+                "INSERT INTO datapoints (metric_id, user_id, ts, local_date, value, note, source, dedupe_key, meta)
+                 VALUES (?, ?, ?, ?, GREATEST(0, ?::double precision), NULL, ?, ?, '{}'::jsonb)
+                 ON CONFLICT (metric_id, dedupe_key) DO UPDATE
+                    SET value = GREATEST(0, datapoints.value + ?::double precision),
+                        ts = EXCLUDED.ts,
+                        local_date = EXCLUDED.local_date,
+                        source = EXCLUDED.source,
+                        updated_at = (now() AT TIME ZONE 'UTC')
+                 RETURNING id",
+                [$metricId, $userId, $utc, $localDate, $amount, $source, $dedupeKey, $amount]
+            );
+        } else {
+            if ($cap <= 0.0) {
+                throw ValidationException::withFields(['amount' => 'Amount must be a non-zero number.']);
+            }
+            $id = $this->db->fetchScalar(
+                "INSERT INTO datapoints (metric_id, user_id, ts, local_date, value, note, source, dedupe_key, meta)
+                 VALUES (?, ?, ?, ?, LEAST(?::double precision, GREATEST(0, ?::double precision)), NULL, ?, ?, '{}'::jsonb)
+                 ON CONFLICT (metric_id, dedupe_key) DO UPDATE
+                    SET value = LEAST(?::double precision, GREATEST(0, datapoints.value + ?::double precision)),
+                        ts = EXCLUDED.ts,
+                        local_date = EXCLUDED.local_date,
+                        source = EXCLUDED.source,
+                        updated_at = (now() AT TIME ZONE 'UTC')
+                 RETURNING id",
+                [$metricId, $userId, $utc, $localDate, $cap, $amount, $source, $dedupeKey, $cap, $amount]
+            );
+        }
+
+        $stored = $this->get($userId, (int) $id);
+        if ($metric['kind'] !== 'habit' && $this->afterRecord !== null) {
+            ($this->afterRecord)($userId, $metricId, $localDate, $source);
+        }
+
+        return $stored;
+    }
+
+    /**
+     * Store an exact daily total on one dedupe key. Used when a count habit
+     * is marked done at its target without adding one more.
+     *
+     * @return array<string, mixed>
+     */
+    public function putDaily(int $userId, int $metricId, float $value, string $localDate, string $source, string $dedupeKey): array
+    {
+        $metric = $this->metrics->get($userId, $metricId);
+        if ($metric['archived']) {
+            throw new ValidationException('Metric is archived.');
+        }
+        if (!is_finite($value) || $value < 0.0 || $value > 1e9) {
+            throw ValidationException::withFields(['value' => 'Value out of range.']);
+        }
+        if (!in_array($source, self::SOURCES, true)) {
+            throw ValidationException::withFields(['source' => 'Invalid source.']);
+        }
+        try {
+            $localDate = Clock::normalizeDate($localDate);
+        } catch (\InvalidArgumentException $e) {
+            throw ValidationException::withFields(['date' => $e->getMessage()]);
+        }
+        if ($localDate > $this->clock->today()) {
+            throw ValidationException::withFields(['date' => 'Date cannot be in the future.']);
+        }
+        $ts = $localDate === $this->clock->today() ? $this->clock->now() : $this->clock->noonOf($localDate);
+        $id = $this->db->fetchScalar(
+            "INSERT INTO datapoints (metric_id, user_id, ts, local_date, value, note, source, dedupe_key, meta)
+             VALUES (?, ?, ?, ?, ?, NULL, ?, ?, '{}'::jsonb)
+             ON CONFLICT (metric_id, dedupe_key) DO UPDATE
+                SET value = EXCLUDED.value,
+                    ts = EXCLUDED.ts,
+                    local_date = EXCLUDED.local_date,
+                    source = EXCLUDED.source,
+                    updated_at = (now() AT TIME ZONE 'UTC')
+             RETURNING id",
+            [$metricId, $userId, $this->clock->utcString($ts), $localDate, $value, $source, $dedupeKey]
+        );
+        $stored = $this->get($userId, (int) $id);
+        if ($metric['kind'] !== 'habit' && $this->afterRecord !== null) {
+            ($this->afterRecord)($userId, $metricId, $localDate, $source);
+        }
+
+        return $stored;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function get(int $userId, int $datapointId): array
@@ -266,6 +393,30 @@ final class DatapointService
             [$userId, $metricId, $fromDate, $toDate]
         );
         return array_map(static fn (array $r): string => (string) $r['local_date'], $rows);
+    }
+
+    /**
+     * Last value on each local date. A daily dedupe key has one row, and that
+     * row is the running total.
+     *
+     * @return array<string, float>
+     */
+    public function valuesByDate(int $userId, int $metricId, string $fromDate, string $toDate): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT to_char(local_date, \'YYYY-MM-DD\') AS day,
+                    (ARRAY_AGG(value ORDER BY ts DESC, id DESC))[1] AS value
+             FROM datapoints
+             WHERE user_id = ? AND metric_id = ? AND local_date BETWEEN ? AND ?
+             GROUP BY local_date',
+            [$userId, $metricId, Clock::normalizeDate($fromDate), Clock::normalizeDate($toDate)]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(string) $row['day']] = (float) $row['value'];
+        }
+
+        return $out;
     }
 
     // ------------------------------------------------------------------

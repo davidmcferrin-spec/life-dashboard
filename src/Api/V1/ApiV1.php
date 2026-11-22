@@ -115,6 +115,26 @@ final class ApiV1
             null,
             (int) ($_GET['days'] ?? 7)
         )));
+        $r->get('/api/v1/habits/today', fn () => $this->run(fn (int $u) => $this->svc->habits->todayStatus($u)));
+        $r->post('/api/v1/datapoints/increment', fn () => $this->run(function (int $u): array {
+            $b = $this->body();
+            $metricId = isset($b['metric_id']) && $b['metric_id'] !== '' && $b['metric_id'] !== null
+                ? (int) $b['metric_id']
+                : null;
+            $key = isset($b['key']) && $b['key'] !== '' ? (string) $b['key'] : null;
+            $amount = array_key_exists('amount', $b) && $b['amount'] !== '' && $b['amount'] !== null
+                ? (float) $b['amount']
+                : 1.0;
+
+            return $this->svc->habits->incrementDatapoint(
+                $u,
+                $metricId,
+                $key,
+                $amount,
+                isset($b['date']) ? (string) $b['date'] : null,
+                $this->runner->actor()->source()
+            );
+        }, 200, true));
         $r->post('/api/v1/habits', fn () => $this->run(function (int $u): array {
             $createdBy = $this->runner->actor()->kind === 'ai' ? 'ai' : 'user';
             return ['habit' => $this->svc->habits->create($u, $this->body(), $createdBy)];
@@ -140,6 +160,20 @@ final class ApiV1
             isset($this->body()['date']) ? (string) $this->body()['date'] : null,
             $this->runner->actor()->source()
         ), 200, true));
+        $r->post('/api/v1/habits/{id}/state', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->body();
+            if (!array_key_exists('done', $b) || !is_bool($b['done'])) {
+                throw ValidationException::withFields(['done' => 'done must be true or false.']);
+            }
+
+            return $this->svc->habits->set(
+                $u,
+                self::id($p),
+                $b['done'],
+                isset($b['date']) ? (string) $b['date'] : null,
+                $this->runner->actor()->source()
+            );
+        }, 200, true));
 
         // ---- widgets -------------------------------------------------
         $r->get('/api/v1/widget-types', fn () => $this->run(fn (int $u) => [

@@ -66,6 +66,31 @@ final class PlatformApi
         $r->post('/api/v1/health/workouts', fn () => $this->run(fn (int $u) => $this->svc->health->logWorkout($u, $this->runner->body()), 201, true));
         $r->post('/api/v1/health/meals', fn () => $this->run(fn (int $u) => $this->svc->health->logMeal($u, $this->runner->body()), 201, true));
         $r->post('/api/v1/health/body', fn () => $this->run(fn (int $u) => $this->svc->health->logBody($u, $this->runner->body()), 201, true));
+        $r->post('/api/v1/health/meal-log', fn () => $this->run(fn (int $u) => $this->svc->healthLog->logMeal($u, $this->runner->body(), $this->runner->actor()->source()), 201, true));
+        $r->get('/api/v1/health/meal-log', fn () => $this->run(fn (int $u) => $this->svc->healthLog->listMeals($u, self::str('from'), self::str('to'))));
+        $r->post('/api/v1/health/blood-pressure', fn () => $this->run(fn (int $u) => $this->svc->healthLog->logBloodPressure($u, $this->runner->body()), 201, true));
+        $r->get('/api/v1/health/blood-pressure', fn () => $this->run(fn (int $u) => $this->svc->healthLog->listBloodPressure($u, self::str('from'), self::str('to'))));
+        $r->post('/api/v1/health/medications', fn () => $this->run(fn (int $u) => $this->svc->healthLog->addMedication($u, $this->runner->body()), 201, true));
+        $r->post('/api/v1/health/medications/{id}/update', fn (array $p) => $this->run(fn (int $u) => $this->svc->healthLog->updateMedication($u, self::id($p), $this->runner->body()), 200, true));
+        $r->get('/api/v1/health/medications', fn () => $this->run(function (int $u): array {
+            $active = self::str('active');
+            $flag = $active === null ? null : $active === '1' || $active === 'true';
+
+            return $this->svc->healthLog->listMedications($u, $flag);
+        }));
+        $r->post('/api/v1/health/medications/{id}/doses', fn (array $p) => $this->run(fn (int $u) => $this->svc->healthLog->logDose($u, self::id($p), $this->runner->body()), 201, true));
+        $r->post('/api/v1/health/appointments', fn () => $this->run(fn (int $u) => $this->svc->healthLog->addAppointment($u, $this->runner->body()), 201, true));
+        $r->post('/api/v1/health/appointments/{id}/update', fn (array $p) => $this->run(fn (int $u) => $this->svc->healthLog->updateAppointment($u, self::id($p), $this->runner->body()), 200, true));
+        $r->get('/api/v1/health/appointments', fn () => $this->run(function (int $u): array {
+            $upcoming = self::str('upcoming');
+
+            return $this->svc->healthLog->listAppointments(
+                $u,
+                $upcoming === '1' || $upcoming === 'true',
+                self::str('from'),
+                self::str('to')
+            );
+        }));
 
         $r->get('/api/v1/home/status', fn () => $this->run(fn () => (new HomeStatus($this->svc->db))->status()));
         $r->get('/api/v1/mail/status', fn () => $this->run(fn () => [
@@ -79,6 +104,17 @@ final class PlatformApi
         $value = $_GET[$name] ?? null;
 
         return is_string($value) && $value !== '' ? $value : null;
+    }
+
+    /** @param array<string, string> $params */
+    private static function id(array $params): int
+    {
+        $id = filter_var($params['id'] ?? null, FILTER_VALIDATE_INT);
+        if ($id === false || $id < 1) {
+            throw new \Dashboard\Support\NotFoundException('Not found.');
+        }
+
+        return $id;
     }
 
     /**

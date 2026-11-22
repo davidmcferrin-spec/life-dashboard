@@ -47,14 +47,66 @@
             : '<p class="platform-meta">No workouts stored.</p>';
     }
 
+    function paintMeals(payload) {
+        const list = (payload && payload.meals) || [];
+        document.getElementById('health-meals').innerHTML = list.length
+            ? list.map(function (meal) {
+                const where = meal.eaten_out ? (meal.place || 'Out') : (meal.place || 'At home');
+                const cost = meal.cost === null || meal.cost === undefined ? '' : ' · $' + meal.cost;
+                return '<div class="platform-row"><span>' + esc(meal.meal_type) + ' · ' + esc(meal.description) + '</span><span>' + esc(meal.date) + ' · ' + esc(where) + esc(cost) + '</span></div>';
+            }).join('')
+            : '<p class="platform-meta">No meals logged in this range.</p>';
+    }
+
+    function paintPressure(payload) {
+        const rows = (payload && payload.readings) || [];
+        const avg = (payload && payload.average) || {};
+        const summary = avg.count
+            ? '<p class="platform-meta">Average ' + esc(avg.systolic) + '/' + esc(avg.diastolic) + (avg.pulse ? ' · pulse ' + esc(avg.pulse) : '') + ' · ' + esc(avg.count) + '</p>'
+            : '<p class="platform-meta">No readings in this range.</p>';
+        const list = rows.slice(0, 5).map(function (row) {
+            const pulse = row.pulse ? ' · ' + row.pulse : '';
+            return '<div class="platform-row"><span>' + esc(row.systolic) + '/' + esc(row.diastolic) + esc(pulse) + '</span><span>' + esc(row.taken_at) + '</span></div>';
+        }).join('');
+        document.getElementById('health-bp').innerHTML = summary + list;
+    }
+
+    function paintMeds(payload) {
+        const rows = (payload && payload.medications) || [];
+        document.getElementById('health-meds').innerHTML = rows.length
+            ? rows.map(function (row) {
+                const detail = [row.dose, row.schedule].filter(Boolean).join(' · ');
+                return '<div class="platform-row"><span>' + esc(row.name) + '</span><span>' + esc(detail) + '</span></div>';
+            }).join('')
+            : '<p class="platform-meta">No active medications.</p>';
+    }
+
+    function paintAppointments(payload) {
+        const rows = (payload && payload.appointments) || [];
+        document.getElementById('health-appts').innerHTML = rows.length
+            ? rows.map(function (row) {
+                const detail = [row.specialty, row.location].filter(Boolean).join(' · ');
+                return '<div class="platform-row"><span>' + esc(row.provider) + (detail ? ' · ' + esc(detail) : '') + '</span><span>' + esc(row.starts_at) + '</span></div>';
+            }).join('')
+            : '<p class="platform-meta">No upcoming appointments.</p>';
+    }
+
     function load() {
         return Promise.all([
             window.LD.api.get('/health/status'),
             window.LD.api.get('/health/readiness'),
             window.LD.api.get('/health/workouts'),
+            window.LD.api.get('/health/meal-log'),
+            window.LD.api.get('/health/blood-pressure'),
+            window.LD.api.get('/health/medications?active=1'),
+            window.LD.api.get('/health/appointments?upcoming=1'),
         ]).then(function (parts) {
             error.classList.add('hidden');
             paint(parts[0], parts[1], parts[2]);
+            paintMeals(parts[3]);
+            paintPressure(parts[4]);
+            paintMeds(parts[5]);
+            paintAppointments(parts[6]);
         }).catch(showError);
     }
 
@@ -73,9 +125,52 @@
     document.getElementById('health-meal-form').addEventListener('submit', function (event) {
         event.preventDefault();
         const data = new FormData(event.target);
-        const body = { note: data.get('note') };
-        if (data.get('calories')) body.calories = Number(data.get('calories'));
-        window.LD.api.post('/health/meals', body).then(function () { event.target.reset(); }).catch(showError);
+        const body = {
+            meal_type: data.get('meal_type'),
+            description: data.get('description'),
+            eaten_out: data.get('eaten_out') === 'on',
+        };
+        if (data.get('place')) body.place = data.get('place');
+        if (data.get('cost')) body.cost = Number(data.get('cost'));
+        window.LD.api.post('/health/meal-log', body).then(function () {
+            event.target.reset();
+            return load();
+        }).catch(showError);
+    });
+    document.getElementById('health-bp-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        const body = { systolic: Number(data.get('systolic')), diastolic: Number(data.get('diastolic')) };
+        if (data.get('pulse')) body.pulse = Number(data.get('pulse'));
+        window.LD.api.post('/health/blood-pressure', body).then(function () {
+            event.target.reset();
+            return load();
+        }).catch(showError);
+    });
+    document.getElementById('health-med-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        const body = { name: data.get('name') };
+        if (data.get('dose')) body.dose = data.get('dose');
+        if (data.get('schedule')) body.schedule = data.get('schedule');
+        window.LD.api.post('/health/medications', body).then(function () {
+            event.target.reset();
+            return load();
+        }).catch(showError);
+    });
+    document.getElementById('health-appt-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        const data = new FormData(event.target);
+        const body = {
+            provider: data.get('provider'),
+            starts_at: data.get('starts_at'),
+        };
+        if (data.get('specialty')) body.specialty = data.get('specialty');
+        if (data.get('location')) body.location = data.get('location');
+        window.LD.api.post('/health/appointments', body).then(function () {
+            event.target.reset();
+            return load();
+        }).catch(showError);
     });
     document.getElementById('health-body-form').addEventListener('submit', function (event) {
         event.preventDefault();

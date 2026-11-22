@@ -206,12 +206,77 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_habits",
-        "description": "Habit streaks and whether each is done today.",
+        "description": (
+            "Habit streaks plus today's target, threshold, progress, done, and remaining. "
+            "done is true only when the day is checked. A check-off habit has target 1. "
+            "A count habit (daily_target) is checked only when progress reaches that target; "
+            "a smaller total is partial and done is false. done_today is the same boolean as done. "
+            "A habit linked to a number metric shows that metric's value as progress."
+        ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
+        "name": "get_today_status",
+        "description": (
+            "Every active habit and every number goal for today, in one call. "
+            "Each row has target and threshold (the same number), progress, done, remaining, and streak. "
+            "A habit is done when it is checked. A check-off habit has target 1. "
+            "A count habit is checked only when progress reaches daily_target. "
+            "A linked habit shows the number metric as progress and is checked when that value "
+            "reaches goal_threshold (or the metric's goal) or when it is checked by hand. "
+            "A number goal is done when progress reaches its goal. done_today is the same boolean as done."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "increment_datapoint",
+        "description": (
+            "Add amount (default 1) to a count habit or a number goal for a local date (default today). "
+            "The add is one write, so two calls cannot lose a count. "
+            "Pass metric_id or key. A check-off habit stops at 1. A habit with daily_target keeps the running total. "
+            "A habit linked to a number metric adds to that metric. "
+            "water_ml uses water:YYYY-MM-DD and movement_sessions uses movement:YYYY-MM-DD. "
+            "Returns target, threshold, progress, done, remaining, and streak."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "metric_id": {"type": "integer"},
+                "key": {"type": "string"},
+                "amount": {"type": "number"},
+                "date": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_habit_state",
+        "description": (
+            "Set a habit to done or not done for a local date (default today). "
+            "Repeating the same done value does not change the row. "
+            "A count habit that is marked done is set to its daily_target. "
+            "Prefer this when the desired state is already known. toggle_habit still flips."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "metric_id": {"type": "integer"},
+                "habit": {"type": "integer"},
+                "date": {"type": "string"},
+                "done": {"type": "boolean"},
+            },
+            "required": ["done"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "toggle_habit",
-        "description": "Flip a habit for a local date (default today).",
+        "description": (
+            "Flip a habit for a local date (default today) and return the resulting state: "
+            "target, threshold, progress, done, remaining, and streak. "
+            "A count habit that is still short is set to its target; clearing it removes the total. "
+            "Use set_habit_state when you already know whether it should be done."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"metric_id": {"type": "integer"}, "date": {"type": "string"}},
@@ -227,7 +292,8 @@ TOOLS: list[dict[str, Any]] = [
             "Also accepts weekdays, weekly, or a number 1–7 (days per week). icon is an emoji. "
             "color is #rrggbb. Optional goal_metric_id is a number metric; goal_threshold is the "
             "day's last value that checks the habit off (omit it to use that metric's goal). "
-            "An existing key is returned unchanged — use update_habit to link it."
+            "daily_target makes a count habit, such as glasses of water: it is done only when today's total reaches that number. "
+            "An existing key is returned unchanged — use update_habit to link it or set daily_target."
         ),
         "inputSchema": {
             "type": "object",
@@ -242,6 +308,7 @@ TOOLS: list[dict[str, Any]] = [
                 "sort_order": {"type": "integer"},
                 "goal_metric_id": {"type": "integer"},
                 "goal_threshold": {"type": "number"},
+                "daily_target": {"type": "number"},
             },
             "required": ["name"],
             "additionalProperties": False,
@@ -253,7 +320,7 @@ TOOLS: list[dict[str, Any]] = [
             "Change a habit's name, icon, color, frequency, or sort order. The key cannot change. "
             "goal_metric_id links a number metric; the habit is checked when that day's last value "
             "reaches goal_threshold (or the metric's goal when threshold is omitted). "
-            "goal_metric_id 0 removes the link. A manual toggle still works."
+            "goal_metric_id 0 removes the link. daily_target is the count that marks a count habit done; 0 clears it. A manual toggle still works."
         ),
         "inputSchema": {
             "type": "object",
@@ -267,6 +334,7 @@ TOOLS: list[dict[str, Any]] = [
                 "sort_order": {"type": "integer"},
                 "goal_metric_id": {"type": "integer"},
                 "goal_threshold": {"type": "number"},
+                "daily_target": {"type": "number"},
             },
             "required": ["metric_id"],
             "additionalProperties": False,
@@ -2171,7 +2239,7 @@ TOOLS: list[dict[str, Any]] = [
             "Recipe rows include protein_g, meal_prep, keeps_days, and servings. "
             "An off-hand pick or ingredient includes swaps: on-hand components in the same category that pair with the other picks. "
             "An empty pick list returns every component. on_hand_only hides components that are not on hand. "
-            "There is no meal log. Requires pantry:read."
+            "suggest_meal does not store what was eaten. log_meal does. Requires pantry:read."
         ),
         "inputSchema": {
             "type": "object",
@@ -2418,6 +2486,24 @@ def _pick(args: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
     return {key: args[key] for key in keys if key in args and args[key] is not None}
 
 
+def _plain_number(value: Any, field: str, *, nonzero: bool = False) -> int | float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{field} must be a number.")
+    if value != value or value in (float("inf"), float("-inf")):
+        raise ValueError(f"{field} must be a finite number.")
+    if nonzero and value == 0:
+        raise ValueError(f"{field} must be a non-zero number.")
+    if abs(value) > 1e9:
+        raise ValueError(f"{field} is out of range.")
+    return value
+
+
+def _ymd(value: Any, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 10 or value[4] != "-" or value[7] != "-":
+        raise ValueError(f"{field} must be YYYY-MM-DD.")
+    return value
+
+
 _MEAL_CATEGORIES = ("protein", "base", "sauce", "side", "aromatic", "vegetable", "spice")
 _MEAL_SOURCES = ("david", "past_meal", "research")
 
@@ -2566,14 +2652,54 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", f"/api/v1/metrics/{int(args['metric_id'])}/series" + suffix, None
     if name == "list_habits":
         return "GET", "/api/v1/habits", None
+    if name == "get_today_status":
+        if args:
+            raise ValueError("get_today_status takes no arguments.")
+        return "GET", "/api/v1/habits/today", None
+    if name == "increment_datapoint":
+        unknown = set(args) - {"metric_id", "key", "amount", "date"}
+        if unknown:
+            raise ValueError("increment_datapoint accepts only metric_id, key, amount, and date.")
+        body: dict[str, Any] = {}
+        if args.get("metric_id") not in (None, ""):
+            metric_id = args["metric_id"]
+            if isinstance(metric_id, bool) or not isinstance(metric_id, int) or metric_id < 1:
+                raise ValueError("metric_id must be a positive id.")
+            body["metric_id"] = metric_id
+        if args.get("key") not in (None, ""):
+            if not isinstance(args["key"], str) or args["key"].strip() == "":
+                raise ValueError("key must be text.")
+            body["key"] = args["key"].strip()
+        if "metric_id" not in body and "key" not in body:
+            raise ValueError("Pass metric_id or key.")
+        if args.get("amount") not in (None, ""):
+            body["amount"] = _plain_number(args["amount"], "amount", nonzero=True)
+        if args.get("date") not in (None, ""):
+            body["date"] = _ymd(args["date"], "date")
+        return "POST", "/api/v1/datapoints/increment", body
+    if name == "set_habit_state":
+        unknown = set(args) - {"metric_id", "habit", "date", "done"}
+        if unknown:
+            raise ValueError("set_habit_state accepts only metric_id, habit, date, and done.")
+        if not isinstance(args.get("done"), bool):
+            raise ValueError("done must be true or false.")
+        habit_id = args.get("metric_id", args.get("habit"))
+        if "metric_id" in args and "habit" in args and args["metric_id"] != args["habit"]:
+            raise ValueError("metric_id and habit must match.")
+        if isinstance(habit_id, bool) or not isinstance(habit_id, int) or habit_id < 1:
+            raise ValueError("Pass the habit id as metric_id or habit.")
+        body = {"done": args["done"]}
+        if args.get("date") not in (None, ""):
+            body["date"] = _ymd(args["date"], "date")
+        return "POST", f"/api/v1/habits/{habit_id}/state", body
     if name == "toggle_habit":
         body = {"date": args["date"]} if args.get("date") else {}
         return "POST", f"/api/v1/habits/{int(args['metric_id'])}/toggle", body
     if name == "create_habit":
-        body = _pick(args, ("name", "key", "slug", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold"))
+        body = _pick(args, ("name", "key", "slug", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold", "daily_target"))
         return "POST", "/api/v1/habits", body
     if name == "update_habit":
-        body = _pick(args, ("name", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold"))
+        body = _pick(args, ("name", "icon", "color", "frequency", "target", "sort_order", "goal_metric_id", "goal_threshold", "daily_target"))
         return "POST", f"/api/v1/habits/{int(args['metric_id'])}/update", body
     if name == "archive_habit":
         body = {"archived": bool(args["archived"])} if "archived" in args else {}

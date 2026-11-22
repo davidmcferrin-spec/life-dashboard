@@ -41,7 +41,7 @@ final class Scope
 
     public const DIGEST_ENTITIES = ['digest'];
 
-    public const HEALTH_ENTITIES = ['health_point', 'health_workout'];
+    public const HEALTH_ENTITIES = ['health_point', 'health_workout', 'meal_log', 'blood_pressure', 'medication', 'medication_dose', 'appointment'];
 
     public const BRIEF_ENTITIES = ['brief'];
 
@@ -57,7 +57,7 @@ final class Scope
         'pantry_lot', 'product', 'recipe', 'pantry_category', 'meal_component', 'meal_plan_day',
         'spotify',
         'digest',
-        'health_point', 'health_workout',
+        'health_point', 'health_workout', 'meal_log', 'blood_pressure', 'medication', 'medication_dose', 'appointment',
         'brief',
         'deploy',
     ];

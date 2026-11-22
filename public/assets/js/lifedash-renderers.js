@@ -67,13 +67,14 @@
             }).join('');
             const target = h.target_per_week ? `${h.week_count}/${h.target_per_week} this week` : `${h.week_count} this week`;
             const streak = h.streak > 0 ? `${h.streak} day streak` : 'No streak';
+            const progress = typeof h.target === 'number' && h.target > 1 ? `${h.progress}/${h.target} today` : '';
             return `
                 <div class="ld-habit">
                     <button type="button" class="ld-check${h.done_today ? ' is-done' : ''}" data-habit="${h.id}"
                         aria-pressed="${h.done_today}" aria-label="${esc(h.name)} today"></button>
                     <div class="min-w-0">
                         <div class="ld-habit-name">${esc(h.name)}</div>
-                        <div class="ld-habit-meta">${esc(streak)} · ${esc(target)}</div>
+                        <div class="ld-habit-meta">${esc([streak, target, progress].filter(Boolean).join(' · '))}</div>
                     </div>
                     <div class="ld-strip">${strip}</div>
                 </div>`;
@@ -577,7 +578,7 @@
                 <span><strong>${h.best_streak}</strong><small>personal best</small></span>
                 <div class="ld-strip">${dots}</div>
                 <button type="button" class="btn text-xs" data-toggle aria-pressed="${h.done_today}">
-                    ${h.done_today ? 'Done today' : 'Mark done today'}</button>
+                    ${h.done_today ? 'Done today' : (typeof h.target === 'number' && h.target > 1 ? `${h.progress}/${h.target}` : 'Mark done today')}</button>
             </div>`;
         const btn = ctx.body.querySelector('[data-toggle]');
         btn.addEventListener('click', () => guarded(btn, async () => {

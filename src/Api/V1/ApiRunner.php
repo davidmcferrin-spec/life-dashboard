@@ -402,6 +402,9 @@ final class ApiRunner
 
     public static function entityFromPath(string $path): ?string
     {
+        if (str_contains($path, '/health/medications/') && str_contains($path, '/doses')) {
+            return 'medication_dose';
+        }
         $map = [
             '/money/payday'         => 'payday',
             '/money/bills'          => 'bill',
@@ -431,6 +434,10 @@ final class ApiRunner
             '/pantry'               => 'pantry_lot',
             '/spotify'              => 'spotify',
             '/health/workouts'      => 'health_workout',
+            '/health/meal-log'      => 'meal_log',
+            '/health/blood-pressure' => 'blood_pressure',
+            '/health/medications'   => 'medication',
+            '/health/appointments'  => 'appointment',
             '/health'               => 'health_point',
             '/brief'                => 'brief',
             '/system/deploy'        => 'deploy',
@@ -448,7 +455,7 @@ final class ApiRunner
      */
     public static function entityIdFromPayload(array $payload): ?int
     {
-        foreach (['debt', 'account', 'sinking_fund', 'bill', 'envelope', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt'] as $key) {
+        foreach (['debt', 'account', 'sinking_fund', 'bill', 'envelope', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt', 'reading', 'medication', 'dose', 'appointment', 'meal'] as $key) {
             $row = $payload[$key] ?? null;
             if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
                 return (int) $row['id'];
@@ -464,7 +471,7 @@ final class ApiRunner
 
     public static function entityIdFromPath(string $path): ?int
     {
-        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts)/(\d+)\b#', $path, $m) === 1) {
+        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts|medications|appointments)/(\d+)\b#', $path, $m) === 1) {
             return (int) $m[1];
         }
         return null;
