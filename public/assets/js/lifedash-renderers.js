@@ -742,7 +742,8 @@
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const accounts = (d.accounts || []).map((a) => {
             const signed = a.kind === 'credit' ? -a.balance : a.balance;
-            return `<span class="ld-money-account"><em>${esc(moneyAccountLabel(a.name, a.last4))}</em><strong>${esc(fmt.money(signed))}</strong></span>`;
+            const stale = a.stale ? ' · stale' : '';
+            return `<span class="ld-money-account"><em>${esc(moneyAccountLabel(a.name, a.last4))}${esc(stale)}</em><strong>${esc(fmt.money(signed))}</strong></span>`;
         }).join('');
         ctx.body.innerHTML = `<div class="ld-money ld-money-worth"><div class="ld-money-hero"><strong>${esc(fmt.money(d.net_worth))}</strong><span>net worth trend</span></div><div class="ld-money-line"></div>${accounts ? `<footer>${accounts}</footer>` : ''}</div>`;
         const snaps = d.snapshots || [];
@@ -787,7 +788,11 @@
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const rows = (ctx.data.debts || []).map((d, index) => {
             const dates = [d.target_payoff_on ? 'target ' + d.target_payoff_on : '', d.estimated_payoff_on ? 'estimate ' + d.estimated_payoff_on : 'estimate unavailable'].filter(Boolean).join(' · ');
-            return `<div class="ld-money-debt"><span>${index + 1}</span><p><strong>${esc(moneyAccountLabel(d.name, d.last4))}</strong><small>${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}</small></p><b>${esc(fmt.money(d.balance))}</b></div>`;
+            const flags = [];
+            if (d.stale) flags.push('stale');
+            if (d.components_mismatch) flags.push('components do not match');
+            const flag = flags.length ? ' · ' + flags.join(' · ') : '';
+            return `<div class="ld-money-debt"><span>${index + 1}</span><p><strong>${esc(moneyAccountLabel(d.name, d.last4))}</strong><small>${esc(d.apr_percent)}% · min ${esc(fmt.money(d.minimum_payment))} · ${esc(dates)}${esc(flag)}</small></p><b>${esc(fmt.money(d.balance))}</b></div>`;
         }).join('');
         ctx.body.innerHTML = rows ? `<div class="ld-money ld-money-debts">${rows}</div>` : emptyPanel('No debts recorded', 'Add a balance to build the snowball.', 'Open money', '/settings/money');
     }
@@ -798,7 +803,11 @@
         const cap = Number(d.cap) || 0;
         const spent = Number(d.spent) || 0;
         const warn = d.over ? ' is-warn' : '';
-        ctx.body.innerHTML = `<div class="ld-money ld-money-cap${warn}" role="img" aria-label="Food this week"><strong>${esc(fmt.money(d.spent))}</strong><span>of ${esc(fmt.money(d.cap))} this week</span><div class="ld-money-track"><i style="width:${barWidth(spent, cap).toFixed(1)}%"></i></div></div>`;
+        const split = d.split;
+        const extra = split && split.groceries
+            ? `<p>Groceries ${esc(fmt.money(split.groceries.spent))} of ${esc(fmt.money(split.groceries.target))} · Eating out ${esc(fmt.money(split.eating_out.spent))} of ${esc(fmt.money(split.eating_out.target))}</p>`
+            : '';
+        ctx.body.innerHTML = `<div class="ld-money ld-money-cap${warn}" role="img" aria-label="Food this week"><strong>${esc(fmt.money(d.spent))}</strong><span>of ${esc(fmt.money(d.cap))} this week</span><div class="ld-money-track"><i style="width:${barWidth(spent, cap).toFixed(1)}%"></i></div>${extra}</div>`;
     }
 
     function budgetActual(ctx) {
@@ -845,7 +854,23 @@
         const d = ctx.data;
         tools(ctx, '<a href="/settings/money" class="nav-link">Money</a>');
         const util = d.utilization_percent == null ? '—' : d.utilization_percent + '%';
-        ctx.body.innerHTML = `<div class="ld-money ld-money-credit"><span><strong>${d.score == null ? '—' : esc(String(d.score))}</strong>score</span><span><strong>${esc(String(util))}</strong>utilization${d.as_of ? ' · ' + esc(d.as_of) : ''}</span></div>`;
+        const cards = (d.cards || []).map((card) => {
+            const pct = card.utilization_percent == null ? 'no limit' : card.utilization_percent + '%';
+            const stale = card.stale ? ' · stale' : '';
+            return `<span class="ld-money-account"><em>${esc(card.name)}${esc(stale)}</em><strong>${esc(pct)}</strong></span>`;
+        }).join('');
+        ctx.body.innerHTML = `<div class="ld-money ld-money-credit"><span><strong>${d.score == null ? '—' : esc(String(d.score))}</strong>score</span><span><strong>${esc(String(util))}</strong>utilization${d.as_of ? ' · ' + esc(d.as_of) : ''}</span>${cards}</div>`;
+    }
+
+    function moneySummary(ctx) {
+        const d = ctx.data || {};
+        tools(ctx, '<a href="/money" class="nav-link">Money</a>');
+        const food = d.food_week || {};
+        const util = d.utilization && d.utilization.overall ? d.utilization.overall.utilization_percent : null;
+        const fresh = d.freshness && d.freshness.stale ? ' · stale' : '';
+        const pots = (d.benefit_pots || []).length;
+        const incoming = (d.expected_inflows || []).length;
+        ctx.body.innerHTML = `<div class="ld-money ld-money-worth"><div class="ld-money-hero"><strong>${esc(fmt.money(d.net_worth))}</strong><span>net worth${esc(fresh)}</span></div><footer><span class="ld-money-account"><em>Cash</em><strong>${esc(fmt.money(d.cash))}</strong></span><span class="ld-money-account"><em>Debts</em><strong>${esc(fmt.money(d.debts && d.debts.total))}</strong></span><span class="ld-money-account"><em>Utilization</em><strong>${util == null ? '—' : esc(String(util) + '%')}</strong></span><span class="ld-money-account"><em>Food</em><strong>${food.total ? esc(fmt.money(food.total.spent)) : '—'}</strong></span><span class="ld-money-account"><em>Pots</em><strong>${esc(String(pots))}</strong></span><span class="ld-money-account"><em>Inflows</em><strong>${esc(String(incoming))}</strong></span></footer></div>`;
     }
 
     function portfolio(ctx) {
@@ -1452,6 +1477,6 @@
             </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, vitals, agenda, quick_actions: quickActions, custom };
+    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, money_summary: moneySummary, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, vitals, agenda, quick_actions: quickActions, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

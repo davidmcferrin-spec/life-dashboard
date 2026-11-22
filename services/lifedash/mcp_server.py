@@ -775,8 +775,301 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_money_summary",
+        "description": (
+            "One money read: net worth from account balances (credit balances subtract), cash, debts, "
+            "credit utilization, upcoming scheduled or pending payments, expected inflows, benefit pots, "
+            "and the Sunday–Saturday food week. Accounts, debts, pots, and cards include last_synced_at and stale. "
+            "Requires money:read."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "refresh_accounts",
+        "description": (
+            "Ask for a live balance sync for one account or every account. Returns last_synced_at and stale. "
+            "When no live sync is connected, the result says so and does not change the stored timestamps. "
+            "Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"account_id": {"type": "integer"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_debt_components",
+        "description": (
+            "Store principal, unapplied funds, late charges, fees, and interest on a debt. "
+            "Unapplied funds reduce the component sum. The debt balance is not changed. "
+            "A sum that disagrees with the balance is flagged on read. Null clears one component. "
+            "Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "debt_id": {"type": "integer"},
+                "principal": {"type": ["number", "null"]},
+                "unapplied_funds": {"type": ["number", "null"]},
+                "late_charges": {"type": ["number", "null"]},
+                "fees": {"type": ["number", "null"]},
+                "interest": {"type": ["number", "null"]},
+            },
+            "required": ["debt_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_debt_components",
+        "description": "One debt, including component amounts, the component sum, and whether that sum matches the balance. Requires money:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"debt_id": {"type": "integer"}},
+            "required": ["debt_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_payment",
+        "description": (
+            "Record a bill or debt payment as scheduled, pending, posted, or failed. "
+            "Pass bill_id, debt_id, or both. Does not pay the bill, change the debt balance, or create a transaction. "
+            "Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "bill_id": {"type": ["integer", "null"]},
+                "debt_id": {"type": ["integer", "null"]},
+                "amount": {"type": "number"},
+                "status": {"type": "string", "enum": ["scheduled", "pending", "posted", "failed"]},
+                "due_on": {"type": ["string", "null"]},
+                "note": {"type": ["string", "null"]},
+                "transaction_id": {"type": ["integer", "null"]},
+            },
+            "required": ["amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_payment",
+        "description": "Update a payment's amount, status, due date, bill, debt, or linked transaction. Does not move money. Requires money:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "payment_id": {"type": "integer"},
+                "bill_id": {"type": ["integer", "null"]},
+                "debt_id": {"type": ["integer", "null"]},
+                "amount": {"type": "number"},
+                "status": {"type": "string", "enum": ["scheduled", "pending", "posted", "failed"]},
+                "due_on": {"type": ["string", "null"]},
+                "note": {"type": ["string", "null"]},
+                "transaction_id": {"type": ["integer", "null"]},
+            },
+            "required": ["payment_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_payments",
+        "description": "Bill and debt payments. status is scheduled, pending, posted, or failed. Does not move money. Requires money:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string"},
+                "bill_id": {"type": "integer"},
+                "debt_id": {"type": "integer"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "add_expected_inflow",
+        "description": (
+            "Add an expected inflow: reimbursement, paycheck, refund, or other. "
+            "expected_on is YYYY-MM-DD. status defaults to expected. Does not create a transaction. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["reimbursement", "paycheck", "refund", "other"]},
+                "source": {"type": "string"},
+                "amount": {"type": "number"},
+                "expected_on": {"type": "string"},
+                "status": {"type": "string", "enum": ["expected", "received", "cancelled"]},
+                "note": {"type": ["string", "null"]},
+                "transaction_id": {"type": ["integer", "null"]},
+            },
+            "required": ["source", "amount", "expected_on"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "update_expected_inflow",
+        "description": "Update an expected inflow. Does not change a linked transaction. Requires money:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "inflow_id": {"type": "integer"},
+                "kind": {"type": "string"},
+                "source": {"type": "string"},
+                "amount": {"type": "number"},
+                "expected_on": {"type": "string"},
+                "status": {"type": "string", "enum": ["expected", "received", "cancelled"]},
+                "note": {"type": ["string", "null"]},
+                "transaction_id": {"type": ["integer", "null"]},
+                "received_on": {"type": ["string", "null"]},
+            },
+            "required": ["inflow_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_expected_inflows",
+        "description": "Expected inflows. status filters to expected, received, or cancelled. Requires money:read.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"status": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "mark_inflow_received",
+        "description": (
+            "Mark an expected inflow received. transaction_id may link a transaction that belongs to this user. "
+            "The transaction amount, payee, and category are not changed. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "inflow_id": {"type": "integer"},
+                "transaction_id": {"type": ["integer", "null"]},
+                "received_on": {"type": "string"},
+            },
+            "required": ["inflow_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_credit_utilization",
+        "description": (
+            "Per-card and overall balance, limit, and utilization percent. "
+            "A card with no limit is listed with limit_missing and left out of the overall percent. "
+            "Each card includes last_synced_at and stale. Requires money:read."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_benefit_pots",
+        "description": "FSA and HSA pots: balance, plan year, deadline, use-it-or-lose-it amount, last_synced_at, and stale. Requires money:read.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "save_benefit_pot",
+        "description": (
+            "Add or update an FSA or HSA pot. kind is fsa or hsa. pot_id updates that pot. "
+            "Does not import a balance from a plan administrator. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pot_id": {"type": "integer"},
+                "kind": {"type": "string", "enum": ["fsa", "hsa"]},
+                "name": {"type": "string"},
+                "balance": {"type": "number"},
+                "plan_year": {"type": "integer"},
+                "deadline": {"type": ["string", "null"]},
+                "use_it_or_lose_it": {"type": ["number", "null"]},
+                "archived": {"type": "boolean"},
+            },
+            "required": ["kind", "name", "plan_year"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_transaction_category",
+        "description": (
+            "Set the category shown for one transaction. The imported category is kept. "
+            "sticky true also saves a merchant rule applied to later imports of that payee. "
+            "Existing transactions are not recategorized. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "integer"},
+                "category": {"type": "string"},
+                "sticky": {"type": "boolean"},
+            },
+            "required": ["transaction_id", "category"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "revert_transaction_category",
+        "description": (
+            "Remove the category override so the imported category shows again. "
+            "drop_rule also removes the merchant rule for that payee. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "integer"},
+                "drop_rule": {"type": "boolean"},
+            },
+            "required": ["transaction_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "set_eaten_on",
+        "description": "Set or clear the eaten_on date on a transaction. Null clears it. Amount and category stay as stored. Requires money:write.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "integer"},
+                "eaten_on": {"type": ["string", "null"]},
+            },
+            "required": ["transaction_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_food_week_totals",
+        "description": (
+            "Groceries and eating out for a Sunday–Saturday week. week_start may be any day in that week. "
+            "eaten_on is used when set, otherwise the posted date. Targets default to 150 groceries and 125 eating out. "
+            "Includes the previous week and a two-week average. Requires money:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"week_start": {"type": "string"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_money_options",
+        "description": "Stale-balance threshold in hours and the weekly grocery and eating-out targets. Requires money:read.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "save_money_options",
+        "description": (
+            "Set stale_hours (default 24), groceries_weekly (default 150), and eating_out_weekly (default 125). "
+            "These are per-user settings, not environment variables. Requires money:write."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "stale_hours": {"type": "integer"},
+                "groceries_weekly": {"type": "number"},
+                "eating_out_weekly": {"type": "number"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "list_accounts",
-        "description": "Money accounts and balances.",
+        "description": "Money accounts and balances. Each account includes last_synced_at and stale.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -841,7 +1134,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "add_transaction",
         "description": (
             "Add a transaction on an account. Amount is signed: negative is money spent. "
-            "Pass dedupe_key so a retry updates the same row."
+            "Pass dedupe_key so a retry updates the same row. eaten_on is optional and is the day the food was eaten."
         ),
         "inputSchema": {
             "type": "object",
@@ -853,6 +1146,7 @@ TOOLS: list[dict[str, Any]] = [
                 "category": {"type": "string"},
                 "note": {"type": "string"},
                 "dedupe_key": {"type": "string"},
+                "eaten_on": {"type": "string"},
             },
             "required": ["account_id", "amount"],
             "additionalProperties": False,
@@ -895,7 +1189,11 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "get_debts",
-        "description": "Debts in snowball order: balance, APR, minimum, target date, and an estimated payoff date.",
+        "description": (
+            "Debts in snowball order: balance, APR, minimum, target date, and an estimated payoff date. "
+            "Each debt includes last_synced_at, stale, and component amounts when they are set. "
+            "components_mismatch is true when those amounts do not add up to the balance."
+        ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -2807,6 +3105,73 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         return "GET", "/api/v1/pages/resolve?" + urlencode({"q": link}), None
     if name == "money_summary":
         return "GET", "/api/v1/money/summary" + _query(args, ("from", "to")), None
+    if name == "get_money_summary":
+        return "GET", "/api/v1/money/overview", None
+    if name == "refresh_accounts":
+        if args.get("account_id"):
+            return "POST", f"/api/v1/money/accounts/{int(args['account_id'])}/refresh", {}
+        return "POST", "/api/v1/money/accounts/refresh", {}
+    if name == "set_debt_components":
+        body = {}
+        for key in ("principal", "unapplied_funds", "late_charges", "fees", "interest"):
+            if key in args:
+                body[key] = args[key]
+        return "POST", f"/api/v1/money/debts/{int(args['debt_id'])}/components", body
+    if name == "get_debt_components":
+        return "GET", f"/api/v1/money/debts/{int(args['debt_id'])}/components", None
+    if name == "add_payment":
+        return "POST", "/api/v1/money/payments", _pick(args, ("bill_id", "debt_id", "amount", "status", "due_on", "note", "transaction_id"))
+    if name == "update_payment":
+        body = _pick(args, ("bill_id", "debt_id", "amount", "status", "due_on", "note", "transaction_id"))
+        for key in ("bill_id", "debt_id", "due_on", "note", "transaction_id"):
+            if key in args and args[key] is None:
+                body[key] = None
+        return "POST", f"/api/v1/money/payments/{int(args['payment_id'])}", body
+    if name == "list_payments":
+        return "GET", "/api/v1/money/payments" + _query(args, ("status", "bill_id", "debt_id")), None
+    if name == "add_expected_inflow":
+        return "POST", "/api/v1/money/inflows", _pick(args, ("kind", "source", "amount", "expected_on", "status", "note", "transaction_id"))
+    if name == "update_expected_inflow":
+        body = _pick(args, ("kind", "source", "amount", "expected_on", "status", "note", "transaction_id", "received_on"))
+        for key in ("note", "transaction_id", "received_on"):
+            if key in args and args[key] is None:
+                body[key] = None
+        return "POST", f"/api/v1/money/inflows/{int(args['inflow_id'])}", body
+    if name == "list_expected_inflows":
+        return "GET", "/api/v1/money/inflows" + _query(args, ("status",)), None
+    if name == "mark_inflow_received":
+        body = _pick(args, ("transaction_id", "received_on"))
+        if "transaction_id" in args and args["transaction_id"] is None:
+            body["transaction_id"] = None
+        return "POST", f"/api/v1/money/inflows/{int(args['inflow_id'])}/received", body
+    if name == "get_credit_utilization":
+        return "GET", "/api/v1/money/utilization", None
+    if name == "list_benefit_pots":
+        return "GET", "/api/v1/money/benefit-pots", None
+    if name == "save_benefit_pot":
+        body = _pick(args, ("pot_id", "kind", "name", "balance", "plan_year", "deadline", "use_it_or_lose_it", "archived"))
+        if "deadline" in args and args["deadline"] is None:
+            body["deadline"] = None
+        if "use_it_or_lose_it" in args and args["use_it_or_lose_it"] is None:
+            body["use_it_or_lose_it"] = None
+        return "POST", "/api/v1/money/benefit-pots", body
+    if name == "set_transaction_category":
+        body = {"category": args["category"], "sticky": bool(args.get("sticky", False))}
+        return "POST", f"/api/v1/money/transactions/{int(args['transaction_id'])}/category", body
+    if name == "revert_transaction_category":
+        return "POST", f"/api/v1/money/transactions/{int(args['transaction_id'])}/category/revert", {
+            "drop_rule": bool(args.get("drop_rule", False)),
+        }
+    if name == "set_eaten_on":
+        if "eaten_on" not in args:
+            raise ValueError("eaten_on is required. Use null to clear it.")
+        return "POST", f"/api/v1/money/transactions/{int(args['transaction_id'])}/eaten-on", {"eaten_on": args["eaten_on"]}
+    if name == "get_food_week_totals":
+        return "GET", "/api/v1/money/food-week" + _query(args, ("week_start",)), None
+    if name == "get_money_options":
+        return "GET", "/api/v1/money/options", None
+    if name == "save_money_options":
+        return "POST", "/api/v1/money/options", _pick(args, ("stale_hours", "groceries_weekly", "eating_out_weekly"))
     if name == "list_accounts":
         return "GET", "/api/v1/money/accounts", None
     if name == "save_account":
@@ -2821,7 +3186,7 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "list_transactions":
         return "GET", "/api/v1/money/transactions" + _query(args, ("from", "to", "category", "account", "limit")), None
     if name == "add_transaction":
-        return "POST", "/api/v1/money/transactions", _pick(args, ("account_id", "amount", "date", "payee", "category", "note", "dedupe_key"))
+        return "POST", "/api/v1/money/transactions", _pick(args, ("account_id", "amount", "date", "payee", "category", "note", "dedupe_key", "eaten_on"))
     if name == "import_money":
         return "POST", "/api/v1/money/import", {"csv": args["csv"]}
     if name == "get_budget":

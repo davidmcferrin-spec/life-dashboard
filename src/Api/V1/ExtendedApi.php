@@ -561,6 +561,97 @@ final class ExtendedApi
         $r->get('/api/v1/money/dashboard', fn () => $this->run(fn (int $u) => [
             'dashboard' => $this->svc->plan->dashboard($u),
         ]));
+        $r->get('/api/v1/money/overview', fn () => $this->run(fn (int $u) => [
+            'summary' => $this->svc->ledger->summary($u),
+        ]));
+        $r->post('/api/v1/money/accounts/refresh', fn () => $this->run(function (int $u): array {
+            $id = $this->runner->body()['account_id'] ?? null;
+            return $this->svc->ledger->refreshAccounts($u, is_numeric($id) && (int) $id > 0 ? (int) $id : null);
+        }, 200, true));
+        $r->post('/api/v1/money/accounts/{id}/refresh', fn (array $p) => $this->run(
+            fn (int $u) => $this->svc->ledger->refreshAccounts($u, self::id($p)),
+            200,
+            true
+        ));
+        $r->get('/api/v1/money/debts/{id}/components', fn (array $p) => $this->run(fn (int $u) => [
+            'debt' => $this->svc->ledger->debtComponents($u, self::id($p)),
+        ]));
+        $r->post('/api/v1/money/debts/{id}/components', fn (array $p) => $this->run(fn (int $u) => [
+            'debt' => $this->svc->ledger->setDebtComponents($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/money/payments', fn () => $this->run(fn (int $u) => [
+            'payments' => $this->svc->ledger->payments(
+                $u,
+                self::strParam('status'),
+                isset($_GET['bill_id']) && $_GET['bill_id'] !== '' ? (int) $_GET['bill_id'] : null,
+                isset($_GET['debt_id']) && $_GET['debt_id'] !== '' ? (int) $_GET['debt_id'] : null,
+            ),
+        ]));
+        $r->post('/api/v1/money/payments', fn () => $this->run(fn (int $u) => [
+            'payment' => $this->svc->ledger->addPayment($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/payments/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'payment' => $this->svc->ledger->updatePayment($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->get('/api/v1/money/inflows', fn () => $this->run(fn (int $u) => [
+            'inflows' => $this->svc->ledger->inflows($u, self::strParam('status')),
+        ]));
+        $r->post('/api/v1/money/inflows', fn () => $this->run(fn (int $u) => [
+            'inflow' => $this->svc->ledger->addInflow($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/money/inflows/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'inflow' => $this->svc->ledger->updateInflow($u, self::id($p), $this->runner->body()),
+        ], 200, true));
+        $r->post('/api/v1/money/inflows/{id}/received', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            $txn = $b['transaction_id'] ?? null;
+            return ['inflow' => $this->svc->ledger->markInflowReceived(
+                $u,
+                self::id($p),
+                is_numeric($txn) && (int) $txn > 0 ? (int) $txn : null,
+                isset($b['received_on']) ? (string) $b['received_on'] : null,
+            )];
+        }, 200, true));
+        $r->get('/api/v1/money/utilization', fn () => $this->run(fn (int $u) => [
+            'utilization' => $this->svc->ledger->creditUtilization($u),
+        ]));
+        $r->get('/api/v1/money/benefit-pots', fn () => $this->run(fn (int $u) => [
+            'pots' => $this->svc->ledger->benefitPots($u),
+        ]));
+        $r->post('/api/v1/money/benefit-pots', fn () => $this->run(function (int $u): array {
+            $b = $this->runner->body();
+            $id = isset($b['pot_id']) && is_numeric($b['pot_id']) && (int) $b['pot_id'] > 0 ? (int) $b['pot_id'] : null;
+            return ['pot' => $this->svc->ledger->saveBenefitPot($u, $b, $id)];
+        }, 200, true));
+        $r->post('/api/v1/money/transactions/{id}/category', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            return ['transaction' => $this->svc->ledger->setTransactionCategory(
+                $u,
+                self::id($p),
+                (string) ($b['category'] ?? ''),
+                !empty($b['sticky']),
+            )];
+        }, 200, true));
+        $r->post('/api/v1/money/transactions/{id}/category/revert', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            return ['transaction' => $this->svc->ledger->revertTransactionCategory(
+                $u,
+                self::id($p),
+                !empty($this->runner->body()['drop_rule']),
+            )];
+        }, 200, true));
+        $r->post('/api/v1/money/transactions/{id}/eaten-on', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $b = $this->runner->body();
+            return ['transaction' => $this->svc->ledger->setEatenOn($u, self::id($p), $b['eaten_on'] ?? null)];
+        }, 200, true));
+        $r->get('/api/v1/money/food-week', fn () => $this->run(fn (int $u) => [
+            'food_week' => $this->svc->ledger->foodWeekTotals($u, self::strParam('week_start')),
+        ]));
+        $r->get('/api/v1/money/options', fn () => $this->run(fn (int $u) => [
+            'options' => $this->svc->ledger->options($u),
+        ]));
+        $r->post('/api/v1/money/options', fn () => $this->run(fn (int $u) => [
+            'options' => $this->svc->ledger->saveOptions($u, $this->runner->body()),
+        ], 200, true));
 
         $r->get('/api/v1/invest/scorecard', fn () => $this->run(fn (int $u) => [
             'scorecard' => $this->svc->invest->scorecard($u),

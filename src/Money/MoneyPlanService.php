@@ -53,10 +53,12 @@ final class MoneyPlanService
             [$userId, $year, $month]
         );
         $spentRows = $this->db->fetchAll(
-            'SELECT category_id, SUM(-amount) AS spent
-             FROM money_transactions
-             WHERE user_id = ? AND posted_on >= ? AND posted_on <= ? AND amount < 0 AND category_id IS NOT NULL
-             GROUP BY category_id',
+            'SELECT COALESCE(o.category_id, t.category_id) AS category_id, SUM(-t.amount) AS spent
+             FROM money_transactions t
+             LEFT JOIN money_category_overrides o ON o.transaction_id = t.id AND o.user_id = t.user_id
+             WHERE t.user_id = ? AND t.posted_on >= ? AND t.posted_on <= ? AND t.amount < 0
+               AND COALESCE(o.category_id, t.category_id) IS NOT NULL
+             GROUP BY COALESCE(o.category_id, t.category_id)',
             [$userId, $from, $to]
         );
         $spent = [];
@@ -114,6 +116,14 @@ final class MoneyPlanService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function debt(int $userId, int $id): array
+    {
+        return $this->formatDebt($this->debtRow($userId, $id));
+    }
+
+    /**
      * @param array<string, mixed> $input
      * @return array<string, mixed>
      */
@@ -166,11 +176,14 @@ final class MoneyPlanService
                 : null;
         }
         $accountId = $this->resolveDebtAccount($userId, $input, $existing, $last4);
+        $synced = $existing !== null && !array_key_exists('balance', $input)
+            ? ($existing['last_synced_at'] ?? null)
+            : $this->clock->utcString($this->clock->now());
 
         if ($existing === null) {
             $id = (int) $this->db->fetchScalar(
-                'INSERT INTO money_debts (user_id, account_id, name, last4, balance, apr_percent, minimum_payment, payoff_order, target_payoff_on, due_day, credit_limit, notes)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                'INSERT INTO money_debts (user_id, account_id, name, last4, balance, apr_percent, minimum_payment, payoff_order, target_payoff_on, due_day, credit_limit, notes, last_synced_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT (user_id, name) DO UPDATE SET
                     balance = EXCLUDED.balance, apr_percent = EXCLUDED.apr_percent,
                     minimum_payment = EXCLUDED.minimum_payment, payoff_order = EXCLUDED.payoff_order,
@@ -180,17 +193,18 @@ final class MoneyPlanService
                     credit_limit = COALESCE(EXCLUDED.credit_limit, money_debts.credit_limit),
                     notes = COALESCE(EXCLUDED.notes, money_debts.notes),
                     account_id = COALESCE(EXCLUDED.account_id, money_debts.account_id),
+                    last_synced_at = EXCLUDED.last_synced_at,
                     updated_at = (now() AT TIME ZONE \'UTC\')
                  RETURNING id',
-                [$userId, $accountId, $name, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes]
+                [$userId, $accountId, $name, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes, $synced]
             );
         } else {
             $this->db->execute(
                 'UPDATE money_debts SET name = ?, account_id = ?, last4 = ?, balance = ?, apr_percent = ?, minimum_payment = ?,
-                    payoff_order = ?, target_payoff_on = ?, due_day = ?, credit_limit = ?, notes = ?,
+                    payoff_order = ?, target_payoff_on = ?, due_day = ?, credit_limit = ?, notes = ?, last_synced_at = ?,
                     updated_at = (now() AT TIME ZONE \'UTC\')
                  WHERE id = ? AND user_id = ?',
-                [$name, $accountId, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes, $id, $userId]
+                [$name, $accountId, $last4, $balance, $apr, $minimum, $order, $target, $due, $limit, $notes, $synced, $id, $userId]
             );
         }
         $this->alignLinkedCredit($userId, (int) $id, $accountId, $last4, $limit);
@@ -463,13 +477,16 @@ final class MoneyPlanService
             'SELECT * FROM money_credit_scores WHERE user_id = ? ORDER BY as_of DESC LIMIT 1',
             [$userId]
         );
-        $computed = $this->computedUtilization($userId);
+        $detail = $this->creditUtilization($userId);
+        $computed = $detail['overall']['utilization_percent'];
         $stored = $row !== null && $row['utilization_percent'] !== null ? (float) $row['utilization_percent'] : null;
         return [
             'as_of'                => $row !== null ? (string) $row['as_of'] : null,
             'score'                => $row !== null ? (int) $row['score'] : null,
             'utilization_percent'  => $computed ?? $stored,
             'utilization_source'   => $computed !== null ? 'limits' : ($stored !== null ? 'stored' : null),
+            'cards'                => $detail['cards'],
+            'overall'              => $detail['overall'],
         ];
     }
 
@@ -519,8 +536,10 @@ final class MoneyPlanService
     {
         [$from, $to] = $this->week($this->clock->today());
         $spent = (float) $this->db->fetchScalar(
-            'SELECT COALESCE(SUM(-amount), 0) FROM money_transactions
-             WHERE user_id = ? AND posted_on >= ? AND posted_on <= ? AND amount < 0 AND lower(category) = \'food\'',
+            'SELECT COALESCE(SUM(-t.amount), 0) FROM money_transactions t
+             LEFT JOIN money_category_overrides o ON o.transaction_id = t.id AND o.user_id = t.user_id
+             WHERE t.user_id = ? AND t.posted_on >= ? AND t.posted_on <= ? AND t.amount < 0
+               AND lower(COALESCE(o.category, t.category)) = \'food\'',
             [$userId, $from, $to]
         );
         $cap = $this->weeklyCap($userId, 'Food', $to) ?? self::FOOD_CAP;
@@ -702,21 +721,46 @@ final class MoneyPlanService
         $apr = (float) $row['apr_percent'];
         $minimum = (float) $row['minimum_payment'];
         $last4 = $this->trimLast4($row['last4'] ?? null);
+        $parts = $this->db->fetchOne(
+            'SELECT principal, unapplied_funds, late_charges, fees, interest
+             FROM money_debt_components WHERE debt_id = ? AND user_id = ?',
+            [(int) $row['id'], (int) $row['user_id']]
+        );
+        $components = [
+            'principal'       => $this->nullableAmount($parts['principal'] ?? null),
+            'unapplied_funds' => $this->nullableAmount($parts['unapplied_funds'] ?? null),
+            'late_charges'    => $this->nullableAmount($parts['late_charges'] ?? null),
+            'fees'            => $this->nullableAmount($parts['fees'] ?? null),
+            'interest'        => $this->nullableAmount($parts['interest'] ?? null),
+        ];
+        $sum = DebtComponents::sum(
+            $components['principal'],
+            $components['unapplied_funds'],
+            $components['late_charges'],
+            $components['fees'],
+            $components['interest']
+        );
+        $fresh = MoneyFreshness::describe($row['last_synced_at'] ?? null, $this->staleHours((int) $row['user_id']), $this->clock->now());
         return [
-            'id'                  => (int) $row['id'],
-            'name'                => (string) $row['name'],
-            'last4'               => $last4,
-            'balance'             => $balance,
-            'apr_percent'         => $apr,
-            'minimum_payment'     => $minimum,
-            'payoff_order'        => (int) $row['payoff_order'],
-            'target_payoff_on'    => $row['target_payoff_on'] !== null ? (string) $row['target_payoff_on'] : null,
-            'estimated_payoff_on' => self::estimatePayoff($balance, $apr, $minimum, $this->clock->today()),
-            'due_day'             => $row['due_day'] !== null ? (int) $row['due_day'] : null,
-            'account_id'          => $row['account_id'] !== null && $row['account_id'] !== '' ? (int) $row['account_id'] : null,
-            'credit_limit'        => isset($row['credit_limit']) && $row['credit_limit'] !== null && $row['credit_limit'] !== '' ? (float) $row['credit_limit'] : null,
-            'notes'               => isset($row['notes']) && $row['notes'] !== '' ? (string) $row['notes'] : null,
-            'archived'            => isset($row['archived_at']) && $row['archived_at'] !== null,
+            'id'                   => (int) $row['id'],
+            'name'                 => (string) $row['name'],
+            'last4'                => $last4,
+            'balance'              => $balance,
+            'apr_percent'          => $apr,
+            'minimum_payment'      => $minimum,
+            'payoff_order'         => (int) $row['payoff_order'],
+            'target_payoff_on'     => $row['target_payoff_on'] !== null ? (string) $row['target_payoff_on'] : null,
+            'estimated_payoff_on'  => self::estimatePayoff($balance, $apr, $minimum, $this->clock->today()),
+            'due_day'              => $row['due_day'] !== null ? (int) $row['due_day'] : null,
+            'account_id'           => $row['account_id'] !== null && $row['account_id'] !== '' ? (int) $row['account_id'] : null,
+            'credit_limit'         => isset($row['credit_limit']) && $row['credit_limit'] !== null && $row['credit_limit'] !== '' ? (float) $row['credit_limit'] : null,
+            'notes'                => isset($row['notes']) && $row['notes'] !== '' ? (string) $row['notes'] : null,
+            'archived'             => isset($row['archived_at']) && $row['archived_at'] !== null,
+            'components'           => $components,
+            'components_sum'       => $sum,
+            'components_mismatch'  => DebtComponents::mismatches($balance, $sum),
+            'last_synced_at'       => $fresh['last_synced_at'],
+            'stale'                => $fresh['stale'],
         ];
     }
 
@@ -761,15 +805,18 @@ final class MoneyPlanService
         return $row;
     }
 
-    private function computedUtilization(int $userId): ?float
+    /**
+     * @return array{cards: list<array<string, mixed>>, overall: array<string, mixed>}
+     */
+    public function creditUtilization(int $userId): array
     {
         $accounts = $this->db->fetchAll(
-            "SELECT id, balance, credit_limit FROM money_accounts
+            "SELECT id, name, last4, balance, credit_limit, last_synced_at FROM money_accounts
              WHERE user_id = ? AND archived_at IS NULL AND kind = 'credit'",
             [$userId]
         );
         $debts = $this->db->fetchAll(
-            'SELECT id, account_id, balance, credit_limit FROM money_debts
+            'SELECT id, name, last4, account_id, balance, credit_limit, last_synced_at FROM money_debts
              WHERE user_id = ? AND archived_at IS NULL',
             [$userId]
         );
@@ -781,13 +828,18 @@ final class MoneyPlanService
             $byAccount[(int) $debt['account_id']][] = $debt;
         }
         $used = [];
+        $cards = [];
         $owed = 0.0;
         $limit = 0.0;
-        $any = false;
+        $missing = 0;
+        $hours = $this->staleHours($userId);
+        $now = $this->clock->now();
         foreach ($accounts as $account) {
             $linked = $byAccount[(int) $account['id']] ?? [];
+            $debtId = null;
             foreach ($linked as $debt) {
                 $used[(int) $debt['id']] = true;
+                $debtId ??= (int) $debt['id'];
             }
             $cardLimit = $account['credit_limit'] !== null && $account['credit_limit'] !== '' ? (float) $account['credit_limit'] : null;
             $debtBalance = 0.0;
@@ -798,12 +850,20 @@ final class MoneyPlanService
                 }
             }
             $cardBalance = $debtBalance > 0 ? $debtBalance : (float) $account['balance'];
-            if ($cardLimit === null || $cardLimit <= 0) {
-                continue;
-            }
-            $any = true;
-            $owed += $cardBalance;
-            $limit += $cardLimit;
+            $cards[] = $this->utilizationCard(
+                (int) $account['id'],
+                $debtId,
+                (string) $account['name'],
+                $this->trimLast4($account['last4'] ?? null),
+                $cardBalance,
+                $cardLimit,
+                $account['last_synced_at'] ?? null,
+                $hours,
+                $now,
+                $owed,
+                $limit,
+                $missing
+            );
         }
         foreach ($debts as $debt) {
             if (isset($used[(int) $debt['id']])) {
@@ -813,14 +873,86 @@ final class MoneyPlanService
             if ($cardLimit === null || $cardLimit <= 0) {
                 continue;
             }
-            $any = true;
-            $owed += (float) $debt['balance'];
-            $limit += $cardLimit;
+            $cards[] = $this->utilizationCard(
+                null,
+                (int) $debt['id'],
+                (string) $debt['name'],
+                $this->trimLast4($debt['last4'] ?? null),
+                (float) $debt['balance'],
+                $cardLimit,
+                $debt['last_synced_at'] ?? null,
+                $hours,
+                $now,
+                $owed,
+                $limit,
+                $missing
+            );
         }
-        if (!$any || $limit <= 0) {
+
+        return [
+            'cards'   => $cards,
+            'overall' => [
+                'balance'              => round($owed, 2),
+                'limit'                => round($limit, 2),
+                'utilization_percent'  => $limit > 0 ? round(($owed / $limit) * 100, 2) : null,
+                'cards_missing_limit'  => $missing,
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function utilizationCard(
+        ?int $accountId,
+        ?int $debtId,
+        string $name,
+        ?string $last4,
+        float $balance,
+        ?float $cardLimit,
+        mixed $syncedAt,
+        int $hours,
+        \DateTimeImmutable $now,
+        float &$owed,
+        float &$limit,
+        int &$missing,
+    ): array {
+        $usable = $cardLimit !== null && $cardLimit > 0;
+        $percent = $usable ? round(($balance / $cardLimit) * 100, 2) : null;
+        if ($usable) {
+            $owed += $balance;
+            $limit += $cardLimit;
+        } else {
+            $missing++;
+        }
+        $fresh = MoneyFreshness::describe($syncedAt, $hours, $now);
+
+        return [
+            'account_id'           => $accountId,
+            'debt_id'              => $debtId,
+            'name'                 => $name,
+            'last4'                => $last4,
+            'balance'              => round($balance, 2),
+            'limit'                => $usable ? round($cardLimit, 2) : null,
+            'utilization_percent'  => $percent,
+            'limit_missing'        => !$usable,
+            'last_synced_at'       => $fresh['last_synced_at'],
+            'stale'                => $fresh['stale'],
+        ];
+    }
+
+    private function staleHours(int $userId): int
+    {
+        return MoneyOptions::read($this->db, $userId)['stale_hours'];
+    }
+
+    private function nullableAmount(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
             return null;
         }
-        return round(($owed / $limit) * 100, 2);
+
+        return (float) $value;
     }
 
     /** @return array{0: string, 1: string} */

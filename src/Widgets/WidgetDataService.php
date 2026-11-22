@@ -14,6 +14,7 @@ use Dashboard\Settings\FeatureFlags;
 use Dashboard\Settings\PreferenceService;
 use Dashboard\Shopping\ShoppingService;
 use Dashboard\Life\LifeService;
+use Dashboard\Money\MoneyLedgerService;
 use Dashboard\Money\MoneyPlanService;
 use Dashboard\Money\MoneyService;
 use Dashboard\Support\Clock;
@@ -49,6 +50,7 @@ final class WidgetDataService
         private readonly CallService $calls,
         private readonly PantryService $pantry,
         private readonly \Dashboard\DB\Database $db,
+        private readonly ?MoneyLedgerService $ledger = null,
     ) {}
 
     /**
@@ -83,7 +85,8 @@ final class WidgetDataService
             'networth'       => $this->networthData($userId),
             'baby_step'      => $this->planCard($this->plan->babyStep($userId)),
             'debt_snowball'  => $this->planCard(['debts' => $this->plan->debts($userId)]),
-            'food_week'      => $this->planCard($this->plan->foodWeek($userId)),
+            'food_week'      => $this->foodWeekCard($userId),
+            'money_summary'  => $this->planCard($this->ledger !== null ? $this->ledger->summary($userId) : []),
             'budget_actual'  => $this->planCard($this->plan->budget($userId, (int) substr($this->clock->today(), 0, 4), (int) substr($this->clock->today(), 5, 2))),
             'sinking_funds'  => $this->planCard(['funds' => $this->plan->sinkingFunds($userId)]),
             'bills_due'      => $this->planCard(['bills' => $this->plan->billsDue($userId)]),
@@ -703,6 +706,22 @@ final class WidgetDataService
     {
         $payload['metric_ids'] = [];
         return $payload;
+    }
+
+    /**
+     * The cap widget keeps its Monday Food total. The Sunday split comes from
+     * the same food-week totals the money summary uses.
+     *
+     * @return array<string, mixed>
+     */
+    private function foodWeekCard(int $userId): array
+    {
+        $food = $this->plan->foodWeek($userId);
+        if ($this->ledger !== null) {
+            $food['split'] = $this->ledger->foodWeekTotals($userId, null);
+        }
+
+        return $this->planCard($food);
     }
 
     /** @return array<string, mixed> */
