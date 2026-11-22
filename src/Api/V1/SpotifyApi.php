@@ -98,6 +98,47 @@ final class SpotifyApi
 
         $r->post('/api/v1/spotify/playlists', fn () => $this->run(fn (int $u) => $this->svc()->library()->createPlaylist($u, $this->runner->body(), $this->by()), 201, true));
         $r->post('/api/v1/spotify/playlists/{id}/update', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->updatePlaylist($u, $this->id($p), $this->runner->body(), $this->by()), 200, true));
+        $r->post('/api/v1/spotify/playlists/{id}/privacy', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $body = $this->runner->body();
+            if (!array_key_exists('public', $body) || !is_bool($body['public'])) {
+                throw ValidationException::withFields(['public' => 'public must be true or false.']);
+            }
+            $id = $this->id($p);
+            $wanted = $body['public'];
+            $this->svc()->library()->setPrivacy($u, $id, $wanted, $this->by());
+            try {
+                $pushed = $this->svc()->sync()->pushInline($u, $id);
+            } catch (SpotifyException $e) {
+                $detail = $this->svc()->library()->playlist($u, $id);
+                return array_merge([
+                    'http_status' => $e->httpStatus,
+                    'error' => $e->getMessage(),
+                    'verified' => false,
+                    'public' => $wanted,
+                    'playlist' => $detail['playlist'],
+                ], self::spotifyErrorFields($e->details));
+            }
+            $detail = $this->svc()->library()->playlist($u, $id);
+            if (!empty($pushed['queued']) || empty($pushed['verified'])) {
+                return [
+                    'http_status' => 409,
+                    'error' => (string) ($pushed['error'] ?? 'Spotify has not confirmed this privacy change.'),
+                    'verified' => false,
+                    'queued' => !empty($pushed['queued']),
+                    'public' => $wanted,
+                    'spotify_public' => $pushed['spotify_public'] ?? null,
+                    'playlist' => $detail['playlist'],
+                ];
+            }
+            return [
+                'playlist' => $detail['playlist'],
+                'public' => $wanted,
+                'spotify_public' => $pushed['spotify_public'] ?? null,
+                'verified' => true,
+                'pushed' => $pushed['pushed'] ?? null,
+                'failed' => $pushed['failed'] ?? null,
+            ];
+        }, 200, true));
         $r->post('/api/v1/spotify/playlists/{id}/tracks', fn (array $p) => $this->run(function (int $u) use ($p): array {
             $body = $this->runner->body();
             return $this->svc()->library()->addTracks($u, $this->id($p), $body['uris'] ?? null, $body['position'] ?? null, $this->by(), $this->trackMeta($body));
@@ -190,6 +231,9 @@ final class SpotifyApi
             if (isset($body['slots']) && is_numeric($body['slots'])) {
                 $options['slots'] = (int) $body['slots'];
             }
+            if (isset($body['tracks']) && is_array($body['tracks'])) {
+                $options['tracks'] = $body['tracks'];
+            }
             return $this->svc()->library()->mixtape()->plan($u, $body['uris'] ?? [], $prompt, $arc, $options);
         }, 200, false));
         $r->get('/api/v1/spotify/mixtape/locks', fn () => $this->run(fn (int $u) => $this->svc()->library()->mixtape()->locks($u)));
@@ -198,7 +242,28 @@ final class SpotifyApi
             return $this->svc()->library()->mixtape()->saveLocks($u, is_array($locks) ? $locks : []);
         }, 200, true));
         $r->post('/api/v1/spotify/sync', fn () => $this->run(fn (int $u) => $this->svc()->sync()->pull($u, $this->playlistId()), 200, true));
-        $r->post('/api/v1/spotify/taste', fn () => $this->run(fn (int $u) => $this->svc()->library()->saveTaste($u, $this->runner->body()['profile'] ?? null), 200, true));
+        $r->post('/api/v1/spotify/taste', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $replace = !empty($body['replace']);
+            return $this->svc()->library()->saveTaste(
+                $u,
+                $body['profile'] ?? null,
+                $body['dislikes'] ?? null,
+                $replace
+            );
+        }, 200, true));
+        $r->post('/api/v1/spotify/taste/dislikes', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $dislikes = [
+                'tracks' => $body['tracks'] ?? [],
+                'artists' => $body['artists'] ?? [],
+                'titles' => $body['titles'] ?? [],
+            ];
+            if (!array_key_exists('tracks', $body) && !array_key_exists('artists', $body) && !array_key_exists('titles', $body) && empty($body['replace'])) {
+                throw ValidationException::withFields(['dislikes' => 'Send tracks, artists, titles, or replace.']);
+            }
+            return $this->svc()->library()->saveDislikes($u, $dislikes, !empty($body['replace']));
+        }, 200, true));
         $r->post('/api/v1/spotify/prompts', fn () => $this->run(fn (int $u) => [
             'prompt' => $this->svc()->library()->savePrompt($u, null, $this->runner->body()),
         ], 201, true));
@@ -261,7 +326,10 @@ final class SpotifyApi
             try {
                 return $fn($userId);
             } catch (SpotifyException $e) {
-                return ['http_status' => $e->httpStatus, 'error' => $e->getMessage()];
+                return array_merge([
+                    'http_status' => $e->httpStatus,
+                    'error' => $e->getMessage(),
+                ], self::spotifyErrorFields($e->details));
             }
         }, $status, $mutating, $scope);
     }
@@ -316,6 +384,21 @@ final class SpotifyApi
         $body = $this->runner->body();
         $raw = $body['uris'] ?? $body['ids'] ?? null;
         return is_array($raw) ? array_values($raw) : [];
+    }
+
+    /**
+     * @param array<string, mixed> $details
+     * @return array<string, mixed>
+     */
+    private static function spotifyErrorFields(array $details): array
+    {
+        $out = [];
+        foreach (['public', 'spotify_public', 'verified', 'playlists', 'pushed', 'failed'] as $key) {
+            if (array_key_exists($key, $details)) {
+                $out[$key] = $details[$key];
+            }
+        }
+        return $out;
     }
 
     private function playlistId(): ?int

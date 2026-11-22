@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Tests\Unit;
 
+use Dashboard\Spotify\SpotifyAccount;
 use Dashboard\Spotify\SpotifyLibrary;
 use Dashboard\Support\ValidationException;
 use PHPUnit\Framework\TestCase;
@@ -30,5 +31,15 @@ final class SpotifyPlaylistAccessTest extends TestCase
         $this->expectException(ValidationException::class);
         $this->expectExceptionMessage('Prompts attach only to AI playlists created here.');
         SpotifyLibrary::assertPromptTarget(['origin' => 'synced', 'spotify_id' => 'abc', 'is_owned' => 1]);
+    }
+
+    public function testNewPlaylistIsPrivateUnlessPublicIsExplicit(): void
+    {
+        self::assertFalse(SpotifyLibrary::requestedPublic([]));
+        self::assertFalse(SpotifyLibrary::requestedPublic(['public' => null]));
+        self::assertFalse(SpotifyLibrary::requestedPublic(['public' => false]));
+        self::assertFalse(SpotifyLibrary::requestedPublic(['public' => 'false']));
+        self::assertTrue(SpotifyLibrary::requestedPublic(['public' => true]));
+        self::assertContains('playlist-modify-private', SpotifyAccount::SCOPES);
     }
 }

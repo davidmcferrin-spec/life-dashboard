@@ -375,8 +375,9 @@ def test_money_tools_resolve_onto_the_money_api():
         "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
         "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
         "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
-        "delete_spotify_playlist", "set_player_enabled",
+        "delete_spotify_playlist", "set_player_enabled", "set_spotify_playlist_privacy",
         "set_track_metadata", "get_track_metadata", "list_active_seasons", "plan_mixtape",
+        "set_taste_dislikes",
     ):
         assert name in names
 
@@ -1261,10 +1262,11 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "update_spotify_prompt", "remove_spotify_prompt", "mark_prompt_run", "update_taste_profile",
         "get_queue", "play", "resume", "pause", "next", "previous", "seek", "set_volume", "set_shuffle", "set_repeat",
         "add_to_queue", "transfer_playback", "save_tracks", "remove_saved_tracks",
-        "delete_spotify_playlist", "set_player_enabled",
+        "delete_spotify_playlist", "set_player_enabled", "set_spotify_playlist_privacy",
         "set_track_metadata", "get_track_metadata", "list_active_seasons", "plan_mixtape",
+        "set_taste_dislikes",
     ]
-    assert len(spotify) == 49
+    assert len(spotify) == 51
     assert len(names) == len(set(names))
     for name in spotify:
         assert names.count(name) == 1
@@ -1319,6 +1321,20 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     method, path, body = resolve("transfer_playback", {"device_id": "device1", "play": True})
     assert path == "/api/v1/spotify/playback/transfer"
     assert body["play"] is True
+    method, path, body = resolve("create_spotify_playlist", {"name": "Night", "dedupe_key": "md:night", "source": "music-director"})
+    assert (method, path) == ("POST", "/api/v1/spotify/playlists")
+    assert body == {"name": "Night", "dedupe_key": "md:night", "source": "music-director"}
+    method, path, body = resolve("create_spotify_playlist", {"name": "Night", "public": False})
+    assert body["public"] is False
+    method, path, body = resolve("set_spotify_playlist_privacy", {"playlist_id": 4, "public": False})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/playlists/4/privacy", {"public": False})
+    method, path, body = resolve("set_taste_dislikes", {"titles": ["Christmas Shoes"]})
+    assert (method, path, body) == ("POST", "/api/v1/spotify/taste/dislikes", {"titles": ["Christmas Shoes"]})
+    method, path, body = resolve("update_taste_profile", {"dislikes": {"titles": ["Christmas Shoes"]}})
+    assert path == "/api/v1/spotify/taste"
+    assert body["dislikes"]["titles"] == ["Christmas Shoes"]
+    assert "dislikes" in described["get_taste_profile"]
+    assert "spotify_public" in described["set_spotify_playlist_privacy"]
 
 
 def test_public_url_is_reread_on_each_request():

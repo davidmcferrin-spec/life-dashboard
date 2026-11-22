@@ -13,10 +13,17 @@ from lifedash.spotify_plan import (
     READ_ONLY,
     REORDER_CONFLICT,
     backoff_seconds,
+    SCOPE_ERROR,
     can_push_playlist,
+    create_body,
+    details_body,
     is_playlist_delete,
     item_sync_result,
+    missing_private_scope,
     needs_refresh,
+    privacy_followup,
+    privacy_verdict,
+    resolved_public,
     new_plays,
     page_items,
     page_next,
@@ -104,7 +111,61 @@ def test_create_stops_so_the_caller_can_store_the_new_id():
     assert actions[1]["method"] == "POST"
     assert actions[1]["path"] == "/me/playlists"
     assert actions[1]["body"]["name"] == "Night drive"
+    assert actions[1]["body"]["public"] is False
+    assert actions[1]["body"]["collaborative"] is False
     assert len(actions) == 2
+
+
+def test_private_playlist_stays_public_when_spotify_ignores_the_flag():
+    """Vintage Christmas Classics stayed public after a private create and sync.
+
+    Spotify defaults a new playlist to public and often ignores public false.
+    The create body has to send collaborative false, and a read-back that is
+    still public is a failed write, not a success. A later pull must not copy
+    that public flag over a pending private write.
+    """
+    actions = plan_push(None, [], [{
+        "id": 2,
+        "op": "create",
+        "payload": {"name": "Vintage Christmas Classics", "description": "", "public": False},
+    }])
+    body = actions[0]["body"]
+    assert body == create_body({"name": "Vintage Christmas Classics", "description": "", "public": False})
+    assert body["public"] is False
+    assert body["collaborative"] is False
+    remote = {"id": "2r2xtc9oago3zC1GkeYRoq", "public": True, "collaborative": False}
+    assert privacy_followup(False, remote) == {"public": False, "collaborative": False}
+    refused = privacy_verdict(False, remote)
+    assert refused["ok"] is False
+    assert refused["verified"] is False
+    assert refused["spotify_public"] is True
+    assert "playlist-modify-private" in refused["error"]
+    held = privacy_verdict(False, {"id": "2r2xtc9oago3zC1GkeYRoq", "public": False})
+    assert held["ok"] is True
+    assert held["spotify_public"] is False
+    assert privacy_followup(False, {"public": False}) is None
+    assert resolved_public([{"op": "create", "payload": {"public": False}}], True) == 0
+    assert resolved_public([], True) == 1
+    assert missing_private_scope("playlist-modify-public", False) == SCOPE_ERROR
+    assert missing_private_scope("playlist-read-private playlist-modify-private", False) is None
+
+
+def test_create_without_public_is_private_and_a_public_request_stays_explicit():
+    private = plan_push(None, [], [{"id": 1, "op": "create", "payload": {"name": "Night"}}])
+    assert private[0]["body"]["public"] is False
+    assert private[0]["body"]["collaborative"] is False
+    public = plan_push(None, [], [{"id": 1, "op": "create", "payload": {"name": "Share", "public": True}}])
+    assert public[0]["body"]["public"] is True
+    assert public[0]["body"]["collaborative"] is False
+
+
+def test_private_rename_sends_collaborative_false_and_a_name_edit_does_not():
+    private = plan_push("pl", [], [{"id": 9, "op": "rename", "payload": {"public": False}}])
+    assert private[0]["body"] == details_body({"public": False})
+    assert private[0]["body"] == {"public": False, "collaborative": False}
+    named = plan_push("pl", [], [{"id": 1, "op": "rename", "payload": {"name": "Later"}}])
+    assert named[0]["body"] == {"name": "Later"}
+    assert "public" not in named[0]["body"]
 
 
 def test_add_skips_tracks_already_present_and_batches_the_rest():
@@ -414,3 +475,58 @@ def test_reload_keeps_the_push_when_the_follow_up_read_fails():
     worker = _worker(_Conn({"id": 52, "spotify_id": "pl", "snapshot_id": "snap"}), down)
     worker._note = lambda message: None
     worker._reload_tracks(1, 52)
+
+
+def test_push_reports_the_real_spotify_flag_when_a_private_write_does_not_stick():
+    """Spotify answered 200 and left Vintage Christmas Classics public."""
+    calls = []
+
+    def api(user_id, method, path, body=None):
+        calls.append((method, path, None if body is None else dict(body)))
+        return {"id": "2r2xtc9oago3zC1GkeYRoq", "public": True, "snapshot_id": "snap"}
+
+    class Conn(_Conn):
+        def execute(self, sql, params=None):
+            text = " ".join(sql.split())
+            if "SELECT scopes" in text:
+                return _Result([{"scopes": "playlist-modify-public playlist-modify-private"}])
+            if "SELECT id, op, payload" in text:
+                return _Result([{"id": 2, "op": "rename", "payload": {"public": False}}])
+            return super().execute(sql, params)
+
+    worker = _worker(
+        Conn({"id": 52, "spotify_id": "2r2xtc9oago3zC1GkeYRoq", "snapshot_id": "snap"}),
+        api,
+    )
+    worker._reload_tracks = lambda user_id, playlist_id: None
+    result = worker._push_playlist(1, 52)
+    assert result["verified"] is False
+    assert result["spotify_public"] is True
+    assert result["public"] is False
+    assert "playlist-modify-private" in result["error"]
+    puts = [call for call in calls if call[0] == "PUT" and call[1] == "/playlists/2r2xtc9oago3zC1GkeYRoq"]
+    assert {"public": False, "collaborative": False} in [call[2] for call in puts]
+
+
+def test_private_push_does_not_call_spotify_without_playlist_modify_private():
+    calls = []
+
+    def api(*args, **kwargs):
+        calls.append(args)
+        return {}
+
+    class Conn(_Conn):
+        def execute(self, sql, params=None):
+            text = " ".join(sql.split())
+            if "SELECT scopes" in text:
+                return _Result([{"scopes": "playlist-modify-public"}])
+            if "SELECT id, op, payload" in text:
+                return _Result([{"id": 2, "op": "create", "payload": {"name": "Night", "public": False}}])
+            return super().execute(sql, params)
+
+    worker = _worker(Conn({"id": 52, "spotify_id": None, "snapshot_id": None}), api)
+    result = worker._push_playlist(1, 52)
+    assert calls == []
+    assert result["verified"] is False
+    assert result["spotify_public"] is None
+    assert result["error"] == SCOPE_ERROR
