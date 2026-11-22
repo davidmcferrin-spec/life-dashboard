@@ -16,12 +16,14 @@ from lifedash.spotify_plan import (
     SCOPE_ERROR,
     can_push_playlist,
     create_body,
-    details_body,
     is_playlist_delete,
     item_sync_result,
     missing_private_scope,
     needs_refresh,
-    privacy_followup,
+    READ_BACK_DELAYS,
+    STILL_PUBLIC,
+    granted_scopes,
+    privacy_corrections,
     privacy_verdict,
     resolved_public,
     new_plays,
@@ -134,7 +136,11 @@ def test_private_playlist_stays_public_when_spotify_ignores_the_flag():
     assert body["public"] is False
     assert body["collaborative"] is False
     remote = {"id": "2r2xtc9oago3zC1GkeYRoq", "public": True, "collaborative": False}
-    assert privacy_followup(False, remote) == {"public": False, "collaborative": False}
+    assert privacy_corrections(False, remote) == [{"public": False}]
+    assert privacy_corrections(False, {"public": True, "collaborative": True}) == [
+        {"collaborative": False},
+        {"public": False},
+    ]
     refused = privacy_verdict(False, remote)
     assert refused["ok"] is False
     assert refused["verified"] is False
@@ -143,7 +149,10 @@ def test_private_playlist_stays_public_when_spotify_ignores_the_flag():
     held = privacy_verdict(False, {"id": "2r2xtc9oago3zC1GkeYRoq", "public": False})
     assert held["ok"] is True
     assert held["spotify_public"] is False
-    assert privacy_followup(False, {"public": False}) is None
+    assert privacy_corrections(False, {"public": False}) == []
+    assert granted_scopes({}, "playlist-modify-public") == "playlist-modify-public"
+    assert granted_scopes({"scope": "playlist-modify-public"}, "playlist-modify-private playlist-modify-public") == "playlist-modify-public"
+    assert "playlist-modify-private" not in granted_scopes({}, "").split()
     assert resolved_public([{"op": "create", "payload": {"public": False}}], True) == 0
     assert resolved_public([], True) == 1
     assert missing_private_scope("playlist-modify-public", False) == SCOPE_ERROR
@@ -159,10 +168,13 @@ def test_create_without_public_is_private_and_a_public_request_stays_explicit():
     assert public[0]["body"]["collaborative"] is False
 
 
-def test_private_rename_sends_collaborative_false_and_a_name_edit_does_not():
+def test_private_rename_sends_public_false_on_the_playlist_endpoint():
     private = plan_push("pl", [], [{"id": 9, "op": "rename", "payload": {"public": False}}])
-    assert private[0]["body"] == details_body({"public": False})
-    assert private[0]["body"] == {"public": False, "collaborative": False}
+    assert private[0]["method"] == "PUT"
+    assert private[0]["path"] == "/playlists/pl"
+    assert private[0]["body"] == {"public": False}
+    assert "is_public" not in private[0]["body"]
+    assert "Public" not in private[0]["body"]
     named = plan_push("pl", [], [{"id": 1, "op": "rename", "payload": {"name": "Later"}}])
     assert named[0]["body"] == {"name": "Later"}
     assert "public" not in named[0]["body"]
@@ -498,14 +510,19 @@ def test_push_reports_the_real_spotify_flag_when_a_private_write_does_not_stick(
         Conn({"id": 52, "spotify_id": "2r2xtc9oago3zC1GkeYRoq", "snapshot_id": "snap"}),
         api,
     )
+    slept = []
     worker._reload_tracks = lambda user_id, playlist_id: None
+    worker._token = lambda user_id, force=False: "tok"
+    worker._sleep = lambda seconds: slept.append(seconds)
     result = worker._push_playlist(1, 52)
     assert result["verified"] is False
     assert result["spotify_public"] is True
     assert result["public"] is False
-    assert "playlist-modify-private" in result["error"]
+    assert result["error"] == STILL_PUBLIC
     puts = [call for call in calls if call[0] == "PUT" and call[1] == "/playlists/2r2xtc9oago3zC1GkeYRoq"]
-    assert {"public": False, "collaborative": False} in [call[2] for call in puts]
+    assert puts
+    assert all(call[2] == {"public": False} for call in puts)
+    assert slept == [delay for delay in READ_BACK_DELAYS if delay]
 
 
 def test_private_push_does_not_call_spotify_without_playlist_modify_private():
@@ -525,8 +542,73 @@ def test_private_push_does_not_call_spotify_without_playlist_modify_private():
             return super().execute(sql, params)
 
     worker = _worker(Conn({"id": 52, "spotify_id": None, "snapshot_id": None}), api)
+    worker._token = lambda user_id, force=False: "tok"
     result = worker._push_playlist(1, 52)
     assert calls == []
     assert result["verified"] is False
     assert result["spotify_public"] is None
     assert result["error"] == SCOPE_ERROR
+    assert "Reconnect" in result["error"]
+    assert "Settings" in result["error"]
+
+
+def test_a_late_private_read_is_not_a_failure():
+    """The first reads still say public. A later read shows the update."""
+    flags = [True, True, True, False]
+
+    def api(user_id, method, path, body=None):
+        if method == "GET":
+            return {"id": "2r2xtc9oago3zC1GkeYRoq", "public": flags.pop(0), "snapshot_id": "snap", "collaborative": False}
+        return {}
+
+    class Conn(_Conn):
+        def execute(self, sql, params=None):
+            text = " ".join(sql.split())
+            if "SELECT scopes" in text:
+                return _Result([{"scopes": "playlist-modify-private playlist-modify-public"}])
+            if "SELECT id, op, payload" in text:
+                return _Result([{"id": 2, "op": "rename", "payload": {"public": False}}])
+            return super().execute(sql, params)
+
+    worker = _worker(Conn({"id": 52, "spotify_id": "2r2xtc9oago3zC1GkeYRoq", "snapshot_id": "snap"}), api)
+    worker._reload_tracks = lambda user_id, playlist_id: None
+    worker._token = lambda user_id, force=False: "tok"
+    worker._sleep = lambda seconds: None
+    result = worker._push_playlist(1, 52)
+    assert result["verified"] is True
+    assert result["spotify_public"] is False
+    assert "error" not in result
+
+
+def test_token_endpoint_scope_overrides_a_stored_grant():
+    calls = []
+
+    def api(*args, **kwargs):
+        calls.append(args)
+        return {"public": True, "snapshot_id": "snap", "id": "pl"}
+
+    class Conn(_Conn):
+        def __init__(self):
+            super().__init__({"id": 52, "spotify_id": None, "snapshot_id": None})
+            self.scopes = "playlist-modify-private playlist-modify-public"
+
+        def execute(self, sql, params=None):
+            text = " ".join(sql.split())
+            if "SELECT scopes" in text:
+                return _Result([{"scopes": self.scopes}])
+            if "SELECT id, op, payload" in text:
+                return _Result([{"id": 2, "op": "create", "payload": {"name": "Night", "public": False}}])
+            return super().execute(sql, params)
+
+    conn = Conn()
+
+    def token(user_id, force=False):
+        conn.scopes = granted_scopes({"scope": "playlist-modify-public"}, conn.scopes)
+        return "tok"
+
+    worker = _worker(conn, api)
+    worker._token = token
+    result = worker._push_playlist(1, 52)
+    assert calls == []
+    assert result["error"] == SCOPE_ERROR
+    assert "playlist-modify-private" not in conn.scopes.split()

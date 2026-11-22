@@ -26,7 +26,12 @@ def _tool(name: str, description: str, properties: dict[str, Any] | None = None,
 
 
 SPOTIFY_TOOLS: list[dict[str, Any]] = [
-    _tool("spotify_status", "Connected Spotify account, scopes, and the last sync. No tokens. Requires spotify:read."),
+    _tool(
+        "spotify_status",
+        "Connected Spotify account, the scopes Spotify granted, missing_scopes, and the last sync. No tokens. "
+        "A private playlist needs playlist-modify-private. When that scope is missing, open Settings, choose Spotify, and click Reconnect. "
+        "Requires spotify:read.",
+    ),
     _tool("list_spotify_playlists", "Synced playlists, including local drafts and how many edits are waiting to push. Requires spotify:read."),
     _tool(
         "get_spotify_playlist",

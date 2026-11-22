@@ -65,6 +65,7 @@ final class SpotifyAccount
                 'display_name' => null,
                 'spotify_user_id' => null,
                 'scopes' => [],
+                'missing_scopes' => self::missingAccountScopes([]),
                 'status' => 'disconnected',
                 'status_detail' => null,
                 'last_sync_at' => null,
@@ -74,12 +75,14 @@ final class SpotifyAccount
             ];
         }
         $scopes = preg_split('/\s+/', trim((string) $row['scopes'])) ?: [];
+        $granted = array_values(array_filter($scopes, static fn (string $s): bool => $s !== ''));
         return [
             'connected' => (string) $row['status'] === 'connected',
             'configured' => self::configured(),
             'display_name' => (string) $row['display_name'],
             'spotify_user_id' => (string) $row['spotify_user_id'],
-            'scopes' => array_values(array_filter($scopes, static fn (string $s): bool => $s !== '')),
+            'scopes' => $granted,
+            'missing_scopes' => self::missingAccountScopes($granted),
             'status' => (string) $row['status'],
             'status_detail' => $row['status_detail'] !== null ? (string) $row['status_detail'] : null,
             'last_sync_at' => $row['last_sync_at'] !== null ? (string) $row['last_sync_at'] : null,
@@ -108,6 +111,43 @@ final class SpotifyAccount
             }
         }
         return $missing;
+    }
+
+    /**
+     * Scopes a connected account needs before private playlists and playback work.
+     *
+     * @param list<string> $granted
+     * @return list<string>
+     */
+    public static function missingAccountScopes(array $granted): array
+    {
+        $have = [];
+        foreach ($granted as $scope) {
+            if ($scope !== '') {
+                $have[$scope] = true;
+            }
+        }
+        $missing = [];
+        foreach (array_merge(['playlist-modify-private'], self::PLAYBACK_SCOPES) as $scope) {
+            if (!isset($have[$scope])) {
+                $missing[] = $scope;
+            }
+        }
+        return $missing;
+    }
+
+    /**
+     * The token endpoint's scope field is the grant. A missing field keeps the previous grant
+     * and does not copy the scopes this app asked for.
+     */
+    public static function grantedScopes(?string $returned, ?string $previous): string
+    {
+        $returned = trim((string) $returned);
+        if ($returned !== '') {
+            return preg_replace('/\s+/', ' ', $returned) ?? $returned;
+        }
+        $previous = trim((string) $previous);
+        return $previous === '' ? '' : (preg_replace('/\s+/', ' ', $previous) ?? $previous);
     }
 
     /** @return array{url: string, state: string} */
@@ -163,7 +203,14 @@ final class SpotifyAccount
             throw new SpotifyException('Spotify did not return a token.', 502);
         }
         $me = $this->http->api('GET', '/me', $access);
-        $this->store($userId, $me, $access, $refresh, (int) ($tokens['expires_in'] ?? 3600), (string) ($tokens['scope'] ?? implode(' ', self::SCOPES)));
+        $this->store(
+            $userId,
+            $me,
+            $access,
+            $refresh,
+            (int) ($tokens['expires_in'] ?? 3600),
+            self::grantedScopes(isset($tokens['scope']) ? (string) $tokens['scope'] : null, ''),
+        );
     }
 
     public function disconnect(int $userId): void
@@ -180,7 +227,7 @@ final class SpotifyAccount
         return $this->db->transaction(function (Database $db) use ($userId, $force): string {
             $db->execute("SELECT pg_advisory_xact_lock(hashtext('spotify:' || ?::text)::bigint)", [(string) $userId]);
             $row = $db->fetchOne(
-                'SELECT access_token_enc, refresh_token_enc, expires_at, status FROM spotify_account WHERE user_id = ?',
+                'SELECT access_token_enc, refresh_token_enc, expires_at, status, scopes FROM spotify_account WHERE user_id = ?',
                 [$userId]
             );
             if ($row === null) {
@@ -215,14 +262,19 @@ final class SpotifyAccount
             if ($newRefresh === '') {
                 $newRefresh = $refresh;
             }
+            $scopes = self::grantedScopes(
+                isset($tokens['scope']) ? (string) $tokens['scope'] : null,
+                (string) ($row['scopes'] ?? ''),
+            );
             $db->execute(
                 'UPDATE spotify_account
-                 SET access_token_enc = ?, refresh_token_enc = ?, expires_at = ?, status = ?, status_detail = NULL, updated_at = (now() AT TIME ZONE \'UTC\')
+                 SET access_token_enc = ?, refresh_token_enc = ?, expires_at = ?, scopes = ?, status = ?, status_detail = NULL, updated_at = (now() AT TIME ZONE \'UTC\')
                  WHERE user_id = ?',
                 [
                     $this->cipher->encrypt($newAccess),
                     $this->cipher->encrypt($newRefresh),
                     gmdate('Y-m-d H:i:s', time() + (int) ($tokens['expires_in'] ?? 3600)),
+                    $scopes,
                     'connected',
                     $userId,
                 ]

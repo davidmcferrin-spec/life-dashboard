@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from psycopg.rows import dict_row
@@ -22,6 +23,9 @@ from .spotify_plan import (
     can_push_playlist,
     is_playlist_delete,
     item_sync_result,
+    READ_BACK_DELAYS,
+    STILL_PUBLIC,
+    granted_scopes,
     missing_private_scope,
     needs_refresh,
     page_items,
@@ -31,10 +35,11 @@ from .spotify_plan import (
     playlist_item_object,
     playlist_needs_pull,
     playlist_total,
-    privacy_followup,
+    privacy_corrections,
     privacy_intent,
     privacy_verdict,
     resolved_public,
+    spotify_is_public,
 )
 
 GONE = "Spotify no longer has this playlist."
@@ -517,7 +522,7 @@ class Worker:
             if intent is not None:
                 wanted, privacy_change, privacy_op = intent
                 if wanted is False:
-                    scope_error = missing_private_scope(self._scopes(user_id), False)
+                    scope_error = missing_private_scope(self._scopes_for_privacy(user_id), False)
                     if scope_error:
                         n = self._fail_private_writes(playlist_id, scope_error)
                         return {
@@ -612,10 +617,11 @@ class Worker:
     ) -> dict:
         try:
             remote = self._api(user_id, "GET", f"/playlists/{spotify_id}")
-            follow = privacy_followup(wanted, remote)
-            if follow is not None:
-                self._api(user_id, "PUT", f"/playlists/{spotify_id}", follow)
-                remote = self._api(user_id, "GET", f"/playlists/{spotify_id}")
+            corrections = privacy_corrections(wanted, remote)
+            for body in corrections:
+                self._api(user_id, "PUT", f"/playlists/{spotify_id}", body)
+            if corrections:
+                remote = self._read_privacy(user_id, spotify_id, wanted)
         except SpotifyHttpError as exc:
             message = scrub(str(exc))
             self._remember_privacy_failure(user_id, playlist_id, change_id, op_name, wanted, message)
@@ -627,9 +633,30 @@ class Worker:
                 "error": message,
             }
         verdict = privacy_verdict(wanted, remote)
+        if not verdict["ok"] and wanted is False and missing_private_scope(self._scopes(user_id), False) is None:
+            verdict = {**verdict, "error": STILL_PUBLIC}
         if not verdict["ok"]:
             self._remember_privacy_failure(user_id, playlist_id, change_id, op_name, wanted, verdict["error"])
         return verdict
+
+    def _read_privacy(self, user_id: int, spotify_id: str, wanted: bool) -> dict:
+        """Re-read the playlist. Spotify's public flag can lag the update."""
+        last: dict = {}
+        for delay in READ_BACK_DELAYS:
+            if delay:
+                self._sleep(delay)
+            last = self._api(user_id, "GET", f"/playlists/{spotify_id}")
+            if spotify_is_public(last) is wanted:
+                return last
+        return last
+
+    def _sleep(self, seconds: int) -> None:
+        time.sleep(seconds)
+
+    def _scopes_for_privacy(self, user_id: int) -> str:
+        """Refresh first so the scope check uses the token endpoint, not an old request list."""
+        self._token(user_id, force=True)
+        return self._scopes(user_id)
 
     def _remember_privacy_failure(
         self,
@@ -808,7 +835,7 @@ class Worker:
         with self.conn.transaction():
             self.conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s)::bigint)", (f"spotify:{user_id}",))
             row = self.conn.execute(
-                "SELECT access_token_enc, refresh_token_enc, expires_at, status FROM spotify_account WHERE user_id = %s",
+                "SELECT access_token_enc, refresh_token_enc, expires_at, status, scopes FROM spotify_account WHERE user_id = %s",
                 (user_id,),
             ).fetchone()
             if row is None:
@@ -835,12 +862,19 @@ class Worker:
                 raise SpotifyHttpError("Spotify needs to be connected again.", 409, True)
             new_refresh = str(tokens.get("refresh_token") or refresh)
             expires = datetime.now(timezone.utc) + timedelta(seconds=int(tokens.get("expires_in") or 3600))
+            scopes = granted_scopes(tokens, str(row.get("scopes") or ""))
             self.conn.execute(
                 """UPDATE spotify_account
-                   SET access_token_enc = %s, refresh_token_enc = %s, expires_at = %s,
+                   SET access_token_enc = %s, refresh_token_enc = %s, expires_at = %s, scopes = %s,
                        status = 'connected', status_detail = NULL, updated_at = (now() AT TIME ZONE 'UTC')
                    WHERE user_id = %s""",
-                (seal(new_access, self.key), seal(new_refresh, self.key), expires.strftime("%Y-%m-%d %H:%M:%S"), user_id),
+                (
+                    seal(new_access, self.key),
+                    seal(new_refresh, self.key),
+                    expires.strftime("%Y-%m-%d %H:%M:%S"),
+                    scopes,
+                    user_id,
+                ),
             )
             return new_access
 
