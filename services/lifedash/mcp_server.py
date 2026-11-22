@@ -368,24 +368,73 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "search_pages",
-        "description": "Search the markdown vault, or list recent pages when q is empty. folder_id or folder (a path like Travel/2026) limits the search. folder_id 0 is the root.",
+        "description": (
+            "Search the markdown vault, or list recent pages when q is empty. "
+            "An exact title or phrase ranks above a body mention, and a former title still matches after a rename. "
+            "folder_id or folder limits the search. A unique folder name such as Health resolves; an ambiguous or missing name returns full paths. "
+            "folder_id 0 is the root. include_archived includes soft-archived pages. "
+            "updated_since (YYYY-MM-DD or a timestamp, UTC) lists pages changed since then. "
+            "Each page includes updated_at, last_editor, and url."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "q": {"type": "string"},
                 "folder_id": {"type": "integer"},
                 "folder": {"type": "string"},
+                "include_archived": {"type": "boolean"},
+                "updated_since": {"type": "string"},
+                "limit": {"type": "integer"},
             },
             "additionalProperties": False,
         },
     },
     {
-        "name": "get_page",
-        "description": "Read one vault page, including backlinks.",
+        "name": "list_changed_pages",
+        "description": (
+            "List vault pages updated since a UTC date (YYYY-MM-DD or a timestamp). "
+            "Each page includes updated_at and last_editor, the token name or user that last wrote it, plus url. "
+            "Archived pages are omitted unless include_archived is true."
+        ),
         "inputSchema": {
             "type": "object",
-            "properties": {"page_id": {"type": "integer"}},
-            "required": ["page_id"],
+            "properties": {
+                "since": {"type": "string"},
+                "include_archived": {"type": "boolean"},
+                "folder_id": {"type": "integer"},
+                "folder": {"type": "string"},
+                "limit": {"type": "integer"},
+            },
+            "required": ["since"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_page",
+        "description": (
+            "Read one vault page, including backlinks, former titles, and url. "
+            "Pass page_id, title, or slug. A former title still resolves after a rename."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "slug": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "read_page",
+        "description": "Alias of get_page. Read one vault page by page_id, title, or slug, including former titles and url.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "slug": {"type": "string"},
+            },
             "additionalProperties": False,
         },
     },
@@ -404,7 +453,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "write_page",
-        "description": "Create a vault page, or update it when page_id is set. Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026) places it. folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update.",
+        "description": "Create a vault page, or replace its title and body when page_id is set. This sends the whole body. To append, prepend, or edit one heading, use patch_page. Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026, or a unique folder name) places it. folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update. The result includes url. A page created at the root may include suggested_folder.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -420,9 +469,81 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "patch_page",
+        "description": (
+            "Change a vault page without sending the whole body, and save a revision so history and diff still work. "
+            "mode is append, prepend, replace_section, or insert_section. "
+            "heading is the markdown heading text for the section modes (a leading # is optional). "
+            "position is start or end and applies to insert_section (default end, under the heading). "
+            "Identify the page with page_id, title, or slug. The result includes url."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "slug": {"type": "string"},
+                "mode": {"type": "string"},
+                "text": {"type": "string"},
+                "heading": {"type": "string"},
+                "position": {"type": "string"},
+            },
+            "required": ["mode", "text"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "archive_page",
+        "description": (
+            "Soft-archive a vault page. It leaves search unless include_archived is set, and it is not deleted. "
+            "Moving a page into the 99 Archive folder is move_page, not this tool. "
+            "Identify the page with page_id, title, or slug."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "slug": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "unarchive_page",
+        "description": "Restore a soft-archived vault page to search. Identify it with page_id, title, or slug. The page is not deleted by archive_page.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "title": {"type": "string"},
+                "slug": {"type": "string"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "list_folders",
         "description": "Vault folders as a tree. Pages without a folder are at the root.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_folder_contents",
+        "description": (
+            "Return one vault folder plus the pages and subfolders directly inside it. "
+            "An empty folder still returns the folder, with empty pages and folders lists. "
+            "folder_id or folder (a path, or a unique folder name) selects it. Omit both for the root. "
+            "folder_id 0 is the root."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "folder_id": {"type": ["integer", "null"]},
+                "folder": {"type": "string"},
+                "include_archived": {"type": "boolean"},
+            },
+            "additionalProperties": False,
+        },
     },
     {
         "name": "create_folder",
@@ -2174,6 +2295,84 @@ TOOLS.extend([
 ])
 
 
+def _page_list_query(args: dict[str, Any], since_key: str) -> str:
+    query: dict[str, Any] = {}
+    if args.get("q"):
+        query["q"] = args["q"]
+    if "folder_id" in args and args["folder_id"] is not None:
+        query["folder_id"] = int(args["folder_id"])
+    elif "folder_id" in args and args["folder_id"] is None:
+        query["folder_id"] = 0
+    if args.get("folder"):
+        query["folder"] = args["folder"]
+    if args.get("include_archived") is True:
+        query["include_archived"] = "true"
+    since = args.get(since_key)
+    if isinstance(since, str) and since.strip() != "":
+        query["updated_since"] = since
+    if args.get("limit") is not None:
+        query["limit"] = int(args["limit"])
+    return ("?" + urlencode(query)) if query else ""
+
+
+def _folder_query(args: dict[str, Any]) -> str:
+    query: dict[str, Any] = {}
+    if "folder_id" in args and args["folder_id"] is not None:
+        query["folder_id"] = int(args["folder_id"])
+    elif "folder_id" in args and args["folder_id"] is None:
+        query["folder_id"] = 0
+    if args.get("folder"):
+        query["folder"] = args["folder"]
+    if args.get("include_archived") is True:
+        query["include_archived"] = "true"
+    return ("?" + urlencode(query)) if query else ""
+
+
+def _read_page(args: dict[str, Any]) -> tuple[str, str, None]:
+    if args.get("page_id") not in (None, ""):
+        return "GET", f"/api/v1/pages/{int(args['page_id'])}", None
+    query: dict[str, Any] = {}
+    if isinstance(args.get("title"), str) and args["title"].strip() != "":
+        query["title"] = args["title"]
+    if isinstance(args.get("slug"), str) and args["slug"].strip() != "":
+        query["slug"] = args["slug"]
+    if not query:
+        raise ValueError("page_id, title, or slug is required.")
+    return "GET", "/api/v1/pages/lookup?" + urlencode(query), None
+
+
+def _page_body(args: dict[str, Any]) -> dict[str, Any]:
+    body: dict[str, Any] = {}
+    if args.get("page_id") not in (None, ""):
+        body["page_id"] = int(args["page_id"])
+    if isinstance(args.get("title"), str) and args["title"].strip() != "":
+        body["title"] = args["title"]
+    if isinstance(args.get("slug"), str) and args["slug"].strip() != "":
+        body["slug"] = args["slug"]
+    if not body:
+        raise ValueError("page_id, title, or slug is required.")
+    return body
+
+
+def _patch_body(args: dict[str, Any]) -> dict[str, Any]:
+    mode = args.get("mode")
+    if mode not in ("append", "prepend", "replace_section", "insert_section"):
+        raise ValueError("mode must be append, prepend, replace_section, or insert_section.")
+    text = args.get("text")
+    if not isinstance(text, str) or text.strip() == "":
+        raise ValueError("text is required.")
+    body = _page_body(args)
+    body["mode"] = mode
+    body["text"] = text
+    if isinstance(args.get("heading"), str) and args["heading"].strip() != "":
+        body["heading"] = args["heading"]
+    if isinstance(args.get("position"), str) and args["position"].strip() != "":
+        body["position"] = args["position"]
+    if mode in ("replace_section", "insert_section") and "heading" not in body:
+        raise ValueError("heading is required for replace_section and insert_section.")
+    return body
+
+
 def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
     query = {key: args[key] for key in keys if args.get(key) not in (None, "")}
     return ("?" + urlencode(query)) if query else ""
@@ -2368,19 +2567,16 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         body = {k: args[k] for k in ("entries", "records") if k in args}
         return "POST", "/api/v1/life/ingest", body
     if name == "search_pages":
-        query = {}
-        if args.get("q"):
-            query["q"] = args["q"]
-        if "folder_id" in args and args["folder_id"] is not None:
-            query["folder_id"] = int(args["folder_id"])
-        elif "folder_id" in args and args["folder_id"] is None:
-            query["folder_id"] = 0
-        if args.get("folder"):
-            query["folder"] = args["folder"]
-        suffix = ("?" + urlencode(query)) if query else ""
-        return "GET", "/api/v1/pages" + suffix, None
-    if name == "get_page":
-        return "GET", f"/api/v1/pages/{int(args['page_id'])}", None
+        return "GET", "/api/v1/pages" + _page_list_query(args, since_key="updated_since"), None
+    if name == "list_changed_pages":
+        since = args.get("since") or args.get("updated_since")
+        if not isinstance(since, str) or since.strip() == "":
+            raise ValueError("since is required, as YYYY-MM-DD or a timestamp.")
+        listed = dict(args)
+        listed["updated_since"] = since
+        return "GET", "/api/v1/pages" + _page_list_query(listed, since_key="updated_since"), None
+    if name in ("get_page", "read_page"):
+        return _read_page(args)
     if name == "page_version_diff":
         return "GET", f"/api/v1/pages/{int(args['page_id'])}/revisions/{int(args['version'])}", None
     if name == "write_page":
@@ -2388,8 +2584,16 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         if args.get("page_id"):
             return "POST", f"/api/v1/pages/{int(args['page_id'])}/update", body
         return "POST", "/api/v1/pages", body
+    if name == "patch_page":
+        return "POST", "/api/v1/pages/patch", _patch_body(args)
+    if name == "archive_page":
+        return "POST", "/api/v1/pages/archive", _page_body(args)
+    if name == "unarchive_page":
+        return "POST", "/api/v1/pages/unarchive", _page_body(args)
     if name == "list_folders":
         return "GET", "/api/v1/pages/folders", None
+    if name == "list_folder_contents":
+        return "GET", "/api/v1/pages/folders/contents" + _folder_query(args), None
     if name == "create_folder":
         body = {"name": args["name"]}
         if "parent_id" in args:

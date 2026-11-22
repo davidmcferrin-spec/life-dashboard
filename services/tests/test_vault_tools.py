@@ -10,6 +10,12 @@ VAULT_TOOLS = (
     "recent_pages",
     "resolve_wikilink",
     "upload_page_image",
+    "read_page",
+    "patch_page",
+    "archive_page",
+    "unarchive_page",
+    "list_folder_contents",
+    "list_changed_pages",
 )
 
 
@@ -50,6 +56,55 @@ def test_vault_tools_are_advertised_and_resolve():
     assert path.startswith("/api/v1/pages/resolve?q=")
     assert "Home" in path
     assert body is None
+
+    assert resolve("read_page", {"page_id": 4}) == resolve("get_page", {"page_id": 4})
+    assert resolve("read_page", {"page_id": 4}) == ("GET", "/api/v1/pages/4", None)
+    method, path, body = resolve("get_page", {"title": "Home IPTV"})
+    assert method == "GET"
+    assert path.startswith("/api/v1/pages/lookup?")
+    assert "Home" in path
+    assert body is None
+    method, path, body = resolve("read_page", {"slug": "home-iptv"})
+    assert method == "GET"
+    assert "slug=home-iptv" in path
+
+    method, path, body = resolve("patch_page", {
+        "title": "Daily log",
+        "mode": "append",
+        "text": "done",
+    })
+    assert (method, path) == ("POST", "/api/v1/pages/patch")
+    assert body == {"title": "Daily log", "mode": "append", "text": "done"}
+    method, path, body = resolve("patch_page", {
+        "page_id": 9,
+        "mode": "replace_section",
+        "heading": "Log",
+        "text": "fresh",
+        "position": "end",
+    })
+    assert body["heading"] == "Log"
+    assert body["page_id"] == 9
+
+    assert resolve("archive_page", {"page_id": 9}) == ("POST", "/api/v1/pages/archive", {"page_id": 9})
+    assert resolve("unarchive_page", {"slug": "old-note"}) == (
+        "POST",
+        "/api/v1/pages/unarchive",
+        {"slug": "old-note"},
+    )
+    method, path, body = resolve("list_folder_contents", {"folder": "Home IPTV"})
+    assert method == "GET"
+    assert path.startswith("/api/v1/pages/folders/contents?")
+    assert "Home" in path
+    assert body is None
+    method, path, body = resolve("list_changed_pages", {"since": "2026-11-01", "include_archived": True})
+    assert method == "GET"
+    assert "updated_since=2026-11-01" in path
+    assert "include_archived=true" in path
+    assert body is None
+    method, path, body = resolve("search_pages", {"q": "Home IPTV", "folder": "Health", "updated_since": "2026-11-01"})
+    assert "q=Home" in path or "q=Home+IPTV" in path or "Home" in path
+    assert "folder=Health" in path
+    assert "updated_since=2026-11-01" in path
 
     def fetch(method, path, body, authorization, tool):
         if path == "/api/v1/agent-prompt":

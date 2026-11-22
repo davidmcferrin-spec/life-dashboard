@@ -29,6 +29,8 @@ final class ApiRunner
 
     private ?string $tokenName = null;
 
+    private ?string $editorName = null;
+
     /** @var array<string, mixed>|null */
     private ?array $jsonBody = null;
 
@@ -70,6 +72,13 @@ final class ApiRunner
     public function tokenName(): ?string
     {
         return $this->tokenName;
+    }
+
+    /** Token name for a bearer call, username for a signed-in session. */
+    public function editorName(): string
+    {
+        $name = trim((string) $this->editorName);
+        return $name === '' ? 'user' : $name;
     }
 
     public function principalKind(): ?string
@@ -174,6 +183,7 @@ final class ApiRunner
         $this->grantedScopes = null;
         $this->principalKind = null;
         $this->principalId = null;
+        $this->editorName = null;
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
         $path = is_string($path) ? $path : '/';
         $bearer = self::bearerToken();
@@ -200,6 +210,7 @@ final class ApiRunner
             $this->actor = new ApiActor('ai', $row['user_id'], $tool);
             $this->tokenId = (int) $row['id'];
             $this->tokenName = (string) $row['name'];
+            $this->editorName = $this->clipLabel($this->tokenName !== '' ? $this->tokenName : 'Agent');
             $kind = (string) ($row['principal_kind'] ?? 'token');
             $this->principalKind = in_array($kind, ['token', 'oauth'], true) ? $kind : 'token';
             $this->principalId = isset($row['principal_id']) ? (int) $row['principal_id'] : (int) $row['id'];
@@ -223,6 +234,7 @@ final class ApiRunner
             validateCsrf();
         }
         $this->actor = new ApiActor('user', (int) $user['id'], $tool);
+        $this->editorName = $this->clipLabel((string) ($user['username'] ?? 'user'));
         return (int) $user['id'];
     }
 
@@ -546,6 +558,15 @@ final class ApiRunner
             $path,
             $detail
         );
+    }
+
+    private function clipLabel(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 'user';
+        }
+        return mb_substr($value, 0, 80);
     }
 
     private static function toolHeader(): ?string
