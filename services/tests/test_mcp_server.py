@@ -302,6 +302,40 @@ def test_money_tools_resolve_onto_the_money_api():
     assert (method, path) == ("POST", "/api/v1/shopping/items")
     assert body["list_id"] == 3
     assert body["items"][0] == "2 lb chicken"
+    method, path, body = resolve("add_shopping_items", {
+        "list_id": 3,
+        "items": [{
+            "name": "milk",
+            "source": "ai",
+            "dedupe_key": "store-milk-gallon",
+            "order_wave": "deferred",
+            "needed_by": "2026-11-04",
+        }],
+    })
+    assert body["items"][0]["dedupe_key"] == "store-milk-gallon"
+    assert body["items"][0]["source"] == "ai"
+    method, path, body = resolve("update_shopping_item", {"item_id": 9, "order_wave": None, "needed_by": "2026-11-04"})
+    assert (method, path) == ("POST", "/api/v1/shopping/items/9")
+    assert body["order_wave"] is None
+    assert body["needed_by"] == "2026-11-04"
+    assert "item_id" not in body
+    method, path, body = resolve("list_shopping_items", {
+        "list_id": 3,
+        "include_deferred": False,
+        "order_wave": "homecoming Nov 4",
+        "needed_before": "2026-11-04",
+    })
+    assert "include_deferred=False" in path
+    assert "order_wave=homecoming+Nov+4" in path
+    assert "needed_before=2026-11-04" in path
+    method, path, body = resolve("get_food_preferences", {})
+    assert (method, path, body) == ("GET", "/api/v1/shopping/preferences", None)
+    try:
+        resolve("get_food_preferences", {"page_id": 1})
+    except ValueError as exc:
+        assert "no arguments" in str(exc)
+    else:
+        raise AssertionError("get_food_preferences")
     method, path, body = resolve("check_shopping_item", {"item_id": 9, "bought": False})
     assert (method, path, body) == ("POST", "/api/v1/shopping/items/9/check", {"bought": False})
     method, path, body = resolve("clear_bought", {"list_id": 3})
@@ -353,6 +387,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "add_credit_score", "get_dashboard_summary", "money_summary", "weekly_review", "get_audit_log",
         "list_todos", "create_todo", "update_todo", "complete_todo", "list_todo_categories", "create_todo_category",
         "list_shopping_lists", "create_shopping_list", "list_shopping_items", "add_shopping_items",
+        "get_food_preferences",
         "update_shopping_item", "check_shopping_item", "remove_shopping_item", "clear_bought",
         "log_call", "create_call", "get_call", "update_call", "set_call_status", "link_call_todo",
         "list_calls", "search_calls", "call_stats", "lookup_caller", "list_contacts", "upsert_contact",
@@ -404,6 +439,8 @@ def test_pantry_tools_map_onto_the_pantry_api():
     assert body["location"] == "freezer"
     method, path, body = resolve("toss_lot", {"lot_id": 4})
     assert (method, path, body) == ("POST", "/api/v1/pantry/lots/4/toss", {})
+    toss = next(tool for tool in TOOLS if tool["name"] == "toss_lot")
+    assert "used" in toss["description"]
     method, path, body = resolve("toss_lot", {"lot_ids": [4, 5]})
     assert (method, path, body) == ("POST", "/api/v1/pantry/purge", {"lot_ids": [4, 5]})
     method, path, body = resolve("what_can_i_make", {})

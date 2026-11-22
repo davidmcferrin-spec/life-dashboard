@@ -250,7 +250,8 @@ html[data-theme="jarvis"] .ld-goal-pop {
     padding: 0.1rem 0.2rem;
 }
 .ld-shop-x:hover { color: var(--text-primary); }
-.ld-shop-bought-toggle {
+.ld-shop-bought-toggle,
+.ld-shop-deferred-toggle {
     background: none;
     border: 0;
     color: var(--text-faint);
@@ -260,7 +261,8 @@ html[data-theme="jarvis"] .ld-goal-pop {
     padding: 0;
     text-align: left;
 }
-.ld-shop-bought-toggle:hover { color: var(--accent); }
+.ld-shop-bought-toggle:hover,
+.ld-shop-deferred-toggle:hover { color: var(--accent); }
 html[data-theme="jarvis"] .ld-shop-tab.is-on {
     background: color-mix(in srgb, var(--accent) 12%, transparent);
 }

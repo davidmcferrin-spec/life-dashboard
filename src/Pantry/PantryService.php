@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Pantry;
 
 use Dashboard\DB\Database;
+use Dashboard\Knowledge\PageUrl;
 use Dashboard\Settings\PreferenceService;
 use Dashboard\Shopping\ShoppingService;
 use Dashboard\Shopping\ShoppingText;
@@ -142,14 +143,15 @@ final class PantryService
             $tossed = [];
             foreach ($ids as $id) {
                 $lot = $this->lockLot($userId, $id);
-                if ($lot['status'] !== 'on_hand') {
-                    throw ValidationException::withFields(['lot_ids' => 'Lot ' . $id . ' is already ' . $lot['status'] . '.']);
+                $previous = (string) $lot['status'];
+                if ($previous !== 'on_hand' && $previous !== 'used') {
+                    throw ValidationException::withFields(['lot_ids' => 'Lot ' . $id . ' is already ' . $previous . '.']);
                 }
                 $this->db->execute(
                     "UPDATE pantry_lots SET status = 'tossed', updated_at = (now() AT TIME ZONE 'UTC') WHERE id = ? AND user_id = ?",
                     [$id, $userId]
                 );
-                $this->event($userId, $id, 'toss', (string) $lot['quantity'], $by, null);
+                $this->event($userId, $id, 'toss', (string) $lot['quantity'], $by, $previous === 'used' ? 'Was used' : null);
                 $tossed[] = $this->lot($userId, $id);
             }
             return ['tossed' => $tossed];
@@ -1020,14 +1022,7 @@ final class PantryService
 
     private function seedVault(int $userId): void
     {
-        $page = $this->db->fetchOne(
-            "SELECT id, title, body, updated_at FROM pages
-             WHERE user_id = ? AND archived_at IS NULL
-               AND (id = 20 OR title = 'David — Shopping Preferences')
-             ORDER BY CASE WHEN title = 'David — Shopping Preferences' THEN 0 ELSE 1 END, id
-             LIMIT 1",
-            [$userId]
-        );
+        $page = $this->preferencesPage($userId);
         $marker = $page === null ? 'missing' : ((string) $page['id'] . ':' . (string) $page['updated_at']);
         $prefs = new PreferenceService($this->db);
         if ($prefs->get($userId, 'pantry_upc_seeded') === $marker) {
@@ -1052,6 +1047,56 @@ final class PantryService
             }
         }
         $prefs->set($userId, 'pantry_upc_seeded', $marker);
+    }
+
+    /**
+     * The vault page is the preference list. This read does not copy it into products or meals.
+     *
+     * @return array<string, mixed>
+     */
+    public function foodPreferences(int $userId): array
+    {
+        $page = $this->preferencesPage($userId);
+        if ($page === null) {
+            return [
+                'source' => 'vault',
+                'page' => null,
+                'likes' => [],
+                'dislikes' => [],
+                'products' => [],
+                'body' => null,
+            ];
+        }
+        $body = (string) $page['body'];
+        $lists = FoodPreferences::listsFromMarkdown($body);
+        return [
+            'source' => 'vault',
+            'page' => [
+                'id' => (int) $page['id'],
+                'title' => (string) $page['title'],
+                'url' => PageUrl::forId((int) $page['id']),
+                'updated_at' => (string) $page['updated_at'],
+            ],
+            'likes' => $lists['likes'],
+            'dislikes' => $lists['dislikes'],
+            'products' => PantryCatalog::productsFromMarkdown($body),
+            'body' => $body,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function preferencesPage(int $userId): ?array
+    {
+        return $this->db->fetchOne(
+            "SELECT id, title, body, updated_at FROM pages
+             WHERE user_id = ? AND archived_at IS NULL
+               AND (id = 20 OR title = ?)
+             ORDER BY CASE WHEN title = ? THEN 0 ELSE 1 END, id
+             LIMIT 1",
+            [$userId, FoodPreferences::PAGE_TITLE, FoodPreferences::PAGE_TITLE]
+        );
     }
 
     /**

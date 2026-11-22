@@ -662,11 +662,30 @@ final class ExtendedApi
         $r->post('/api/v1/shopping/clear-bought', fn () => $this->run(fn (int $u) => [
             'cleared' => $this->svc->shopping->clearBought($u, null),
         ], 200, true));
+        $r->get('/api/v1/shopping/preferences', fn () => $this->run(
+            fn (int $u) => $this->svc->pantry->foodPreferences($u),
+            200,
+            false,
+            ['shopping:read', 'pantry:read', 'pages:read']
+        ));
         $r->get('/api/v1/shopping/items', fn () => $this->run(function (int $u): array {
             $listId = isset($_GET['list_id']) && $_GET['list_id'] !== '' ? (int) $_GET['list_id'] : null;
             $include = !isset($_GET['include_bought']) || filter_var($_GET['include_bought'], FILTER_VALIDATE_BOOLEAN);
             $hours = isset($_GET['clear_hours']) ? (int) $_GET['clear_hours'] : 24;
-            return ['items' => $this->svc->shopping->items($u, $listId, $include, $hours)];
+            $filters = ['include_deferred' => false];
+            if (isset($_GET['include_deferred']) && $_GET['include_deferred'] !== '') {
+                $parsed = filter_var($_GET['include_deferred'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($parsed === null) {
+                    throw ValidationException::withFields(['include_deferred' => 'include_deferred must be true or false.']);
+                }
+                $filters['include_deferred'] = $parsed;
+            }
+            foreach (['order_wave', 'needed_by', 'needed_before', 'needed_after'] as $key) {
+                if (isset($_GET[$key]) && $_GET[$key] !== '') {
+                    $filters[$key] = (string) $_GET[$key];
+                }
+            }
+            return ['items' => $this->svc->shopping->items($u, $listId, $include, $hours, $filters)];
         }));
         $r->post('/api/v1/shopping/items', fn () => $this->run(function (int $u): array {
             $b = $this->runner->body();

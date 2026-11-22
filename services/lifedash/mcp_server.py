@@ -1367,7 +1367,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_shopping_lists",
-        "description": "Shopping lists for this user, such as Groceries, Costco, or Hardware. The first call creates Groceries when none exist.",
+        "description": "Shopping lists for this user, such as Groceries, Costco, or Hardware. The first call creates Groceries when none exist. open_count omits items whose order_wave is deferred.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -1382,13 +1382,24 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_shopping_items",
-        "description": "Items on a shopping list. Bought items older than clear_hours are removed. clear_hours 0 keeps them.",
+        "description": (
+            "Items on a shopping list. Bought items older than clear_hours are removed. clear_hours 0 keeps them. "
+            "Each item includes source, dedupe_key, needed_by, and order_wave. "
+            "The default list omits order_wave deferred so those items stay out of the next cart. "
+            "Pass include_deferred true to see them. order_wave filters to one label, including deferred. "
+            "needed_by is that date. needed_before and needed_after bound the date and skip items with no date."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "list_id": {"type": "integer"},
                 "include_bought": {"type": "boolean"},
                 "clear_hours": {"type": "integer"},
+                "include_deferred": {"type": "boolean"},
+                "order_wave": {"type": "string"},
+                "needed_by": {"type": "string"},
+                "needed_before": {"type": "string"},
+                "needed_after": {"type": "string"},
             },
             "additionalProperties": False,
         },
@@ -1397,8 +1408,11 @@ TOOLS: list[dict[str, Any]] = [
         "name": "add_shopping_items",
         "description": (
             "Add items to a list. Each item is a string such as '2 lb chicken', or an object with "
-            "name, quantity, unit, store, category, and notes. An open item with the same name and unit "
-            "gets its quantity increased. Category is guessed from the name when omitted."
+            "name, quantity, unit, store, category, notes, source, dedupe_key, needed_by, and order_wave. "
+            "source is a short label such as ai. needed_by is YYYY-MM-DD. order_wave is a label such as "
+            "'homecoming Nov 4' or deferred. An open item with the same dedupe_key is updated and its "
+            "quantity is increased instead of inserting a near-duplicate. The same name and unit still merges. "
+            "Category is guessed from the name when omitted."
         ),
         "inputSchema": {
             "type": "object",
@@ -1412,17 +1426,25 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "update_shopping_item",
-        "description": "Change an item's name, quantity, unit, store, category, or notes.",
+        "description": (
+            "Change an item's name, quantity, unit, store, category, notes, source, dedupe_key, "
+            "needed_by, or order_wave. An empty string clears source, dedupe_key, needed_by, order_wave, "
+            "notes, store, or unit. needed_by is YYYY-MM-DD. A deferred order_wave stays out of the next cart."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "item_id": {"type": "integer"},
                 "name": {"type": "string"},
                 "quantity": {"type": "number"},
-                "unit": {"type": "string"},
-                "store": {"type": "string"},
+                "unit": {"type": ["string", "null"]},
+                "store": {"type": ["string", "null"]},
                 "category": {"type": "string"},
-                "notes": {"type": "string"},
+                "notes": {"type": ["string", "null"]},
+                "source": {"type": ["string", "null"]},
+                "dedupe_key": {"type": ["string", "null"]},
+                "needed_by": {"type": ["string", "null"]},
+                "order_wave": {"type": ["string", "null"]},
             },
             "required": ["item_id"],
             "additionalProperties": False,
@@ -1714,6 +1736,16 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_food_preferences",
+        "description": (
+            "Likes, dislikes, and the UPC table on the vault page David — Shopping Preferences. "
+            "This reads that page for the signed-in user. It does not edit the page, the meal builder, "
+            "or the product catalog. Likes and dislikes are the bullet lists under those headings. "
+            "A page with no such headings still returns its body."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
         "name": "list_pantry_units",
         "description": "Canonical pantry units. " + PANTRY_UNITS + ". Plurals such as slices, pieces, and servings normalize to the singular.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -1837,7 +1869,11 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "toss_lot",
-        "description": "Mark one or many lots tossed and log a toss event for each. Use this for a purge.",
+        "description": (
+            "Mark one or many lots tossed and log a toss event for each. Use this for a purge. "
+            "A lot already marked used can be tossed. The toss event notes that it was used, and earlier "
+            "consume events stay. Expired lots stay closed."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -2795,11 +2831,21 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "create_shopping_list":
         return "POST", "/api/v1/shopping/lists", {"name": args["name"]}
     if name == "list_shopping_items":
-        return "GET", "/api/v1/shopping/items" + _query(args, ("list_id", "include_bought", "clear_hours")), None
+        return "GET", "/api/v1/shopping/items" + _query(args, (
+            "list_id", "include_bought", "clear_hours", "include_deferred",
+            "order_wave", "needed_by", "needed_before", "needed_after",
+        )), None
     if name == "add_shopping_items":
         return "POST", "/api/v1/shopping/items", {"list_id": int(args["list_id"]), "items": args["items"]}
     if name == "update_shopping_item":
-        body = _pick(args, ("name", "quantity", "unit", "store", "category", "notes"))
+        body = {
+            key: args[key]
+            for key in (
+                "name", "quantity", "unit", "store", "category", "notes",
+                "source", "dedupe_key", "needed_by", "order_wave",
+            )
+            if key in args
+        }
         return "POST", f"/api/v1/shopping/items/{int(args['item_id'])}", body
     if name == "check_shopping_item":
         body = {} if "bought" not in args else {"bought": bool(args["bought"])}
@@ -2878,6 +2924,10 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "get_reddit_post_comments":
         query = ("?limit=" + str(int(args["limit"]))) if args.get("limit") else ""
         return "GET", f"/api/v1/reddit/posts/{args['post_id']}/comments" + query, None
+    if name == "get_food_preferences":
+        if args:
+            raise ValueError("get_food_preferences takes no arguments.")
+        return "GET", "/api/v1/shopping/preferences", None
     if name == "list_pantry_units":
         if args:
             raise ValueError("list_pantry_units takes no arguments.")

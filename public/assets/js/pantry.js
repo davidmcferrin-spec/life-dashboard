@@ -299,6 +299,7 @@
         if (lot.status === 'used') {
             return `
             <button type="button" data-act="edit" data-id="${id}" data-tip="Set a quantity above zero to put this lot back on hand." aria-label="Edit. Set a quantity above zero to put this lot back on hand.">Edit</button>
+            <button type="button" data-act="toss" data-id="${id}" data-tip="Mark this used lot tossed. The use history stays, and a toss event is added." aria-label="Toss. Mark this used lot tossed. The use history stays, and a toss event is added.">Toss</button>
             <span class="ld-meta">used</span>`;
         }
         if (lot.status !== 'on_hand') {
