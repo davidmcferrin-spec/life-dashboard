@@ -269,10 +269,37 @@ final class MixtapeLibrary
         foreach ($meta as $track) {
             $byId[$track['spotify_track_id']] = $track;
         }
+        $ids = [];
+        foreach ($uris as $uri) {
+            $ids[] = Mixtape::trackId((string) $uri);
+        }
+        $named = $this->trackNames($userId, $ids);
+        $supplied = [];
+        foreach (is_array($options['tracks'] ?? null) ? $options['tracks'] : [] as $track) {
+            if (!is_array($track)) {
+                continue;
+            }
+            $raw = (string) ($track['uri'] ?? $track['id'] ?? '');
+            if ($raw === '') {
+                continue;
+            }
+            $supplied[Mixtape::trackId($raw)] = $track;
+        }
         $tracks = [];
         foreach ($uris as $uri) {
             $id = Mixtape::trackId((string) $uri);
             $row = $byId[$id] ?? ['uri' => 'spotify:track:' . $id, 'bpm' => null, 'camelot' => null, 'energy' => null];
+            $row['uri'] = 'spotify:track:' . $id;
+            $extra = $supplied[$id] ?? [];
+            $stored = $named[$id] ?? [];
+            $name = (string) ($stored['name'] ?? $extra['name'] ?? $row['name'] ?? '');
+            if ($name !== '') {
+                $row['name'] = $name;
+            }
+            $artists = $stored['artists'] ?? $extra['artists'] ?? null;
+            if ($artists !== null) {
+                $row['artists'] = $artists;
+            }
             $tracks[] = $row;
         }
         $durations = is_array($options['durations'] ?? null) ? $options['durations'] : [];
@@ -288,6 +315,7 @@ final class MixtapeLibrary
             'target_ms' => isset($options['target_ms']) && is_numeric($options['target_ms']) ? (int) $options['target_ms'] : null,
             'avoid' => is_array($options['avoid'] ?? null) ? $options['avoid'] : [],
             'slots' => isset($options['slots']) && is_numeric($options['slots']) ? (int) $options['slots'] : 0,
+            'dislikes' => $this->dislikes($userId),
         ]);
         $plan['prompt_id'] = $promptId;
         return $plan;
@@ -542,6 +570,44 @@ final class MixtapeLibrary
             ];
         }
         return $out;
+    }
+
+    /**
+     * @param list<string> $ids
+     * @return array<string, array{name: string, artists: mixed}>
+     */
+    private function trackNames(int $userId, array $ids): array
+    {
+        $ids = array_values(array_unique(array_filter($ids, static fn (string $id): bool => $id !== '')));
+        if ($ids === []) {
+            return [];
+        }
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $rows = $this->db->fetchAll(
+            "SELECT spotify_id, name, artists FROM spotify_tracks
+             WHERE user_id = ? AND spotify_id IN ({$placeholders})",
+            array_merge([$userId], $ids)
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $artists = json_decode((string) ($row['artists'] ?? '[]'), true);
+            $out[(string) $row['spotify_id']] = [
+                'name' => (string) $row['name'],
+                'artists' => is_array($artists) ? $artists : [],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * @return array{tracks: list<string>, artists: list<string>, titles: list<string>}
+     */
+    private function dislikes(int $userId): array
+    {
+        $raw = $this->db->fetchScalar('SELECT body FROM spotify_taste_profile WHERE user_id = ?', [$userId]);
+        $body = is_string($raw) ? json_decode($raw, true) : [];
+        $dislikes = is_array($body) ? ($body['dislikes'] ?? []) : [];
+        return TasteProfile::dislikes($dislikes);
     }
 
     private static function outsideFlag(mixed $value): bool

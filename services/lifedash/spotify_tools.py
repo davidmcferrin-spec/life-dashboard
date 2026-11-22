@@ -77,7 +77,11 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
         {"playlist_id": {"type": "integer"}},
         ["playlist_id"],
     ),
-    _tool("get_taste_profile", "The taste profile document. " + TASTE + " Requires spotify:read."),
+    _tool(
+        "get_taste_profile",
+        "The taste profile document, including dislikes (tracks, artists, and titles to keep off playlists). "
+        + TASTE + " Requires spotify:read.",
+    ),
     _tool("list_spotify_prompts", "Playlist prompt library. Requires spotify:read."),
     _tool(
         "get_spotify_prompt",
@@ -87,28 +91,48 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "create_spotify_playlist",
-        "Stage a new playlist locally. Push it to create it on Spotify. Set ai true, or send prompt text, to make an AI playlist. A regular create is not an AI playlist. " + WRITE,
+        "Stage a new playlist locally. It is private unless public is true. Push it to create it on Spotify. "
+        "Pass dedupe_key to update that playlist on a retry instead of creating another. "
+        "source is stored and returned on list and get. "
+        "Set ai true, or send prompt text, to make an AI playlist. A regular create is not an AI playlist. " + WRITE,
         {
             "name": {"type": "string"},
             "description": {"type": "string"},
-            "public": {"type": "boolean"},
+            "public": {"type": "boolean", "description": "Defaults to false. Pass true only to publish the playlist."},
             "ai": {"type": "boolean"},
             "prompt": {"type": "string"},
             "refresh_schedule": {"type": "string"},
             "source_prompt_id": {"type": "integer"},
+            "source": {"type": "string"},
+            "dedupe_key": {"type": "string"},
         },
         ["name"],
     ),
     _tool(
         "update_spotify_playlist",
-        "Stage a name, description, or public flag. Refuses a playlist you do not own. " + WRITE,
+        "Stage a name, description, public flag, source, or dedupe_key. Refuses a playlist you do not own. "
+        "A private playlist is sent with collaborative false. " + WRITE,
         {
             "playlist_id": {"type": "integer"},
             "name": {"type": "string"},
             "description": {"type": "string"},
             "public": {"type": "boolean"},
+            "source": {"type": "string"},
+            "dedupe_key": {"type": "string"},
         },
         ["playlist_id"],
+    ),
+    _tool(
+        "set_spotify_playlist_privacy",
+        "Set one owned playlist public or private, push that change, and read it back from Spotify. "
+        "The result includes spotify_public. Private sends collaborative false and needs playlist-modify-private. "
+        "If Spotify leaves the flag unchanged, this is an error, not a success. "
+        "Followed and subscribed playlists are refused. " + WRITE,
+        {
+            "playlist_id": {"type": "integer"},
+            "public": {"type": "boolean"},
+        },
+        ["playlist_id", "public"],
     ),
     _tool(
         "add_playlist_tracks",
@@ -156,7 +180,9 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "push_playlist_changes",
-        "Push staged edits for one playlist you own, or every owned playlist when playlist_id is omitted. Followed playlists are skipped. " + WRITE,
+        "Push staged edits for one playlist you own, or every owned playlist when playlist_id is omitted. "
+        "Followed and subscribed playlists are skipped. "
+        "A privacy write is read back. When the push runs now, the result includes spotify_public. A mismatch is an error. " + WRITE,
         {"playlist_id": {"type": "integer"}},
     ),
     _tool(
@@ -222,11 +248,14 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     _tool(
         "plan_mixtape",
         "Order candidate track URIs along a prompt arc using stored energy, BPM, and Camelot codes. "
+        "Tracks, artists, and titles on the taste-profile dislike list are left out and returned in blocked. "
+        "Pass tracks with name and artists when those URIs are not stored yet, so a title such as Christmas Shoes can match. "
         "Read-only: it does not stage or push. Missing metadata and rough transitions are flagged. Requires spotify:read.",
         {
             "uris": {"type": "array", "items": {"type": "string"}},
             "prompt_id": {"type": "integer"},
             "arc": {"type": "object"},
+            "tracks": {"type": "array", "items": {"type": "object"}},
         },
         ["uris"],
     ),
@@ -244,9 +273,28 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "update_taste_profile",
-        "Replace the taste profile. " + TASTE + " " + WRITE,
-        {"profile": {"type": "object"}},
-        ["profile"],
+        "Replace the taste profile. dislikes lists tracks, artists, and titles to keep off playlists, "
+        "for example the title Christmas Shoes. Pass replace true to drop the previous blocklist; "
+        "otherwise dislikes are added. A profile object that omits dislikes keeps the current blocklist. "
+        + TASTE + " " + WRITE,
+        {
+            "profile": {"type": "object"},
+            "dislikes": {"type": "object"},
+            "replace": {"type": "boolean"},
+        },
+    ),
+    _tool(
+        "set_taste_dislikes",
+        "Add tracks, artists, or titles the playlist builder must skip. "
+        "titles match a song name such as Christmas Shoes. tracks are spotify:track URIs or ids. "
+        "artists match the artist name. Pass replace true to drop the previous blocklist. "
+        "plan_mixtape leaves matches out. " + WRITE,
+        {
+            "tracks": {"type": "array", "items": {"type": "string"}},
+            "artists": {"type": "array", "items": {"type": "string"}},
+            "titles": {"type": "array", "items": {"type": "string"}},
+            "replace": {"type": "boolean"},
+        },
     ),
     _tool(
         "get_queue",
@@ -393,12 +441,19 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "get_spotify_prompt":
         return "GET", f"/api/v1/spotify/prompts/{_id(args, 'prompt_id')}", None
     if name == "create_spotify_playlist":
-        _unknown(name, args, {"name", "description", "public", "ai", "prompt", "refresh_schedule", "source_prompt_id"})
-        return "POST", "/api/v1/spotify/playlists", _pick(args, ("name", "description", "public", "ai", "prompt", "refresh_schedule", "source_prompt_id"))
+        fields = ("name", "description", "public", "ai", "prompt", "refresh_schedule", "source_prompt_id", "source", "dedupe_key")
+        _unknown(name, args, set(fields))
+        return "POST", "/api/v1/spotify/playlists", _pick(args, fields)
     if name == "update_spotify_playlist":
-        _unknown(name, args, {"playlist_id", "name", "description", "public"})
+        fields = ("name", "description", "public", "source", "dedupe_key")
+        _unknown(name, args, {"playlist_id", *fields})
         playlist_id = _id(args, "playlist_id")
-        return "POST", f"/api/v1/spotify/playlists/{playlist_id}/update", _pick(args, ("name", "description", "public"))
+        return "POST", f"/api/v1/spotify/playlists/{playlist_id}/update", _pick(args, fields)
+    if name == "set_spotify_playlist_privacy":
+        _unknown(name, args, {"playlist_id", "public"})
+        if not isinstance(args.get("public"), bool):
+            raise ValueError("public must be true or false.")
+        return "POST", f"/api/v1/spotify/playlists/{_id(args, 'playlist_id')}/privacy", {"public": args["public"]}
     if name == "add_playlist_tracks":
         _unknown(name, args, {"playlist_id", "uris", "position"})
         return "POST", f"/api/v1/spotify/playlists/{_id(args, 'playlist_id')}/tracks", _uris(args)
@@ -448,23 +503,55 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
         _empty(name, args)
         return "GET", "/api/v1/spotify/seasons/active", None
     if name == "plan_mixtape":
-        _unknown(name, args, {"uris", "prompt_id", "arc"})
+        _unknown(name, args, {"uris", "prompt_id", "arc", "tracks"})
         body: dict[str, Any] = {"uris": _uri_list(args)}
         if args.get("prompt_id") is not None:
             body["prompt_id"] = _id(args, "prompt_id")
         if isinstance(args.get("arc"), dict):
             body["arc"] = args["arc"]
+        if isinstance(args.get("tracks"), list):
+            body["tracks"] = args["tracks"]
         return "POST", "/api/v1/spotify/mixtape/plan", body
     if name == "remove_spotify_prompt":
         return "POST", f"/api/v1/spotify/prompts/{_id(args, 'prompt_id')}/remove", {}
     if name == "mark_prompt_run":
         return "POST", f"/api/v1/spotify/prompts/{_id(args, 'prompt_id')}/run", {}
     if name == "update_taste_profile":
-        _unknown(name, args, {"profile"})
-        profile = args.get("profile")
-        if not isinstance(profile, (dict, str)):
-            raise ValueError("profile must be an object or text.")
-        return "POST", "/api/v1/spotify/taste", {"profile": profile}
+        _unknown(name, args, {"profile", "dislikes", "replace"})
+        body: dict[str, Any] = {}
+        if "profile" in args:
+            profile = args.get("profile")
+            if not isinstance(profile, (dict, str)):
+                raise ValueError("profile must be an object or text.")
+            body["profile"] = profile
+        if "dislikes" in args:
+            dislikes = args.get("dislikes")
+            if not isinstance(dislikes, (dict, list)):
+                raise ValueError("dislikes must list tracks, artists, or titles.")
+            body["dislikes"] = dislikes
+        if "replace" in args:
+            if not isinstance(args.get("replace"), bool):
+                raise ValueError("replace must be true or false.")
+            body["replace"] = args["replace"]
+        if "profile" not in body and "dislikes" not in body:
+            raise ValueError("profile or dislikes is required.")
+        return "POST", "/api/v1/spotify/taste", body
+    if name == "set_taste_dislikes":
+        _unknown(name, args, {"tracks", "artists", "titles", "replace"})
+        body = {}
+        for key in ("tracks", "artists", "titles"):
+            if key not in args:
+                continue
+            if not isinstance(args[key], list):
+                raise ValueError(f"{key} must be a list.")
+            body[key] = args[key]
+        if "replace" in args:
+            if not isinstance(args.get("replace"), bool):
+                raise ValueError("replace must be true or false.")
+            body["replace"] = args["replace"]
+        if not body:
+            raise ValueError("Send tracks, artists, titles, or replace.")
+        return "POST", "/api/v1/spotify/taste/dislikes", body
     if name == "play":
         _unknown(name, args, {"context_uri", "uris", "playlist_id", "device_id", "offset"})
         return "POST", "/api/v1/spotify/playback/play", _pick(args, ("context_uri", "uris", "playlist_id", "device_id", "offset"))

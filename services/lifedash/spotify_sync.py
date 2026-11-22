@@ -22,6 +22,7 @@ from .spotify_plan import (
     can_push_playlist,
     is_playlist_delete,
     item_sync_result,
+    missing_private_scope,
     needs_refresh,
     page_items,
     page_next,
@@ -30,6 +31,10 @@ from .spotify_plan import (
     playlist_item_object,
     playlist_needs_pull,
     playlist_total,
+    privacy_followup,
+    privacy_intent,
+    privacy_verdict,
+    resolved_public,
 )
 
 GONE = "Spotify no longer has this playlist."
@@ -89,9 +94,9 @@ def execute(command: str, user_id: int | None, playlist_id: int | None) -> dict:
             return {"ok": False, "error": "Pass --user."}
         if command == "pull":
             counts = worker.pull(user_id, playlist_id)
-        else:
-            counts = worker.push(user_id, playlist_id)
-        return {"ok": True, "user_id": user_id, **counts}
+            return {"ok": True, "user_id": user_id, **counts}
+        counts = worker.push(user_id, playlist_id)
+        return {"ok": counts.get("error") is None, "user_id": user_id, **counts}
     finally:
         conn.close()
 
@@ -231,16 +236,21 @@ class Worker:
         owner_id = owner.get("id")
         mine = bool(account and owner_id and owner_id == account["spotify_user_id"])
         existing = self.conn.execute(
-            "SELECT id, origin, track_count FROM spotify_playlists WHERE user_id = %s AND spotify_id = %s",
+            "SELECT id, origin, track_count, is_public FROM spotify_playlists WHERE user_id = %s AND spotify_id = %s",
             (user_id, sid),
         ).fetchone()
         owned = 1 if mine else 0
         if existing and existing["origin"] in ("created", "ai_created") and not owner_id:
             owned = 1
+        remote_public = bool(remote.get("public"))
+        is_public = 1 if remote_public else 0
+        if existing:
+            # A private write that Spotify has not accepted yet must not be overwritten by this pull.
+            is_public = resolved_public(self._ops(int(existing["id"])), remote_public)
         values = (
             remote.get("name") or "Playlist",
             remote.get("description") or "",
-            1 if remote.get("public") else 0,
+            is_public,
             1 if remote.get("collaborative") else 0,
             owner_id,
             owner.get("display_name"),
@@ -449,6 +459,8 @@ class Worker:
         rows = self.conn.execute(sql, params).fetchall()
         pushed = 0
         failed = 0
+        reports: list[dict] = []
+        error = None
         try:
             for row in rows:
                 if not can_push_playlist(row):
@@ -458,8 +470,27 @@ class Worker:
                 outcome = self._push_playlist(user_id, int(row["id"]))
                 pushed += outcome["pushed"]
                 failed += outcome["failed"]
-            counts = {"pushed": pushed, "failed": failed}
-            self._finish_log(log_id, "ok", counts, None)
+                if "verified" in outcome or outcome.get("error"):
+                    reports.append(
+                        {
+                            "id": int(row["id"]),
+                            "public": outcome.get("public"),
+                            "spotify_public": outcome.get("spotify_public"),
+                            "verified": bool(outcome.get("verified")),
+                        }
+                    )
+                if outcome.get("error") and error is None:
+                    error = outcome["error"]
+            counts: dict = {"pushed": pushed, "failed": failed}
+            if reports:
+                counts["playlists"] = reports
+            if playlist_id is not None and len(reports) == 1:
+                counts["public"] = reports[0]["public"]
+                counts["spotify_public"] = reports[0]["spotify_public"]
+                counts["verified"] = reports[0]["verified"]
+            if error:
+                counts["error"] = error
+            self._finish_log(log_id, "error" if error else "ok", counts, error)
             return counts
         except SpotifyHttpError as exc:
             self._finish_log(log_id, "error", {"pushed": pushed, "failed": failed}, scrub(str(exc)))
@@ -468,17 +499,35 @@ class Worker:
     def _push_playlist(self, user_id: int, playlist_id: int) -> dict:
         pushed = 0
         failed = 0
+        wanted: bool | None = None
+        privacy_change: int | None = None
+        privacy_op: str | None = None
         for _ in range(20):
             row = self.conn.execute(
                 "SELECT id, spotify_id, snapshot_id FROM spotify_playlists WHERE user_id = %s AND id = %s",
                 (user_id, playlist_id),
             ).fetchone()
             if row is None:
-                return self._pushed(user_id, playlist_id, pushed, failed)
+                return self._finish_privacy(user_id, playlist_id, pushed, failed, wanted, privacy_change, privacy_op)
             ops = self._ops(playlist_id)
             if not ops:
                 self._mark_clean(playlist_id)
-                return self._pushed(user_id, playlist_id, pushed, failed)
+                return self._finish_privacy(user_id, playlist_id, pushed, failed, wanted, privacy_change, privacy_op)
+            intent = privacy_intent(ops)
+            if intent is not None:
+                wanted, privacy_change, privacy_op = intent
+                if wanted is False:
+                    scope_error = missing_private_scope(self._scopes(user_id), False)
+                    if scope_error:
+                        n = self._fail_private_writes(playlist_id, scope_error)
+                        return {
+                            "pushed": pushed,
+                            "failed": failed + n,
+                            "public": False,
+                            "spotify_public": None,
+                            "verified": False,
+                            "error": scope_error,
+                        }
             spotify_id = row["spotify_id"]
             remote_uris = self._local_uris(playlist_id)
             if spotify_id:
@@ -496,7 +545,14 @@ class Worker:
             created = self._apply_actions(user_id, playlist_id, actions)
             if created == "failed":
                 failed += 1
-                return self._pushed(user_id, playlist_id, pushed, failed)
+                result = self._pushed(user_id, playlist_id, pushed, failed)
+                err = self._change_error(privacy_change) if wanted is not None else None
+                if err:
+                    result["error"] = err
+                    result["verified"] = False
+                    result["public"] = wanted
+                    result["spotify_public"] = None
+                return result
             if created == "created":
                 pushed += 1
                 continue
@@ -504,8 +560,127 @@ class Worker:
                 return self._pushed(user_id, playlist_id, pushed + 1, failed)
             pushed += 1
             self._mark_clean(playlist_id)
+            return self._finish_privacy(user_id, playlist_id, pushed, failed, wanted, privacy_change, privacy_op)
+        return self._finish_privacy(user_id, playlist_id, pushed, failed, wanted, privacy_change, privacy_op)
+
+    def _finish_privacy(
+        self,
+        user_id: int,
+        playlist_id: int,
+        pushed: int,
+        failed: int,
+        wanted: bool | None,
+        change_id: int | None,
+        op_name: str | None,
+    ) -> dict:
+        if wanted is None:
             return self._pushed(user_id, playlist_id, pushed, failed)
-        return self._pushed(user_id, playlist_id, pushed, failed)
+        row = self.conn.execute(
+            "SELECT spotify_id FROM spotify_playlists WHERE user_id = %s AND id = %s",
+            (user_id, playlist_id),
+        ).fetchone()
+        if row is None or not row["spotify_id"]:
+            return self._pushed(user_id, playlist_id, pushed, failed)
+        verdict = self._confirm_privacy(user_id, playlist_id, row["spotify_id"], wanted, change_id, op_name)
+        self._reload_tracks(user_id, playlist_id)
+        flag = 1 if wanted else 0
+        self.conn.execute(
+            """UPDATE spotify_playlists
+               SET is_public = %s,
+                   collaborative = CASE WHEN %s = 0 THEN 0 ELSE collaborative END,
+                   local_dirty = CASE WHEN %s = 1 THEN 1 ELSE local_dirty END
+               WHERE id = %s""",
+            (flag, flag, 0 if verdict["ok"] else 1, playlist_id),
+        )
+        result = {"pushed": pushed, "failed": failed}
+        result["public"] = verdict["public"]
+        result["spotify_public"] = verdict["spotify_public"]
+        result["verified"] = verdict["verified"]
+        if verdict["error"]:
+            result["error"] = verdict["error"]
+            result["failed"] = failed + 1
+        return result
+
+    def _confirm_privacy(
+        self,
+        user_id: int,
+        playlist_id: int,
+        spotify_id: str,
+        wanted: bool,
+        change_id: int | None,
+        op_name: str | None,
+    ) -> dict:
+        try:
+            remote = self._api(user_id, "GET", f"/playlists/{spotify_id}")
+            follow = privacy_followup(wanted, remote)
+            if follow is not None:
+                self._api(user_id, "PUT", f"/playlists/{spotify_id}", follow)
+                remote = self._api(user_id, "GET", f"/playlists/{spotify_id}")
+        except SpotifyHttpError as exc:
+            message = scrub(str(exc))
+            self._remember_privacy_failure(user_id, playlist_id, change_id, op_name, wanted, message)
+            return {
+                "ok": False,
+                "public": wanted,
+                "spotify_public": None,
+                "verified": False,
+                "error": message,
+            }
+        verdict = privacy_verdict(wanted, remote)
+        if not verdict["ok"]:
+            self._remember_privacy_failure(user_id, playlist_id, change_id, op_name, wanted, verdict["error"])
+        return verdict
+
+    def _remember_privacy_failure(
+        self,
+        user_id: int,
+        playlist_id: int,
+        change_id: int | None,
+        op_name: str | None,
+        wanted: bool,
+        error: str,
+    ) -> None:
+        if op_name != "create" and change_id is not None:
+            self._set_change(change_id, "failed", error)
+            return
+        self.conn.execute(
+            """INSERT INTO spotify_playlist_changes
+               (user_id, playlist_id, op, payload, created_by, status, error)
+               VALUES (%s, %s, 'rename', %s::jsonb, 'mcp', 'failed', %s)""",
+            (user_id, playlist_id, json.dumps({"public": wanted}), error),
+        )
+
+    def _fail_private_writes(self, playlist_id: int, error: str) -> int:
+        n = 0
+        for op in self._ops(playlist_id):
+            payload = op.get("payload") or {}
+            if op.get("op") in ("create", "rename") and payload.get("public") is False:
+                self._set_change(int(op["id"]), "failed", error)
+                n += 1
+        if n == 0:
+            self._fail_ops(playlist_id, error)
+            return 1
+        return n
+
+    def _scopes(self, user_id: int) -> str:
+        row = self.conn.execute(
+            "SELECT scopes FROM spotify_account WHERE user_id = %s",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return ""
+        return str(row["scopes"] or "")
+
+    def _change_error(self, change_id: int | None) -> str | None:
+        if change_id is None:
+            return None
+        row = self.conn.execute(
+            "SELECT error FROM spotify_playlist_changes WHERE id = %s",
+            (change_id,),
+        ).fetchone()
+        if row is None or not row["error"]:
+            return None
+        return str(row["error"])
 
     def _pushed(self, user_id: int, playlist_id: int, pushed: int, failed: int) -> dict:
         if pushed > 0:

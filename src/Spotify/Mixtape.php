@@ -141,6 +141,24 @@ final class Mixtape
      */
     public static function plan(array $tracks, array $arc, array $options = []): array
     {
+        $dislikes = TasteProfile::dislikes($options['dislikes'] ?? []);
+        $blocked = [];
+        $candidates = [];
+        foreach ($tracks as $track) {
+            if (!is_array($track)) {
+                continue;
+            }
+            if (TasteProfile::blocked($dislikes, $track)) {
+                $blocked[] = [
+                    'uri' => (string) ($track['uri'] ?? ''),
+                    'name' => isset($track['name']) && $track['name'] !== '' ? (string) $track['name'] : null,
+                    'reason' => 'dislike',
+                ];
+                continue;
+            }
+            $candidates[] = $track;
+        }
+        $tracks = $candidates;
         $missing = [];
         $ready = [];
         foreach ($tracks as $track) {
@@ -276,6 +294,7 @@ final class Mixtape
             'order' => $order,
             'rough' => $rough,
             'missing' => $missing,
+            'blocked' => $blocked,
             'arc' => $arc,
         ];
     }

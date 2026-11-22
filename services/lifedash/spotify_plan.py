@@ -11,6 +11,11 @@ REORDER_CONFLICT = (
 )
 NOT_CREATED = "Playlist has not been created on Spotify yet."
 READ_ONLY = "This playlist is read-only. Only playlists you own can be edited or pushed."
+PRIVATE_SCOPE = "playlist-modify-private"
+SCOPE_ERROR = (
+    "Reconnect Spotify to grant playlist-modify-private. "
+    "Without that scope Spotify saves a private playlist as public."
+)
 ITEM_FORBIDDEN = "Spotify does not return tracks for a playlist you do not own."
 ITEM_UNREADABLE = "Spotify reported tracks, but none of them could be read."
 ITEM_FAILED = "Spotify did not return this playlist's tracks."
@@ -105,11 +110,7 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
                         "kind": "request",
                         "method": "POST",
                         "path": "/me/playlists",
-                        "body": {
-                            "name": payload.get("name") or "Playlist",
-                            "description": payload.get("description") or "",
-                            "public": bool(payload.get("public")),
-                        },
+                        "body": create_body(payload),
                     }
                 )
                 return actions
@@ -201,11 +202,7 @@ def plan_push(spotify_id: str | None, remote_uris: list[str], ops: list[dict]) -
             present = uris
             continue
         if kind == "rename":
-            body = {}
-            if "name" in payload:
-                body["name"] = payload["name"]
-            if "public" in payload:
-                body["public"] = bool(payload["public"])
+            body = details_body(payload)
             if not body:
                 actions.append({"change_id": change_id, "kind": "skip"})
             else:
@@ -289,6 +286,112 @@ def playlist_item_object(item: dict) -> dict | None:
         if isinstance(obj, dict):
             return obj
     return None
+
+
+def create_body(payload: dict) -> dict:
+    """Spotify defaults a new playlist to public and ignores public false unless collaborative is false."""
+    public = bool(payload.get("public"))
+    return {
+        "name": payload.get("name") or "Playlist",
+        "description": payload.get("description") or "",
+        "public": public,
+        "collaborative": False,
+    }
+
+
+def details_body(payload: dict) -> dict:
+    """A privacy change also clears collaborative. Public and collaborative cannot both be true."""
+    body: dict = {}
+    if "name" in payload:
+        body["name"] = payload["name"]
+    if "public" in payload:
+        public = bool(payload["public"])
+        body["public"] = public
+        body["collaborative"] = False
+    return body
+
+
+def spotify_is_public(remote: dict) -> bool | None:
+    if not isinstance(remote, dict) or "public" not in remote:
+        return None
+    value = remote.get("public")
+    if value is True or value == 1:
+        return True
+    if value is False or value == 0:
+        return False
+    return None
+
+
+def privacy_followup(wanted_public: bool, remote: dict) -> dict | None:
+    """PUT body when the playlist Spotify returned does not match the write. None when it already matches."""
+    if spotify_is_public(remote) is wanted_public:
+        return None
+    return {"public": wanted_public, "collaborative": False}
+
+
+def privacy_verdict(wanted_public: bool, remote: dict) -> dict:
+    """A 200 from Spotify is not success until the playlist's public flag matches."""
+    actual = spotify_is_public(remote)
+    state = "public" if wanted_public else "private"
+    if actual is None:
+        return {
+            "ok": False,
+            "public": wanted_public,
+            "spotify_public": None,
+            "verified": False,
+            "error": f"Spotify did not confirm this playlist is {state}.",
+        }
+    if actual is not wanted_public:
+        kept = "public" if actual else "private"
+        extra = ""
+        if not wanted_public:
+            extra = " Private playlists need collaborative set to false and the playlist-modify-private scope."
+        return {
+            "ok": False,
+            "public": wanted_public,
+            "spotify_public": actual,
+            "verified": False,
+            "error": f"Spotify kept this playlist {kept} after a request to make it {state}.{extra}",
+        }
+    return {
+        "ok": True,
+        "public": wanted_public,
+        "spotify_public": actual,
+        "verified": True,
+        "error": None,
+    }
+
+
+def missing_private_scope(scopes: str, wanted_public: bool) -> str | None:
+    if wanted_public:
+        return None
+    granted = {part for part in str(scopes or "").replace(",", " ").split() if part}
+    if PRIVATE_SCOPE in granted:
+        return None
+    return SCOPE_ERROR
+
+
+def privacy_intent(ops: list[dict]) -> tuple[bool, int | None, str] | None:
+    """The last staged public flag wins. Track edits do not imply a privacy write."""
+    found: tuple[bool, int | None, str] | None = None
+    for op in ops:
+        payload = op.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        kind = str(op.get("op") or "")
+        if kind not in {"create", "rename"} or "public" not in payload:
+            continue
+        change_id = op.get("id")
+        found = (bool(payload.get("public")), int(change_id) if isinstance(change_id, int) else None, kind)
+    return found
+
+
+def resolved_public(pending_ops: list[dict], remote_public: bool) -> int:
+    """A staged privacy write is kept when a pull would otherwise copy Spotify's flag."""
+    intent = privacy_intent(pending_ops)
+    if intent is not None:
+        return 1 if intent[0] else 0
+    return 1 if remote_public else 0
 
 
 def can_push_playlist(row: dict) -> bool:

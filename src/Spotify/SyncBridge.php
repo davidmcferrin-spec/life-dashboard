@@ -34,6 +34,40 @@ final class SyncBridge
     }
 
     /**
+     * Run the push in this process so the caller can read Spotify's answer.
+     * A queued push has not checked privacy yet.
+     *
+     * @return array<string, mixed>
+     */
+    public function pushInline(int $userId, ?int $playlistId = null): array
+    {
+        if ($this->python !== null) {
+            return $this->run('push', $userId, $playlistId, $this->python);
+        }
+        $python = self::usableInterpreter(self::candidatePaths());
+        if ($python !== null) {
+            return $this->run('push', $userId, $playlistId, $python);
+        }
+        $services = $this->services ?? new ServiceControl();
+        if ($services->ready()) {
+            $fields = ['user_id' => (string) $userId];
+            if ($playlistId !== null) {
+                $fields['playlist_id'] = (string) $playlistId;
+            }
+            $queued = $services->request('spotify-push', $fields);
+
+            return [
+                'ok' => false,
+                'queued' => true,
+                'verified' => false,
+                'id' => $queued['id'],
+                'error' => 'Privacy was staged, but Spotify has not confirmed it yet.',
+            ];
+        }
+        throw new SpotifyException(self::PYTHON_UNAVAILABLE);
+    }
+
+    /**
      * Connect must succeed even when the worker is not ready. The timer syncs a new account.
      */
     public function pullDeferred(int $userId, ?int $playlistId = null): void
@@ -166,7 +200,7 @@ final class SyncBridge
         }
         if ($code !== 0 || empty($decoded['ok'])) {
             $error = SpotifyHttp::scrub((string) ($decoded['error'] ?? 'Spotify sync failed.'));
-            throw new SpotifyException($error, 502);
+            throw new SpotifyException($error, 502, false, $decoded);
         }
 
         return $decoded;

@@ -43,7 +43,7 @@ final class SpotifyLibrary
         $rows = $this->db->fetchAll(
             'SELECT p.id, p.spotify_id, p.name, p.description, p.is_public, p.collaborative, p.owner_id, p.owner_name,
                     p.snapshot_id, p.track_count, p.image_url, p.last_synced_at, p.local_dirty, p.managed_by_ai,
-                    p.source_prompt_id, p.origin, p.is_owned, p.sync_error,
+                    p.source_prompt_id, p.origin, p.is_owned, p.sync_error, p.source, p.dedupe_key,
                     (SELECT COUNT(*) FROM spotify_playlist_changes c
                       WHERE c.playlist_id = p.id AND c.status IN (\'pending\', \'failed\')) AS open_changes
              FROM spotify_playlists p
@@ -250,9 +250,21 @@ final class SpotifyLibrary
      */
     public function createPlaylist(int $userId, array $body, string $by): array
     {
+        $dedupe = array_key_exists('dedupe_key', $body) ? self::dedupeKey($body['dedupe_key']) : null;
+        if ($dedupe !== null) {
+            $existing = $this->db->fetchOne(
+                'SELECT id FROM spotify_playlists WHERE user_id = ? AND dedupe_key = ?',
+                [$userId, $dedupe]
+            );
+            if ($existing !== null) {
+                return $this->updatePlaylist($userId, (int) $existing['id'], $body, $by);
+            }
+        }
         $name = self::name($body['name'] ?? null);
         $description = self::description($body['description'] ?? '');
-        $public = self::flag($body['public'] ?? false);
+        // Spotify's create call defaults to public. Omitted public stays private.
+        $public = self::requestedPublic($body) ? 1 : 0;
+        $source = array_key_exists('source', $body) ? self::sourceLabel($body['source']) : null;
         $promptId = self::optionalId($body['source_prompt_id'] ?? null);
         $promptText = trim((string) ($body['prompt'] ?? ''));
         if ($promptText !== '') {
@@ -264,7 +276,7 @@ final class SpotifyLibrary
         }
         $ai = ($promptId !== null || $promptText !== '' || self::flag($body['ai'] ?? false) === 1) ? 1 : 0;
         $origin = $ai === 1 ? 'ai_created' : 'created';
-        $id = (int) $this->db->transaction(function (Database $db) use ($userId, $name, $description, $public, $promptId, $promptText, $schedule, $ai, $origin, $by): int {
+        $id = (int) $this->db->transaction(function (Database $db) use ($userId, $name, $description, $public, $source, $dedupe, $promptId, $promptText, $schedule, $ai, $origin, $by): int {
             if ($promptText !== '' && $promptId === null) {
                 $promptId = (int) $db->fetchScalar(
                     'INSERT INTO spotify_prompts (user_id, name, prompt, refresh_schedule, active)
@@ -274,9 +286,9 @@ final class SpotifyLibrary
             }
             $playlistId = (int) $db->fetchScalar(
                 'INSERT INTO spotify_playlists
-                    (user_id, name, description, is_public, local_dirty, managed_by_ai, source_prompt_id, origin, is_owned)
-                 VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1) RETURNING id',
-                [$userId, $name, $description, $public, $ai, $promptId, $origin]
+                    (user_id, name, description, is_public, local_dirty, managed_by_ai, source_prompt_id, origin, is_owned, source, dedupe_key)
+                 VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?, ?) RETURNING id',
+                [$userId, $name, $description, $public, $ai, $promptId, $origin, $source, $dedupe]
             );
             if ($promptId !== null) {
                 $db->execute(
@@ -300,15 +312,29 @@ final class SpotifyLibrary
      */
     public function updatePlaylist(int $userId, int $id, array $body, string $by): array
     {
-        $this->requireEditable($userId, $id);
+        $row = $this->requireEditable($userId, $id);
         $payloadName = array_key_exists('name', $body) ? self::name($body['name']) : null;
         $payloadDesc = array_key_exists('description', $body) ? self::description($body['description']) : null;
-        $payloadPublic = array_key_exists('public', $body) ? self::flag($body['public']) === 1 : null;
-        if ($payloadName === null && $payloadDesc === null && $payloadPublic === null) {
-            throw ValidationException::withFields(['name' => 'Send a name, description, or public flag.']);
+        $payloadPublic = array_key_exists('public', $body) ? self::requestedPublic($body) : null;
+        $source = array_key_exists('source', $body) ? self::sourceLabel($body['source']) : null;
+        $dedupe = array_key_exists('dedupe_key', $body) ? self::dedupeKey($body['dedupe_key']) : null;
+        $touchMeta = array_key_exists('source', $body) || array_key_exists('dedupe_key', $body);
+        if ($payloadName === null && $payloadDesc === null && $payloadPublic === null && !$touchMeta) {
+            throw ValidationException::withFields(['name' => 'Send a name, description, public flag, source, or dedupe_key.']);
         }
-        $this->db->transaction(function (Database $db) use ($userId, $id, $payloadName, $payloadDesc, $payloadPublic, $by): void {
-            if ($payloadName !== null || $payloadPublic !== null) {
+        if ($dedupe !== null) {
+            $clash = $this->db->fetchOne(
+                'SELECT id FROM spotify_playlists WHERE user_id = ? AND dedupe_key = ? AND id <> ?',
+                [$userId, $dedupe, $id]
+            );
+            if ($clash !== null) {
+                throw ValidationException::withFields(['dedupe_key' => 'Another playlist already uses that dedupe_key.']);
+            }
+        }
+        $this->db->transaction(function (Database $db) use ($userId, $id, $row, $payloadName, $payloadDesc, $payloadPublic, $source, $dedupe, $body, $by): void {
+            $draft = $row['spotify_id'] === null || $row['spotify_id'] === '';
+            $revised = $draft && $this->reviseCreatePayload($db, $id, $payloadName, $payloadDesc, $payloadPublic);
+            if (!$revised && ($payloadName !== null || $payloadPublic !== null)) {
                 $payload = [];
                 if ($payloadName !== null) {
                     $payload['name'] = $payloadName;
@@ -318,15 +344,50 @@ final class SpotifyLibrary
                 }
                 $this->stage($db, $userId, $id, 'rename', $payload, $by);
             }
-            if ($payloadDesc !== null) {
+            if (!$revised && $payloadDesc !== null) {
                 $this->stage($db, $userId, $id, 'describe', ['description' => $payloadDesc], $by);
             }
+            $dirty = ($payloadName !== null || $payloadDesc !== null || $payloadPublic !== null) ? 1 : 0;
             $db->execute(
-                'UPDATE spotify_playlists SET local_dirty = 1, updated_at = (now() AT TIME ZONE \'UTC\') WHERE id = ? AND user_id = ?',
-                [$id, $userId]
+                'UPDATE spotify_playlists SET
+                    name = CASE WHEN ?::int = 1 THEN ?::text ELSE name END,
+                    description = CASE WHEN ?::int = 1 THEN ?::text ELSE description END,
+                    is_public = CASE WHEN ?::int = 1 THEN ?::int ELSE is_public END,
+                    collaborative = CASE WHEN ?::int = 1 THEN 0 ELSE collaborative END,
+                    source = CASE WHEN ?::int = 1 THEN ?::text ELSE source END,
+                    dedupe_key = CASE WHEN ?::int = 1 THEN ?::text ELSE dedupe_key END,
+                    local_dirty = CASE WHEN ?::int = 1 THEN 1 ELSE local_dirty END,
+                    updated_at = (now() AT TIME ZONE \'UTC\')
+                 WHERE id = ? AND user_id = ?',
+                [
+                    $payloadName !== null ? 1 : 0,
+                    $payloadName ?? '',
+                    $payloadDesc !== null ? 1 : 0,
+                    $payloadDesc ?? '',
+                    $payloadPublic !== null ? 1 : 0,
+                    $payloadPublic ? 1 : 0,
+                    ($payloadPublic !== null && !$payloadPublic) ? 1 : 0,
+                    array_key_exists('source', $body) ? 1 : 0,
+                    $source,
+                    array_key_exists('dedupe_key', $body) ? 1 : 0,
+                    $dedupe,
+                    $dirty,
+                    $id,
+                    $userId,
+                ]
             );
         });
         return $this->playlist($userId, $id);
+    }
+
+    /**
+     * Stage a privacy change on one owned playlist. The caller pushes and checks Spotify.
+     *
+     * @return array<string, mixed>
+     */
+    public function setPrivacy(int $userId, int $id, bool $public, string $by): array
+    {
+        return $this->updatePlaylist($userId, $id, ['public' => $public], $by);
     }
 
     /**
@@ -620,21 +681,38 @@ final class SpotifyLibrary
     {
         $raw = $this->db->fetchScalar('SELECT body FROM spotify_taste_profile WHERE user_id = ?', [$userId]);
         $body = is_string($raw) ? json_decode($raw, true) : [];
-        return ['profile' => is_array($body) ? $body : []];
+        return ['profile' => TasteProfile::normalize(is_array($body) ? $body : [])];
     }
 
     /**
      * @param mixed $profile
      * @return array<string, mixed>
      */
-    public function saveTaste(int $userId, mixed $profile): array
+    public function saveTaste(int $userId, mixed $profile, mixed $dislikes = null, bool $replaceDislikes = true): array
     {
+        if ($profile === null && $dislikes === null) {
+            throw ValidationException::withFields(['profile' => 'profile must be an object or text.']);
+        }
+        $existing = $this->taste($userId)['profile'];
+        if ($profile === null) {
+            $profile = $existing;
+        }
         if (is_string($profile)) {
             $profile = ['text' => $profile];
         }
         if (!is_array($profile)) {
             throw ValidationException::withFields(['profile' => 'profile must be an object or text.']);
         }
+        if ($dislikes !== null) {
+            $profile['dislikes'] = TasteProfile::merge(
+                is_array($existing['dislikes'] ?? null) ? $existing['dislikes'] : [],
+                is_array($dislikes) ? $dislikes : [],
+                $replaceDislikes
+            );
+        } elseif (!array_key_exists('dislikes', $profile)) {
+            $profile['dislikes'] = $existing['dislikes'] ?? TasteProfile::dislikes([]);
+        }
+        $profile = TasteProfile::normalize($profile);
         $json = json_encode($profile, JSON_THROW_ON_ERROR);
         if (strlen($json) > 20000) {
             throw ValidationException::withFields(['profile' => 'Taste profile is too long.']);
@@ -645,6 +723,15 @@ final class SpotifyLibrary
             [$userId, $json]
         );
         return $this->taste($userId);
+    }
+
+    /**
+     * @param array<string, mixed> $dislikes
+     * @return array<string, mixed>
+     */
+    public function saveDislikes(int $userId, array $dislikes, bool $replace): array
+    {
+        return $this->saveTaste($userId, null, $dislikes, $replace);
     }
 
     /**
@@ -859,6 +946,10 @@ final class SpotifyLibrary
             'managed_by_ai' => (int) ($row['managed_by_ai'] ?? 0) === 1,
             'source_prompt_id' => $row['source_prompt_id'] !== null ? (int) $row['source_prompt_id'] : null,
             'origin' => (string) ($row['origin'] ?? 'synced'),
+            'source' => isset($row['source']) && $row['source'] !== null && $row['source'] !== '' ? (string) $row['source'] : null,
+            'dedupe_key' => isset($row['dedupe_key']) && $row['dedupe_key'] !== null && $row['dedupe_key'] !== ''
+                ? (string) $row['dedupe_key']
+                : null,
             'is_owned' => self::canEdit($row),
             'sync_error' => isset($row['sync_error']) && $row['sync_error'] !== null && $row['sync_error'] !== ''
                 ? (string) $row['sync_error']
@@ -928,7 +1019,7 @@ final class SpotifyLibrary
         $row = $this->db->fetchOne(
             'SELECT p.id, p.spotify_id, p.name, p.description, p.is_public, p.collaborative, p.owner_id, p.owner_name,
                     p.snapshot_id, p.track_count, p.image_url, p.last_synced_at, p.local_dirty, p.managed_by_ai, p.source_prompt_id,
-                    p.origin, p.is_owned, p.sync_error,
+                    p.origin, p.is_owned, p.sync_error, p.source, p.dedupe_key,
                     (SELECT COUNT(*) FROM spotify_playlist_changes c
                       WHERE c.playlist_id = p.id AND c.status IN (\'pending\', \'failed\')) AS open_changes
              FROM spotify_playlists p WHERE p.user_id = ? AND p.id = ?',
@@ -1035,6 +1126,39 @@ final class SpotifyLibrary
     /**
      * @param array<string, mixed> $payload
      */
+    private function reviseCreatePayload(Database $db, int $playlistId, ?string $name, ?string $description, ?bool $public): bool
+    {
+        $row = $db->fetchOne(
+            "SELECT id, payload FROM spotify_playlist_changes
+             WHERE playlist_id = ? AND op = 'create' AND status IN ('pending', 'failed')
+             ORDER BY id LIMIT 1",
+            [$playlistId]
+        );
+        if ($row === null) {
+            return false;
+        }
+        $payload = json_decode((string) $row['payload'], true);
+        if (!is_array($payload)) {
+            $payload = [];
+        }
+        if ($name !== null) {
+            $payload['name'] = $name;
+        }
+        if ($description !== null) {
+            $payload['description'] = $description;
+        }
+        if ($public !== null) {
+            $payload['public'] = $public;
+        }
+        $db->execute(
+            'UPDATE spotify_playlist_changes
+             SET payload = ?::jsonb, updated_at = (now() AT TIME ZONE \'UTC\')
+             WHERE id = ?',
+            [json_encode($payload, JSON_THROW_ON_ERROR), (int) $row['id']]
+        );
+        return true;
+    }
+
     private function stage(Database $db, int $userId, int $playlistId, string $op, array $payload, string $by): void
     {
         $db->execute(
@@ -1106,6 +1230,44 @@ final class SpotifyLibrary
         $text = trim((string) $value);
         if (strlen($text) > 300) {
             throw ValidationException::withFields(['description' => 'Description must be 300 characters or fewer.']);
+        }
+        return $text;
+    }
+
+    public static function requestedPublic(array $body): bool
+    {
+        if (!array_key_exists('public', $body) || $body['public'] === null || $body['public'] === '') {
+            return false;
+        }
+        return self::flag($body['public']) === 1;
+    }
+
+    private static function sourceLabel(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+        if ($text === '') {
+            return null;
+        }
+        if (strlen($text) > 64) {
+            throw ValidationException::withFields(['source' => 'Source must be 64 characters or fewer.']);
+        }
+        return $text;
+    }
+
+    private static function dedupeKey(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $text = trim((string) $value);
+        if ($text === '') {
+            return null;
+        }
+        if (strlen($text) > 160) {
+            throw ValidationException::withFields(['dedupe_key' => 'dedupe_key must be 160 characters or fewer.']);
         }
         return $text;
     }

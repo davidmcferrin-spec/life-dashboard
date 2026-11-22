@@ -158,6 +158,32 @@ final class MixtapeTest extends TestCase
         self::assertCount(5, $untimed['order']);
     }
 
+    public function testPlanSkipsADislikedTitleArtistAndTrack(): void
+    {
+        $tracks = $this->arcTracks();
+        $tracks[2]['name'] = 'The Christmas Shoes';
+        $tracks[2]['artists'] = ['Newsong'];
+        $tracks[1]['artists'] = ['Blocked Band'];
+        $byTitle = Mixtape::plan($tracks, Mixtape::ARC, [
+            'dislikes' => ['titles' => ['Christmas Shoes']],
+        ]);
+        self::assertNotContains('spotify:track:peak', array_column($byTitle['order'], 'uri'));
+        self::assertSame(['spotify:track:peak'], array_column($byTitle['blocked'], 'uri'));
+        self::assertSame('dislike', $byTitle['blocked'][0]['reason']);
+
+        $byArtist = Mixtape::plan($tracks, Mixtape::ARC, [
+            'dislikes' => ['artists' => ['blocked band']],
+        ]);
+        self::assertNotContains('spotify:track:mid', array_column($byArtist['order'], 'uri'));
+
+        $byUri = Mixtape::plan($tracks, Mixtape::ARC, [
+            'dislikes' => ['tracks' => ['peak']],
+            'locks' => [['uri' => 'spotify:track:peak', 'position' => 2]],
+        ]);
+        self::assertNotContains('spotify:track:peak', array_column($byUri['order'], 'uri'));
+        self::assertSame([], array_column(Mixtape::plan($tracks, Mixtape::ARC)['blocked'], 'uri'));
+    }
+
     /**
      * @return list<array<string, mixed>>
      */
