@@ -52,6 +52,7 @@
     let hoverTimer = null;
     const expanded = new Set();
     const expandedPages = new Set();
+    let rootOpen = true;
     const pageCache = new Map();
     const split = document.getElementById('brain-split');
     try {
@@ -276,6 +277,34 @@
             return window.localStorage;
         } catch (err) {
             return null;
+        }
+    }
+
+    function drawerStorage() {
+        try {
+            return window.localStorage;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function drawerViewport() {
+        try {
+            const width = window.innerWidth || document.documentElement.clientWidth;
+            return Number(width) || 1200;
+        } catch (err) {
+            return 1200;
+        }
+    }
+
+    function drawerMeasure() {
+        const pane = optional('brain-tree-pane');
+        if (!pane || typeof pane.getBoundingClientRect !== 'function') return 0;
+        try {
+            const rect = pane.getBoundingClientRect();
+            return rect && rect.width ? rect.width : 0;
+        } catch (err) {
+            return 0;
         }
     }
 
@@ -601,20 +630,48 @@
         placeTreeTab(focusInsideTree());
     }
 
+    function toggleRoot() {
+        rootOpen = !rootOpen;
+        treeCursor = 'root';
+        const foldersInTree = typeof tree.querySelectorAll === 'function' ? Array.from(tree.querySelectorAll('.brain-folder')) : [];
+        const folder = foldersInTree.find((node) => node.dataset.folder === 'root');
+        const group = folder && folder.querySelector('.brain-folder-children');
+        if (!folder || !group) {
+            renderTree();
+            return;
+        }
+        group.classList.toggle('is-collapsed', !rootOpen);
+        const expandedText = rootOpen ? 'true' : 'false';
+        const row = folder.querySelector('.brain-tree-row');
+        if (row) row.setAttribute('aria-expanded', expandedText);
+        const toggle = folder.querySelector('[data-toggle-root]');
+        if (toggle) {
+            toggle.setAttribute('aria-expanded', expandedText);
+            toggle.setAttribute('aria-label', (rootOpen ? 'Collapse' : 'Expand') + ' Root');
+        }
+        placeTreeTab(focusInsideTree());
+    }
+
     function renderTree() {
         const restoreFocus = focusInsideTree();
-        const rootPages = pagesIn(null).map((page) => pageButton(page, '')).join('');
-        const rootDrop = `<div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="root" data-tree-key="root" data-tree-kind="root" data-parent-key="" aria-selected="false">
-            <span class="brain-tree-slot" aria-hidden="true"></span><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span><span class="brain-folder-name" title="Root">${treeLabel('Root')}</span>
-            ${rowActions('root', null)}
-        </div>`;
-        const body = folderHtml(folders, '') + rootPages;
-        tree.innerHTML = rootDrop + (body || window.DashboardEmpty.html({
+        const open = rootOpen;
+        const kids = folderHtml(folders, 'root');
+        const rootPages = pagesIn(null).map((page) => pageButton(page, 'root')).join('');
+        const verb = open ? 'Collapse' : 'Expand';
+        const branch = kids + rootPages || window.DashboardEmpty.html({
             title: 'No pages yet',
             body: 'Create a page to start the vault.',
             actionLabel: 'New page',
             actionAttrs: 'type="button" id="brain-empty-new"',
-        }));
+        });
+        tree.innerHTML = `<div class="brain-folder brain-root" data-folder="root">
+            <div class="brain-folder-row brain-tree-row" role="treeitem" data-drop="root" data-tree-key="root" data-tree-kind="root" data-parent-key="" aria-expanded="${open ? 'true' : 'false'}" aria-selected="false">
+                <button type="button" class="brain-folder-toggle" tabindex="-1" data-toggle-root aria-expanded="${open ? 'true' : 'false'}" aria-label="${verb} Root"><span class="brain-chevron" aria-hidden="true">${treeIcon('brain-icon-chevron')}</span></button>
+                <span class="brain-folder-name" title="Root"><span class="brain-tree-folder" aria-hidden="true">${treeIcon('brain-icon-folder')}</span>${treeLabel('Root')}</span>
+                ${rowActions('root', null)}
+            </div>
+            <div class="brain-folder-children${open ? '' : ' is-collapsed'}" role="group"><div class="brain-folder-branch">${branch}</div></div>
+        </div>`;
         tree.querySelector('#brain-empty-new')?.addEventListener('click', () => {
             document.getElementById('brain-new')?.click();
         });
@@ -959,6 +1016,11 @@
             return;
         }
         if (e.target.closest('.brain-row-actions')) return;
+        const rootToggle = e.target.closest('[data-toggle-root]');
+        if (rootToggle) {
+            toggleRoot();
+            return;
+        }
         const toggle = e.target.closest('[data-toggle]');
         if (toggle) {
             toggleFolder(toggle.dataset.toggle);
@@ -998,6 +1060,10 @@
         }
         if (key === 'ArrowLeft') {
             e.preventDefault();
+            if (row.dataset.treeKind === 'root') {
+                if (rootOpen) toggleRoot();
+                return;
+            }
             if (row.dataset.treeKind === 'folder' && expanded.has(Number(row.dataset.treeId))) {
                 toggleFolder(row.dataset.treeId);
                 return;
@@ -1022,6 +1088,15 @@
                 }
                 return;
             }
+            if (row.dataset.treeKind === 'root') {
+                if (!rootOpen) {
+                    toggleRoot();
+                    return;
+                }
+                const child = firstChildRow(row);
+                if (child) moveTree(child);
+                return;
+            }
             if (row.dataset.treeKind !== 'folder') return;
             const id = Number(row.dataset.treeId);
             if (!expanded.has(id)) {
@@ -1035,10 +1110,12 @@
         if (key === ' ') {
             e.preventDefault();
             if (row.dataset.treeKind === 'folder') toggleFolder(row.dataset.treeId);
+            else if (row.dataset.treeKind === 'root') toggleRoot();
             return;
         }
         e.preventDefault();
         if (row.dataset.treeKind === 'folder') toggleFolder(row.dataset.treeId);
+        else if (row.dataset.treeKind === 'root') toggleRoot();
         else if (row.dataset.treeKind === 'page') openPage(Number(row.dataset.treeId)).catch((err) => setStatus(err.message));
     });
     tree.addEventListener('scroll', () => closeTreeMenus());
@@ -1316,8 +1393,31 @@
             closeNoteMenu();
         });
     }
+    let drawerControl = null;
+    function mountDrawer() {
+        if (!shell || !window.BrainDrawer || typeof window.BrainDrawer.mount !== 'function') return null;
+        if (!drawerControl) {
+            drawerControl = window.BrainDrawer.mount(shell, {
+                storage: drawerStorage,
+                viewport: drawerViewport,
+                measure: drawerMeasure,
+                handle: optional('brain-drawer-resize'),
+                hideButton: optional('brain-drawer-hide'),
+                showButton: optional('brain-tree-toggle'),
+                body: document.body,
+                onMobileToggle() {
+                    setTreeOpen(!shell.classList.contains('is-tree-open'));
+                },
+                mobileOpen() {
+                    return shell.classList.contains('is-tree-open');
+                },
+            });
+        }
+        return drawerControl;
+    }
+    const drawer = mountDrawer();
     const treeToggle = optional('brain-tree-toggle');
-    if (treeToggle) treeToggle.addEventListener('click', () => setTreeOpen(!shell.classList.contains('is-tree-open')));
+    if (treeToggle && !drawer) treeToggle.addEventListener('click', () => setTreeOpen(!shell.classList.contains('is-tree-open')));
     const treeScrim = optional('brain-tree-scrim');
     if (treeScrim) treeScrim.addEventListener('click', () => setTreeOpen(false));
     window.addEventListener('keydown', (event) => {
