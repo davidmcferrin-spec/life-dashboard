@@ -244,6 +244,35 @@ final class CallGuard
     /**
      * @return list<string>
      */
+    public static function emails(mixed $value, string $field): array
+    {
+        if ($value === null) {
+            return [];
+        }
+        if (!is_array($value)) {
+            throw ValidationException::withFields([$field => 'emails must be a list.']);
+        }
+        if (count($value) > 8) {
+            throw ValidationException::withFields([$field => 'Keep the list to 8 emails.']);
+        }
+        $out = [];
+        foreach ($value as $item) {
+            $text = strtolower(trim((string) $item));
+            if ($text === '') {
+                continue;
+            }
+            if (filter_var($text, FILTER_VALIDATE_EMAIL) === false || mb_strlen($text) > 160) {
+                throw ValidationException::withFields([$field => 'Use an email address.']);
+            }
+            $out[$text] = $text;
+        }
+
+        return array_values($out);
+    }
+
+    /**
+     * @return list<string>
+     */
     public static function urls(mixed $value, string $field): array
     {
         if ($value === null) {
@@ -295,9 +324,12 @@ final class CallGuard
         if (array_key_exists('call_at', $body)) {
             $row['call_at'] = self::timestamp($body['call_at'], 'call_at', $clock);
         }
-        $set('direction', self::enum($body['direction'] ?? $row['direction'] ?? null, self::DIRECTIONS, 'direction', $creating || array_key_exists('direction', $body)));
+        $set('direction', self::enum($body['direction'] ?? $row['direction'] ?? null, self::DIRECTIONS, 'direction', array_key_exists('direction', $body)));
         if (!array_key_exists('direction', $body) && !$creating) {
             $row['direction'] = $current['direction'];
+        }
+        if ($creating && ($row['direction'] === null || $row['direction'] === '') && self::hasParty($body)) {
+            $row['direction'] = 'outbound';
         }
         $set('phone', self::phone($body['phone'] ?? null, 'phone'));
         $set('callback_number', self::phone($body['callback_number'] ?? null, 'callback_number'));
@@ -319,8 +351,21 @@ final class CallGuard
         if (array_key_exists('status', $body) || $creating) {
             $row['status'] = self::enum($body['status'] ?? $row['status'] ?? 'new', self::STATUSES, 'status');
         }
+        if (!array_key_exists('duration_sec', $body) && array_key_exists('duration', $body)) {
+            $body['duration_sec'] = $body['duration'];
+        }
         if (array_key_exists('duration_sec', $body)) {
             $row['duration_sec'] = self::duration($body['duration_sec']);
+        }
+        $set('to_number', self::phone($body['to_number'] ?? null, 'to_number'));
+        $set('from_number', self::phone($body['from_number'] ?? null, 'from_number'));
+        $set('purpose', self::text($body['purpose'] ?? null, 'purpose', 240));
+        $set('outcome', self::text($body['outcome'] ?? null, 'outcome', 80));
+        $set('placed_by', self::text($body['placed_by'] ?? null, 'placed_by', 80));
+        if (array_key_exists('started_at', $body)) {
+            $row['started_at'] = ($body['started_at'] === null || $body['started_at'] === '')
+                ? null
+                : self::timestamp($body['started_at'], 'started_at', $clock);
         }
         $set('transcript_url', self::url($body['transcript_url'] ?? null, 'transcript_url'));
         $set('recording_url', self::url($body['recording_url'] ?? null, 'recording_url'));
@@ -372,7 +417,36 @@ final class CallGuard
         if ($row['direction'] === null || $row['direction'] === '') {
             throw ValidationException::withFields(['direction' => 'Direction must be inbound or outbound.']);
         }
+        if ($creating && !array_key_exists('call_at', $body) && !empty($row['started_at'])) {
+            $row['call_at'] = $row['started_at'];
+        }
+        if ($creating && !array_key_exists('reason', $body) && !empty($row['purpose'])) {
+            $row['reason'] = $row['purpose'];
+        }
+        if ($creating && !array_key_exists('phone', $body)) {
+            $party = $row['direction'] === 'inbound' ? ($row['from_number'] ?? null) : ($row['to_number'] ?? null);
+            if (is_string($party) && $party !== '') {
+                $row['phone'] = $party;
+            }
+        }
         return $row;
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     */
+    private static function hasParty(array $body): bool
+    {
+        foreach (['to_number', 'from_number'] as $key) {
+            if (!array_key_exists($key, $body) || $body[$key] === null) {
+                continue;
+            }
+            if (trim((string) $body[$key]) !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

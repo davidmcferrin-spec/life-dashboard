@@ -280,6 +280,10 @@ final class AuditLog
         'appointment'      => ['%/health/appointments%'],
         'brief'           => ['%/brief%'],
         'handoff'         => ['%/handoffs%'],
+        'news_digest'     => ['%/digests%'],
+        'trip'            => ['%/trips%'],
+        'video'           => ['%/videos%'],
+        'finding'         => ['%/findings%'],
         'deploy'        => ['%/system/deploy%'],
     ];
 

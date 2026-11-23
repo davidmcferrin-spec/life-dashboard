@@ -23,6 +23,7 @@ final class Scope
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
         'spotify', 'ollama', 'digest', 'agents', 'health', 'home', 'mail', 'handoffs',
+        'trips', 'videos', 'findings',
     ];
 
     public const MONEY_ENTITIES = [
@@ -42,13 +43,19 @@ final class Scope
 
     public const SPOTIFY_ENTITIES = ['spotify'];
 
-    public const DIGEST_ENTITIES = ['digest'];
+    public const DIGEST_ENTITIES = ['digest', 'news_digest'];
 
     public const HEALTH_ENTITIES = ['health_point', 'health_workout', 'meal_log', 'blood_pressure', 'medication', 'medication_dose', 'appointment'];
 
     public const BRIEF_ENTITIES = ['brief'];
 
     public const HANDOFF_ENTITIES = ['handoff'];
+
+    public const TRIP_ENTITIES = ['trip'];
+
+    public const VIDEO_ENTITIES = ['video'];
+
+    public const FINDING_ENTITIES = ['finding'];
 
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
@@ -67,6 +74,10 @@ final class Scope
         'health_point', 'health_workout', 'meal_log', 'blood_pressure', 'medication', 'medication_dose', 'appointment',
         'brief',
         'handoff',
+        'news_digest',
+        'trip',
+        'video',
+        'finding',
         'deploy',
     ];
 
@@ -235,6 +246,15 @@ final class Scope
         }
         if (self::allows($granted, 'handoffs:read')) {
             $allow = array_merge($allow, self::HANDOFF_ENTITIES);
+        }
+        if (self::allows($granted, 'trips:read')) {
+            $allow = array_merge($allow, self::TRIP_ENTITIES);
+        }
+        if (self::allows($granted, 'videos:read')) {
+            $allow = array_merge($allow, self::VIDEO_ENTITIES);
+        }
+        if (self::allows($granted, 'findings:read')) {
+            $allow = array_merge($allow, self::FINDING_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

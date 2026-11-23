@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Dashboard\Calls;
 
+use Dashboard\Board\Fields;
 use Dashboard\DB\Database;
+use Dashboard\Handoff\PgArray;
 use Dashboard\Support\Clock;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
@@ -73,12 +75,14 @@ final class CallService
                         user_id, call_at, direction, phone, callback_number, name, company, category,
                         reason, summary, notes, urgency, deadline, return_needed, status, duration_sec,
                         transcript_url, recording_url, transcript_text, has_recording, source, source_call_id,
-                        linked_todo_id, contact_id, handled_by, notified_david, notified_at
+                        linked_todo_id, contact_id, handled_by, notified_david, notified_at,
+                        to_number, from_number, purpose, started_at, outcome, placed_by
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?
                     ) RETURNING id',
                     $this->insertParams($userId, $columns)
                 );
@@ -160,6 +164,11 @@ final class CallService
         [$from, $to] = $this->range($filters['from'] ?? null, $filters['to'] ?? null);
         $digits = CallGuard::matchDigits($filters['phone'] ?? '');
         $phoneFlag = strlen($digits) >= 3 ? '1' : '';
+        $placed = trim((string) ($filters['placed_by'] ?? ''));
+        $outcome = trim((string) ($filters['outcome'] ?? ''));
+        $contactId = isset($filters['contact_id']) && $filters['contact_id'] !== '' && $filters['contact_id'] !== null
+            ? (int) $filters['contact_id']
+            : 0;
         $limit = $this->limit($filters['limit'] ?? 50, 100);
 
         $rows = $this->db->fetchAll(
@@ -175,7 +184,12 @@ final class CallService
                     ? = ''
                     OR right(regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g'), char_length(?)) = ?
                     OR right(regexp_replace(COALESCE(c.callback_number, ''), '\\D', '', 'g'), char_length(?)) = ?
+                    OR right(regexp_replace(COALESCE(c.to_number, ''), '\\D', '', 'g'), char_length(?)) = ?
+                    OR right(regexp_replace(COALESCE(c.from_number, ''), '\\D', '', 'g'), char_length(?)) = ?
                 )
+                AND (? = '' OR lower(c.placed_by) = lower(?))
+                AND (? = '' OR lower(c.outcome) = lower(?))
+                AND (? = 0 OR c.contact_id = ?)
                 ORDER BY
                     CASE WHEN c.return_needed = 1 AND c.status IN (" . self::OPEN . ") THEN 0 ELSE 1 END,
                     CASE c.urgency WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
@@ -189,7 +203,10 @@ final class CallService
                 $handled, $handled,
                 $returnFlag, $returnValue,
                 $from, $to,
-                $phoneFlag, $digits, $digits, $digits, $digits,
+                $phoneFlag, $digits, $digits, $digits, $digits, $digits, $digits, $digits, $digits,
+                $placed, $placed,
+                $outcome, $outcome,
+                $contactId, $contactId,
                 $limit,
             ]
         );
@@ -220,15 +237,23 @@ final class CallService
                     OR strpos(lower(COALESCE(c.summary, '')), ?) > 0
                     OR strpos(lower(COALESCE(c.notes, '')), ?) > 0
                     OR strpos(lower(COALESCE(c.transcript_text, '')), ?) > 0
+                    OR strpos(lower(COALESCE(c.purpose, '')), ?) > 0
+                    OR strpos(lower(COALESCE(c.outcome, '')), ?) > 0
+                    OR strpos(lower(COALESCE(c.placed_by, '')), ?) > 0
+                    OR strpos(lower(COALESCE(c.to_number, '')), ?) > 0
+                    OR strpos(lower(COALESCE(c.from_number, '')), ?) > 0
                     OR right(regexp_replace(COALESCE(c.phone, ''), '\\D', '', 'g'), char_length(?)) = ?
                     OR right(regexp_replace(COALESCE(c.callback_number, ''), '\\D', '', 'g'), char_length(?)) = ?
+                    OR right(regexp_replace(COALESCE(c.to_number, ''), '\\D', '', 'g'), char_length(?)) = ?
+                    OR right(regexp_replace(COALESCE(c.from_number, ''), '\\D', '', 'g'), char_length(?)) = ?
                 )
                 ORDER BY c.call_at DESC, c.id DESC
                 LIMIT ?",
             [
                 $userId,
                 $needle, $needle, $needle, $needle, $needle, $needle, $needle, $needle,
-                $digitFlag, $digitFlag, $digitFlag, $digitFlag,
+                $needle, $needle, $needle, $needle, $needle,
+                $digitFlag, $digitFlag, $digitFlag, $digitFlag, $digitFlag, $digitFlag, $digitFlag, $digitFlag,
                 $limit,
             ]
         );
@@ -342,38 +367,137 @@ final class CallService
             if ($existing === null && $name === null) {
                 throw ValidationException::withFields(['name' => 'A contact needs a name.']);
             }
-            $relationship = array_key_exists('relationship', $body)
-                ? CallGuard::text($body['relationship'], 'relationship', 80)
-                : ($existing['relationship'] ?? null);
-            $vip = array_key_exists('vip_tier', $body)
-                ? CallGuard::text($body['vip_tier'], 'vip_tier', 24)
-                : ($existing['vip_tier'] ?? null);
-            $rule = array_key_exists('handling_rule', $body)
-                ? CallGuard::text($body['handling_rule'], 'handling_rule', 2000)
-                : ($existing['handling_rule'] ?? null);
-            $notes = array_key_exists('notes', $body)
-                ? CallGuard::text($body['notes'], 'notes', 4000)
-                : ($existing['notes'] ?? null);
-            $phoneJson = self::jsonList($phones ?? $this->decodeList($existing['phones'] ?? '[]'));
-            if ($existing === null) {
-                $id = (int) $this->db->fetchScalar(
-                    'INSERT INTO contacts (user_id, name, phones, relationship, vip_tier, handling_rule, notes)
-                     VALUES (?, ?, ?::jsonb, ?, ?, ?, ?) RETURNING id',
-                    [$userId, $name, $phoneJson, $relationship, $vip, $rule, $notes]
-                );
-            } else {
-                $id = (int) $existing['id'];
-                $this->db->execute(
-                    "UPDATE contacts
-                     SET name = ?, phones = ?::jsonb, relationship = ?, vip_tier = ?, handling_rule = ?, notes = ?,
-                         updated_at = (now() AT TIME ZONE 'UTC')
-                     WHERE id = ? AND user_id = ?",
-                    [$name ?? $existing['name'], $phoneJson, $relationship, $vip, $rule, $notes, $id, $userId]
-                );
-            }
-            $row = $this->rawContact($userId, $id);
-            return $this->presentContact($row);
+
+            return $this->writeContact($userId, $existing, $body, $name, $phones);
         });
+    }
+
+    /**
+     * Insert one contact. This does not match a phone or a name, and it does not import anything.
+     *
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    public function addContact(int $userId, array $body): array
+    {
+        return $this->db->transaction(function () use ($userId, $body): array {
+            $name = CallGuard::text($body['name'] ?? null, 'name', 160);
+            if ($name === null) {
+                throw ValidationException::withFields(['name' => 'A contact needs a name.']);
+            }
+            $phones = array_key_exists('phones', $body) ? CallGuard::phones($body['phones'], 'phones') : [];
+
+            return $this->writeContact($userId, null, $body, $name, $phones);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $body
+     * @return array<string, mixed>
+     */
+    public function updateContact(int $userId, int $id, array $body): array
+    {
+        return $this->db->transaction(function () use ($userId, $id, $body): array {
+            $existing = $this->rawContact($userId, $id);
+            $name = array_key_exists('name', $body) ? CallGuard::text($body['name'], 'name', 160) : null;
+            $phones = array_key_exists('phones', $body) ? CallGuard::phones($body['phones'], 'phones') : null;
+
+            return $this->writeContact($userId, $existing, $body, $name, $phones);
+        });
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function findContacts(int $userId, string $q): array
+    {
+        $q = trim($q);
+        if (mb_strlen($q) < 2) {
+            throw ValidationException::withFields(['q' => 'Search needs at least 2 characters.']);
+        }
+        $like = '%' . str_replace(['%', '_'], '', mb_strtolower($q)) . '%';
+        $rows = $this->db->fetchAll(
+            "SELECT * FROM contacts
+             WHERE user_id = ?
+               AND (
+                    lower(name) LIKE ?
+                    OR lower(COALESCE(org, '')) LIKE ?
+                    OR lower(COALESCE(notes, '')) LIKE ?
+                    OR EXISTS (
+                        SELECT 1 FROM jsonb_array_elements_text(phones) AS p(phone)
+                        WHERE lower(p.phone) LIKE ?
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM jsonb_array_elements_text(emails) AS e(email)
+                        WHERE lower(e.email) LIKE ?
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM unnest(tags) AS t(tag)
+                        WHERE lower(t.tag) LIKE ?
+                    )
+               )
+             ORDER BY lower(name), id
+             LIMIT 40",
+            [$userId, $like, $like, $like, $like, $like, $like]
+        );
+
+        return array_map(fn (array $row): array => $this->presentContact($row), $rows);
+    }
+
+    /**
+     * @param array<string, mixed>|null $existing
+     * @param array<string, mixed> $body
+     * @param list<string>|null $phones
+     * @return array<string, mixed>
+     */
+    private function writeContact(int $userId, ?array $existing, array $body, ?string $name, ?array $phones): array
+    {
+        $relationship = array_key_exists('relationship', $body)
+            ? CallGuard::text($body['relationship'], 'relationship', 80)
+            : ($existing['relationship'] ?? null);
+        $vip = array_key_exists('vip_tier', $body)
+            ? CallGuard::text($body['vip_tier'], 'vip_tier', 24)
+            : ($existing['vip_tier'] ?? null);
+        $rule = array_key_exists('handling_rule', $body)
+            ? CallGuard::text($body['handling_rule'], 'handling_rule', 2000)
+            : ($existing['handling_rule'] ?? null);
+        $notes = array_key_exists('notes', $body)
+            ? CallGuard::text($body['notes'], 'notes', 4000)
+            : ($existing['notes'] ?? null);
+        $org = array_key_exists('org', $body)
+            ? CallGuard::text($body['org'], 'org', 160)
+            : ($existing['org'] ?? null);
+        $emails = array_key_exists('emails', $body)
+            ? CallGuard::emails($body['emails'], 'emails')
+            : $this->decodeList($existing['emails'] ?? '[]');
+        $tags = array_key_exists('tags', $body)
+            ? Fields::tags($body['tags'])
+            : PgArray::readText($existing['tags'] ?? '{}');
+        $phoneJson = self::jsonList($phones ?? $this->decodeList($existing['phones'] ?? '[]'));
+        $emailJson = self::jsonList($emails);
+        $tagLiteral = PgArray::text($tags);
+        $storedName = $name ?? ($existing['name'] ?? null);
+        if ($storedName === null) {
+            throw ValidationException::withFields(['name' => 'A contact needs a name.']);
+        }
+        if ($existing === null) {
+            $id = (int) $this->db->fetchScalar(
+                'INSERT INTO contacts (user_id, name, phones, relationship, vip_tier, handling_rule, notes, emails, org, tags)
+                 VALUES (?, ?, ?::jsonb, ?, ?, ?, ?, ?::jsonb, ?, ?::text[]) RETURNING id',
+                [$userId, $storedName, $phoneJson, $relationship, $vip, $rule, $notes, $emailJson, $org, $tagLiteral]
+            );
+        } else {
+            $id = (int) $existing['id'];
+            $this->db->execute(
+                "UPDATE contacts
+                 SET name = ?, phones = ?::jsonb, relationship = ?, vip_tier = ?, handling_rule = ?, notes = ?,
+                     emails = ?::jsonb, org = ?, tags = ?::text[], updated_at = (now() AT TIME ZONE 'UTC')
+                 WHERE id = ? AND user_id = ?",
+                [$storedName, $phoneJson, $relationship, $vip, $rule, $notes, $emailJson, $org, $tagLiteral, $id, $userId]
+            );
+        }
+
+        return $this->presentContact($this->rawContact($userId, $id));
     }
 
     /**
@@ -483,7 +607,9 @@ final class CallService
                 reason = ?, summary = ?, notes = ?, urgency = ?, deadline = ?, return_needed = ?, status = ?,
                 duration_sec = ?, transcript_url = ?, recording_url = ?, transcript_text = ?, has_recording = ?,
                 source = ?, source_call_id = ?, linked_todo_id = ?, contact_id = ?, handled_by = ?,
-                notified_david = ?, notified_at = ?, updated_at = (now() AT TIME ZONE 'UTC')
+                notified_david = ?, notified_at = ?,
+                to_number = ?, from_number = ?, purpose = ?, started_at = ?, outcome = ?, placed_by = ?,
+                updated_at = (now() AT TIME ZONE 'UTC')
              WHERE id = ? AND user_id = ?",
             [
                 $columns['call_at'], $columns['direction'], $columns['phone'], $columns['callback_number'],
@@ -494,6 +620,8 @@ final class CallService
                 (int) $columns['has_recording'], $columns['source'], $columns['source_call_id'],
                 $columns['linked_todo_id'], $columns['contact_id'], $columns['handled_by'],
                 (int) $columns['notified_david'], $columns['notified_at'],
+                $columns['to_number'], $columns['from_number'], $columns['purpose'], $columns['started_at'],
+                $columns['outcome'], $columns['placed_by'],
                 $id, $userId,
             ]
         );
@@ -686,6 +814,8 @@ final class CallService
             $columns['transcript_text'], (int) $columns['has_recording'], $columns['source'], $columns['source_call_id'],
             $columns['linked_todo_id'], $columns['contact_id'], $columns['handled_by'],
             (int) $columns['notified_david'], $columns['notified_at'],
+            $columns['to_number'], $columns['from_number'], $columns['purpose'], $columns['started_at'],
+            $columns['outcome'], $columns['placed_by'],
         ];
     }
 
@@ -721,6 +851,12 @@ final class CallService
             'handled_by'       => null,
             'notified_david'   => 0,
             'notified_at'      => null,
+            'to_number'        => null,
+            'from_number'      => null,
+            'purpose'          => null,
+            'started_at'       => null,
+            'outcome'          => null,
+            'placed_by'        => null,
         ];
     }
 
@@ -773,6 +909,13 @@ final class CallService
             'handling_rule'     => isset($row['contact_handling_rule']) && $row['contact_handling_rule'] !== null ? (string) $row['contact_handling_rule'] : null,
             'vip'               => (string) $row['category'] === 'vip' || $vipTier !== null,
             'handled_by'        => $row['handled_by'] !== null ? (string) $row['handled_by'] : null,
+            'to_number'         => isset($row['to_number']) && $row['to_number'] !== null ? (string) $row['to_number'] : null,
+            'from_number'       => isset($row['from_number']) && $row['from_number'] !== null ? (string) $row['from_number'] : null,
+            'purpose'           => isset($row['purpose']) && $row['purpose'] !== null ? (string) $row['purpose'] : null,
+            'started_at'        => isset($row['started_at']) && $row['started_at'] !== null ? (string) $row['started_at'] : null,
+            'outcome'           => isset($row['outcome']) && $row['outcome'] !== null ? (string) $row['outcome'] : null,
+            'placed_by'         => isset($row['placed_by']) && $row['placed_by'] !== null ? (string) $row['placed_by'] : null,
+            'duration'          => $row['duration_sec'] !== null ? (int) $row['duration_sec'] : null,
             'notified_david'    => (int) $row['notified_david'] === 1,
             'notified_at'       => $row['notified_at'] !== null ? (string) $row['notified_at'] : null,
             'created_at'        => (string) $row['created_at'],
@@ -832,6 +975,9 @@ final class CallService
             'relationship'   => $row['relationship'] !== null ? (string) $row['relationship'] : null,
             'vip_tier'       => $row['vip_tier'] !== null ? (string) $row['vip_tier'] : null,
             'handling_rule'  => $row['handling_rule'] !== null ? (string) $row['handling_rule'] : null,
+            'emails'         => $this->decodeList($row['emails'] ?? '[]'),
+            'org'            => isset($row['org']) && $row['org'] !== null ? (string) $row['org'] : null,
+            'tags'           => PgArray::readText($row['tags'] ?? '{}'),
             'notes'          => $row['notes'] !== null ? (string) $row['notes'] : null,
             'created_at'     => (string) $row['created_at'],
             'updated_at'     => (string) $row['updated_at'],

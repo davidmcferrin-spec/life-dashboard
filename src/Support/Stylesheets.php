@@ -49,6 +49,7 @@ final class Stylesheets
             '/assets/css/finance-menus.css',
             '/assets/css/platform.css',
             '/assets/css/handoffs.css',
+            '/assets/css/boards.css',
         ];
     }
 

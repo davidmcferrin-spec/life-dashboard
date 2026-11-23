@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Dashboard\Tracking;
 
 use Dashboard\Audit\AuditLog;
+use Dashboard\Briefs\BriefDigestService;
 use Dashboard\Calls\CallService;
 use Dashboard\Brief\MorningBriefService;
+use Dashboard\Findings\FindingService;
 use Dashboard\Digest\DigestService;
 use Dashboard\Graph\GraphService;
 use Dashboard\Handoff\HandoffService;
@@ -30,6 +32,8 @@ use Dashboard\Search\SearchService;
 use Dashboard\Shopping\ShoppingService;
 use Dashboard\Support\Clock;
 use Dashboard\Todo\TodoService;
+use Dashboard\Trips\TripService;
+use Dashboard\Videos\VideoSlateService;
 use Dashboard\Widgets\WidgetDataService;
 use Dashboard\Widgets\WidgetService;
 
@@ -66,6 +70,10 @@ final class Services
     public readonly GraphService $graph;
     public readonly MorningBriefService $briefs;
     public readonly HandoffService $handoffs;
+    public readonly BriefDigestService $briefsDigest;
+    public readonly TripService $trips;
+    public readonly VideoSlateService $videos;
+    public readonly FindingService $findings;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -99,6 +107,10 @@ final class Services
         $this->graph = new GraphService($db);
         $this->briefs = new MorningBriefService($db, $clock, $this->bills, $this->digest, $this->health);
         $this->handoffs = new HandoffService($db, $clock);
+        $this->briefsDigest = new BriefDigestService($db, $clock);
+        $this->trips = new TripService($db, $clock, $this->pages);
+        $this->videos = new VideoSlateService($db, $clock);
+        $this->findings = new FindingService($db, $clock, $this->pages);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,

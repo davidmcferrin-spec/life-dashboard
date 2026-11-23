@@ -34,9 +34,10 @@ final class HandoffService
         $tags = HandoffInput::tags($input['tags'] ?? []);
         $pages = $this->pages($userId, HandoffInput::pageIds($input['linked_page_ids'] ?? []));
         $urls = HandoffInput::urls($input['linked_urls'] ?? []);
+        $tripId = $this->tripId($userId, $input['trip_id'] ?? null);
         $now = $this->stamp();
 
-        $id = $this->db->transaction(function () use ($userId, $title, $body, $actor, $to, $priority, $due, $tags, $pages, $urls, $now): int {
+        $id = $this->db->transaction(function () use ($userId, $title, $body, $actor, $to, $priority, $due, $tags, $pages, $urls, $tripId, $now): int {
             $id = (int) $this->db->fetchScalar(
                 'INSERT INTO handoffs (
                     user_id, title, body, from_agent, to_agent, status, priority, due_at,
@@ -48,6 +49,12 @@ final class HandoffService
                     PgArray::text($tags), PgArray::ints($pages), PgArray::text($urls), $now, $now,
                 ]
             );
+            if ($tripId !== null) {
+                $this->db->execute(
+                    'UPDATE handoffs SET trip_id = ? WHERE id = ? AND user_id = ?',
+                    [$tripId, $id, $userId]
+                );
+            }
             $this->event($userId, $id, 'created', 'open', '', $actor, $now);
 
             return $id;
@@ -422,10 +429,30 @@ final class HandoffService
             'linked_page_ids' => PgArray::readInts($row['linked_page_ids'] ?? '{}'),
             'linked_urls'     => PgArray::readText($row['linked_urls'] ?? '{}'),
             'claimed_by'      => $row['claimed_by'] !== null ? (string) $row['claimed_by'] : null,
+            'trip_id'         => isset($row['trip_id']) && $row['trip_id'] !== null ? (int) $row['trip_id'] : null,
             'created_at'      => (string) $row['created_at'],
             'updated_at'      => (string) $row['updated_at'],
             'overdue'         => $open && $due !== null && $due < $this->stamp(),
         ];
+    }
+
+    private function tripId(int $userId, mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+        if (is_string($value) && preg_match('/^\d+$/', $value) === 1) {
+            $value = (int) $value;
+        }
+        if (is_bool($value) || !is_int($value) || $value < 1) {
+            throw ValidationException::withFields(['trip_id' => 'trip_id must be a trip.']);
+        }
+        $row = $this->db->fetchOne('SELECT id FROM trips WHERE id = ? AND user_id = ?', [$value, $userId]);
+        if ($row === null) {
+            throw ValidationException::withFields(['trip_id' => 'That trip was not found.']);
+        }
+
+        return $value;
     }
 
     private function stamp(): string

@@ -853,6 +853,15 @@ final class ExtendedApi
         $r->post('/api/v1/calls/contacts', fn () => $this->run(fn (int $u) => [
             'contact' => $this->svc->calls->upsertContact($u, $this->runner->body()),
         ], 200, true));
+        $r->get('/api/v1/calls/contacts/find', fn () => $this->run(fn (int $u) => [
+            'contacts' => $this->svc->calls->findContacts($u, (string) ($_GET['q'] ?? '')),
+        ]));
+        $r->post('/api/v1/calls/contacts/add', fn () => $this->run(fn (int $u) => [
+            'contact' => $this->svc->calls->addContact($u, $this->runner->body()),
+        ], 201, true));
+        $r->post('/api/v1/calls/contacts/{id}', fn (array $p) => $this->run(fn (int $u) => [
+            'contact' => $this->svc->calls->updateContact($u, self::id($p), $this->runner->body()),
+        ], 200, true));
         $r->get('/api/v1/calls/agencies', fn () => $this->run(fn (int $u) => [
             'agencies' => $this->svc->calls->agencies($u),
         ]));
@@ -868,6 +877,9 @@ final class ExtendedApi
                 'from'          => self::strParam('from'),
                 'to'            => self::strParam('to'),
                 'phone'         => self::strParam('phone'),
+                'placed_by'     => self::strParam('placed_by'),
+                'outcome'       => self::strParam('outcome'),
+                'contact_id'    => self::strParam('contact_id'),
                 'limit'         => (int) ($_GET['limit'] ?? 50),
             ];
             if (array_key_exists('return_needed', $_GET) && $_GET['return_needed'] !== '') {
@@ -904,6 +916,7 @@ final class ExtendedApi
         (new DigestApi($this->runner, $this->svc))->register($r);
         (new PlatformApi($this->runner, $this->svc))->register($r);
         (new HandoffApi($this->runner, $this->svc))->register($r);
+        (new BoardApi($this->runner, $this->svc))->register($r);
     }
 
     private function registerOllama(Router $r): void

@@ -17,6 +17,7 @@ final class AgentPresence
     private const RULES = [
         ['Money', ['/money', 'money_', 'transaction', 'sinking', 'debt', 'budget', 'net_worth', 'credit_score']],
         ['Reddit', ['/reddit', 'reddit']],
+        ['Briefs', ['/digests', 'publish_digest']],
         ['Digest', ['/digest', 'digest_']],
         ['Vault', ['/pages', 'page:', 'folder:', 'search_pages', 'write_page', 'get_page', 'read_page', 'patch_page', 'archive_page', 'unarchive_page', 'list_folder_contents', 'list_changed_pages', 'list_folders', 'move_page', 'move_folder', 'create_folder', 'rename_folder', 'delete_folder']],
         ['Todos', ['/todos', 'todo']],
@@ -32,6 +33,9 @@ final class AgentPresence
         ['Search', ['/search']],
         ['Local AI', ['/ollama', 'ollama_']],
         ['Handoffs', ['/handoffs', 'handoff']],
+        ['Trips', ['/trips', 'trip']],
+        ['Videos', ['/videos', 'video']],
+        ['Findings', ['/findings', 'finding']],
     ];
 
     /**
