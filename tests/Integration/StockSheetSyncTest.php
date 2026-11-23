@@ -98,6 +98,70 @@ final class StockSheetSyncTest extends PgsqlTestCase
         self::assertSame(['QQQ'], $this->symbols($this->other, 'watchlist'));
     }
 
+    public function testHistoryOutlivesTheRollingSheetAndABlankReload(): void
+    {
+        $ada = '1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        $this->sync->saveSettings($this->user, [
+            'spreadsheet_id' => $ada,
+            'service_account_json' => $this->key('sheet-a@test.iam.gserviceaccount.com'),
+        ]);
+        $this->reader->bySheet[$ada] = [
+            'Watchlist' => [
+                ['Symbol', 'Price', 'Role'],
+                ['VOO', 635.54, 'Watch'],
+                ['NXST', 196.13, 'Watch'],
+            ],
+            'Commodities' => [],
+            'Play Account' => [],
+            'History' => [
+                ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+                ['VOO', 45985, 630, 640, 620, 635.54, 1000],
+                ['VOO', '2024-06-03', 80, 81, 79, 80.5, 10],
+                ['NXST', '2026-11-20', 190, 200, 180, 196.13, 100],
+            ],
+        ];
+        self::assertTrue($this->sync->syncUser($this->user)['ok']);
+
+        $this->reader->bySheet[$ada]['Watchlist'] = [
+            ['Symbol', 'Price', 'Role'],
+            ['VOO', '', 'Watch'],
+        ];
+        $this->reader->bySheet[$ada]['History'] = [
+            ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+            ['VOO', '2025-11-24', '', '#N/A', '#N/A', '#N/A', 1200],
+            ['VOO', '2026-11-21', 636, 638, 634, 637, 4000],
+        ];
+        self::assertTrue($this->sync->syncUser($this->user)['ok']);
+
+        $bars = $this->bars($this->user);
+        self::assertSame('2024-06-03', $bars['VOO|2024-06-03']['bar_date']);
+        self::assertEqualsWithDelta(80.5, (float) $bars['VOO|2024-06-03']['close_price'], 0.00001);
+        self::assertEqualsWithDelta(635.54, (float) $bars['VOO|2025-11-24']['close_price'], 0.00001);
+        self::assertEqualsWithDelta(630.0, (float) $bars['VOO|2025-11-24']['open_price'], 0.00001);
+        self::assertEqualsWithDelta(1200.0, (float) $bars['VOO|2025-11-24']['volume'], 0.00001);
+        self::assertEqualsWithDelta(637.0, (float) $bars['VOO|2026-11-21']['close_price'], 0.00001);
+        self::assertEqualsWithDelta(196.13, (float) $bars['NXST|2026-11-20']['close_price'], 0.00001);
+        self::assertSame(0, (int) $this->db->fetchScalar('SELECT COUNT(*) FROM stock_sheet_bars WHERE user_id = ?', [$this->other]));
+        self::assertEqualsWithDelta(635.54, (float) $this->db->fetchScalar(
+            'SELECT price FROM stock_sheet_ticks WHERE user_id = ? AND symbol = ?',
+            [$this->user, 'VOO']
+        ), 0.00001);
+
+        $this->reader->bySheet[$ada]['History'] = [];
+        self::assertTrue($this->sync->syncUser($this->user)['ok']);
+        self::assertCount(4, $this->bars($this->user));
+
+        $this->reader->bySheet[$ada]['History'] = [['#N/A']];
+        self::assertTrue($this->sync->syncUser($this->user)['ok']);
+        self::assertCount(4, $this->bars($this->user));
+
+        $year = $this->sync->history($this->user, 'VOO', 'year');
+        $dates = array_column($year['ranges']['year']['points'], 'date');
+        self::assertContains('2025-11-24', $dates);
+        self::assertNotContains('2024-06-03', $dates);
+        self::assertSame('09:00', $this->sync->history($this->user, 'VOO', 'day')['ranges']['day']['points'][0]['label']);
+    }
+
     private function key(string $email): string
     {
         return json_encode([
@@ -138,6 +202,24 @@ final class StockSheetSyncTest extends PgsqlTestCase
         );
 
         return array_map(static fn (array $row): string => (string) $row['symbol'], $rows);
+    }
+
+    /**
+     * @return array<string, array<string, mixed>>
+     */
+    private function bars(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT symbol, bar_date::text AS bar_date, open_price, close_price, volume
+             FROM stock_sheet_bars WHERE user_id = ? ORDER BY symbol, bar_date',
+            [$userId]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[$row['symbol'] . '|' . $row['bar_date']] = $row;
+        }
+
+        return $out;
     }
 }
 

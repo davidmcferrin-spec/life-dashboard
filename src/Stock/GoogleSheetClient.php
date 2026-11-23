@@ -79,6 +79,10 @@ final class GoogleSheetClient implements SheetReader
             if ($title === 'Play Account' && $response['status'] === 400) {
                 return [];
             }
+            // An error from History is an unread tab, not an empty history.
+            if ($title === 'History') {
+                return [];
+            }
             throw SheetException::make($message);
         }
         if (!is_array($decoded)) {
@@ -129,6 +133,8 @@ final class GoogleSheetClient implements SheetReader
             'Watchlist'    => 'Watchlist!A:Z',
             'Commodities'  => 'Commodities!A:Z',
             'Play Account' => "'Play Account'!A:E",
+            // History Raw is a helper tab. This range is the History tab only.
+            'History'      => 'History!A:Z',
         ];
     }
 

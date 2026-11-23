@@ -293,8 +293,10 @@
             items.push({ act: 'filter', label: 'Filter to symbol' });
             const menu = window.FinTable ? window.FinTable.rowMenu(items) : '';
             const filter = [asset, row.symbol].join(' ');
+            const focusName = position ? (position.name || position.symbol) : (quote && quote.name ? quote.name : row.symbol);
             return '<tr data-filter="' + esc(filter) + '" data-symbol="' + esc(row.symbol) + '" data-position="' + esc(position ? position.id : '') + '" data-watch="' + esc(quote ? quote.id : '') + '"><td>'
-                + esc(asset) + '</td><td class="fin-symbol">' + esc(row.symbol) + '</td><td class="fin-num">' + esc(shareText) + '</td><td class="fin-num">'
+                + esc(asset) + '</td><td class="fin-symbol"><button type="button" class="fin-symbol-focus" data-focus-symbol="' + esc(row.symbol)
+                + '" data-focus-name="' + esc(focusName) + '">' + esc(row.symbol) + '</button></td><td class="fin-num">' + esc(shareText) + '</td><td class="fin-num">'
                 + esc(price == null ? '—' : dashMoney(price)) + '</td><td class="fin-num">' + esc(dashMoney(value)) + '</td><td class="fin-num ' + tone + '">'
                 + esc(signedPct(ratio, 1) || move || '—') + '</td><td class="fin-actions">' + menu + '</td></tr>';
         }).join('');
@@ -309,6 +311,7 @@
                 list
             );
         }
+        if (window.StockChart) window.StockChart.mark();
     }
 
     async function loadList() {

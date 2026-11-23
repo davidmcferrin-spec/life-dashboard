@@ -152,6 +152,28 @@ $finIcon = static function (string $name): void {
         <p id="stocks-sheet-setup" class="fin-note" hidden><a href="/settings/stock-sheet">Connect the Google Sheet</a></p>
     </section>
 
+    <section class="fin-card" id="stocks-symbol" aria-labelledby="stocks-symbol-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <span class="fin-icon" aria-hidden="true"><?php $finIcon('chart-column'); ?></span>
+                <div>
+                    <span class="fin-eyebrow" id="stocks-symbol-eyebrow">Symbol</span>
+                    <h2 id="stocks-symbol-title">Price history</h2>
+                </div>
+            </div>
+            <div class="fin-ranges" role="tablist" aria-label="Chart range">
+                <button type="button" class="fin-range" role="tab" id="stocks-range-day" data-range="day" aria-selected="false">Day</button>
+                <button type="button" class="fin-range" role="tab" id="stocks-range-week" data-range="week" aria-selected="false">Week</button>
+                <button type="button" class="fin-range" role="tab" id="stocks-range-month" data-range="month" aria-selected="false">Month</button>
+                <button type="button" class="fin-range" role="tab" id="stocks-range-year" data-range="year" aria-selected="true">Year</button>
+            </div>
+        </header>
+        <p id="stocks-symbol-change" class="fin-note"></p>
+        <div id="stocks-symbol-chart" class="fin-chart">
+            <p class="fin-note">Select a symbol to see Day, Week, Month, and Year.</p>
+        </div>
+    </section>
+
     <section class="fin-card" aria-labelledby="stocks-watch-title">
         <header class="fin-card-head">
             <div class="fin-card-title">
@@ -193,6 +215,7 @@ $finIcon = static function (string $name): void {
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/fin-table.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/stocks-chart.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/stocks-manage.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/stocks-sheet.js?v=<?= e($assetVer) ?>"></script>
 </body>

@@ -12,6 +12,7 @@ def test_stock_sheet_tools_are_registered():
         "get_commodities",
         "get_play_account",
         "get_sheet_sync_status",
+        "get_stock_history",
         "refresh_sheet_sync",
     ]
     for name in expected:
@@ -21,6 +22,8 @@ def test_stock_sheet_tools_are_registered():
     assert "stocks:read" in described["get_commodities"]
     assert "stocks:read" in described["get_play_account"]
     assert "stocks:read" in described["get_sheet_sync_status"]
+    assert "stocks:read" in described["get_stock_history"]
+    assert "read only" in described["get_stock_history"].lower()
     assert "service account" in described["get_sheet_sync_status"]
     assert "stocks:write" in described["refresh_sheet_sync"]
     assert "read only" in described["refresh_sheet_sync"].lower() or "Read only" in described["refresh_sheet_sync"]
@@ -37,6 +40,16 @@ def test_stock_sheet_tools_resolve_onto_the_stocks_api():
     assert resolve("get_play_account", {}) == ("GET", "/api/v1/stocks/sheet/play", None)
     assert resolve("get_sheet_sync_status", {}) == ("GET", "/api/v1/stocks/sheet/status", None)
     assert resolve("refresh_sheet_sync", {}) == ("POST", "/api/v1/stocks/sheet/refresh", {})
+    assert resolve("get_stock_history", {"symbol": "voo"}) == (
+        "GET",
+        "/api/v1/stocks/sheet/history?symbol=VOO",
+        None,
+    )
+    assert resolve("get_stock_history", {"symbol": "NXST", "range": "day"}) == (
+        "GET",
+        "/api/v1/stocks/sheet/history?symbol=NXST&range=day",
+        None,
+    )
 
 
 def test_stock_sheet_tools_reject_extra_fields():
@@ -46,3 +59,9 @@ def test_stock_sheet_tools_reject_extra_fields():
         resolve("get_stock_watchlist", {"symbol": "SPY"})
     with pytest.raises(ValueError):
         resolve("get_play_account", {"pnl": 10})
+    with pytest.raises(ValueError):
+        resolve("get_stock_history", {})
+    with pytest.raises(ValueError):
+        resolve("get_stock_history", {"symbol": "VOO", "range": "decade"})
+    with pytest.raises(ValueError):
+        resolve("get_stock_history", {"symbol": "VOO", "write": True})

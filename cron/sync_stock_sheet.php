@@ -7,6 +7,7 @@ declare(strict_types=1);
  * cron/sync_stock_sheet.php — pull the Stocks Google Sheet.
  *
  * Read-only. Skips a user until a service account key is saved.
+ * History bars are upserted. A day that leaves the sheet, or a blank cell, is kept.
  * systemd: lifedash-job@stocksheet on weekdays, 8:30–15:30 America/Chicago.
  */
 

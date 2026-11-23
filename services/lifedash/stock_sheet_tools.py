@@ -6,9 +6,13 @@ compute a portfolio from it. The service account key stays in Settings.
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import urlencode
 
 _EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
+_SYMBOL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-]{0,31}$")
+_RANGES = ("day", "week", "month", "year")
 
 STOCK_SHEET_TOOLS: list[dict[str, Any]] = [
     {
@@ -44,6 +48,28 @@ STOCK_SHEET_TOOLS: list[dict[str, Any]] = [
         "inputSchema": _EMPTY,
     },
     {
+        "name": "get_stock_history",
+        "description": (
+            "Stored price history for one symbol from the Stocks sheet. "
+            "Day is the hourly price taken when the sheet sync runs. Week, month, and year are daily closes. "
+            "The sheet is read only, and days that age off its rolling year stay stored. "
+            "A blank or #N/A cell does not erase a stored price. Requires stocks:read."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol": {"type": "string", "description": "Ticker, such as VOO."},
+                "range": {
+                    "type": "string",
+                    "enum": list(_RANGES),
+                    "description": "day, week, month, or year. Omit it to return all four.",
+                },
+            },
+            "required": ["symbol"],
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "refresh_sheet_sync",
         "description": (
             "Pull the Stocks sheet now. Read only: nothing is written back to the spreadsheet. "
@@ -67,6 +93,20 @@ def resolve_stock_sheet(name: str, args: dict[str, Any]) -> tuple[str, str, dict
     if name == "get_sheet_sync_status":
         _empty(name, args)
         return "GET", "/api/v1/stocks/sheet/status", None
+    if name == "get_stock_history":
+        unknown = set(args) - {"symbol", "range"}
+        if unknown:
+            raise ValueError("get_stock_history accepts only symbol and range.")
+        symbol = args.get("symbol")
+        if not isinstance(symbol, str) or _SYMBOL.fullmatch(symbol.strip()) is None:
+            raise ValueError("symbol must be a ticker.")
+        query: dict[str, str] = {"symbol": symbol.strip().upper()}
+        if "range" in args:
+            rng = args["range"]
+            if not isinstance(rng, str) or rng not in _RANGES:
+                raise ValueError("range must be day, week, month, or year.")
+            query["range"] = rng
+        return "GET", "/api/v1/stocks/sheet/history?" + urlencode(query), None
     if name == "refresh_sheet_sync":
         _empty(name, args)
         return "POST", "/api/v1/stocks/sheet/refresh", {}

@@ -16,6 +16,7 @@ use Dashboard\Support\HttpClient;
 use Dashboard\Stock\SheetException;
 use Dashboard\Stock\SheetFreshness;
 use Dashboard\Stock\SheetGrid;
+use Dashboard\Stock\StockChart;
 use Dashboard\Stock\SheetReader;
 use Dashboard\Stock\SheetTransport;
 use Dashboard\Stock\StockSheetConfig;
@@ -101,6 +102,127 @@ final class StockSheetTest extends TestCase
         self::assertNull(SheetGrid::number('#N/A'));
     }
 
+    public function testHistoryParsesSerialDatesAndSkipsBlankReloads(): void
+    {
+        self::assertSame('2025-11-24', SheetGrid::date(45985));
+        self::assertSame('2025-11-24', SheetGrid::date('45985'));
+        self::assertSame('2025-11-24', SheetGrid::date('2025-11-24'));
+        self::assertNull(SheetGrid::date('#N/A'));
+        self::assertNull(SheetGrid::date(''));
+
+        $rows = SheetGrid::history([
+            ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+            ['voo', 45985, 630, 640, 620, 635.54, 1000],
+            ['VOO', '2026-11-20', '', '#N/A', null, '#N/A', ''],
+            ['', '', '', '', '', '', ''],
+            ['NXST', '2026-11-20', 190, 200, 180, '196.13', '2,500'],
+            ['ANT', '#N/A', 1, 1, 1, 1, 1],
+        ]);
+        self::assertCount(3, $rows);
+        self::assertSame('VOO', $rows[0]['symbol']);
+        self::assertSame('2025-11-24', $rows[0]['date']);
+        self::assertEqualsWithDelta(635.54, $rows[0]['close'], 0.00001);
+        self::assertSame('2026-11-20', $rows[1]['date']);
+        self::assertNull($rows[1]['open']);
+        self::assertNull($rows[1]['close']);
+        self::assertNull($rows[1]['volume']);
+        self::assertSame('NXST', $rows[2]['symbol']);
+        self::assertEqualsWithDelta(196.13, $rows[2]['close'], 0.00001);
+        self::assertEqualsWithDelta(2500.0, $rows[2]['volume'], 0.00001);
+        self::assertNull(SheetGrid::history([]));
+
+        try {
+            SheetGrid::history([['#N/A']]);
+            self::fail('a history tab without headers should be rejected');
+        } catch (SheetException $e) {
+            self::assertStringContainsString('History', $e->getMessage());
+        }
+    }
+
+    public function testHistoryKeepsPricesTheSheetStoppedReturning(): void
+    {
+        $settings = new ArraySheetSettings();
+        $settings->users[1] = [
+            'configured' => true,
+            'spreadsheet_id' => '1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'account' => ['client_email' => 'a@test.iam.gserviceaccount.com', 'private_key' => 'key'],
+        ];
+        $reader = new GridSheetReader();
+        $id = '1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+        $reader->bySheet[$id] = [
+            'Watchlist' => [
+                ['Symbol', 'Price', 'Role'],
+                ['VOO', 635.54, 'Watch'],
+            ],
+            'Commodities' => [],
+            'Play Account' => [],
+            'History' => [
+                ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+                ['VOO', 45985, 630, 640, 620, 635.54, 1000],
+                ['VOO', '2024-06-03', 80, 81, 79, 80.5, 10],
+                ['NXST', '2026-11-20', 190, 200, 180, 196.13, 100],
+            ],
+        ];
+        $store = new MemorySheetStore();
+        $clock = new Clock('America/Chicago', new DateTimeImmutable('2026-11-23 15:00:00', new DateTimeZone('UTC')));
+        $sync = new StockSheetSync($settings, $store, $reader, $clock);
+        self::assertTrue($sync->syncUser(1)['ok']);
+
+        $reader->bySheet[$id]['Watchlist'] = [
+            ['Symbol', 'Price', 'Role'],
+            ['VOO', '', 'Watch'],
+        ];
+        $reader->bySheet[$id]['History'] = [
+            ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+            ['VOO', '2026-11-20', '', '#N/A', '#N/A', '#N/A', ''],
+            ['VOO', '2026-11-21', 636, 638, 634, 637, 4000],
+        ];
+        self::assertTrue($sync->syncUser(1)['ok']);
+
+        $bars = $store->bars(1, 'VOO');
+        $byDate = [];
+        foreach ($bars as $bar) {
+            $byDate[$bar['date']] = $bar;
+        }
+        self::assertEqualsWithDelta(635.54, $byDate['2025-11-24']['close'], 0.00001);
+        self::assertEqualsWithDelta(80.5, $byDate['2024-06-03']['close'], 0.00001);
+        self::assertEqualsWithDelta(637.0, $byDate['2026-11-21']['close'], 0.00001);
+        self::assertCount(1, $store->bars(1, 'NXST'));
+        self::assertEqualsWithDelta(196.13, $store->bars(1, 'NXST')[0]['close'], 0.00001);
+        self::assertEqualsWithDelta(635.54, $store->ticks(1, 'VOO')[0]['price'], 0.00001);
+
+        $reader->bySheet[$id]['History'] = [
+            ['Symbol', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume'],
+            ['VOO', '2026-11-21', 636, '#N/A', 634, '#N/A', 4500],
+        ];
+        self::assertTrue($sync->syncUser(1)['ok']);
+        $updated = $store->bars(1, 'VOO');
+        $nov21 = $updated[array_key_last($updated)];
+        self::assertSame('2026-11-21', $nov21['date']);
+        self::assertEqualsWithDelta(637.0, $nov21['close'], 0.00001);
+        self::assertEqualsWithDelta(638.0, $nov21['high'], 0.00001);
+        self::assertEqualsWithDelta(4500.0, $nov21['volume'], 0.00001);
+
+        $reader->bySheet[$id]['History'] = [];
+        self::assertTrue($sync->syncUser(1)['ok']);
+        self::assertCount(3, $store->bars(1, 'VOO'));
+        self::assertCount(1, $store->bars(1, 'NXST'));
+
+        $reader->bySheet[$id]['History'] = [['#N/A']];
+        self::assertTrue($sync->syncUser(1)['ok']);
+        self::assertEqualsWithDelta(635.54, $byDate['2025-11-24']['close'], 0.00001);
+        self::assertCount(3, $store->bars(1, 'VOO'));
+
+        $chart = $sync->history(1, 'voo');
+        self::assertSame('VOO', $chart['symbol']);
+        self::assertSame(['day', 'week', 'month', 'year'], array_keys($chart['ranges']));
+        $yearDates = array_column($chart['ranges']['year']['points'], 'date');
+        self::assertContains('2025-11-24', $yearDates);
+        self::assertNotContains('2024-06-03', $yearDates);
+        self::assertSame('09:00', $chart['ranges']['day']['points'][0]['label']);
+        self::assertArrayNotHasKey('week', $sync->history(1, 'VOO', 'year')['ranges']);
+    }
+
     public function testDuplicateSymbolKeepsTheLaterRow(): void
     {
         $rows = SheetGrid::watchlist([
@@ -159,7 +281,17 @@ final class StockSheetTest extends TestCase
             }
         }
         self::assertSame(1, $post);
-        self::assertSame(3, $get);
+        self::assertSame(4, $get);
+        $history = false;
+        foreach ($http->calls as $call) {
+            $decoded = rawurldecode($call['url']);
+            self::assertStringNotContainsString('History Raw', $decoded);
+            if (str_contains($decoded, 'History!')) {
+                $history = true;
+                self::assertSame('GET', $call['method']);
+            }
+        }
+        self::assertTrue($history);
         self::assertNotContains('evil.example', $hosts);
         self::assertSame('nope [redacted]', SheetException::safe('nope ya29.secret-token'));
         self::assertStringNotContainsString('secret-token', SheetException::safe('Bearer ya29.secret-token'));
@@ -317,7 +449,9 @@ final class StockSheetTest extends TestCase
     public function testRoutesStayOnStocksAndOutOfSectors(): void
     {
         self::assertSame('stocks:read', Scope::forPath('/api/v1/stocks/sheet/watchlist', false));
+        self::assertSame('stocks:read', Scope::forPath('/api/v1/stocks/sheet/history', false));
         self::assertSame('stocks:write', Scope::forPath('/api/v1/stocks/sheet/refresh', true));
+        self::assertSame('stock_sheet', ApiRunner::entityFromPath('/api/v1/stocks/sheet/history'));
         self::assertSame('stock_sheet', ApiRunner::entityFromPath('/api/v1/stocks/sheet/settings'));
         self::assertNull(ApiRunner::sectorFromPath('/api/v1/stocks/sheet/refresh'));
         $allow = Scope::auditEntityAllow(['stocks:read'], 'stock_sheet');
@@ -624,6 +758,73 @@ final class MemorySheetStore implements StockSheetStore
         $previous['sync_error'] = $message;
         $previous['last_attempt_at'] = $attemptedAt;
         $this->data[$userId]['status'] = $previous;
+    }
+
+    public function upsertBars(int $userId, array $bars): void
+    {
+        $existing = $this->data[$userId]['bars'] ?? [];
+        foreach ($bars as $bar) {
+            $symbol = strtoupper(trim((string) ($bar['symbol'] ?? '')));
+            $date = (string) ($bar['date'] ?? '');
+            if ($symbol === '' || $date === '') {
+                continue;
+            }
+            $key = $symbol . '|' . $date;
+            $kept = \Dashboard\Stock\StockChart::keep($existing[$key] ?? null, $bar);
+            if ($kept === null) {
+                continue;
+            }
+            $kept['symbol'] = $symbol;
+            $kept['date'] = $date;
+            $existing[$key] = $kept;
+        }
+        $this->data[$userId]['bars'] = $existing;
+    }
+
+    public function snapshot(int $userId, array $quotes, string $capturedAt): void
+    {
+        $ticks = $this->data[$userId]['ticks'] ?? [];
+        $seen = [];
+        foreach ($quotes as $row) {
+            $symbol = strtoupper(trim((string) ($row['symbol'] ?? '')));
+            $price = $row['price'] ?? null;
+            if ($symbol === '' || $price === null || $price === '' || isset($seen[$symbol])) {
+                continue;
+            }
+            $seen[$symbol] = true;
+            $ticks[$symbol . '|' . $capturedAt] = [
+                'symbol' => $symbol,
+                'at'     => $capturedAt,
+                'price'  => (float) $price,
+            ];
+        }
+        $this->data[$userId]['ticks'] = $ticks;
+    }
+
+    public function bars(int $userId, string $symbol): array
+    {
+        $out = [];
+        foreach ($this->data[$userId]['bars'] ?? [] as $bar) {
+            if (($bar['symbol'] ?? '') === $symbol) {
+                $out[] = $bar;
+            }
+        }
+        usort($out, static fn (array $a, array $b): int => strcmp((string) $a['date'], (string) $b['date']));
+
+        return $out;
+    }
+
+    public function ticks(int $userId, string $symbol): array
+    {
+        $out = [];
+        foreach ($this->data[$userId]['ticks'] ?? [] as $tick) {
+            if (($tick['symbol'] ?? '') === $symbol) {
+                $out[] = $tick;
+            }
+        }
+        usort($out, static fn (array $a, array $b): int => strcmp((string) $a['at'], (string) $b['at']));
+
+        return $out;
     }
 }
 

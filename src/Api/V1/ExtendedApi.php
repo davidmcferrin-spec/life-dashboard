@@ -938,6 +938,11 @@ final class ExtendedApi
         $r->get('/api/v1/stocks/sheet/status', fn () => $this->run(fn (int $u) => [
             'sync' => $this->svc->sheets->status($u),
         ]));
+        $r->get('/api/v1/stocks/sheet/history', fn () => $this->run(fn (int $u) => $this->svc->sheets->history(
+            $u,
+            (string) ($_GET['symbol'] ?? ''),
+            isset($_GET['range']) ? (string) $_GET['range'] : null,
+        )));
         $r->post('/api/v1/stocks/sheet/refresh', fn () => $this->run(
             fn (int $u) => $this->svc->sheets->refresh($u),
             200,

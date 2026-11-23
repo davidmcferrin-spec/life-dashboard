@@ -91,6 +91,105 @@ final class PgStockSheetStore implements StockSheetStore
         });
     }
 
+    public function upsertBars(int $userId, array $bars): void
+    {
+        if ($bars === []) {
+            return;
+        }
+        $this->db->transaction(function () use ($userId, $bars): void {
+            foreach ($bars as $bar) {
+                $symbol = strtoupper(trim((string) ($bar['symbol'] ?? '')));
+                $date = (string) ($bar['date'] ?? '');
+                if ($symbol === '' || $date === '') {
+                    continue;
+                }
+                $open = self::num($bar['open'] ?? null);
+                $high = self::num($bar['high'] ?? null);
+                $low = self::num($bar['low'] ?? null);
+                $close = self::num($bar['close'] ?? null);
+                $volume = self::num($bar['volume'] ?? null);
+                if ($open === null && $high === null && $low === null && $close === null && $volume === null) {
+                    continue;
+                }
+                $this->db->execute(
+                    'INSERT INTO stock_sheet_bars (user_id, symbol, bar_date, open_price, high_price, low_price, close_price, volume)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     ON CONFLICT (user_id, symbol, bar_date) DO UPDATE SET
+                        open_price = COALESCE(EXCLUDED.open_price, stock_sheet_bars.open_price),
+                        high_price = COALESCE(EXCLUDED.high_price, stock_sheet_bars.high_price),
+                        low_price = COALESCE(EXCLUDED.low_price, stock_sheet_bars.low_price),
+                        close_price = COALESCE(EXCLUDED.close_price, stock_sheet_bars.close_price),
+                        volume = COALESCE(EXCLUDED.volume, stock_sheet_bars.volume),
+                        updated_at = (now() AT TIME ZONE \'UTC\')',
+                    [$userId, $symbol, $date, $open, $high, $low, $close, $volume]
+                );
+            }
+        });
+    }
+
+    public function snapshot(int $userId, array $quotes, string $capturedAt): void
+    {
+        $seen = [];
+        $this->db->transaction(function () use ($userId, $quotes, $capturedAt, &$seen): void {
+            foreach ($quotes as $row) {
+                $symbol = strtoupper(trim((string) ($row['symbol'] ?? '')));
+                $price = self::num($row['price'] ?? null);
+                if ($symbol === '' || $price === null || isset($seen[$symbol])) {
+                    continue;
+                }
+                $seen[$symbol] = true;
+                $this->db->execute(
+                    'INSERT INTO stock_sheet_ticks (user_id, symbol, captured_at, price)
+                     VALUES (?, ?, ?, ?)
+                     ON CONFLICT (user_id, symbol, captured_at) DO UPDATE SET
+                        price = COALESCE(EXCLUDED.price, stock_sheet_ticks.price),
+                        updated_at = (now() AT TIME ZONE \'UTC\')',
+                    [$userId, $symbol, $capturedAt, $price]
+                );
+            }
+        });
+    }
+
+    public function bars(int $userId, string $symbol): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT bar_date, open_price, high_price, low_price, close_price, volume
+             FROM stock_sheet_bars WHERE user_id = ? AND symbol = ? ORDER BY bar_date ASC',
+            [$userId, $symbol]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'date'   => (string) $row['bar_date'],
+                'open'   => self::num($row['open_price']),
+                'high'   => self::num($row['high_price']),
+                'low'    => self::num($row['low_price']),
+                'close'  => self::num($row['close_price']),
+                'volume' => self::num($row['volume']),
+            ];
+        }
+
+        return $out;
+    }
+
+    public function ticks(int $userId, string $symbol): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT captured_at, price FROM stock_sheet_ticks
+             WHERE user_id = ? AND symbol = ? AND price IS NOT NULL ORDER BY captured_at ASC',
+            [$userId, $symbol]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'at'    => (string) $row['captured_at'],
+                'price' => self::num($row['price']),
+            ];
+        }
+
+        return $out;
+    }
+
     public function writeError(int $userId, string $message, string $attemptedAt): void
     {
         $this->db->execute(
