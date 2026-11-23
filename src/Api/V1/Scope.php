@@ -22,7 +22,7 @@ final class Scope
     public const AREAS = [
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
-        'spotify', 'ollama', 'digest', 'agents', 'health', 'home', 'mail',
+        'spotify', 'ollama', 'digest', 'agents', 'health', 'home', 'mail', 'handoffs',
     ];
 
     public const MONEY_ENTITIES = [
@@ -48,6 +48,8 @@ final class Scope
 
     public const BRIEF_ENTITIES = ['brief'];
 
+    public const HANDOFF_ENTITIES = ['handoff'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -64,6 +66,7 @@ final class Scope
         'digest',
         'health_point', 'health_workout', 'meal_log', 'blood_pressure', 'medication', 'medication_dose', 'appointment',
         'brief',
+        'handoff',
         'deploy',
     ];
 
@@ -229,6 +232,9 @@ final class Scope
         }
         if (self::allows($granted, 'health:read')) {
             $allow = array_merge($allow, self::HEALTH_ENTITIES);
+        }
+        if (self::allows($granted, 'handoffs:read')) {
+            $allow = array_merge($allow, self::HANDOFF_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

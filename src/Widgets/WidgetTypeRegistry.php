@@ -142,6 +142,12 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
                 'fields' => [],
             ],
+            'handoffs' => [
+                'label' => 'Open handoffs', 'category' => 'life', 'singleton' => false,
+                'description' => 'Open handoffs counted by agent, plus anything overdue.',
+                'size' => ['w' => 3, 'h' => 4], 'min' => ['w' => 2, 'h' => 3],
+                'fields' => [],
+            ],
             'vitals' => [
                 'label' => 'System vitals', 'category' => 'life', 'singleton' => true,
                 'description' => 'Habits, pings, and today\'s goals.',
@@ -370,6 +376,7 @@ final class WidgetTypeRegistry
             'shopping' => 'shopping-cart',
             'pantry' => 'cooking-pot',
             'digest' => 'bot',
+            'handoffs' => 'inbox',
             'legacy.weather' => 'sun',
             'legacy.todos' => 'clipboard-list',
             'legacy.bookmarks' => 'book',

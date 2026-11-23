@@ -903,6 +903,7 @@ final class ExtendedApi
         $this->registerAgents($r);
         (new DigestApi($this->runner, $this->svc))->register($r);
         (new PlatformApi($this->runner, $this->svc))->register($r);
+        (new HandoffApi($this->runner, $this->svc))->register($r);
     }
 
     private function registerOllama(Router $r): void

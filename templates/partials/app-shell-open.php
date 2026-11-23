@@ -72,6 +72,7 @@ $shellItems = [
     ['Grok Digest', '/digest', 'bot'],
     ['Health', '/health', 'heart-pulse'],
     ['Brief', '/brief', 'sun'],
+    ['Handoffs', '/handoffs', 'inbox'],
     ['Links', '/graph', 'link'],
 ];
 if ((int) ($user['is_admin'] ?? 0) === 1) {

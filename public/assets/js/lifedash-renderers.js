@@ -1420,6 +1420,23 @@
             </a>`).join('')}</div>`;
     }
 
+    function handoffs(ctx) {
+        tools(ctx, '<a href="/handoffs" class="nav-link">Board</a>');
+        const data = ctx.data || {};
+        const counts = data.counts || [];
+        const overdue = data.overdue || [];
+        const countHtml = counts.length
+            ? counts.map((row) => `<li><span>${esc(row.agent)}</span><strong>${esc(row.count)}</strong></li>`).join('')
+            : '<li class="handoff-widget-empty">No open handoffs</li>';
+        const late = overdue.map((row) => `<li><a href="/handoffs">${esc(row.title)}</a></li>`).join('');
+        ctx.body.innerHTML = `
+            <div class="handoff-widget">
+                <p class="handoff-widget-total">${esc(data.open || 0)} open</p>
+                <ul class="handoff-widget-counts">${countHtml}</ul>
+                ${late ? `<p class="handoff-widget-late">Overdue</p><ul class="handoff-widget-late-list">${late}</ul>` : ''}
+            </div>`;
+    }
+
     function digest(ctx) {
         tools(ctx, '<a href="/digest" class="nav-link">Digest</a>');
         const data = ctx.data || {};
@@ -1480,6 +1497,6 @@
             </div>`;
     }
 
-    window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, money_summary: moneySummary, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, vitals, agenda, quick_actions: quickActions, custom };
+        window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, money_summary: moneySummary, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, handoffs, vitals, agenda, quick_actions: quickActions, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

@@ -279,6 +279,7 @@ final class AuditLog
         'medication_dose'  => ['%/health/medications/%/doses%'],
         'appointment'      => ['%/health/appointments%'],
         'brief'           => ['%/brief%'],
+        'handoff'         => ['%/handoffs%'],
         'deploy'        => ['%/system/deploy%'],
     ];
 

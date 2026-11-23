@@ -1,0 +1,142 @@
+/* Handoff board and the home-dashboard count widget. */
+.handoff-filters,
+.handoff-create,
+.handoff-detail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+    align-items: end;
+}
+
+.handoff-create,
+.handoff-detail {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.handoff-create .input,
+.handoff-detail .input,
+.handoff-create textarea,
+.handoff-detail textarea,
+.handoff-create select,
+.handoff-detail select {
+    max-width: 36rem;
+}
+
+.handoff-board {
+    display: grid;
+    gap: var(--sp-3);
+    grid-auto-columns: minmax(14rem, 1fr);
+    grid-auto-flow: column;
+    overflow-x: auto;
+    padding-bottom: var(--sp-2);
+}
+
+.handoff-column {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    min-height: 12rem;
+    padding: var(--sp-3);
+}
+
+.handoff-column header {
+    color: var(--text-secondary);
+    display: flex;
+    font-size: 11px;
+    justify-content: space-between;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.handoff-card {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: inherit;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: var(--sp-2) var(--sp-3);
+    text-align: left;
+    width: 100%;
+}
+
+.handoff-card strong {
+    font-size: 14px;
+}
+
+.handoff-card span {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.handoff-card.is-high {
+    border-color: var(--warn);
+}
+
+.handoff-card.is-overdue,
+.handoff-due.is-overdue {
+    color: var(--danger);
+}
+
+.handoff-thread {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-2);
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.handoff-thread li {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: var(--sp-2);
+}
+
+.handoff-body {
+    white-space: pre-wrap;
+}
+
+.handoff-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--sp-2);
+}
+
+.handoff-widget-total {
+    font-size: 1.4rem;
+    font-variant-numeric: tabular-nums;
+    margin: 0 0 var(--sp-2);
+}
+
+.handoff-widget-counts,
+.handoff-widget-late-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.handoff-widget-counts li,
+.handoff-widget-late-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--sp-2);
+    padding: 0.2rem 0;
+}
+
+.handoff-widget-late {
+    color: var(--danger);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    margin: var(--sp-2) 0 0;
+    text-transform: uppercase;
+}
+
+.handoff-widget-empty {
+    color: var(--text-secondary);
+}

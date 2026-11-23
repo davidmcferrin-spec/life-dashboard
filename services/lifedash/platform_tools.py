@@ -20,7 +20,7 @@ PLATFORM_TOOLS: list[dict[str, Any]] = [
             "Write a short morning brief from stored digests, payday pressure, Home Assistant when it is connected, "
             "Spotify when connected, and health readiness when health data is stored. "
             "Calendar is included only when a calendar is connected. Missing facts are named, not invented. "
-            "Nothing is transferred."
+            "Nothing is transferred. When the key has handoffs:read, the response also lists open handoffs addressed to that key."
         ),
         "inputSchema": _EMPTY,
     },

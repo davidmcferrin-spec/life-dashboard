@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Dashboard\Api\V1;
 
+use Dashboard\Agents\AgentName;
 use Dashboard\Home\HomeStatus;
 use Dashboard\Router\Router;
 use Dashboard\Tracking\Services;
@@ -18,9 +19,7 @@ final class PlatformApi
 
     public function register(Router $r): void
     {
-        $r->post('/api/v1/brief', fn () => $this->run(function (int $u): array {
-            return $this->svc->briefs->compose($u);
-        }, 201, true));
+        $r->post('/api/v1/brief', fn () => $this->run(fn (int $u) => $this->compose($u), 201, true));
         $r->get('/api/v1/brief/history', fn () => $this->run(fn (int $u) => $this->svc->briefs->history($u)));
         $r->get('/api/v1/brief/schedule', fn () => $this->run(fn (int $u) => $this->svc->briefs->schedule($u)));
         $r->post('/api/v1/brief/schedule', fn () => $this->run(function (int $u): array {
@@ -97,6 +96,34 @@ final class PlatformApi
             'connected' => false,
             'detail'    => 'Mail is not connected on this server.',
         ]));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function compose(int $userId): array
+    {
+        $out = $this->svc->briefs->compose($userId);
+        $agent = $this->briefAgent();
+        if ($agent !== null) {
+            $out['open_handoffs'] = $this->svc->handoffs->openForAgent($userId, $agent);
+        }
+
+        return $out;
+    }
+
+    /** Open handoffs on a morning brief belong to the calling key, and only when that key can read them. */
+    private function briefAgent(): ?string
+    {
+        if ($this->runner->actor()->kind !== 'ai') {
+            return null;
+        }
+        $granted = $this->runner->grantedScopes();
+        if (is_array($granted) && !Scope::allows($granted, 'handoffs:read')) {
+            return null;
+        }
+
+        return AgentName::identity(true, $this->runner->tokenName(), '');
     }
 
     private static function str(string $name): ?string

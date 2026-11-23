@@ -31,6 +31,7 @@ final class AgentPresence
         ['Clipboards', ['/clipboard']],
         ['Search', ['/search']],
         ['Local AI', ['/ollama', 'ollama_']],
+        ['Handoffs', ['/handoffs', 'handoff']],
     ];
 
     /**

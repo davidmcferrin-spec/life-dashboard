@@ -445,6 +445,7 @@ final class ApiRunner
             '/health/appointments'  => 'appointment',
             '/health'               => 'health_point',
             '/brief'                => 'brief',
+            '/handoffs'             => 'handoff',
             '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {
@@ -460,7 +461,7 @@ final class ApiRunner
      */
     public static function entityIdFromPayload(array $payload): ?int
     {
-        foreach (['debt', 'account', 'sinking_fund', 'bill', 'envelope', 'payment', 'inflow', 'pot', 'plaid_item', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt', 'reading', 'medication', 'dose', 'appointment', 'meal'] as $key) {
+        foreach (['debt', 'account', 'sinking_fund', 'bill', 'envelope', 'payment', 'inflow', 'pot', 'plaid_item', 'todo', 'category', 'transaction', 'habit', 'item', 'list', 'call', 'contact', 'agency', 'product', 'lot', 'component', 'pairing', 'recipe', 'day', 'playlist', 'prompt', 'reading', 'medication', 'dose', 'appointment', 'meal', 'handoff'] as $key) {
             $row = $payload[$key] ?? null;
             if (is_array($row) && isset($row['id']) && is_numeric($row['id']) && (int) $row['id'] > 0) {
                 return (int) $row['id'];
@@ -476,7 +477,7 @@ final class ApiRunner
 
     public static function entityIdFromPath(string $path): ?int
     {
-        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|payments|inflows|benefit-pots|plaid/items|plaid/accounts|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts|medications|appointments)/(\d+)\b#', $path, $m) === 1) {
+        if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|payments|inflows|benefit-pots|plaid/items|plaid/accounts|items|categories|habits|lists|calls|lots|products|recipes|components|playlists|prompts|medications|appointments|handoffs)/(\d+)\b#', $path, $m) === 1) {
             return (int) $m[1];
         }
         return null;
