@@ -86,6 +86,12 @@ class SystemHealthService
             'staleMinutes'  => 240,
             'scheduleHint'  => 'Every 3 hours',
         ],
+        'stocksheet' => [
+            'label'         => 'Stock sheet',
+            'log'           => 'stocksheet.log',
+            'staleMinutes'  => 1800,
+            'scheduleHint'  => 'Weekdays 8:30–15:30 America/Chicago',
+        ],
     ];
 
     private const TAIL_CHUNK_BYTES = 65536;

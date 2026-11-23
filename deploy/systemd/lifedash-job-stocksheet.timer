@@ -1,0 +1,14 @@
+# Sheet quotes hourly through the cash session, plus one pull after the close.
+# 8:30 is the Chicago open. 15:30 is after 15:00.
+[Unit]
+Description=life-dashboard schedule: stocksheet (weekday sheet quotes, 8:30–15:30 America/Chicago)
+
+[Timer]
+OnCalendar=Mon..Fri *-*-* 08..15:30 America/Chicago
+Unit=lifedash-job@stocksheet.service
+Persistent=true
+RandomizedDelaySec=45s
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

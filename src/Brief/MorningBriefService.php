@@ -10,12 +10,13 @@ use Dashboard\Health\HealthService;
 use Dashboard\Home\HomeStatus;
 use Dashboard\Money\BillsService;
 use Dashboard\Spotify\SpotifyService;
+use Dashboard\Stock\StockSheetSync;
 use Dashboard\Support\Clock;
 use Dashboard\Support\ValidationException;
 
 /**
- * One short brief from stored calendar, digests, payday, home, music, and health.
- * Balances and vitals are never invented.
+ * One short brief from stored calendar, digests, payday, home, music, health, and sheet quotes.
+ * Balances, vitals, and portfolio results are never invented.
  */
 final class MorningBriefService
 {
@@ -25,6 +26,7 @@ final class MorningBriefService
         private readonly BillsService $bills,
         private readonly DigestService $digest,
         private readonly HealthService $health,
+        private readonly StockSheetSync $sheets,
     ) {}
 
     /**
@@ -39,6 +41,7 @@ final class MorningBriefService
             'home'     => $this->home(),
             'music'    => $this->music($userId),
             'health'   => $this->healthFacts($userId),
+            'market'   => $this->market($userId),
         ];
         $body = BriefText::render($facts);
         $this->db->execute(
@@ -159,6 +162,20 @@ final class MorningBriefService
         }
 
         return ['ran' => $ran, 'waiting' => $waiting];
+    }
+
+    /**
+     * Stored sheet quotes. A missing key is named. Play-account buys are not a portfolio.
+     *
+     * @return array<string, mixed>
+     */
+    private function market(int $userId): array
+    {
+        try {
+            return $this->sheets->snapshot($userId);
+        } catch (\Throwable) {
+            return ['error' => true, 'configured' => false];
+        }
     }
 
     /**
