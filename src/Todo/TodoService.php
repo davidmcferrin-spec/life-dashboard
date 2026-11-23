@@ -183,6 +183,66 @@ final class TodoService
     }
 
     /**
+     * Tasks on every list this person can open. New tasks still land on the pinned list.
+     *
+     * @return array{list: array<string, mixed>, items: list<array<string, mixed>>, can_write: bool, default_list_id: int|null, assignable_users: list<array<string, mixed>>}
+     */
+    public function listItemsAll(int $userId, string $status = 'open'): array
+    {
+        $lists = $this->listSummaries($userId);
+        $items = [];
+        $counts = ['open' => 0, 'completed' => 0, 'archived' => 0];
+
+        foreach ($lists as $summary) {
+            foreach ($counts as $key => $value) {
+                $counts[$key] = $value + (int) ($summary['counts'][$key] ?? 0);
+            }
+            $access = $this->resolveAccess((int) $summary['id'], $userId);
+            if ($access === null) {
+                continue;
+            }
+            $name = (string) $summary['name'];
+            if (empty($summary['is_owner']) && (string) ($summary['owner_username'] ?? '') !== '') {
+                $name .= ' (' . $summary['owner_username'] . ')';
+            }
+            foreach ($this->listItemsForAccess($access, $userId, $status, null, true) as $item) {
+                $item['list_name'] = $name;
+                $items[] = $item;
+            }
+        }
+
+        usort($items, static function (array $a, array $b): int {
+            $aDue = $a['due_date'] ?? null;
+            $bDue = $b['due_date'] ?? null;
+            if (($aDue === null) !== ($bDue === null)) {
+                return $aDue === null ? 1 : -1;
+            }
+            if ($aDue !== null && $aDue !== $bDue) {
+                return strcmp((string) $aDue, (string) $bDue);
+            }
+
+            return ((int) $a['id']) <=> ((int) $b['id']);
+        });
+
+        $defaultId = $this->defaultListId($lists);
+        $defaultAccess = $defaultId !== null ? $this->resolveAccess($defaultId, $userId) : null;
+
+        return [
+            'list' => [
+                'id'     => 'all',
+                'name'   => 'All',
+                'counts' => $counts,
+            ],
+            'items'            => $items,
+            'can_write'        => $defaultAccess?->canWrite() ?? false,
+            'default_list_id'  => $defaultId,
+            'assignable_users' => ($defaultAccess !== null && $defaultAccess->canWrite())
+                ? $this->assignableUsers($defaultAccess)
+                : [],
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function createList(int $userId, string $name): array
@@ -247,6 +307,9 @@ final class TodoService
             throw new \InvalidArgumentException('Status must be open, done, or all.');
         }
         $category = isset($filters['category']) ? trim((string) $filters['category']) : '';
+        if (strcasecmp($category, 'all') === 0) {
+            $category = '';
+        }
         if ($category !== '') {
             $this->requireOwnedCategory($userId, $category);
         }
@@ -722,6 +785,22 @@ final class TodoService
         }
 
         return $access;
+    }
+
+    /**
+     * The list a new task uses when no list is chosen: the first pinned list, else the first list.
+     *
+     * @param list<array<string, mixed>> $lists
+     */
+    private function defaultListId(array $lists): ?int
+    {
+        foreach ($lists as $list) {
+            if (!empty($list['pin_to_dashboard'])) {
+                return (int) $list['id'];
+            }
+        }
+
+        return $lists === [] ? null : (int) $lists[0]['id'];
     }
 
     /**

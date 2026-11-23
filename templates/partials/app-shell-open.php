@@ -67,6 +67,7 @@ $shellItems = [
     ['Clipboard', '/settings/clipboards', 'clipboard-list'],
     ['CloudPad', '/settings/clipboards?tab=cloudpad', 'cloud'],
     ['Clock', '/clock', 'clock-3'],
+    ['Todos', '/todos', 'list-checks'],
     ['Flights', '/flights', 'plane'],
     ['Feeds', '/feeds', 'inbox'],
     ['Grok Digest', '/digest', 'bot'],
