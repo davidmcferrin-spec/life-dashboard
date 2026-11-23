@@ -411,6 +411,7 @@ def test_money_tools_resolve_onto_the_money_api():
         "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
         "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
         "get_now_playing", "list_spotify_devices", "list_devices", "list_playlist_changes", "get_taste_profile",
+        "list_track_ratings", "get_disliked_tracks",
         "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
@@ -1300,6 +1301,7 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "spotify_status", "list_spotify_playlists", "get_spotify_playlist", "search_spotify",
         "get_spotify_track", "list_play_history", "list_saved_tracks", "list_top_items",
         "get_now_playing", "list_spotify_devices", "list_devices", "list_playlist_changes", "get_taste_profile",
+        "list_track_ratings", "get_disliked_tracks",
         "list_spotify_prompts", "get_spotify_prompt", "create_spotify_playlist", "update_spotify_playlist",
         "add_playlist_tracks", "remove_playlist_tracks", "reorder_playlist_tracks", "replace_playlist_tracks",
         "discard_playlist_changes", "push_playlist_changes", "sync_spotify", "add_spotify_prompt",
@@ -1310,7 +1312,7 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
         "set_track_metadata", "get_track_metadata", "list_active_seasons", "plan_mixtape",
         "set_taste_dislikes",
     ]
-    assert len(spotify) == 51
+    assert len(spotify) == 53
     assert len(names) == len(set(names))
     for name in spotify:
         assert names.count(name) == 1
@@ -1378,6 +1380,23 @@ def test_spotify_tools_map_onto_the_spotify_api_and_name_the_missing_endpoints()
     assert path == "/api/v1/spotify/taste"
     assert body["dislikes"]["titles"] == ["Christmas Shoes"]
     assert "dislikes" in described["get_taste_profile"]
+    assert "do_not_use" in described["get_taste_profile"]
+    assert "spotify:read" in described["list_track_ratings"]
+    assert "spotify:read" in described["get_disliked_tracks"]
+    method, path, body = resolve("list_track_ratings", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/ratings", None)
+    method, path, body = resolve("list_track_ratings", {"playlist_id": 4, "rating": "down", "limit": 20})
+    assert method == "GET" and path.startswith("/api/v1/spotify/ratings?")
+    assert "playlist_id=4" in path and "rating=down" in path and "limit=20" in path
+    method, path, body = resolve("get_disliked_tracks", {})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/dislikes", None)
+    method, path, body = resolve("get_disliked_tracks", {"limit": 10})
+    assert (method, path, body) == ("GET", "/api/v1/spotify/dislikes?limit=10", None)
+    try:
+        resolve("list_track_ratings", {"rating": "nope"})
+        raise AssertionError("rating must be rejected")
+    except ValueError as exc:
+        assert "up or down" in str(exc)
     assert "spotify_public" in described["set_spotify_playlist_privacy"]
 
 

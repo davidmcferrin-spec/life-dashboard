@@ -1753,6 +1753,17 @@ $router->post('/settings/spotify/player', function () use ($auth, $db): void {
     redirect('/settings/spotify');
 });
 
+$router->post('/settings/spotify/likes', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $on = ($_POST['enabled'] ?? '') === '1';
+    \Dashboard\Spotify\SpotifyService::fromDatabase($db)->setLikeOnThumbsUp((int) $user['id'], $on);
+    $_SESSION['settings_flash'] = $on
+        ? 'Thumbs up will also save to Liked Songs.'
+        : 'Thumbs up records the rating here.';
+    redirect('/settings/spotify');
+});
+
 $router->get('/settings/reddit', function () use ($auth, $lifedash): void {
     $user = $auth->requireAuth();
     $subs = $lifedash->reddit->list((int) $user['id']);

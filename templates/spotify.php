@@ -25,7 +25,7 @@ $musicIconNames = [
     'layout-dashboard', 'settings', 'refresh-cw', 'lock-keyhole', 'archive', 'activity',
     'undo-2', 'eye', 'plus', 'tag', 'cloud-sun', 'pencil', 'play',
     'pause', 'skip-back', 'skip-forward', 'volume-2', 'ellipsis',
-    'external-link', 'grip-vertical', 'check',
+    'external-link', 'grip-vertical', 'check', 'thumbs-up', 'thumbs-down',
 ];
 $musicIcon = static function (string $name) use ($musicIconNames): void {
     if (!in_array($name, $musicIconNames, true)) {

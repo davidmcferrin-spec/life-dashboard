@@ -628,7 +628,17 @@
                     ${canEdit ? '<button type="button" class="btn" data-add="' + esc(hit.uri) + '" data-name="' + esc(hit.name) + '" data-artists="' + esc((hit.artists || []).join('|')) + '">Add</button>' : ''}
                 </span></li>`).join('') + '</ul>' : ''}
             <section class="music-card">
-                <header class="music-card-head"><div><p class="music-kicker">${canEdit ? 'Drag to reorder' : 'Tracks'}</p><h2 class="music-card-title">Track sequence</h2></div>${canEdit ? '<button type="button" class="btn" data-add-tracks>' + icon('plus') + ' Add tracks</button>' : ''}</header>
+                <header class="music-card-head">
+                    <div><p class="music-kicker">${canEdit ? 'Drag to reorder' : 'Tracks'}</p><h2 class="music-card-title">Track sequence</h2></div>
+                    <div class="music-inline">
+                        <label class="music-check">
+                            <input type="checkbox" id="music-like-on-up"${account && account.like_on_thumbs_up ? ' checked' : ''}>
+                            Save thumbs up to Liked Songs
+                        </label>
+                        ${canEdit ? '<button type="button" class="btn" data-add-tracks>' + icon('plus') + ' Add tracks</button>' : ''}
+                    </div>
+                </header>
+                <p class="music-muted">Thumbs down means not for your playlists. The mark stays on this dashboard, and a playlist you own drops the track on push.</p>
                 ${trackTable(preview, canEdit)}
             </section>
             ${aiPlaylist(playlist) ? promptBlock(playlist) : ''}`;
@@ -666,6 +676,16 @@
         </details>`;
     }
 
+    function rateButtons(track) {
+        const up = track.rating === 'up';
+        const down = track.rating === 'down';
+        const artists = Array.isArray(track.artists) ? track.artists.join('|') : '';
+        return `<span class="music-rate">
+            <button type="button" class="music-icon-btn${up ? ' is-on' : ''}" data-rate="up" data-uri="${esc(track.uri)}" data-name="${esc(track.name || '')}" data-artists="${esc(artists)}" aria-pressed="${up ? 'true' : 'false'}" aria-label="Thumbs up ${esc(track.name || 'track')}" title="Thumbs up. Records the rating on this dashboard.">${icon('thumbs-up')}</button>
+            <button type="button" class="music-icon-btn${down ? ' is-on' : ''}" data-rate="down" data-uri="${esc(track.uri)}" data-name="${esc(track.name || '')}" data-artists="${esc(artists)}" aria-pressed="${down ? 'true' : 'false'}" aria-label="Thumbs down ${esc(track.name || 'track')}, not for my playlists" title="Not for my playlists. A playlist you own drops the track on push.">${icon('thumbs-down')}</button>
+        </span>`;
+    }
+
     function trackTable(preview, canEdit) {
         if (!preview.length) return '<p class="music-muted">No tracks.</p>';
         const rows = preview.map((track, index) => {
@@ -688,10 +708,11 @@
                 <td>${meta.mood_tags && meta.mood_tags.length ? '<span class="music-chip">' + esc(meta.mood_tags[0]) + '</span>' : '—'}</td>
                 <td>${seasonsCell}</td>
                 <td>${clock(track.duration_ms)}</td>
+                <td>${rateButtons(track)}</td>
                 <td>${trackMenu(track, canEdit)}</td>
             </tr>`;
         }).join('');
-        return `<div class="music-table-wrap"><table class="music-table"><thead><tr><th></th><th>#</th><th>Title</th><th>Artist</th><th>BPM</th><th>Key</th><th>Energy</th><th>Mood</th><th>Season</th><th>Length</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        return `<div class="music-table-wrap"><table class="music-table"><thead><tr><th></th><th>#</th><th>Title</th><th>Artist</th><th>BPM</th><th>Key</th><th>Energy</th><th>Mood</th><th>Season</th><th>Length</th><th>Rate</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     }
 
     function promptBlock(playlist) {
@@ -1343,6 +1364,19 @@
         }
     });
 
+    root.addEventListener('change', async (event) => {
+        const box = event.target;
+        if (!(box instanceof HTMLInputElement) || box.id !== 'music-like-on-up') return;
+        try {
+            const saved = await api.post('/spotify/likes', { enabled: box.checked });
+            if (account) account.like_on_thumbs_up = !!saved.enabled;
+            ok(box.checked ? 'Thumbs up will also save to Liked Songs.' : 'Thumbs up records the rating here.');
+        } catch (err) {
+            box.checked = !box.checked;
+            fail(err);
+        }
+    });
+
     root.addEventListener('click', async (event) => {
         if (event.target.closest('[data-close-modal]')) {
             const modal = event.target.closest('.app-modal');
@@ -1413,6 +1447,20 @@
                 searchHits = [];
                 await reloadDetail();
                 ok('Track staged.');
+            } else if (target.dataset.rate && detail) {
+                const rating = target.dataset.rate === 'down' ? 'down' : 'up';
+                const box = document.getElementById('music-like-on-up');
+                const body = {
+                    uri: target.dataset.uri || '',
+                    rating: rating,
+                    name: target.dataset.name || '',
+                    artists: (target.dataset.artists || '').split('|').filter(Boolean),
+                };
+                if (rating === 'up') body.save_liked = !!(box && box.checked);
+                say(rating === 'down' ? 'Saving thumbs down…' : 'Saving thumbs up…');
+                const result = await api.post('/spotify/playlists/' + detail.playlist.id + '/rate', body);
+                await reloadDetail();
+                ok(result.summary || 'Rating saved.');
             } else if (target.dataset.remove && detail) {
                 await api.post('/spotify/playlists/' + detail.playlist.id + '/tracks/remove', { uris: [target.dataset.remove] });
                 await reloadDetail();

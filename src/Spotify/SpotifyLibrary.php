@@ -193,11 +193,13 @@ final class SpotifyLibrary
         $row = $this->playlistRow($userId, $id);
         $tracks = $this->tracks($userId, $id);
         $changes = $this->changes($userId, $id);
+        $marks = $this->ratingMarks($userId, $id);
+        $preview = $this->mixtape()->annotate($userId, self::preview($tracks, $changes));
         return [
             'playlist' => $this->formatPlaylist($row),
-            'tracks' => $tracks,
+            'tracks' => $this->withRatings($tracks, $marks),
             'changes' => $changes,
-            'preview' => $this->mixtape()->annotate($userId, self::preview($tracks, $changes)),
+            'preview' => $this->withRatings($preview, $marks),
         ];
     }
 
@@ -418,6 +420,202 @@ final class SpotifyLibrary
         $this->requireEditable($userId, $id);
         $this->stageAndDirty($userId, $id, 'remove', ['uris' => self::uris($uris)], $by);
         return $this->playlist($userId, $id);
+    }
+
+    /**
+     * Record a playlist-page rating. source is user.
+     * Thumbs down is "not for my playlists": it joins the local do-not-use list.
+     * Removal is staged, then the caller pushes, only when this account can edit the playlist.
+     *
+     * @param array{name?: mixed, artists?: mixed} $label
+     * @return array<string, mixed>
+     */
+    public function rateTrack(int $userId, int $playlistId, mixed $uri, string $rating, string $by, array $label = []): array
+    {
+        $row = $this->playlistRow($userId, $playlistId);
+        if ($rating !== 'up' && $rating !== 'down') {
+            throw ValidationException::withFields(['rating' => 'rating must be up or down.']);
+        }
+        if (!is_string($uri)) {
+            throw ValidationException::withFields(['uri' => 'Track must be a spotify:track URI.']);
+        }
+        try {
+            $trackUri = self::uris([$uri])[0];
+        } catch (ValidationException) {
+            throw ValidationException::withFields(['uri' => 'Track must be a spotify:track URI.']);
+        }
+        if (!in_array($by, ['david', 'mcp', 'ai'], true)) {
+            $by = 'david';
+        }
+        $known = $this->trackLabel($userId, $trackUri, $label);
+        return $this->db->transaction(function (Database $db) use ($userId, $playlistId, $trackUri, $rating, $by, $row, $known): array {
+            $saved = $db->fetchOne(
+                'INSERT INTO spotify_track_ratings (user_id, playlist_id, track_uri, rating, source)
+                 VALUES (?, ?, ?, ?, \'user\')
+                 RETURNING id, created_at',
+                [$userId, $playlistId, $trackUri, $rating]
+            );
+            if ($saved === null) {
+                throw new \RuntimeException('Rating was not stored.');
+            }
+            $removed = false;
+            $shouldPush = false;
+            $skipped = null;
+            if ($rating === 'down') {
+                $db->execute(
+                    'INSERT INTO spotify_disliked_tracks (user_id, track_uri, name, artists, playlist_id, source)
+                     VALUES (?, ?, ?, ?::jsonb, ?, \'user\')
+                     ON CONFLICT (user_id, track_uri) DO UPDATE SET
+                        name = COALESCE(NULLIF(EXCLUDED.name, \'\'), spotify_disliked_tracks.name),
+                        artists = CASE WHEN EXCLUDED.artists = \'[]\'::jsonb THEN spotify_disliked_tracks.artists ELSE EXCLUDED.artists END,
+                        playlist_id = EXCLUDED.playlist_id,
+                        created_at = (now() AT TIME ZONE \'UTC\')',
+                    [
+                        $userId,
+                        $trackUri,
+                        $known['name'] !== '' ? $known['name'] : null,
+                        json_encode($known['artists'], JSON_THROW_ON_ERROR),
+                        $playlistId,
+                    ]
+                );
+                // Followed and subscribed playlists are left alone. The dislike still sticks.
+                if (self::canEdit($row) && $this->previewHas($userId, $playlistId, $trackUri)) {
+                    $this->stage($db, $userId, $playlistId, 'remove', ['uris' => [$trackUri]], $by);
+                    $db->execute(
+                        'UPDATE spotify_playlists SET local_dirty = 1, updated_at = (now() AT TIME ZONE \'UTC\') WHERE id = ? AND user_id = ?',
+                        [$playlistId, $userId]
+                    );
+                    $removed = true;
+                    $shouldPush = true;
+                } elseif (!self::canEdit($row)) {
+                    $skipped = self::readOnlyMessage($row);
+                }
+            } else {
+                // A later thumbs up is the newer instruction. The rating log still has the down.
+                $db->execute(
+                    'DELETE FROM spotify_disliked_tracks WHERE user_id = ? AND track_uri = ?',
+                    [$userId, $trackUri]
+                );
+            }
+            return [
+                'id' => (int) $saved['id'],
+                'track_uri' => $trackUri,
+                'playlist_id' => $playlistId,
+                'rating' => $rating,
+                'source' => 'user',
+                'created_at' => (string) $saved['created_at'],
+                'removed' => $removed,
+                'should_push' => $shouldPush,
+                'remove_skipped' => $skipped,
+                'disliked' => $rating === 'down',
+            ];
+        });
+    }
+
+    /**
+     * Liked Songs is opt-in. An explicit save_liked on the request wins over the setting.
+     */
+    public static function shouldSaveLiked(string $rating, ?bool $requested, bool $setting): bool
+    {
+        if ($rating !== 'up') {
+            return false;
+        }
+        if ($requested !== null) {
+            return $requested;
+        }
+        return $setting;
+    }
+
+    /**
+     * @param array<string, mixed> $result
+     */
+    public static function ratingSummary(array $result): string
+    {
+        if (($result['rating'] ?? '') === 'up') {
+            if (!empty($result['saved_liked'])) {
+                return 'Thumbs up saved, and the track is in Liked Songs.';
+            }
+            if (!empty($result['like_error'])) {
+                return 'Thumbs up saved. Liked Songs did not update: ' . $result['like_error'];
+            }
+            return 'Thumbs up saved.';
+        }
+        if (empty($result['removed'])) {
+            $why = trim((string) ($result['remove_skipped'] ?? ''));
+            if ($why !== '') {
+                return 'Marked as not for your playlists. ' . $why;
+            }
+            return 'Marked as not for your playlists.';
+        }
+        $push = $result['push'] ?? null;
+        if (is_array($push) && !empty($push['queued'])) {
+            return 'Marked as not for your playlists. Removal is staged and the push is queued.';
+        }
+        if (is_array($push) && !empty($push['error'])) {
+            return 'Marked as not for your playlists. Removal is staged.';
+        }
+        if (is_array($push)) {
+            return 'Marked as not for your playlists and removed from this playlist.';
+        }
+        return 'Marked as not for your playlists. Removal is staged.';
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function ratings(int $userId, ?int $playlistId, ?string $rating, int $limit): array
+    {
+        if ($rating !== null && $rating !== 'up' && $rating !== 'down') {
+            throw ValidationException::withFields(['rating' => 'rating must be up or down.']);
+        }
+        if ($playlistId !== null && $playlistId < 1) {
+            throw ValidationException::withFields(['playlist_id' => 'Expected a playlist id.']);
+        }
+        $limit = max(1, min(500, $limit));
+        $rows = $this->db->fetchAll(
+            'SELECT r.id, r.track_uri, r.playlist_id, r.rating, r.source, r.created_at,
+                    COALESCE(t.name, d.name) AS name,
+                    COALESCE(t.artists, d.artists) AS artists
+             FROM spotify_track_ratings r
+             LEFT JOIN spotify_tracks t
+               ON t.user_id = r.user_id AND t.spotify_id = split_part(r.track_uri, \':\', 3)
+             LEFT JOIN spotify_disliked_tracks d
+               ON d.user_id = r.user_id AND d.track_uri = r.track_uri
+             WHERE r.user_id = ?
+               AND (?::bigint IS NULL OR r.playlist_id = ?::bigint)
+               AND (?::text IS NULL OR r.rating = ?::text)
+             ORDER BY r.id DESC
+             LIMIT ?',
+            [$userId, $playlistId, $playlistId, $rating, $rating, $limit]
+        );
+        return array_map($this->ratingRow(...), $rows);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function dislikedTracks(int $userId, ?int $limit = null): array
+    {
+        $cap = $limit === null ? 2000 : max(1, min(2000, $limit));
+        $rows = $this->db->fetchAll(
+            'SELECT id, track_uri, name, artists, playlist_id, source, created_at
+             FROM spotify_disliked_tracks
+             WHERE user_id = ?
+             ORDER BY id DESC
+             LIMIT ?',
+            [$userId, $cap]
+        );
+        return array_map(function (array $row): array {
+            return [
+                'id' => (int) $row['id'],
+                'track_uri' => (string) $row['track_uri'],
+                'name' => $row['name'] !== null && $row['name'] !== '' ? (string) $row['name'] : null,
+                'artists' => TasteProfile::artistNames($row['artists'] ?? []),
+                'playlist_id' => $row['playlist_id'] !== null ? (int) $row['playlist_id'] : null,
+                'source' => (string) $row['source'],
+                'created_at' => (string) $row['created_at'],
+            ];
+        }, $rows);
     }
 
     /**
@@ -679,9 +877,27 @@ final class SpotifyLibrary
      */
     public function taste(int $userId): array
     {
+        $profile = $this->storedTaste($userId);
+        $doNotUse = $this->dislikedTracks($userId);
+        $profile['do_not_use'] = $doNotUse;
+        $tracks = $profile['dislikes']['tracks'];
+        foreach ($this->dislikedUris($userId) as $uri) {
+            if (!in_array($uri, $tracks, true)) {
+                $tracks[] = $uri;
+            }
+        }
+        $profile['dislikes']['tracks'] = $tracks;
+        return ['profile' => $profile];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function storedTaste(int $userId): array
+    {
         $raw = $this->db->fetchScalar('SELECT body FROM spotify_taste_profile WHERE user_id = ?', [$userId]);
         $body = is_string($raw) ? json_decode($raw, true) : [];
-        return ['profile' => TasteProfile::normalize(is_array($body) ? $body : [])];
+        return TasteProfile::normalize(is_array($body) ? $body : []);
     }
 
     /**
@@ -690,10 +906,20 @@ final class SpotifyLibrary
      */
     public function saveTaste(int $userId, mixed $profile, mixed $dislikes = null, bool $replaceDislikes = true): array
     {
+        if (is_array($profile)) {
+            unset($profile['do_not_use']);
+            if (isset($profile['dislikes']) && is_array($profile['dislikes'])) {
+                $profile['dislikes'] = $this->stripDoNotUse($userId, $profile['dislikes']);
+            }
+        }
+        if (is_array($dislikes)) {
+            $dislikes = $this->stripDoNotUse($userId, $dislikes);
+        }
         if ($profile === null && $dislikes === null) {
             throw ValidationException::withFields(['profile' => 'profile must be an object or text.']);
         }
-        $existing = $this->taste($userId)['profile'];
+        // Stored JSON stays the freeform blocklist. Thumbs-down rows are merged on read.
+        $existing = $this->storedTaste($userId);
         if ($profile === null) {
             $profile = $existing;
         }
@@ -1029,6 +1255,153 @@ final class SpotifyLibrary
             throw new NotFoundException('Playlist not found.');
         }
         return $row;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function ratingMarks(int $userId, int $playlistId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT DISTINCT ON (track_uri) track_uri, rating
+             FROM spotify_track_ratings
+             WHERE user_id = ? AND playlist_id = ?
+             ORDER BY track_uri, id DESC',
+            [$userId, $playlistId]
+        );
+        $out = [];
+        foreach ($rows as $row) {
+            $out[(string) $row['track_uri']] = (string) $row['rating'];
+        }
+        return $out;
+    }
+
+    /**
+     * @param list<array<string, mixed>> $tracks
+     * @param array<string, string> $marks
+     * @return list<array<string, mixed>>
+     */
+    private function withRatings(array $tracks, array $marks): array
+    {
+        foreach ($tracks as $i => $track) {
+            $uri = (string) ($track['uri'] ?? '');
+            $tracks[$i]['rating'] = $marks[$uri] ?? null;
+        }
+        return $tracks;
+    }
+
+    private function previewHas(int $userId, int $playlistId, string $uri): bool
+    {
+        $preview = self::preview($this->tracks($userId, $playlistId), $this->changes($userId, $playlistId));
+        foreach ($preview as $track) {
+            if ((string) ($track['uri'] ?? '') === $uri) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @param array{name?: mixed, artists?: mixed} $label
+     * @return array{name: string, artists: list<string>}
+     */
+    private function trackLabel(int $userId, string $uri, array $label): array
+    {
+        $id = substr($uri, 14);
+        $row = $this->db->fetchOne(
+            'SELECT name, artists FROM spotify_tracks WHERE user_id = ? AND spotify_id = ?',
+            [$userId, $id]
+        );
+        if ($row !== null) {
+            return [
+                'name' => (string) $row['name'],
+                'artists' => $this->cleanArtists($row['artists'] ?? []),
+            ];
+        }
+        $name = trim((string) ($label['name'] ?? ''));
+        if (strlen($name) > 200) {
+            $name = mb_substr($name, 0, 200);
+        }
+        return [
+            'name' => $name,
+            'artists' => $this->cleanArtists($label['artists'] ?? []),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function cleanArtists(mixed $artists): array
+    {
+        $out = [];
+        foreach (TasteProfile::artistNames($artists) as $name) {
+            $name = trim($name);
+            if ($name === '' || strlen($name) > 120) {
+                continue;
+            }
+            $out[] = $name;
+            if (count($out) >= 8) {
+                break;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function ratingRow(array $row): array
+    {
+        return [
+            'id' => (int) $row['id'],
+            'track_uri' => (string) $row['track_uri'],
+            'playlist_id' => $row['playlist_id'] !== null ? (int) $row['playlist_id'] : null,
+            'rating' => (string) $row['rating'],
+            'source' => (string) $row['source'],
+            'created_at' => (string) $row['created_at'],
+            'name' => $row['name'] !== null && $row['name'] !== '' ? (string) $row['name'] : null,
+            'artists' => TasteProfile::artistNames($row['artists'] ?? []),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function dislikedUris(int $userId): array
+    {
+        $rows = $this->db->fetchAll(
+            'SELECT track_uri FROM spotify_disliked_tracks WHERE user_id = ? ORDER BY id',
+            [$userId]
+        );
+        return array_map(static fn (array $row): string => (string) $row['track_uri'], $rows);
+    }
+
+    /**
+     * @param array<string, mixed> $dislikes
+     * @return array<string, mixed>
+     */
+    private function stripDoNotUse(int $userId, array $dislikes): array
+    {
+        if (!isset($dislikes['tracks']) || !is_array($dislikes['tracks'])) {
+            return $dislikes;
+        }
+        $skip = array_fill_keys($this->dislikedUris($userId), true);
+        if ($skip === []) {
+            return $dislikes;
+        }
+        $kept = [];
+        foreach ($dislikes['tracks'] as $uri) {
+            $text = trim((string) $uri);
+            if (preg_match('/^[A-Za-z0-9]+$/', $text) === 1) {
+                $text = 'spotify:track:' . $text;
+            }
+            if (!isset($skip[$text])) {
+                $kept[] = $uri;
+            }
+        }
+        $dislikes['tracks'] = $kept;
+        return $dislikes;
     }
 
     /**

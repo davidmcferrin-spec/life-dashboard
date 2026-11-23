@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Dashboard\Tests\Unit;
 
+use Dashboard\Api\V1\Scope;
+use Dashboard\Mcp\AgentPrompt;
 use Dashboard\Spotify\SpotifyAccount;
 use Dashboard\Spotify\SpotifyLibrary;
 use Dashboard\Support\ValidationException;
@@ -63,5 +65,54 @@ final class SpotifyPlaylistAccessTest extends TestCase
         self::assertStringContainsString('playlist-modify-private', $page);
         self::assertStringContainsString('>Reconnect<', $page);
         self::assertStringContainsString('/settings/spotify/connect', $page);
+    }
+
+    public function testThumbsUpSavesToLikedSongsOnlyWhenAsked(): void
+    {
+        self::assertFalse(SpotifyLibrary::shouldSaveLiked('up', null, false));
+        self::assertTrue(SpotifyLibrary::shouldSaveLiked('up', null, true));
+        self::assertTrue(SpotifyLibrary::shouldSaveLiked('up', true, false));
+        self::assertFalse(SpotifyLibrary::shouldSaveLiked('up', false, true));
+        self::assertFalse(SpotifyLibrary::shouldSaveLiked('down', true, true));
+        self::assertSame(
+            'Thumbs up saved.',
+            SpotifyLibrary::ratingSummary(['rating' => 'up'])
+        );
+        self::assertSame(
+            'Thumbs up saved, and the track is in Liked Songs.',
+            SpotifyLibrary::ratingSummary(['rating' => 'up', 'saved_liked' => true])
+        );
+        self::assertStringContainsString(
+            'not for your playlists',
+            SpotifyLibrary::ratingSummary([
+                'rating' => 'down',
+                'removed' => false,
+                'remove_skipped' => 'This playlist is read-only. Only playlists you own can be edited or pushed.',
+            ])
+        );
+    }
+
+    public function testRatingReadsUseSpotifyReadAndThePlaylistPageShowsTheButtons(): void
+    {
+        self::assertSame('spotify:read', Scope::forPath('/api/v1/spotify/ratings', false));
+        self::assertSame('spotify:read', Scope::forPath('/api/v1/spotify/dislikes', false));
+        self::assertSame('spotify:read', Scope::forPath('/api/v1/spotify/taste', false));
+        self::assertSame('spotify:write', Scope::forPath('/api/v1/spotify/playlists/4/rate', true));
+        self::assertSame('spotify:write', Scope::forPath('/api/v1/spotify/likes', true));
+
+        $page = (string) file_get_contents(dirname(__DIR__, 2) . '/templates/settings/spotify.php');
+        self::assertStringContainsString('Save thumbs up to Liked Songs', $page);
+        self::assertStringContainsString('/settings/spotify/likes', $page);
+
+        $script = (string) file_get_contents(dirname(__DIR__, 2) . '/public/assets/js/spotify.js');
+        self::assertStringContainsString('data-rate="up"', $script);
+        self::assertStringContainsString('data-rate="down"', $script);
+        self::assertStringContainsString('save_liked', $script);
+        self::assertStringContainsString('music-like-on-up', $script);
+
+        $prompt = AgentPrompt::text();
+        self::assertStringContainsString('list_track_ratings', $prompt);
+        self::assertStringContainsString('get_disliked_tracks', $prompt);
+        self::assertStringContainsString('do_not_use', $prompt);
     }
 }
