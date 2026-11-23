@@ -37,7 +37,8 @@
     isolation: isolate;
     min-width: 0;
     overflow: hidden;
-    perspective: 950px;
+    perspective: var(--scene-perspective, 1400px);
+    perspective-origin: center center;
     position: relative;
     touch-action: none;
     user-select: none;
@@ -47,6 +48,8 @@
 .brain-screen-page .brain-canvas.camera-free.dragging {
     cursor: grabbing;
 }
+
+.brain-screen-page .brain-canvas.camera-fly { cursor: crosshair; }
 
 .brain-screen-page .brain-canvas.camera-free {
     cursor: move;
@@ -105,7 +108,7 @@
 }
 
 .brain-screen-page .brain-readout {
-    bottom: 58px;
+    bottom: 132px;
     color: var(--text-secondary);
     font-family: var(--font-mono);
     font-size: 11px;
@@ -232,7 +235,8 @@
 
 .brain-screen-page .neural-world {
     inset: 0;
-    perspective: 900px;
+    perspective: var(--scene-perspective, 1400px);
+    perspective-origin: center center;
     pointer-events: none;
     position: absolute;
     transform-style: preserve-3d;
@@ -242,41 +246,50 @@
 .brain-screen-page .neural-world-inner {
     inset: 0;
     position: absolute;
-    transform: translate3d(calc(var(--focus-x) + var(--camera-x)), calc(var(--focus-y) + var(--camera-y)), 0) scale(var(--camera-zoom)) rotateX(var(--world-rx)) rotateY(var(--world-ry));
+    transform:
+        translate3d(var(--cam-ax, 0px), var(--cam-ay, 0px), 0)
+        translateZ(calc(var(--cam-dist, 1400) * -1px))
+        rotateX(var(--cam-pitch, -32deg))
+        rotateY(var(--cam-yaw, 28deg))
+        translate3d(calc(var(--cam-px, 0) * -1px), calc(var(--cam-py, 0) * -1px), calc(var(--cam-pz, 0) * -1px));
+    transform-origin: center center;
     transform-style: preserve-3d;
-    transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.brain-screen-page .brain-canvas.dragging .neural-world-inner { transition: none; }
+.brain-screen-page .brain-canvas.is-moving .neural-world-inner { will-change: transform; }
 
 .brain-screen-page .mode-2d .neural-world-inner {
-    transform: translate3d(calc(var(--focus-x) + var(--camera-x)), calc(var(--focus-y) + var(--camera-y)), 0) scale(var(--camera-zoom));
+    transform:
+        translate3d(var(--cam-ax, 0px), var(--cam-ay, 0px), 0)
+        translateZ(calc(var(--cam-dist, 1400) * -1px))
+        translate3d(calc(var(--cam-px, 0) * -1px), calc(var(--cam-py, 0) * -1px), 0);
 }
 
 .brain-screen-page .neural-cloud {
-    animation: brain-breathe 8s ease-in-out var(--cloud-delay) infinite;
-    height: 250px;
-    left: var(--cloud-x);
+    height: 0;
+    left: 50%;
     pointer-events: none;
     position: absolute;
-    top: var(--cloud-y);
-    transform: translate3d(-50%, -50%, 0) scale(var(--cloud-scale));
+    top: 50%;
+    transform: translate3d(var(--cx, 0px), var(--cy, 0px), var(--cz, 0px));
     transform-style: preserve-3d;
-    width: 250px;
+    width: 0;
 }
 
 .brain-screen-page .mode-2d .neural-cloud {
-    transform: translate3d(-50%, -50%, 0) scale(var(--cloud-scale));
+    transform: translate3d(var(--cx, 0px), var(--cy, 0px), 0);
 }
 
 .brain-screen-page .neural-cloud::before {
     background: radial-gradient(circle, rgba(68, 215, 208, 0.065), transparent 67%);
     border-radius: 50%;
     content: "";
-    filter: blur(9px);
-    inset: -25%;
+    height: calc(var(--shell, 220px) * 1.35);
+    left: 0;
     position: absolute;
-    transform: translateZ(-40px);
+    top: 0;
+    transform: translate3d(-50%, -50%, -40px);
+    width: calc(var(--shell, 220px) * 1.35);
 }
 
 .brain-screen-page .geodesic-shell {
@@ -284,9 +297,13 @@
     border: 1px solid rgba(68, 215, 208, 0.11);
     border-radius: 50%;
     box-shadow: 0 0 45px rgba(68, 215, 208, 0.045), inset 0 0 40px rgba(68, 215, 208, 0.035);
-    inset: 12px;
+    height: var(--shell, 220px);
+    left: 0;
     position: absolute;
+    top: 0;
+    transform: translate3d(-50%, -50%, 0);
     transform-style: preserve-3d;
+    width: var(--shell, 220px);
 }
 
 .brain-screen-page .geodesic-shell::before,
@@ -299,12 +316,12 @@
     position: absolute;
 }
 
-.brain-screen-page .geodesic-shell::before { transform: rotateX(62deg); }
-.brain-screen-page .geodesic-shell::after { transform: rotateY(62deg); }
-.brain-screen-page .geodesic-shell > i:nth-child(1) { transform: rotateX(32deg); }
-.brain-screen-page .geodesic-shell > i:nth-child(2) { transform: rotateX(-32deg); }
-.brain-screen-page .geodesic-shell > i:nth-child(3) { transform: rotateY(32deg); }
-.brain-screen-page .geodesic-shell > i:nth-child(4) { transform: rotateY(-32deg); }
+.brain-screen-page .geodesic-shell::before { transform: rotateX(62deg) translateZ(2px); }
+.brain-screen-page .geodesic-shell::after { transform: rotateY(62deg) translateZ(4px); }
+.brain-screen-page .geodesic-shell > i:nth-child(1) { transform: rotateX(32deg) translateZ(6px); }
+.brain-screen-page .geodesic-shell > i:nth-child(2) { transform: rotateX(-32deg) translateZ(8px); }
+.brain-screen-page .geodesic-shell > i:nth-child(3) { transform: rotateY(32deg) translateZ(10px); }
+.brain-screen-page .geodesic-shell > i:nth-child(4) { transform: rotateY(-32deg) translateZ(12px); }
 
 .brain-screen-page .neural-cloud.attached .geodesic-shell {
     border-color: rgba(68, 215, 208, 0.28);
@@ -354,11 +371,15 @@
     padding: 6px 9px;
     position: absolute;
     text-align: center;
-    top: calc(100% + 18px);
+    top: calc(var(--shell, 220px) / 2 + 16px);
     transform: translateX(-50%);
     width: max-content;
     z-index: 8;
 }
+
+.brain-screen-page .neural-cloud.lod-mid .cloud-name { opacity: 0.8; }
+.brain-screen-page .neural-cloud.lod-far .cloud-name,
+.brain-screen-page .neural-cloud.name-off .cloud-name { visibility: hidden; }
 
 .brain-screen-page .cloud-name strong,
 .brain-screen-page .cloud-name span { display: block; }
@@ -377,15 +398,7 @@
 }
 
 .brain-screen-page .neural-spoke {
-    height: 0;
-    left: 50%;
-    pointer-events: none;
-    position: absolute;
-    top: 50%;
-    transform: rotateY(var(--az)) rotateX(var(--el));
-    transform-style: preserve-3d;
-    width: 0;
-    z-index: 5;
+    display: none;
 }
 
 .brain-screen-page .neural-thread {
@@ -428,9 +441,13 @@
     pointer-events: auto;
     position: absolute;
     top: 0;
-    transform: translate3d(-50%, -50%, var(--radius));
+    transform: translate3d(-50%, -50%, 0) translate3d(var(--nx, 0px), var(--ny, 0px), var(--nz, 0px));
     transform-style: preserve-3d;
     width: var(--node-size);
+}
+
+.brain-screen-page .mode-2d .neural-object {
+    transform: translate3d(-50%, -50%, 0) translate3d(var(--nx, 0px), var(--ny, 0px), 0);
 }
 
 .brain-screen-page .neural-object.type-project { --node-color: #44d7d0; }
@@ -465,7 +482,24 @@
     padding: 4px 6px;
     position: absolute;
     text-align: left;
+    transform: rotateY(calc(var(--cam-yaw, 28deg) * -1)) rotateX(calc(var(--cam-pitch, -32deg) * -1));
+    transform-origin: left center;
     width: max-content;
+}
+
+.brain-screen-page .neural-object.lod-mid > b {
+    opacity: 0.78;
+    transform: scale(0.82) rotateY(calc(var(--cam-yaw, 28deg) * -1)) rotateX(calc(var(--cam-pitch, -32deg) * -1));
+}
+
+.brain-screen-page .neural-object.lod-far > b,
+.brain-screen-page .neural-object.label-off > b { visibility: hidden; }
+
+.brain-screen-page .neural-object:hover > b,
+.brain-screen-page .neural-object.selected > b,
+.brain-screen-page .neural-object:focus-visible > b {
+    opacity: 1;
+    visibility: visible;
 }
 
 .brain-screen-page .neural-object > b small {
@@ -475,9 +509,6 @@
     font-size: 11px;
     margin-top: 3px;
 }
-
-.brain-screen-page .neural-object:hover > b,
-.brain-screen-page .neural-object.selected > b { opacity: 1; }
 
 .brain-screen-page .neural-object.selected {
     border-color: var(--accent);
@@ -506,12 +537,22 @@
 
 .brain-screen-page .neural-link {
     height: 0;
-    left: 0;
+    left: 50%;
     position: absolute;
-    top: 0;
+    top: 50%;
     transform: translate3d(var(--x), var(--y), var(--z)) rotateY(var(--az)) rotateX(var(--el));
     transform-style: preserve-3d;
     width: 0;
+}
+
+.brain-screen-page .mode-2d .neural-link {
+    transform: translate3d(var(--x), var(--y), 0) rotateZ(var(--flat, 0deg));
+}
+
+.brain-screen-page .mode-2d .neural-link > i {
+    height: 1px;
+    transform: none;
+    width: var(--len);
 }
 
 .brain-screen-page .neural-link > i {
@@ -583,7 +624,7 @@
     background: rgba(7, 13, 14, 0.78);
     border: 1px solid rgba(68, 215, 208, 0.11);
     border-radius: 7px;
-    bottom: 16px;
+    bottom: 78px;
     color: var(--text-secondary);
     display: flex;
     font-size: 11px;
@@ -622,11 +663,14 @@
     bottom: 16px;
     display: flex;
     gap: 4px;
+    left: 16px;
+    max-width: none;
     min-height: 46px;
+    overflow-x: auto;
     padding: 5px;
+    scrollbar-width: thin;
     position: absolute;
-    right: 50%;
-    transform: translateX(50%);
+    right: 72px;
     z-index: 15;
 }
 
@@ -636,6 +680,7 @@
     color: var(--accent);
     display: grid;
     gap: 7px;
+    flex: none;
     grid-template-columns: 23px 1fr;
     min-width: 180px;
     padding: 0 10px 0 5px;
@@ -656,6 +701,7 @@
     color: var(--text-secondary);
     font-size: 11px;
     margin-top: 3px;
+    white-space: nowrap;
 }
 
 .brain-screen-page .camera-dock > button,
@@ -968,10 +1014,148 @@
     }
 
     .brain-screen-page .camera-dock {
-        max-width: calc(100% - 24px);
-        overflow-x: auto;
+        left: 12px;
+        max-width: none;
+        right: 12px;
     }
+
+    .brain-screen-page .brain-readout { bottom: 42%; }
+    .brain-screen-page .brain-legend { bottom: calc(42% + 52px); }
+
+    .brain-screen-page .brain-help-btn { bottom: calc(42% + 18px); }
 }
+
+.brain-screen-page .brain-canvas.is-idle .geodesic-shell,
+.brain-screen-page .brain-canvas.is-moving .geodesic-shell,
+.brain-screen-page .brain-canvas.is-hidden .geodesic-shell,
+.brain-screen-page .brain-canvas.is-idle .scan-beam,
+.brain-screen-page .brain-canvas.is-moving .scan-beam,
+.brain-screen-page .brain-canvas.is-hidden .scan-beam,
+.brain-screen-page .brain-canvas.is-idle .cloud-core > i,
+.brain-screen-page .brain-canvas.is-moving .cloud-core > i,
+.brain-screen-page .brain-canvas.is-hidden .cloud-core > i,
+.brain-screen-page .brain-canvas.is-idle .neural-thread::after,
+.brain-screen-page .brain-canvas.is-moving .neural-thread::after,
+.brain-screen-page .brain-canvas.is-hidden .neural-thread::after,
+.brain-screen-page .brain-canvas.is-idle .brain-readout span i,
+.brain-screen-page .brain-canvas.is-moving .brain-readout span i,
+.brain-screen-page .brain-canvas.is-hidden .brain-readout span i,
+.brain-screen-page .brain-canvas.is-idle::before,
+.brain-screen-page .brain-canvas.is-moving::before,
+.brain-screen-page .brain-canvas.is-hidden::before,
+.brain-screen-page .brain-canvas.is-idle ~ .node-panel .node-mark > i,
+.brain-screen-page .brain-canvas.is-moving ~ .node-panel .node-mark > i,
+.brain-screen-page .brain-canvas.is-hidden ~ .node-panel .node-mark > i,
+.brain-screen-page .brain-canvas.is-idle ~ .node-panel .node-signal i,
+.brain-screen-page .brain-canvas.is-moving ~ .node-panel .node-signal i,
+.brain-screen-page .brain-canvas.is-hidden ~ .node-panel .node-signal i {
+    animation-play-state: paused;
+}
+
+.brain-help-btn {
+    align-items: center;
+    background: rgba(7, 13, 14, 0.92);
+    border: 1px solid rgba(68, 215, 208, 0.28);
+    border-radius: 999px;
+    bottom: 16px;
+    color: var(--accent);
+    cursor: pointer;
+    display: grid;
+    font-size: 20px;
+    font-weight: 600;
+    height: 44px;
+    place-items: center;
+    position: absolute;
+    right: 16px;
+    width: 44px;
+    z-index: 20;
+}
+
+.brain-help-btn:focus-visible,
+.brain-help-close:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.brain-help {
+    inset: 0;
+    position: absolute;
+    z-index: 30;
+}
+
+.brain-help[hidden] { display: none; }
+
+.brain-help-backdrop {
+    background: rgba(4, 8, 9, 0.62);
+    inset: 0;
+    position: absolute;
+}
+
+.brain-help-card {
+    background: rgba(8, 14, 15, 0.97);
+    border: 1px solid rgba(68, 215, 208, 0.22);
+    border-radius: 14px;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    color: var(--text-primary);
+    display: flex;
+    flex-direction: column;
+    left: 50%;
+    max-height: min(78vh, 640px);
+    max-width: calc(100% - 32px);
+    overflow: hidden;
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 520px;
+}
+
+.brain-help-card header {
+    align-items: center;
+    display: flex;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 16px 16px 8px;
+}
+
+.brain-help-card h2 {
+    font-size: 18px;
+    margin: 0;
+}
+
+.brain-help-close {
+    background: transparent;
+    border: 1px solid rgba(68, 215, 208, 0.28);
+    border-radius: 8px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 15px;
+    min-height: 44px;
+    min-width: 76px;
+}
+
+.brain-help-body {
+    -webkit-overflow-scrolling: touch;
+    overflow: auto;
+    padding: 4px 16px 18px;
+    touch-action: pan-y;
+}
+
+.brain-help-body h3 {
+    color: var(--accent);
+    font-size: 13px;
+    letter-spacing: 0.06em;
+    margin: 14px 0 6px;
+    text-transform: uppercase;
+}
+
+.brain-help-body p {
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.45;
+    margin: 0 0 8px;
+}
+
+.brain-help-body strong { font-weight: 600; }
 
 .brain-screen-page .brain-canvas.paused .neural-cloud,
 .brain-screen-page .brain-canvas.paused .geodesic-shell,
@@ -1010,10 +1194,6 @@
     0%, 12% { opacity: 0; transform: translateX(-110%); }
     30%, 70% { opacity: 1; }
     88%, 100% { opacity: 0; transform: translateX(560%); }
-}
-@keyframes brain-breathe {
-    0%, 100% { margin-top: 0; }
-    50% { margin-top: -7px; }
 }
 @keyframes brain-geo { to { transform: rotateX(360deg) rotateY(180deg); } }
 @keyframes brain-thread {
