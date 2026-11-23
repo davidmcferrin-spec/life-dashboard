@@ -132,19 +132,49 @@ let editingItemId = null;
 let addModal = null;
 let editModal = null;
 
-function readInitialState() {
+function rememberList(value) {
+    if (!window.TodoListFilter || value == null || value === '') {
+        return;
+    }
+    window.TodoListFilter.writeStored(sessionStorage, value);
+}
+
+function restoreList() {
     const params = new URLSearchParams(window.location.search);
-    const list = params.get('list');
     const status = params.get('filter') || params.get('status');
     if (status && ['open', 'completed', 'archived', 'assigned'].includes(status)) {
         activeStatus = status;
     }
-    if (list && pageLists.length) {
-        const match = pageLists.find(l => l.slug === list || String(l.id) === list);
-        if (match) {
-            activeListId = match.id;
-        }
+    if (!window.TodoListFilter) {
+        return;
     }
+    const chosen = window.TodoListFilter.choose(
+        pageLists,
+        params.get('list'),
+        window.TodoListFilter.readStored(sessionStorage),
+    );
+    activeListId = chosen.id;
+    if (activeListId != null) {
+        rememberList(activeListId);
+    }
+}
+
+function addTargetId() {
+    if (!window.TodoListFilter) {
+        return activeListId === 'all' ? null : activeListId;
+    }
+    return window.TodoListFilter.addTarget(activeListId, pageLists);
+}
+
+function itemWritable(item) {
+    if (activeListId !== 'all') {
+        return canWrite;
+    }
+    const list = pageLists.find(entry => Number(entry.id) === Number(item && item.list_id));
+    if (!list) {
+        return false;
+    }
+    return !!(list.is_owner || list.permission === 'write');
 }
 
 function syncStatusButtons() {
@@ -195,7 +225,9 @@ function bindLinkRemoves(root) {
 function itemRow(item) {
     const isOpen = item.status === 'open';
     const isAssignedView = activeStatus === 'assigned';
-    const listLabel = isAssignedView && item.list_name
+    const writable = itemWritable(item);
+    const showList = (isAssignedView || activeListId === 'all') && item.list_name;
+    const listLabel = showList
         ? `<span class="chip chip-neutral text-xs mr-1">${esc(item.list_name)}</span>`
         : '';
     const assignee = item.assignee_username
@@ -217,11 +249,11 @@ function itemRow(item) {
                         ${item.has_details ? '<span class="text-faint text-xs" title="Has details">⋯</span>' : ''}
                     </div>
                     <div class="flex flex-wrap gap-2 mt-1">
-                        ${canWrite || isOpen ? `<button type="button" class="todo-details-toggle link text-xs" data-id="${item.id}">${item.has_details ? 'Show details' : 'Add details'}</button>` : ''}
-                        ${canWrite && item.status === 'completed' ? `<button type="button" class="todo-reopen-item link text-xs" data-id="${item.id}">Mark incomplete</button>` : ''}
-                        ${canWrite && item.status === 'completed' ? `<button type="button" class="todo-archive-one link text-xs" data-id="${item.id}">Archive</button>` : ''}
-                        ${canWrite ? `<button type="button" class="todo-delete-item text-danger text-xs" data-id="${item.id}">Delete</button>` : ''}
-                        ${item.status === 'archived' && canWrite ? `<button type="button" class="todo-restore-item link text-xs" data-id="${item.id}">Restore</button>` : ''}
+                        ${writable || isOpen ? `<button type="button" class="todo-details-toggle link text-xs" data-id="${item.id}">${item.has_details ? 'Show details' : 'Add details'}</button>` : ''}
+                        ${writable && item.status === 'completed' ? `<button type="button" class="todo-reopen-item link text-xs" data-id="${item.id}">Mark incomplete</button>` : ''}
+                        ${writable && item.status === 'completed' ? `<button type="button" class="todo-archive-one link text-xs" data-id="${item.id}">Archive</button>` : ''}
+                        ${writable ? `<button type="button" class="todo-delete-item text-danger text-xs" data-id="${item.id}">Delete</button>` : ''}
+                        ${item.status === 'archived' && writable ? `<button type="button" class="todo-restore-item link text-xs" data-id="${item.id}">Restore</button>` : ''}
                     </div>
                     ${item.links && item.links.length ? `
                     <div class="mt-1 flex flex-wrap gap-2">
@@ -235,8 +267,16 @@ function itemRow(item) {
 }
 
 function openPageAddModal() {
-    if (activeStatus !== 'open' || !canWrite || !activeListId) {
+    const targetId = addTargetId();
+    if (activeStatus !== 'open' || !canWrite || !targetId) {
         return;
+    }
+    const note = document.getElementById('todo-page-add-list-note');
+    if (note) {
+        const target = pageLists.find(entry => Number(entry.id) === Number(targetId));
+        const show = activeListId === 'all' && target;
+        note.textContent = show ? 'Adds to ' + target.name + '.' : '';
+        note.classList.toggle('hidden', !show);
     }
     closeModal(editModal);
     clearFieldError('todo-page-add-error');
@@ -249,7 +289,7 @@ function fillEditDue(item) {
         return;
     }
     const dueValue = item.due_date ? String(item.due_date) : '';
-    if (canWrite) {
+    if (itemWritable(item)) {
         dueWrap.innerHTML = `
             <label class="block">
                 <span class="mono text-xs text-faint">Due date</span>
@@ -275,8 +315,9 @@ function fillEditAssignee(item) {
     if (!wrap || !select) {
         return;
     }
-    wrap.classList.toggle('hidden', !canWrite);
-    if (!canWrite) {
+    const writable = itemWritable(item);
+    wrap.classList.toggle('hidden', !writable);
+    if (!writable) {
         return;
     }
     select.innerHTML = '<option value="">Unassigned</option>' + assignableUsers.map(u =>
@@ -285,11 +326,17 @@ function fillEditAssignee(item) {
     select.value = item.assigned_to_user_id == null ? '' : String(item.assigned_to_user_id);
 }
 
-function openPageEdit(item) {
+async function openPageEdit(item) {
     if (!editModal || !item) {
         return;
     }
     editingItemId = item.id;
+    if (activeListId === 'all' && itemWritable(item) && item.list_id) {
+        const { res, data } = await api(`/api/todos/${item.list_id}/items?status=open`);
+        if (res.ok) {
+            assignableUsers = data.assignable_users || [];
+        }
+    }
     closeModal(addModal);
     clearFieldError('todo-page-edit-error');
     const notes = document.getElementById('todo-page-edit-notes');
@@ -330,6 +377,10 @@ function mountPageDialogs() {
     });
     document.getElementById('todo-page-due')?.classList.add('w-full');
 
+    const note = document.createElement('p');
+    note.id = 'todo-page-add-list-note';
+    note.className = 'text-faint mono text-xs hidden';
+
     const error = document.createElement('p');
     error.id = 'todo-page-add-error';
     error.className = 'ld-field-error hidden';
@@ -348,7 +399,7 @@ function mountPageDialogs() {
     cancel.setAttribute('data-close', '');
     cancel.textContent = 'Cancel';
     actions.append(cancel);
-    form.append(error, actions);
+    form.append(note, error, actions);
 
     addModal = modalShell('todo-page-add-modal', 'todo-page-add-title', 'Add task', false);
     addModal.querySelector('.app-modal-panel').append(form);
@@ -538,14 +589,12 @@ async function loadLists() {
     }
 
     pageLists = data.lists || [];
-    readInitialState();
+    restoreList();
 
-    if (!activeListId && pageLists.length) {
-        const pinned = pageLists.find(l => l.pin_to_dashboard);
-        activeListId = pinned ? pinned.id : pageLists[0].id;
-    }
-
-    select.innerHTML = pageLists.map(list => {
+    const allOption = pageLists.length
+        ? `<option value="all"${activeListId === 'all' ? ' selected' : ''}>All</option>`
+        : '';
+    select.innerHTML = allOption + pageLists.map(list => {
         const suffix = list.is_owner ? '' : ` (${list.owner_username})`;
         return `<option value="${list.id}"${list.id === activeListId ? ' selected' : ''}>${esc(list.name)}${esc(suffix)}</option>`;
     }).join('');
@@ -600,7 +649,10 @@ async function loadItems() {
         return;
     }
 
-    const { res, data } = await api(`/api/todos/${activeListId}/items?status=${encodeURIComponent(activeStatus)}`);
+    const itemsUrl = activeListId === 'all'
+        ? `/api/todos/all/items?status=${encodeURIComponent(activeStatus)}`
+        : `/api/todos/${activeListId}/items?status=${encodeURIComponent(activeStatus)}`;
+    const { res, data } = await api(itemsUrl);
     if (!res.ok) {
         container.innerHTML = '<p class="text-danger mono text-xs">Could not load tasks.</p>';
         return;
@@ -617,10 +669,17 @@ async function loadItems() {
     if (meta && list) {
         const counts = list.counts || {};
         let actions = '';
-        if (canWrite && activeStatus === 'completed' && (counts.completed || 0) > 0) {
+        if (activeListId !== 'all' && canWrite && activeStatus === 'completed' && (counts.completed || 0) > 0) {
             actions = `<button type="button" id="todo-archive-all" class="link text-xs">Archive all completed</button>`;
         }
-        meta.innerHTML = `<span>${items.length} shown · ${counts.open || 0} open · ${counts.completed || 0} completed</span>${actions ? `<span>${actions}</span>` : ''}`;
+        let destination = '';
+        if (activeListId === 'all' && canWrite && activeStatus === 'open') {
+            const target = pageLists.find(entry => Number(entry.id) === Number(addTargetId()));
+            if (target) {
+                destination = ` · new tasks go to ${esc(target.name)}`;
+            }
+        }
+        meta.innerHTML = `<span>${items.length} shown · ${counts.open || 0} open · ${counts.completed || 0} completed${destination}</span>${actions ? `<span>${actions}</span>` : ''}`;
         document.getElementById('todo-archive-all')?.addEventListener('click', async () => {
             await api(`/api/todos/${activeListId}/archive-completed`, { method: 'POST', body: '{}' });
             loadItems();
@@ -632,7 +691,7 @@ async function loadItems() {
             title: activeStatus === 'open' ? 'No open tasks' : 'Nothing here',
             body: activeStatus === 'open'
                 ? 'Add one with Add task.'
-                : 'No ' + activeStatus + ' tasks in this list.',
+                : 'No ' + activeStatus + ' tasks' + (activeListId === 'all' ? '.' : ' in this list.'),
             actionLabel: 'Manage lists',
             actionHref: '/settings/todos',
         });
@@ -647,7 +706,9 @@ loadTodoCloseIcon();
 mountPageDialogs();
 
 document.getElementById('todo-page-list')?.addEventListener('change', e => {
-    activeListId = parseInt(e.target.value, 10);
+    const value = e.target.value;
+    activeListId = value === 'all' ? 'all' : parseInt(value, 10);
+    rememberList(activeListId);
     loadItems();
 });
 
@@ -663,7 +724,8 @@ document.getElementById('todo-page-add')?.addEventListener('submit', async e => 
     e.preventDefault();
     const input = document.getElementById('todo-page-input');
     const dueInput = document.getElementById('todo-page-due');
-    if (!input || !activeListId) {
+    const targetId = addTargetId();
+    if (!input || !targetId) {
         return;
     }
     const title = input.value.trim();
@@ -676,7 +738,7 @@ document.getElementById('todo-page-add')?.addEventListener('submit', async e => 
         body.due_date = dueVal;
     }
     clearFieldError('todo-page-add-error');
-    const { res, data } = await api(`/api/todos/${activeListId}/items/create`, {
+    const { res, data } = await api(`/api/todos/${targetId}/items/create`, {
         method: 'POST',
         body: JSON.stringify(body),
     });

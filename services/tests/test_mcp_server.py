@@ -286,6 +286,11 @@ def test_money_tools_resolve_onto_the_money_api():
     assert method == "GET"
     assert "category=Work" in path
     assert "status=open" in path
+    method, path, body = resolve("list_todos", {"category": "all", "status": "open"})
+    assert method == "GET"
+    assert body is None
+    assert "category=all" in path
+    assert "every list" in schema["list_todos"]["description"]
     method, path, body = resolve("create_todo", {"title": "Call", "category": "Work", "priority": 2})
     assert (method, path) == ("POST", "/api/v1/todos/items")
     assert body["title"] == "Call"

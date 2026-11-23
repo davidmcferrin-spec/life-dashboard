@@ -68,6 +68,7 @@ $extraStyles   = ['/assets/css/remaining-pages.css'];
 <?php require __DIR__ . '/partials/app-shell-close.php'; ?>
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
+<script src="/assets/js/todo-list-filter.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/todo-due.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/todos-page.js?v=<?= e($assetVer) ?>"></script>
 </body>

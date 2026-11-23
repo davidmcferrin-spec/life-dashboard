@@ -55,8 +55,15 @@ final class TodosHandler
     public function listItems(array $user, array $params): void
     {
         $userId = (int) $user['id'];
-        $listId = (int) ($params['id'] ?? 0);
+        $rawId = (string) ($params['id'] ?? '');
         $status = isset($_GET['status']) ? (string) $_GET['status'] : 'open';
+
+        if (strcasecmp($rawId, 'all') === 0) {
+            jsonResponse($this->todos->listItemsAll($userId, $status));
+            return;
+        }
+
+        $listId = (int) $rawId;
 
         if ($listId <= 0) {
             jsonResponse(['error' => 'Invalid list id.'], 400);

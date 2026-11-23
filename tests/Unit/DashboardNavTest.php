@@ -25,6 +25,7 @@ final class DashboardNavTest extends TestCase
             "['Clipboard', '/settings/clipboards', 'clipboard-list']",
             "['CloudPad', '/settings/clipboards?tab=cloudpad', 'cloud']",
             "['Clock', '/clock', 'clock-3']",
+            "['Todos', '/todos', 'list-checks']",
             "['Flights', '/flights', 'plane']",
             "['Feeds', '/feeds', 'inbox']",
             "['Grok Digest', '/digest', 'bot']",
@@ -63,7 +64,7 @@ final class DashboardNavTest extends TestCase
         self::assertStringContainsString('lucide-static v1.61.0 - ISC', $gear);
         self::assertStringNotContainsString('M9.56 2.2A10.1', $gear);
 
-        foreach (['bell' => 'lucide-bell', 'cloud' => 'lucide-cloud'] as $name => $class) {
+        foreach (['bell' => 'lucide-bell', 'cloud' => 'lucide-cloud', 'list-checks' => 'lucide-list-checks'] as $name => $class) {
             $icon = file_get_contents(ROOT_DIR . '/public/assets/vendor/lucide/' . $name . '.svg');
             self::assertIsString($icon);
             self::assertStringContainsString('class="lucide ' . $class . '"', $icon);

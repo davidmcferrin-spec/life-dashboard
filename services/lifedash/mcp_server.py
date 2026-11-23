@@ -1680,7 +1680,9 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_todos",
         "description": (
-            "Todos on lists you own. category is the list name. status is open, done, or all. "
+            "Todos on lists you own. category is the list name. "
+            "category all, or leaving category out, is every list. "
+            "status is open, done, or all. "
             "due_before and due_after are inclusive YYYY-MM-DD. priority is 1-5. "
             "Archived tasks stay out."
         ),

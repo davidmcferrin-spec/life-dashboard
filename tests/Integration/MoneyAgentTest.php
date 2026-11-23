@@ -268,6 +268,49 @@ final class MoneyAgentTest extends PgsqlTestCase
         $again = $this->svc->todos->agentComplete($this->user, (int) $todo['id'], true);
         self::assertSame('open', $again['status']);
 
+        $every = $this->svc->todos->agentList($this->user, [
+            'category' => 'all', 'status' => 'open', 'limit' => 50,
+        ]);
+        self::assertContains('Pack cables', array_column($every, 'title'));
+
+        $this->svc->todos->agentCreate($this->user, ['title' => 'Water plants', 'category' => 'Home']);
+        $both = $this->svc->todos->agentList($this->user, [
+            'category' => 'ALL', 'status' => 'open', 'limit' => 50,
+        ]);
+        $bothTitles = array_column($both, 'title');
+        self::assertContains('Pack cables', $bothTitles);
+        self::assertContains('Water plants', $bothTitles);
+
+        $named = $this->svc->todos->agentCreateCategory($this->user, 'All');
+        self::assertSame('All', $named['name']);
+        $this->svc->todos->agentCreate($this->user, ['title' => 'Only on All', 'category' => 'All']);
+        $broad = $this->svc->todos->agentList($this->user, [
+            'category' => 'all', 'status' => 'open', 'limit' => 50,
+        ]);
+        $broadTitles = array_column($broad, 'title');
+        self::assertContains('Only on All', $broadTitles);
+        self::assertContains('Water plants', $broadTitles);
+        self::assertContains('Pack cables', $broadTitles);
+
+        $page = $this->svc->todos->listItemsAll($this->user, 'open');
+        self::assertSame('all', $page['list']['id']);
+        self::assertSame('All', $page['list']['name']);
+        $byTitle = [];
+        foreach ($page['items'] as $item) {
+            $byTitle[$item['title']] = $item;
+        }
+        self::assertSame('Work', $byTitle['Pack cables']['list_name']);
+        self::assertSame('Home', $byTitle['Water plants']['list_name']);
+        self::assertSame('All', $byTitle['Only on All']['list_name']);
+        self::assertTrue($page['can_write']);
+        $workId = null;
+        foreach ($this->svc->todos->listSummaries($this->user) as $list) {
+            if ($list['name'] === 'Work') {
+                $workId = $list['id'];
+            }
+        }
+        self::assertSame($workId, $page['default_list_id']);
+
         try {
             $this->svc->todos->agentCreate($this->user, ['title' => 'Nope', 'category' => 'Missing']);
             self::fail('expected an unknown category to be refused');
