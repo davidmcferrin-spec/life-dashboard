@@ -33,6 +33,7 @@ from . import __version__
 from .config import Config
 from .log import setup as setup_logging
 from .agent_tools import AGENT_TOOLS, resolve_agent
+from .board_tools import BOARD_TOOLS, resolve_board
 from .handoff_tools import HANDOFF_TOOLS, resolve_handoff
 from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
@@ -103,6 +104,13 @@ _CALL_PROPS: dict[str, Any] = {
         ],
     },
     "duration_sec": {"type": "integer"},
+    "duration": {"type": "integer"},
+    "to_number": {"type": "string"},
+    "from_number": {"type": "string"},
+    "purpose": {"type": "string"},
+    "started_at": {"type": "string"},
+    "outcome": {"type": "string"},
+    "placed_by": {"type": "string"},
     "transcript_url": {"type": "string"},
     "recording_url": {"type": "string"},
     "transcript_text": {"type": "string"},
@@ -129,6 +137,9 @@ _CONTACT_PROPS: dict[str, Any] = {
     "vip_tier": {"type": "string"},
     "handling_rule": {"type": "string"},
     "notes": {"type": "string"},
+    "emails": {"type": "array", "items": {"type": "string"}},
+    "org": {"type": "string"},
+    "tags": {"type": "array", "items": {"type": "string"}},
 }
 
 _AGENCY_PROPS: dict[str, Any] = {
@@ -1792,7 +1803,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "add_shopping_items",
         "description": (
             "Add items to a list. Each item is a string such as '2 lb chicken', or an object with "
-            "name, quantity, unit, store, category, notes, source, dedupe_key, needed_by, and order_wave. "
+            "name, quantity, unit, store, category, notes, source, dedupe_key, needed_by, order_wave, and trip_id. "
             "source is a short label such as ai. needed_by is YYYY-MM-DD. order_wave is a label such as "
             "'homecoming Nov 4' or deferred. An open item with the same dedupe_key is updated and its "
             "quantity is increased instead of inserting a near-duplicate. The same name and unit still merges. "
@@ -1812,7 +1823,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "update_shopping_item",
         "description": (
             "Change an item's name, quantity, unit, store, category, notes, source, dedupe_key, "
-            "needed_by, or order_wave. An empty string clears source, dedupe_key, needed_by, order_wave, "
+            "needed_by, order_wave, or trip_id. An empty string clears source, dedupe_key, needed_by, order_wave, "
             "notes, store, or unit. needed_by is YYYY-MM-DD. A deferred order_wave stays out of the next cart."
         ),
         "inputSchema": {
@@ -1829,6 +1840,7 @@ TOOLS: list[dict[str, Any]] = [
                 "dedupe_key": {"type": ["string", "null"]},
                 "needed_by": {"type": ["string", "null"]},
                 "order_wave": {"type": ["string", "null"]},
+                "trip_id": {"type": ["integer", "null"]},
             },
             "required": ["item_id"],
             "additionalProperties": False,
@@ -1870,13 +1882,14 @@ TOOLS: list[dict[str, Any]] = [
         "name": "log_call",
         "description": (
             "Log a call. The same source_call_id updates the existing row. create_call is this tool. "
+            "A dial-bot call can send to_number, from_number, purpose, started_at, duration, outcome, "
+            "summary, transcript_url, contact_id, and placed_by. Direction defaults to outbound when a number is sent. "
             "debt is the collector record. reference_last4 is stored as the last 4 digits. "
             "Do not send a full account number or an SSN. An SSN-shaped value is rejected."
         ),
         "inputSchema": {
             "type": "object",
             "properties": _CALL_PROPS,
-            "required": ["direction"],
             "additionalProperties": False,
         },
     },
@@ -1886,7 +1899,6 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": _CALL_PROPS,
-            "required": ["direction"],
             "additionalProperties": False,
         },
     },
@@ -1945,7 +1957,7 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "list_calls",
-        "description": "Calls, open returns first. Filter by status, category, urgency, return_needed, from, to, phone, or handled_by.",
+        "description": "Calls, open returns first. Filter by status, category, urgency, return_needed, from, to, phone, handled_by, placed_by, outcome, or contact_id.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1957,6 +1969,9 @@ TOOLS: list[dict[str, Any]] = [
                 "to": {"type": "string"},
                 "phone": {"type": "string"},
                 "handled_by": {"type": "string"},
+                "placed_by": {"type": "string"},
+                "outcome": {"type": "string"},
+                "contact_id": {"type": "integer"},
                 "limit": {"type": "integer"},
             },
             "additionalProperties": False,
@@ -2656,6 +2671,7 @@ TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend(AGENT_TOOLS)
 TOOLS.extend(PLATFORM_TOOLS)
 TOOLS.extend(HANDOFF_TOOLS)
+TOOLS.extend(BOARD_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -3356,7 +3372,7 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
             key: args[key]
             for key in (
                 "name", "quantity", "unit", "store", "category", "notes",
-                "source", "dedupe_key", "needed_by", "order_wave",
+                "source", "dedupe_key", "needed_by", "order_wave", "trip_id",
             )
             if key in args
         }
@@ -3385,7 +3401,7 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
         todo = args.get("todo_id")
         return "POST", f"/api/v1/calls/{int(args['call_id'])}/todo", {"todo_id": todo}
     if name == "list_calls":
-        return "GET", "/api/v1/calls" + _query(args, ("status", "category", "urgency", "return_needed", "from", "to", "phone", "handled_by", "limit")), None
+        return "GET", "/api/v1/calls" + _query(args, ("status", "category", "urgency", "return_needed", "from", "to", "phone", "handled_by", "placed_by", "outcome", "contact_id", "limit")), None
     if name == "search_calls":
         return "GET", "/api/v1/calls/query" + _query(args, ("q", "limit")), None
     if name == "call_stats":
@@ -3622,6 +3638,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_handoff(name, args)
     if mapped is not None:
         return mapped
+    mapped = resolve_board(name, args)
+    if mapped is not None:
+        return mapped
     if name == "list_digest_items":
         query = {}
         if args.get("product"):
@@ -3695,6 +3714,7 @@ OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
     "shopping", "calls", "pantry", "spotify", "ollama", "digest", "agents", "handoffs",
+    "trips", "videos", "findings",
 )
 
 

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Dashboard\Widgets;
 
+use Dashboard\Briefs\BriefDigestService;
 use Dashboard\Calls\CallService;
 use Dashboard\Handoff\HandoffService;
+use Dashboard\Trips\TripService;
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
@@ -77,6 +79,8 @@ final class WidgetDataService
             'pantry'    => $this->pantry->summary($userId, (int) ($c['soon_days'] ?? 3)),
             'digest'    => \Dashboard\Digest\DigestService::fromDatabase()->card($userId),
             'handoffs'  => $this->handoffCard($userId),
+            'briefs'    => $this->briefCard($userId, (string) ($c['source'] ?? '')),
+            'trips'     => $this->tripCard($userId),
             'vitals'    => $this->overviewCard($userId, 'vitals'),
             'agenda'    => $this->overviewCard($userId, 'agenda'),
             'quick_actions' => [
@@ -118,6 +122,22 @@ final class WidgetDataService
         $svc = $this->handoffs ?? new HandoffService($this->db, $this->clock);
 
         return $svc->widget($userId);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function briefCard(int $userId, string $source): array
+    {
+        return (new BriefDigestService($this->db, $this->clock))->widget($userId, $source);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tripCard(int $userId): array
+    {
+        return (new TripService($this->db, $this->clock, $this->pages))->widget($userId);
     }
 
     /**

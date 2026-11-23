@@ -73,6 +73,9 @@ $shellItems = [
     ['Health', '/health', 'heart-pulse'],
     ['Brief', '/brief', 'sun'],
     ['Handoffs', '/handoffs', 'inbox'],
+    ['Trips', '/trips', 'plane'],
+    ['Calls', '/calls', 'phone'],
+    ['Videos', '/videos', 'play'],
     ['Links', '/graph', 'link'],
 ];
 if ((int) ($user['is_admin'] ?? 0) === 1) {

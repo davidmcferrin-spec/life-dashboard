@@ -1497,6 +1497,39 @@
             </div>`;
     }
 
-        window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, money_summary: moneySummary, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, handoffs, vitals, agenda, quick_actions: quickActions, custom };
+    function briefs(ctx) {
+        tools(ctx, '<a href="/brain" class="nav-link">Vault</a>');
+        const brief = ctx.data && ctx.data.brief;
+        if (!brief) {
+            ctx.body.innerHTML = emptyPanel('No brief yet', 'A news bot can publish one with publish_digest.', 'Vault', '/brain');
+            return;
+        }
+        const lines = (brief.items || []).map((line) => `<li>${esc(line)}</li>`).join('');
+        const title = brief.url
+            ? `<a href="${esc(brief.url)}">${esc(brief.title)}</a>`
+            : esc(brief.title);
+        ctx.body.innerHTML = `
+            <div class="ld-brief-widget">
+                <p class="handoff-widget-total">${esc(brief.source || '')} · ${esc(brief.date || '')}</p>
+                <h3>${title}</h3>
+                ${lines ? `<ul>${lines}</ul>` : ''}
+            </div>`;
+    }
+
+    function trips(ctx) {
+        tools(ctx, '<a href="/trips" class="nav-link">Trips</a>');
+        const rows = (ctx.data && ctx.data.trips) || [];
+        if (!rows.length) {
+            ctx.body.innerHTML = emptyPanel('No upcoming trips', 'Ideas and booked trips show up here.', 'Trips', '/trips');
+            return;
+        }
+        const items = rows.map((row) => {
+            const when = [row.start_date, row.end_date].filter(Boolean).join(' – ');
+            return `<li><a href="/trips#trip-${esc(row.id)}"><strong>${esc(row.name)}</strong></a><small>${esc(row.destination || '')}${when ? ' · ' + esc(when) : ''}</small></li>`;
+        }).join('');
+        ctx.body.innerHTML = `<div class="ld-trip-widget"><ul>${items}</ul></div>`;
+    }
+
+        window.LD.renderers = { habits, mood, stat, chart, gauge, goal, table, streak, life, shopping, pantry, calls, spending, networth, baby_step: babyStep, debt_snowball: debtSnowball, food_week: foodWeek, budget_actual: budgetActual, sinking_funds: sinkingFunds, bills_due: billsDue, retirement, credit, money_summary: moneySummary, portfolio, pages, youtube: carousel, reddit: carousel, x: carousel, reddit_feed: redditFeed, spotify, digest, handoffs, briefs, trips, vitals, agenda, quick_actions: quickActions, custom };
     window.LD.charts = { drawLineChart, drawBarChart, extent };
 })();

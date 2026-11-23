@@ -238,6 +238,21 @@ $router->get('/handoffs', function () use ($auth): void {
     require VIEWS_DIR . '/handoffs.php';
 });
 
+$router->get('/trips', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/trips.php';
+});
+
+$router->get('/calls', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/calls.php';
+});
+
+$router->get('/videos', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/videos.php';
+});
+
 $router->get('/graph', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/graph.php';

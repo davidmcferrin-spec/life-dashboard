@@ -21,7 +21,7 @@ HANDOFF_TOOLS: list[dict[str, Any]] = [
             "Open a handoff for another bot, or for anyone when to_agent is omitted. "
             "from_agent is this API key's name. body is markdown. "
             "priority is low, normal, or high. due_at is a date or timestamp. "
-            "tags, linked_page_ids, and linked_urls are optional. Requires handoffs:write."
+            "tags, linked_page_ids, linked_urls, and trip_id are optional. Requires handoffs:write."
         ),
         "inputSchema": {
             "type": "object",
@@ -34,6 +34,7 @@ HANDOFF_TOOLS: list[dict[str, Any]] = [
                 "tags": {"type": "array", "items": {"type": "string"}},
                 "linked_page_ids": {"type": "array", "items": {"type": "integer"}},
                 "linked_urls": {"type": "array", "items": {"type": "string"}},
+                "trip_id": {"type": ["integer", "null"]},
             },
             "required": ["title"],
             "additionalProperties": False,
@@ -138,9 +139,9 @@ HANDOFF_TOOLS: list[dict[str, Any]] = [
 
 def resolve_handoff(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str, Any] | None] | None:
     if name == "create_handoff":
-        unknown = set(args) - {"title", "body", "to_agent", "priority", "due_at", "tags", "linked_page_ids", "linked_urls"}
+        unknown = set(args) - {"title", "body", "to_agent", "priority", "due_at", "tags", "linked_page_ids", "linked_urls", "trip_id"}
         if unknown:
-            raise ValueError("create_handoff accepts title, body, to_agent, priority, due_at, tags, linked_page_ids, and linked_urls.")
+            raise ValueError("create_handoff accepts title, body, to_agent, priority, due_at, tags, linked_page_ids, linked_urls, and trip_id.")
         title = _text(args.get("title"), "title", 200, required=True)
         body: dict[str, Any] = {"title": title}
         if "body" in args:
@@ -160,6 +161,11 @@ def resolve_handoff(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
             body["linked_page_ids"] = _ids(args.get("linked_page_ids"), "linked_page_ids")
         if "linked_urls" in args:
             body["linked_urls"] = _strings(args.get("linked_urls"), "linked_urls", 20, 500)
+        if "trip_id" in args and args.get("trip_id") is not None:
+            trip_id = args.get("trip_id")
+            if isinstance(trip_id, bool) or not isinstance(trip_id, int) or trip_id < 1:
+                raise ValueError("trip_id must be a trip.")
+            body["trip_id"] = trip_id
         return "POST", "/api/v1/handoffs", body
     if name == "list_handoffs":
         unknown = set(args) - {"to_agent", "from_agent", "status", "tag", "mine", "open_only", "updated_since"}

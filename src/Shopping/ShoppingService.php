@@ -124,6 +124,9 @@ final class ShoppingService
         $dedupe = array_key_exists('dedupe_key', $fields) ? $this->bounded($fields['dedupe_key'], 160, 'dedupe_key') : $this->blankToNull($row['dedupe_key'] ?? null);
         $needed = array_key_exists('needed_by', $fields) ? $this->planDate($fields['needed_by']) : $this->blankToNull($row['needed_by'] ?? null);
         $wave = array_key_exists('order_wave', $fields) ? $this->bounded($fields['order_wave'], 80, 'order_wave', true) : $this->blankToNull($row['order_wave'] ?? null);
+        $tripId = array_key_exists('trip_id', $fields)
+            ? $this->ownedTrip($userId, $this->tripId($fields['trip_id']))
+            : ($row['trip_id'] !== null && $row['trip_id'] !== '' ? (int) $row['trip_id'] : null);
         $nameKey = ShoppingText::nameKey($name);
         $unitKey = $unit ?? '';
         if ((int) $row['bought'] === 0) {
@@ -132,10 +135,10 @@ final class ShoppingService
         $this->db->execute(
             "UPDATE shopping_items
              SET name = ?, name_key = ?, quantity = ?, unit = ?, unit_key = ?, category = ?, store = ?, notes = ?,
-                 source = ?, dedupe_key = ?, needed_by = ?, order_wave = ?,
+                 source = ?, dedupe_key = ?, needed_by = ?, order_wave = ?, trip_id = ?,
                  updated_at = (now() AT TIME ZONE 'UTC')
              WHERE id = ? AND user_id = ?",
-            [$name, $nameKey, $quantity, $unit, $unitKey, $category, $store, $notes, $source, $dedupe, $needed, $wave, $itemId, $userId]
+            [$name, $nameKey, $quantity, $unit, $unitKey, $category, $store, $notes, $source, $dedupe, $needed, $wave, $tripId, $itemId, $userId]
         );
         return $this->itemById($userId, $itemId);
     }
@@ -419,13 +422,14 @@ final class ShoppingService
                 $id = (int) $this->db->fetchScalar(
                     'INSERT INTO shopping_items
                         (list_id, user_id, name, name_key, quantity, unit, unit_key, store, category, notes, added_by,
-                         source, dedupe_key, needed_by, order_wave)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
+                         source, dedupe_key, needed_by, order_wave, trip_id)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id',
                     [
                         $listId, $userId, $parsed['name'], $parsed['name_key'], $parsed['quantity'],
                         $parsed['unit'], $parsed['unit_key'], $parsed['store'], $parsed['category'],
                         $parsed['notes'], $addedBy, $parsed['source'], $parsed['dedupe_key'],
                         $parsed['needed_by'], $parsed['order_wave'],
+                        $this->ownedTrip($userId, $parsed['trip_id']),
                     ]
                 );
                 $item = $this->itemById($userId, $id);
@@ -479,16 +483,19 @@ final class ShoppingService
         $dedupe = $parsed['dedupe_key'] ?? $this->blankToNull($row['dedupe_key'] ?? null);
         $needed = $parsed['needed_by'] ?? $this->blankToNull($row['needed_by'] ?? null);
         $wave = $parsed['order_wave'] ?? $this->blankToNull($row['order_wave'] ?? null);
+        $tripId = $parsed['trip_id'] !== null
+            ? $this->ownedTrip($userId, $parsed['trip_id'])
+            : ($row['trip_id'] !== null && $row['trip_id'] !== '' ? (int) $row['trip_id'] : null);
         $this->assertOpenIdentity((int) $row['list_id'], (int) $row['id'], $nameKey, $unitKey, $dedupe);
         $this->db->execute(
             "UPDATE shopping_items
              SET name = ?, name_key = ?, quantity = ?, unit = ?, unit_key = ?, category = ?, store = ?, notes = ?,
-                 source = ?, dedupe_key = ?, needed_by = ?, order_wave = ?,
+                 source = ?, dedupe_key = ?, needed_by = ?, order_wave = ?, trip_id = ?,
                  updated_at = (now() AT TIME ZONE 'UTC')
              WHERE id = ? AND user_id = ?",
             [
                 $name, $nameKey, $quantity, $unit, $unitKey, $category, $store, $notes,
-                $source, $dedupe, $needed, $wave, (int) $row['id'], $userId,
+                $source, $dedupe, $needed, $wave, $tripId, (int) $row['id'], $userId,
             ]
         );
     }
@@ -507,6 +514,7 @@ final class ShoppingService
             $parsed['dedupe_key'] = null;
             $parsed['needed_by'] = null;
             $parsed['order_wave'] = null;
+            $parsed['trip_id'] = null;
             return $parsed;
         }
         if (!is_array($raw)) {
@@ -539,6 +547,7 @@ final class ShoppingService
         $parsed['dedupe_key'] = $this->bounded($raw['dedupe_key'] ?? null, 160, 'dedupe_key');
         $parsed['needed_by'] = $this->planDate($raw['needed_by'] ?? null);
         $parsed['order_wave'] = $this->bounded($raw['order_wave'] ?? null, 80, 'order_wave', true);
+        $parsed['trip_id'] = $this->tripId($raw['trip_id'] ?? null);
         return $parsed;
     }
 
@@ -619,6 +628,34 @@ final class ShoppingService
     /**
      * @return array<string, mixed>
      */
+    private function tripId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+        if (is_string($value) && preg_match('/^\d+$/', $value) === 1) {
+            $value = (int) $value;
+        }
+        if (is_bool($value) || !is_int($value) || $value < 1) {
+            throw ValidationException::withFields(['trip_id' => 'trip_id must be a trip.']);
+        }
+
+        return $value;
+    }
+
+    private function ownedTrip(int $userId, ?int $tripId): ?int
+    {
+        if ($tripId === null) {
+            return null;
+        }
+        $row = $this->db->fetchOne('SELECT id FROM trips WHERE id = ? AND user_id = ?', [$tripId, $userId]);
+        if ($row === null) {
+            throw ValidationException::withFields(['trip_id' => 'That trip was not found.']);
+        }
+
+        return $tripId;
+    }
+
     private function requireItem(int $userId, int $itemId): array
     {
         $row = $this->db->fetchOne('SELECT * FROM shopping_items WHERE id = ? AND user_id = ?', [$itemId, $userId]);
@@ -656,6 +693,7 @@ final class ShoppingService
             'dedupe_key'  => $this->blankToNull($row['dedupe_key'] ?? null),
             'needed_by'   => $this->blankToNull($row['needed_by'] ?? null),
             'order_wave'  => $this->blankToNull($row['order_wave'] ?? null),
+            'trip_id'     => isset($row['trip_id']) && $row['trip_id'] !== null && $row['trip_id'] !== '' ? (int) $row['trip_id'] : null,
             'added_by'    => (string) $row['added_by'],
             'bought'      => (int) $row['bought'] === 1,
             'bought_at'   => $row['bought_at'] !== null ? (string) $row['bought_at'] : null,

@@ -148,6 +148,20 @@ final class WidgetTypeRegistry
                 'size' => ['w' => 3, 'h' => 4], 'min' => ['w' => 2, 'h' => 3],
                 'fields' => [],
             ],
+            'briefs' => [
+                'label' => 'Briefs', 'category' => 'life', 'singleton' => false,
+                'description' => 'The latest dated brief: title, date, and the first headlines. Filter by source, such as Space Desk.',
+                'size' => ['w' => 4, 'h' => 4], 'min' => ['w' => 3, 'h' => 3],
+                'fields' => [
+                    'source' => ['type' => 'string', 'label' => 'Source (blank shows the latest of any source)', 'max' => 80, 'default' => ''],
+                ],
+            ],
+            'trips' => [
+                'label' => 'Upcoming trips', 'category' => 'life', 'singleton' => false,
+                'description' => 'Trips that are still an idea, in planning, or booked.',
+                'size' => ['w' => 3, 'h' => 4], 'min' => ['w' => 2, 'h' => 3],
+                'fields' => [],
+            ],
             'vitals' => [
                 'label' => 'System vitals', 'category' => 'life', 'singleton' => true,
                 'description' => 'Habits, pings, and today\'s goals.',
@@ -377,6 +391,8 @@ final class WidgetTypeRegistry
             'pantry' => 'cooking-pot',
             'digest' => 'bot',
             'handoffs' => 'inbox',
+            'briefs' => 'newspaper',
+            'trips' => 'plane',
             'legacy.weather' => 'sun',
             'legacy.todos' => 'clipboard-list',
             'legacy.bookmarks' => 'book',
