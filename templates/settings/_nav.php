@@ -42,7 +42,8 @@ if (!function_exists('settings_nav_groups')) {
             ],
             'Connections' => [
                 'weather'    => ['Weather', '/settings/weather'],
-                'stocks'     => ['Stocks', '/settings/stocks'],
+                'stocks'      => ['Stocks', '/settings/stocks'],
+                'stock-sheet' => ['Stocks sheet', '/settings/stock-sheet'],
                 'feeds'      => ['News feeds', '/settings/feeds'],
                 'reddit'     => ['Reddit', '/settings/reddit'],
                 'spotify'    => ['Spotify', '/settings/spotify'],

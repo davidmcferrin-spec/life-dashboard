@@ -23,12 +23,7 @@ final class StocksHandler
     {
         $userId = (int) $user['id'];
 
-        jsonResponse([
-            'symbols'             => $this->stocks->listForUser($userId),
-            'widget_symbols'      => $this->stocks->widgetForUser($userId),
-            'max_symbols'         => StockService::maxSymbols(),
-            'max_widget_symbols'  => StockService::widgetMaxSymbols(),
-        ]);
+        jsonResponse($this->stocks->listPayload($userId));
     }
 
     /**

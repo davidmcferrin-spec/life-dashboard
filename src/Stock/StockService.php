@@ -21,11 +21,19 @@ final class StockService
         private readonly StockRepository $repo,
         private readonly PreferenceService $prefs,
         private readonly HttpClient $http = new HttpClient(),
+        private readonly ?StockSheetConfig $sheets = null,
+        private readonly ?StockSheetStore $sheetRows = null,
     ) {}
 
     public static function fromDatabase(Database $db): self
     {
-        return new self(new StockRepository($db), new PreferenceService($db));
+        return new self(
+            new StockRepository($db),
+            new PreferenceService($db),
+            new HttpClient(),
+            new StockSheetSettings($db),
+            new PgStockSheetStore($db),
+        );
     }
 
     public static function maxSymbols(): int
@@ -65,9 +73,81 @@ final class StockService
     }
 
     /**
+     * Quotes for GET /stocks. A connected sheet replaces the seeded symbol list.
+     *
+     * @return array<string, mixed>
+     */
+    public function listPayload(int $userId): array
+    {
+        $sheet = $this->sheetPayload($userId);
+        if ($sheet !== null) {
+            return $sheet;
+        }
+        $symbols = $this->manualSymbols($userId);
+
+        return [
+            'symbols'            => $symbols,
+            'widget_symbols'     => $this->manualWidget($symbols),
+            'max_symbols'        => self::MAX_SYMBOLS,
+            'max_widget_symbols' => self::widgetMaxSymbols(),
+            'source'             => 'manual',
+            'watchlist'          => [],
+            'commodities'        => [],
+            'play_account'       => [],
+            'sheet'              => ['configured' => false],
+        ];
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function listForUser(int $userId): array
+    {
+        return $this->listPayload($userId)['symbols'];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function widgetForUser(int $userId): array
+    {
+        return $this->listPayload($userId)['widget_symbols'];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function sheetPayload(int $userId): ?array
+    {
+        if ($this->sheets === null || $this->sheetRows === null || $this->sheets->credentials($userId) === null) {
+            return null;
+        }
+        $status = $this->sheetRows->status($userId);
+        $refreshed = isset($status['last_synced_at']) && is_string($status['last_synced_at']) && $status['last_synced_at'] !== ''
+            ? $status['last_synced_at']
+            : null;
+        $built = SheetStockList::build(
+            $this->sheetRows->watchlist($userId),
+            $this->sheetRows->commodities($userId),
+            $this->sheetRows->play($userId),
+            $refreshed,
+            self::widgetMaxSymbols(),
+        );
+        $built['max_widget_symbols'] = self::widgetMaxSymbols();
+        $built['sheet'] = [
+            'configured'     => true,
+            'status'         => (string) ($status['status'] ?? 'never'),
+            'last_synced_at' => $refreshed,
+            'sync_error'     => $status['sync_error'] ?? null,
+        ];
+
+        return $built;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function manualSymbols(int $userId): array
     {
         $this->ensureDefaults($userId);
 
@@ -78,17 +158,15 @@ final class StockService
     }
 
     /**
+     * @param list<array<string, mixed>> $all
      * @return list<array<string, mixed>>
      */
-    public function widgetForUser(int $userId): array
+    private function manualWidget(array $all): array
     {
-        $all = $this->listForUser($userId);
-
         $pinned = array_values(array_filter(
             $all,
             static fn (array $row): bool => !empty($row['pin_to_dashboard']),
         ));
-
         if ($pinned !== []) {
             return array_slice($pinned, 0, self::widgetMaxSymbols());
         }

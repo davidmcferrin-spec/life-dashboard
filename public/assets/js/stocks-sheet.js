@@ -84,9 +84,9 @@
     }
 
     function statusLine(sync) {
-        if (!sync || !sync.configured) return 'Not connected. Save a service account key to pull the sheet.';
+        if (!sync || !sync.configured) return 'The sheet is not connected.';
         if (sync.status === 'error') return 'Sync error. ' + (sync.sync_error || 'The last pull failed.');
-        if (!sync.last_synced_at) return 'Connected. Not synced yet.';
+        if (!sync.last_synced_at) return 'Not synced yet.';
         if (sync.stale) return 'Behind. Last synced ' + sync.last_synced_at + '.';
         return 'Up to date. Last synced ' + sync.last_synced_at + '.';
     }
@@ -98,14 +98,8 @@
             status.textContent = statusLine(sync);
             status.classList.toggle('fin-stale', !!(sync.configured && (sync.stale || sync.status === 'error')));
         }
-        const form = document.getElementById('stocks-sheet-settings');
-        if (form && page.settings) {
-            if (page.settings.spreadsheet_id) form.elements.spreadsheet_id.value = page.settings.spreadsheet_id;
-            const key = form.elements.service_account_json;
-            if (key && page.settings.key_hint) {
-                key.placeholder = page.settings.key_hint === 'set' ? '••••••••' : ('•••••••• ' + page.settings.key_hint);
-            }
-        }
+        const setup = document.getElementById('stocks-sheet-setup');
+        if (setup) setup.hidden = !!(sync.configured);
         const watch = document.getElementById('stocks-watchlist');
         const commodities = document.getElementById('stocks-commodities');
         const play = document.getElementById('stocks-play');
@@ -114,52 +108,10 @@
         if (play) play.innerHTML = playTable(page.play_account || []);
     }
 
-    function showError(err) {
-        const el = document.getElementById('stocks-sheet-settings-error');
-        if (!el) return;
-        const fields = err && err.fields ? err.fields : {};
-        el.textContent = fields.service_account_json || fields.spreadsheet_id || (err && err.message) || 'Could not save.';
-        el.classList.remove('hidden');
-    }
-
     async function load() {
         const page = await ld.api.get('/stocks/sheet');
         paint(page);
     }
-
-    document.getElementById('stocks-sheet-settings').addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const error = document.getElementById('stocks-sheet-settings-error');
-        if (error) {
-            error.textContent = '';
-            error.classList.add('hidden');
-        }
-        const data = new FormData(event.target);
-        const body = { spreadsheet_id: String(data.get('spreadsheet_id') || '').trim() };
-        const key = String(data.get('service_account_json') || '').trim();
-        if (key !== '') body.service_account_json = key;
-        try {
-            await ld.api.post('/stocks/sheet/settings', body);
-            event.target.elements.service_account_json.value = '';
-            await load();
-        } catch (err) {
-            showError(err);
-        }
-    });
-
-    document.getElementById('stocks-sheet-refresh').addEventListener('click', async () => {
-        const error = document.getElementById('stocks-sheet-settings-error');
-        if (error) {
-            error.textContent = '';
-            error.classList.add('hidden');
-        }
-        try {
-            await ld.api.post('/stocks/sheet/refresh', {});
-            await load();
-        } catch (err) {
-            showError(err);
-        }
-    });
 
     load().catch((err) => {
         const status = document.getElementById('stocks-sheet-status');
