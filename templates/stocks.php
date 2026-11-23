@@ -136,6 +136,70 @@ $finIcon = static function (string $name): void {
         </div>
         <div id="stocks-manage-list"></div>
     </section>
+
+    <section class="fin-card" id="stocks-sheet" aria-labelledby="stocks-sheet-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <span class="fin-icon" aria-hidden="true"><?php $finIcon('file-text'); ?></span>
+                <div>
+                    <span class="fin-eyebrow">Google Sheet</span>
+                    <h2 id="stocks-sheet-title">Watchlist, commodities, and play account</h2>
+                </div>
+            </div>
+            <button type="button" class="btn" id="stocks-sheet-refresh">Pull sheet</button>
+        </header>
+        <p class="fin-note">Pulled from the Stocks sheet. The sheet is read only. These rows are quotes and recorded buys, separate from the portfolio above.</p>
+        <p id="stocks-sheet-status" class="fin-status" role="status">Loading the sheet…</p>
+        <form id="stocks-sheet-settings" class="space-y-3">
+            <label class="block ld-field">
+                <span>Spreadsheet id</span>
+                <input name="spreadsheet_id" class="input w-full" maxlength="120" spellcheck="false" autocomplete="off" value="1Z00dgU3HUvIuXq4UPJeF0QPzoE8iWdx9AVWM7O92V9o">
+            </label>
+            <label class="block ld-field">
+                <span>Service account JSON</span>
+                <textarea name="service_account_json" class="input w-full" rows="4" spellcheck="false" autocomplete="off" placeholder="Paste the JSON key. Leave blank to keep the saved key."></textarea>
+            </label>
+            <p class="fin-note">The key and the spreadsheet id are stored encrypted. The key is not shown again.</p>
+            <button type="submit" class="btn">Save sheet connection</button>
+            <p id="stocks-sheet-settings-error" class="ld-field-error hidden" role="alert"></p>
+        </form>
+    </section>
+
+    <section class="fin-card" aria-labelledby="stocks-watch-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">Sheet</span>
+                    <h2 id="stocks-watch-title">Watchlist</h2>
+                </div>
+            </div>
+        </header>
+        <div id="stocks-watchlist"></div>
+    </section>
+
+    <section class="fin-card" aria-labelledby="stocks-commodities-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">Sheet</span>
+                    <h2 id="stocks-commodities-title">Commodities</h2>
+                </div>
+            </div>
+        </header>
+        <div id="stocks-commodities"></div>
+    </section>
+
+    <section class="fin-card" aria-labelledby="stocks-play-title">
+        <header class="fin-card-head">
+            <div class="fin-card-title">
+                <div>
+                    <span class="fin-eyebrow">Sheet</span>
+                    <h2 id="stocks-play-title">Play account</h2>
+                </div>
+            </div>
+        </header>
+        <div id="stocks-play"></div>
+    </section>
 </main>
 
 <?php require __DIR__ . '/partials/app-shell-close.php'; ?>
@@ -143,5 +207,6 @@ $finIcon = static function (string $name): void {
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/fin-table.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/stocks-manage.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/stocks-sheet.js?v=<?= e($assetVer) ?>"></script>
 </body>
 </html>

@@ -22,6 +22,7 @@ final class BriefText
             self::home($facts['home'] ?? []),
             self::music($facts['music'] ?? []),
             self::healthSection($facts['health'] ?? []),
+            self::market(is_array($facts['market'] ?? null) ? $facts['market'] : []),
         ];
         $lines = array_values(array_filter($lines, static fn (string $line): bool => $line !== ''));
 
@@ -238,6 +239,60 @@ final class BriefText
         }
 
         return 'Health: Open Wearables is connected, and no vitals are stored yet.';
+    }
+
+    /**
+     * Quotes from the stored sheet. Benchmarks and movers only.
+     *
+     * @param array<string, mixed> $facts
+     */
+    private static function market(array $facts): string
+    {
+        if (!empty($facts['error'])) {
+            return 'Market: the stock sheet did not load. Quotes only, not an account balance.';
+        }
+        if (empty($facts['configured'])) {
+            return 'Market: the stock sheet is not connected. Quotes only, not an account balance.';
+        }
+        $bits = [];
+        foreach ($facts['benchmarks'] ?? [] as $row) {
+            if (is_array($row) && !empty($row['symbol'])) {
+                $bits[] = self::tick($row);
+            }
+        }
+        $line = 'Market: ' . ($bits === [] ? 'no benchmarks are stored' : implode(', ', $bits));
+        $movers = [];
+        foreach ($facts['movers'] ?? [] as $row) {
+            if (is_array($row) && !empty($row['symbol'])) {
+                $movers[] = self::tick($row);
+            }
+        }
+        if ($movers !== []) {
+            $line .= '. Movers: ' . implode(', ', $movers);
+        }
+        if (!empty($facts['stale'])) {
+            $line .= '. The sheet sync is behind';
+        }
+
+        return $line . '. Quotes only, not an account balance.';
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private static function tick(array $row): string
+    {
+        $text = (string) $row['symbol'];
+        if (isset($row['price']) && $row['price'] !== null && $row['price'] !== '') {
+            $text .= ' ' . self::moneyNum((float) $row['price']);
+        }
+        if (isset($row['change_pct']) && $row['change_pct'] !== null && $row['change_pct'] !== '') {
+            $pct = (float) $row['change_pct'];
+            $sign = $pct > 0 ? '+' : '';
+            $text .= ' (' . $sign . self::num($pct) . '%)';
+        }
+
+        return $text;
     }
 
     private static function num(float $value): string

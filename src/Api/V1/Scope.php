@@ -57,6 +57,8 @@ final class Scope
 
     public const FINDING_ENTITIES = ['finding'];
 
+    public const STOCK_ENTITIES = ['stock_sheet'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -78,6 +80,7 @@ final class Scope
         'trip',
         'video',
         'finding',
+        'stock_sheet',
         'deploy',
     ];
 
@@ -255,6 +258,9 @@ final class Scope
         }
         if (self::allows($granted, 'findings:read')) {
             $allow = array_merge($allow, self::FINDING_ENTITIES);
+        }
+        if (self::allows($granted, 'stocks:read')) {
+            $allow = array_merge($allow, self::STOCK_ENTITIES);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

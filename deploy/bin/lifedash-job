@@ -9,7 +9,7 @@ LOG_DIR="$APP_DIR/storage/logs"
 PHP_BIN="${PHP_BIN:-$(command -v php)}"
 
 usage() {
-    echo "usage: lifedash-job {feeds|flights|packages|pings|stocks|shares|prune|media|reddit|routines|plaid}" >&2
+    echo "usage: lifedash-job {feeds|flights|packages|pings|stocks|shares|prune|media|reddit|routines|plaid|stocksheet}" >&2
     exit 64
 }
 
@@ -27,7 +27,8 @@ case "$1" in
     media)    script=cron/fetch_media.php;         log=media.log ;;
     reddit)   script=cron/fetch_reddit.php;        log=reddit.log ;;
     routines) script=cron/jarvis_routines.php;      log=routines.log ;;
-    plaid)    script=cron/sync_plaid.php;          log=plaid.log ;;
+    plaid)      script=cron/sync_plaid.php;       log=plaid.log ;;
+    stocksheet) script=cron/sync_stock_sheet.php; log=stocksheet.log ;;
     *) usage ;;
 esac
 

@@ -30,6 +30,7 @@ use Dashboard\Pantry\PantryService;
 use Dashboard\Reddit\RedditService;
 use Dashboard\Search\SearchService;
 use Dashboard\Shopping\ShoppingService;
+use Dashboard\Stock\StockSheetSync;
 use Dashboard\Support\Clock;
 use Dashboard\Todo\TodoService;
 use Dashboard\Trips\TripService;
@@ -74,6 +75,7 @@ final class Services
     public readonly TripService $trips;
     public readonly VideoSlateService $videos;
     public readonly FindingService $findings;
+    public readonly StockSheetSync $sheets;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -105,7 +107,8 @@ final class Services
         $this->health = new HealthService($db, $clock);
         $this->healthLog = new HealthLogService($db, $clock, $this->habits);
         $this->graph = new GraphService($db);
-        $this->briefs = new MorningBriefService($db, $clock, $this->bills, $this->digest, $this->health);
+        $this->sheets = StockSheetSync::make($db, $clock);
+        $this->briefs = new MorningBriefService($db, $clock, $this->bills, $this->digest, $this->health, $this->sheets);
         $this->handoffs = new HandoffService($db, $clock);
         $this->briefsDigest = new BriefDigestService($db, $clock);
         $this->trips = new TripService($db, $clock, $this->pages);

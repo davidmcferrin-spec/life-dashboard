@@ -450,6 +450,7 @@ final class ApiRunner
             '/findings'             => 'finding',
             '/brief'                => 'brief',
             '/handoffs'             => 'handoff',
+            '/stocks/sheet'         => 'stock_sheet',
             '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {

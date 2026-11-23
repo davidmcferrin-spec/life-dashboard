@@ -707,6 +707,8 @@ final class ExtendedApi
             return ['cash' => $this->svc->invest->saveCash($u, $body['cash'] ?? null)];
         }, 200, true));
 
+        $this->registerStockSheet($r);
+
         $r->get('/api/v1/reddit/subs', fn () => $this->run(fn (int $u) => [
             'subs' => $this->svc->reddit->list($u),
         ]));
@@ -917,6 +919,30 @@ final class ExtendedApi
         (new PlatformApi($this->runner, $this->svc))->register($r);
         (new HandoffApi($this->runner, $this->svc))->register($r);
         (new BoardApi($this->runner, $this->svc))->register($r);
+    }
+
+    private function registerStockSheet(Router $r): void
+    {
+        $r->get('/api/v1/stocks/sheet', fn () => $this->run(fn (int $u) => $this->svc->sheets->page($u)));
+        $r->get('/api/v1/stocks/sheet/settings', fn () => $this->run(fn (int $u) => [
+            'settings' => $this->svc->sheets->page($u)['settings'],
+        ]));
+        $r->post('/api/v1/stocks/sheet/settings', fn () => $this->run(
+            fn (int $u) => $this->svc->sheets->saveSettings($u, $this->runner->body()),
+            200,
+            true
+        ));
+        $r->get('/api/v1/stocks/sheet/watchlist', fn () => $this->run(fn (int $u) => $this->svc->sheets->watchlist($u)));
+        $r->get('/api/v1/stocks/sheet/commodities', fn () => $this->run(fn (int $u) => $this->svc->sheets->commodities($u)));
+        $r->get('/api/v1/stocks/sheet/play', fn () => $this->run(fn (int $u) => $this->svc->sheets->play($u)));
+        $r->get('/api/v1/stocks/sheet/status', fn () => $this->run(fn (int $u) => [
+            'sync' => $this->svc->sheets->status($u),
+        ]));
+        $r->post('/api/v1/stocks/sheet/refresh', fn () => $this->run(
+            fn (int $u) => $this->svc->sheets->refresh($u),
+            200,
+            true
+        ));
     }
 
     private function registerOllama(Router $r): void
