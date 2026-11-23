@@ -219,6 +219,254 @@
         return out;
     }
 
+    function clusterRadius(count) {
+        return 86 + 22 * Math.sqrt(Math.max(1, count));
+    }
+
+    function labelClearance(title) {
+        const text = Array.from(String(title || 'Page'));
+        const len = Math.min(28, text.length);
+        const width = 40 + len * 6.4;
+        const height = 40;
+        return Math.max(34, Math.hypot(width * 0.5, height * 0.62));
+    }
+
+    function fibonacciPoint(index, count, radius) {
+        if (count <= 1 || radius <= 0) return { x: 0, y: 0, z: 0 };
+        const golden = Math.PI * (3 - Math.sqrt(5));
+        const y = 1 - (index / (count - 1)) * 2;
+        const ring = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = golden * index;
+        return {
+            x: Math.cos(theta) * ring * radius,
+            y: y * radius,
+            z: Math.sin(theta) * ring * radius,
+        };
+    }
+
+    function spreadRadius(count, clusterR) {
+        const n = Math.max(2, count);
+        const spacing = clusterR * 2.55 + 210;
+        return spacing / (2 * Math.sqrt(Math.PI / n));
+    }
+
+    function limitStep(force, maxStep) {
+        const mag = Math.hypot(force.x, force.y, force.z);
+        if (mag <= maxStep || mag === 0) return force;
+        const scale = maxStep / mag;
+        return { x: force.x * scale, y: force.y * scale, z: force.z * scale };
+    }
+
+    function layoutWorld(nodes, edges, clusters) {
+        const clouds = cloudsFrom(nodes, clusters);
+        const positions = new Map();
+        if (!clouds.length) return { clouds: [], positions: positions };
+
+        const nodeCloud = new Map();
+        const centers = clouds.map((cloud, index) => {
+            cloud.nodes.forEach((node) => nodeCloud.set(node.id, index));
+            return {
+                key: cloud.key,
+                label: cloud.label,
+                count: cloud.nodes.length,
+                radius: clusterRadius(cloud.nodes.length),
+                x: 0,
+                y: 0,
+                z: 0,
+            };
+        });
+        const avgR = centers.reduce((sum, center) => sum + center.radius, 0) / centers.length;
+        const spread = centers.length === 1 ? 0 : spreadRadius(centers.length, avgR);
+        centers.forEach((center, index) => {
+            const point = fibonacciPoint(index, centers.length, spread);
+            center.x = point.x;
+            center.y = point.y;
+            center.z = point.z;
+        });
+
+        const bridge = new Map();
+        (edges || []).forEach((edge) => {
+            const a = nodeCloud.get(edge.from);
+            const b = nodeCloud.get(edge.to);
+            if (a == null || b == null || a === b) return;
+            const i = Math.min(a, b);
+            const j = Math.max(a, b);
+            const key = i + ':' + j;
+            bridge.set(key, (bridge.get(key) || 0) + 1);
+        });
+
+        const passes = centers.length < 2 ? 0 : 72;
+        for (let step = 0; step < passes; step++) {
+            const cool = 1 - step / passes;
+            const forces = centers.map(() => ({ x: 0, y: 0, z: 0 }));
+            for (let i = 0; i < centers.length; i++) {
+                for (let j = i + 1; j < centers.length; j++) {
+                    let dx = centers[j].x - centers[i].x;
+                    let dy = centers[j].y - centers[i].y;
+                    let dz = centers[j].z - centers[i].z;
+                    let dist = Math.hypot(dx, dy, dz);
+                    if (dist < 1) {
+                        dx = (j - i);
+                        dy = 0.35;
+                        dz = 0.2;
+                        dist = Math.hypot(dx, dy, dz);
+                    }
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    const nz = dz / dist;
+                    const minSep = centers[i].radius + centers[j].radius + 150;
+                    const rep = (18000 + centers[i].radius * centers[j].radius) / (dist * dist);
+                    forces[i].x -= nx * rep;
+                    forces[i].y -= ny * rep;
+                    forces[i].z -= nz * rep;
+                    forces[j].x += nx * rep;
+                    forces[j].y += ny * rep;
+                    forces[j].z += nz * rep;
+                    const weight = bridge.get(i + ':' + j) || 0;
+                    if (weight) {
+                        const rest = minSep * 1.08;
+                        const pull = (dist - rest) * 0.045 * Math.min(4, weight);
+                        forces[i].x += nx * pull;
+                        forces[i].y += ny * pull;
+                        forces[i].z += nz * pull;
+                        forces[j].x -= nx * pull;
+                        forces[j].y -= ny * pull;
+                        forces[j].z -= nz * pull;
+                    }
+                    if (dist < minSep) {
+                        const push = (minSep - dist) * 0.65;
+                        forces[i].x -= nx * push;
+                        forces[i].y -= ny * push;
+                        forces[i].z -= nz * push;
+                        forces[j].x += nx * push;
+                        forces[j].y += ny * push;
+                        forces[j].z += nz * push;
+                    }
+                }
+                forces[i].x -= centers[i].x * 0.012;
+                forces[i].y -= centers[i].y * 0.012;
+                forces[i].z -= centers[i].z * 0.012;
+            }
+            const maxStep = 28 + 90 * cool;
+            centers.forEach((center, index) => {
+                const stepForce = limitStep(forces[index], maxStep);
+                center.x += stepForce.x;
+                center.y += stepForce.y;
+                center.z += stepForce.z;
+            });
+        }
+
+        clouds.forEach((cloud, cloudIndex) => {
+            const center = centers[cloudIndex];
+            const shell = Math.max(72, center.radius * 0.62);
+            const locals = cloud.nodes.map((node, index) => {
+                const base = placeOnSphere(index, cloud.nodes.length, shell);
+                return {
+                    id: node.id,
+                    x: base.x,
+                    y: base.y,
+                    z: base.z,
+                    clear: labelClearance(node.title),
+                };
+            });
+            const indexOf = new Map(locals.map((node, index) => [node.id, index]));
+            const localLinks = [];
+            (edges || []).forEach((edge) => {
+                if (!indexOf.has(edge.from) || !indexOf.has(edge.to) || edge.from === edge.to) return;
+                localLinks.push([indexOf.get(edge.from), indexOf.get(edge.to)]);
+            });
+            const localPasses = locals.length < 2 ? 0 : Math.min(36, 10 + locals.length);
+            for (let step = 0; step < localPasses; step++) {
+                const forces = locals.map(() => ({ x: 0, y: 0, z: 0 }));
+                for (let i = 0; i < locals.length; i++) {
+                    for (let j = i + 1; j < locals.length; j++) {
+                        let dx = locals[j].x - locals[i].x;
+                        let dy = locals[j].y - locals[i].y;
+                        let dz = locals[j].z - locals[i].z;
+                        let dist = Math.hypot(dx, dy, dz);
+                        if (dist < 0.5) {
+                            dx = 1;
+                            dy = 0;
+                            dz = 0;
+                            dist = 1;
+                        }
+                        const nx = dx / dist;
+                        const ny = dy / dist;
+                        const nz = dz / dist;
+                        const minSep = (locals[i].clear + locals[j].clear) * 0.78;
+                        const rep = (minSep * minSep * 4.5) / (dist * dist);
+                        forces[i].x -= nx * rep;
+                        forces[i].y -= ny * rep;
+                        forces[i].z -= nz * rep;
+                        forces[j].x += nx * rep;
+                        forces[j].y += ny * rep;
+                        forces[j].z += nz * rep;
+                        if (dist < minSep) {
+                            const push = (minSep - dist) * 0.42;
+                            forces[i].x -= nx * push;
+                            forces[i].y -= ny * push;
+                            forces[i].z -= nz * push;
+                            forces[j].x += nx * push;
+                            forces[j].y += ny * push;
+                            forces[j].z += nz * push;
+                        }
+                    }
+                    const home = placeOnSphere(i, locals.length, shell);
+                    forces[i].x += (home.x - locals[i].x) * 0.12;
+                    forces[i].y += (home.y - locals[i].y) * 0.12;
+                    forces[i].z += (home.z - locals[i].z) * 0.12;
+                }
+                localLinks.forEach((pair) => {
+                    const i = pair[0];
+                    const j = pair[1];
+                    let dx = locals[j].x - locals[i].x;
+                    let dy = locals[j].y - locals[i].y;
+                    let dz = locals[j].z - locals[i].z;
+                    const dist = Math.hypot(dx, dy, dz) || 1;
+                    const rest = Math.min(shell * 0.85, 86);
+                    const pull = (dist - rest) * 0.06;
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    const nz = dz / dist;
+                    forces[i].x += nx * pull;
+                    forces[i].y += ny * pull;
+                    forces[i].z += nz * pull;
+                    forces[j].x -= nx * pull;
+                    forces[j].y -= ny * pull;
+                    forces[j].z -= nz * pull;
+                });
+                locals.forEach((node, index) => {
+                    const stepForce = limitStep(forces[index], 22);
+                    node.x += stepForce.x;
+                    node.y += stepForce.y;
+                    node.z += stepForce.z;
+                });
+            }
+            locals.forEach((node) => {
+                positions.set(node.id, {
+                    x: center.x + node.x,
+                    y: center.y + node.y,
+                    z: center.z + node.z,
+                    cloudKey: center.key,
+                    clearance: node.clear,
+                });
+            });
+        });
+
+        return {
+            clouds: centers.map((center) => ({
+                key: center.key,
+                label: center.label,
+                count: center.count,
+                radius: center.radius,
+                x: center.x,
+                y: center.y,
+                z: center.z,
+            })),
+            positions: positions,
+        };
+    }
+
     return {
         NODE_CAP,
         LINK_CAP,
@@ -238,5 +486,8 @@
         capNodes,
         capLinks,
         neighborIds,
+        clusterRadius,
+        labelClearance,
+        layoutWorld,
     };
 });

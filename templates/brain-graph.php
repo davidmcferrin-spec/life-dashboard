@@ -25,9 +25,9 @@ $icon = static function (string $name): void {
 <div class="brain-screen-page">
     <div
         id="brain-mesh"
-        class="brain-canvas mode-3d camera-free"
+        class="brain-canvas mode-3d is-idle"
         tabindex="0"
-        aria-label="Vault map. Drag to pan, scroll or pinch to zoom. Arrow keys pan. Plus and minus zoom."
+        aria-label="Vault map. Drag to orbit. Two fingers pan and pinch. Press question mark for every control."
     >
         <div class="brain-horizon"></div>
         <div class="scan-beam"></div>
@@ -50,6 +50,7 @@ $icon = static function (string $name): void {
             <button type="button" id="brain-zoom-in" class="icon-btn" aria-label="Zoom in"><?php $icon('zoom-in'); ?></button>
             <button type="button" id="brain-zoom-out" class="icon-btn" aria-label="Zoom out"><?php $icon('zoom-out'); ?></button>
             <button type="button" id="brain-zoom-reset" class="icon-btn" aria-label="Reset camera"><?php $icon('refresh-cw'); ?></button>
+            <button type="button" id="brain-home" class="chip" aria-label="Home view">Home</button>
             <button type="button" id="brain-mode" class="chip active" aria-pressed="true">3D</button>
             <button type="button" id="brain-pause" class="icon-btn" aria-label="Pause live updates" aria-pressed="false">
                 <span class="icon-pause"><?php $icon('pause'); ?></span>
@@ -60,8 +61,8 @@ $icon = static function (string $name): void {
             <div class="camera-mode">
                 <?php $icon('globe-2'); ?>
                 <span>
-                    <strong id="brain-mode-name">FREE ROAM</strong>
-                    <small id="brain-mode-hint">Drag to travel · scroll to zoom</small>
+                    <strong id="brain-mode-name">ORBIT</strong>
+                    <small id="brain-mode-hint">Drag to orbit · scroll to zoom</small>
                 </span>
             </div>
             <button type="button" id="brain-free" class="active" aria-pressed="true"><?php $icon('globe-2'); ?> Free</button>
@@ -69,6 +70,41 @@ $icon = static function (string $name): void {
         </div>
         <div class="neural-world" id="brain-world">
             <div class="neural-world-inner" id="brain-world-inner"></div>
+        </div>
+        <button type="button" id="brain-help-open" class="brain-help-btn" aria-label="Show controls" aria-expanded="false" aria-controls="brain-help">?</button>
+        <div id="brain-help" class="brain-help" hidden>
+            <div class="brain-help-backdrop" data-close-help></div>
+            <div class="brain-help-card" role="dialog" aria-modal="true" aria-labelledby="brain-help-title">
+                <header>
+                    <h2 id="brain-help-title">Controls</h2>
+                    <button type="button" class="brain-help-close" data-close-help>Close</button>
+                </header>
+                <div class="brain-help-body">
+                    <section>
+                        <h3>Move</h3>
+                        <p><strong>Drag</strong> with a mouse or one finger to orbit. The turn pivots on the focused node, or on the point under the cursor or touch when nothing is focused.</p>
+                        <p><strong>Two fingers</strong>, a right-drag, a middle-drag, or Shift-drag pans. Pinch or the scroll wheel zooms toward the pointer.</p>
+                        <p><strong>WASD</strong> and the arrow keys pan in orbit mode. <strong>Q</strong> moves down and <strong>E</strong> moves up. <strong>Shift</strong> moves faster and <strong>Alt</strong> moves precisely. <strong>+</strong> and <strong>−</strong> zoom.</p>
+                    </section>
+                    <section>
+                        <h3>Free-fly</h3>
+                        <p><strong>Space</strong> switches between orbit and free-fly. In free-fly, drag looks around, and <strong>WASD</strong> or the arrow keys fly through the graph. <strong>Q</strong> and <strong>E</strong> still move down and up.</p>
+                    </section>
+                    <section>
+                        <h3>Anchor and pivot</h3>
+                        <p><strong>Click</strong> a node to fly to it and make it the pivot. <strong>Double-click</strong> comes in closer. <strong>F</strong> does the same for the selected node. A folder chip along the bottom flies to that cluster.</p>
+                        <p><strong>Tab</strong> while the graph itself is focused, or <strong>[</strong> and <strong>]</strong>, cycles through the visible nodes.</p>
+                    </section>
+                    <section>
+                        <h3>View</h3>
+                        <p><strong>Home</strong>, <strong>H</strong>, or the Home button fits everything and resets the pivot and orientation. <strong>R</strong> resets rotation and keeps your place. <strong>2</strong> switches to the flat view and <strong>3</strong> returns to 3D.</p>
+                    </section>
+                    <section>
+                        <h3>Other</h3>
+                        <p><strong>/</strong> focuses search. <strong>Esc</strong> closes this panel, or clears the selection. <strong>?</strong> opens and closes this panel. Shortcuts stay quiet while typing in search or any other field.</p>
+                    </section>
+                </div>
+            </div>
         </div>
         <div class="brain-legend" aria-label="Page types">
             <span><i class="type-project"></i>Project</span>
