@@ -332,12 +332,7 @@ final class LocalAgents
 
     private function mcpLabel(?string $tokenName): string
     {
-        $name = trim(preg_replace('/[\x00-\x1F\x7F]+/u', ' ', (string) $tokenName) ?? '');
-        if ($name === '') {
-            return 'AI Agent (MCP)';
-        }
-
-        return 'MCP · ' . mb_substr($name, 0, 60);
+        return AgentName::mcpLabel($tokenName);
     }
 
     /**

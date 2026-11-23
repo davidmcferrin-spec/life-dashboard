@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Dashboard\Widgets;
 
 use Dashboard\Calls\CallService;
+use Dashboard\Handoff\HandoffService;
 use Dashboard\Invest\InvestService;
 use Dashboard\Knowledge\PageService;
 use Dashboard\Media\MediaService;
@@ -51,6 +52,7 @@ final class WidgetDataService
         private readonly PantryService $pantry,
         private readonly \Dashboard\DB\Database $db,
         private readonly ?MoneyLedgerService $ledger = null,
+        private readonly ?HandoffService $handoffs = null,
     ) {}
 
     /**
@@ -74,6 +76,7 @@ final class WidgetDataService
             'shopping'  => $this->shoppingData($userId, $c),
             'pantry'    => $this->pantry->summary($userId, (int) ($c['soon_days'] ?? 3)),
             'digest'    => \Dashboard\Digest\DigestService::fromDatabase()->card($userId),
+            'handoffs'  => $this->handoffCard($userId),
             'vitals'    => $this->overviewCard($userId, 'vitals'),
             'agenda'    => $this->overviewCard($userId, 'agenda'),
             'quick_actions' => [
@@ -105,6 +108,16 @@ final class WidgetDataService
             'features'  => $this->featuresData($userId),
             default     => ['metric_ids' => []], // legacy widgets load their own data
         };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function handoffCard(int $userId): array
+    {
+        $svc = $this->handoffs ?? new HandoffService($this->db, $this->clock);
+
+        return $svc->widget($userId);
     }
 
     /**

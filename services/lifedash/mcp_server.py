@@ -33,6 +33,7 @@ from . import __version__
 from .config import Config
 from .log import setup as setup_logging
 from .agent_tools import AGENT_TOOLS, resolve_agent
+from .handoff_tools import HANDOFF_TOOLS, resolve_handoff
 from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
 from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
@@ -2654,6 +2655,7 @@ TOOLS.extend(SPOTIFY_TOOLS)
 TOOLS.extend(OLLAMA_TOOLS)
 TOOLS.extend(AGENT_TOOLS)
 TOOLS.extend(PLATFORM_TOOLS)
+TOOLS.extend(HANDOFF_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -3617,6 +3619,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_platform(name, args)
     if mapped is not None:
         return mapped
+    mapped = resolve_handoff(name, args)
+    if mapped is not None:
+        return mapped
     if name == "list_digest_items":
         query = {}
         if args.get("product"):
@@ -3689,7 +3694,7 @@ class RequestLimiter:
 OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
-    "shopping", "calls", "pantry", "spotify", "ollama", "digest", "agents",
+    "shopping", "calls", "pantry", "spotify", "ollama", "digest", "agents", "handoffs",
 )
 
 

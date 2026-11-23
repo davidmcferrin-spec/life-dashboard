@@ -233,6 +233,11 @@ $router->get('/brief', function () use ($auth): void {
     require VIEWS_DIR . '/brief.php';
 });
 
+$router->get('/handoffs', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/handoffs.php';
+});
+
 $router->get('/graph', function () use ($auth): void {
     $user = $auth->requireAuth();
     require VIEWS_DIR . '/graph.php';

@@ -48,6 +48,7 @@ final class Stylesheets
             '/assets/css/jarvis.css',
             '/assets/css/finance-menus.css',
             '/assets/css/platform.css',
+            '/assets/css/handoffs.css',
         ];
     }
 

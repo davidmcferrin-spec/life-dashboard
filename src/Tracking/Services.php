@@ -9,6 +9,7 @@ use Dashboard\Calls\CallService;
 use Dashboard\Brief\MorningBriefService;
 use Dashboard\Digest\DigestService;
 use Dashboard\Graph\GraphService;
+use Dashboard\Handoff\HandoffService;
 use Dashboard\Health\HealthLogService;
 use Dashboard\Health\HealthService;
 use Dashboard\Auth\ApiTokenService;
@@ -64,6 +65,7 @@ final class Services
     public readonly HealthLogService $healthLog;
     public readonly GraphService $graph;
     public readonly MorningBriefService $briefs;
+    public readonly HandoffService $handoffs;
 
     public function __construct(public readonly Database $db, public readonly Clock $clock)
     {
@@ -96,6 +98,7 @@ final class Services
         $this->healthLog = new HealthLogService($db, $clock, $this->habits);
         $this->graph = new GraphService($db);
         $this->briefs = new MorningBriefService($db, $clock, $this->bills, $this->digest, $this->health);
+        $this->handoffs = new HandoffService($db, $clock);
         $this->widgetData = new WidgetDataService(
             $this->widgets,
             $this->metrics,
@@ -114,6 +117,7 @@ final class Services
             $this->pantry,
             $db,
             $this->ledger,
+            $this->handoffs,
         );
     }
 
