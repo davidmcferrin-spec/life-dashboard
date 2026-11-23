@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Dashboard\Knowledge;
 
+use Dashboard\Audit\AgentPresence;
+
 /**
  * Turns audit rows into brain-map traces. One trace per page and verb.
  * A row that names a token wins over the plain page.update written beside it.
@@ -82,10 +84,11 @@ final class BrainActivity
     }
 
     /**
-     * Page access rows for the mesh. No titles, notes, or resource paths.
+     * Mesh feed. No titles, notes, or resource paths.
+     * A vault row keeps its page id. A dashboard row keeps an area such as Music.
      *
      * @param list<array<string, mixed>> $events
-     * @return list<array{id: int, page_id: int, verb: string, actor: string, source: string, at: string}>
+     * @return list<array{id: int, page_id: int, area: string, verb: string, actor: string, source: string, at: string}>
      */
     public static function signals(array $events): array
     {
@@ -95,19 +98,35 @@ final class BrainActivity
             if ($actor !== 'ai' && $actor !== 'user') {
                 continue;
             }
+            $detail = is_array($event['detail'] ?? null) ? $event['detail'] : [];
             $pageId = self::pageId(isset($event['resource']) ? (string) $event['resource'] : null);
-            if ($pageId === null) {
+            $tokenId = isset($detail['token_id']) ? (int) $detail['token_id'] : 0;
+            $verb = self::verb($detail, (string) ($event['action'] ?? ''));
+            $at = (string) ($event['created_at'] ?? '');
+            if ($pageId !== null) {
+                $out[] = [
+                    'id'      => (int) ($event['id'] ?? 0),
+                    'page_id' => $pageId,
+                    'area'    => '',
+                    'verb'    => $verb,
+                    'actor'   => $actor,
+                    'source'  => self::tokenName($actor, $tokenId, $detail),
+                    'at'      => $at,
+                ];
                 continue;
             }
-            $detail = is_array($event['detail'] ?? null) ? $event['detail'] : [];
-            $tokenId = isset($detail['token_id']) ? (int) $detail['token_id'] : 0;
+            $described = AgentPresence::describe($event);
+            if ($described === null) {
+                continue;
+            }
             $out[] = [
                 'id'      => (int) ($event['id'] ?? 0),
-                'page_id' => $pageId,
-                'verb'    => self::verb($detail, (string) ($event['action'] ?? '')),
+                'page_id' => 0,
+                'area'    => (string) $described['area'],
+                'verb'    => $verb,
                 'actor'   => $actor,
-                'source'  => self::tokenName($actor, $tokenId, $detail),
-                'at'      => (string) ($event['created_at'] ?? ''),
+                'source'  => (string) $described['agent'],
+                'at'      => $at,
             ];
         }
         return $out;

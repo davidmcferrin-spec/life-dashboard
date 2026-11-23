@@ -31,3 +31,12 @@ test('rates come from the rolling window and stay blank without events', () => {
     assert.equal(firing.formatRate(null), '\u2014');
     assert.equal(firing.pageRates([], now).size, 0);
 });
+
+test('a timestamp a few seconds ahead still counts as fresh', () => {
+    const now = Date.parse('2026-11-23T05:41:00Z');
+    const utc = Date.parse('2026-11-23T05:40:55Z');
+    assert.equal(firing.isFresh(utc, now), true);
+    assert.equal(firing.isFresh(now + 30000, now), true);
+    assert.equal(firing.isFresh(now - firing.FRESH_MS - 1, now), false);
+    assert.equal(firing.isFresh(now + firing.SKEW_MS + 5000, now), false);
+});

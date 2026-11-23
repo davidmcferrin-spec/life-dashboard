@@ -108,6 +108,24 @@ final class VaultPagesTest extends PgsqlTestCase
             'title' => 'Sample',
             'body' => "Real [[Home]]\n```\n[[Fence Only]]\n```\n",
         ]);
+        $this->db->execute(
+            "UPDATE pages SET updated_at = TIMESTAMP '2026-01-01 00:00:00', last_opened_at = NULL WHERE user_id = ?",
+            [$this->user]
+        );
+        $this->db->execute(
+            "UPDATE pages SET updated_at = TIMESTAMP '2026-11-23 05:00:00', last_opened_at = TIMESTAMP '2026-11-23 04:00:00' WHERE id = ?",
+            [(int) $child['id']]
+        );
+        $this->db->execute(
+            "UPDATE pages SET updated_at = TIMESTAMP '2026-11-23 06:00:00', last_opened_at = NULL WHERE id = ?",
+            [(int) $codePage['id']]
+        );
+        self::assertSame('Sample', $this->pages->opened($this->user, 5)[0]['title']);
+        $this->db->execute(
+            "UPDATE pages SET last_opened_at = TIMESTAMP '2026-11-23 07:00:00' WHERE id = ?",
+            [(int) $child['id']]
+        );
+        self::assertSame('Kitchen', $this->pages->opened($this->user, 5)[0]['title']);
         $before = (string) $this->db->fetchScalar('SELECT body FROM pages WHERE id = ?', [(int) $codePage['id']]);
         $revisions = (int) $this->db->fetchScalar(
             'SELECT COUNT(*) FROM page_revisions WHERE page_id = ?',

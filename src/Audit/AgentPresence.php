@@ -15,6 +15,7 @@ final class AgentPresence
 {
     /** @var list<array{0: string, 1: list<string>}> */
     private const RULES = [
+        ['Music', ['/spotify', 'spotify', 'taste_profile']],
         ['Money', ['/money', 'money_', 'transaction', 'sinking', 'debt', 'budget', 'net_worth', 'credit_score']],
         ['Reddit', ['/reddit', 'reddit']],
         ['Briefs', ['/digests', 'publish_digest']],

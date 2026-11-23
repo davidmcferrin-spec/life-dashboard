@@ -69,10 +69,15 @@
         return 'LIVE SIGNAL';
     }
 
+    const SKEW_MS = 120000;
+
     function isFresh(atMs, now, freshMs) {
         const age = Number(now) - Number(atMs);
         const limit = freshMs == null ? FRESH_MS : Number(freshMs);
-        return Number.isFinite(age) && age >= 0 && age <= limit;
+        if (!Number.isFinite(age) || !Number.isFinite(limit)) return false;
+        if (age < -SKEW_MS) return false;
+        if (age < 0) return true;
+        return age <= limit;
     }
 
     return {
@@ -84,5 +89,6 @@
         pageRates,
         signalLabel,
         isFresh,
+        SKEW_MS,
     };
 });

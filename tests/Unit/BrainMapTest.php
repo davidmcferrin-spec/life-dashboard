@@ -150,7 +150,7 @@ final class BrainMapTest extends TestCase
             ],
         ]);
 
-        self::assertCount(2, $signals);
+        self::assertCount(3, $signals);
         self::assertSame(5, $signals[0]['page_id']);
         self::assertSame('read', $signals[0]['verb']);
         self::assertSame('user', $signals[0]['actor']);
@@ -158,11 +158,31 @@ final class BrainMapTest extends TestCase
         self::assertSame(3, $signals[1]['page_id']);
         self::assertSame('write', $signals[1]['verb']);
         self::assertSame('Grok', $signals[1]['source']);
+        self::assertSame(0, $signals[2]['page_id']);
+        self::assertSame('Money', $signals[2]['area']);
+        self::assertSame('read', $signals[2]['verb']);
         $json = json_encode($signals, JSON_THROW_ON_ERROR);
         self::assertStringNotContainsString('Secret', $json);
         self::assertStringNotContainsString('Nope', $json);
         self::assertStringNotContainsString('Hidden', $json);
         self::assertArrayNotHasKey('resource', $signals[0]);
+    }
+
+    public function testDashboardWritesKeepAnAreaWithoutAPage(): void
+    {
+        $signals = BrainActivity::signals([
+            [
+                'id' => 4925, 'actor' => 'ai', 'tool' => 'update_taste_profile', 'action' => 'POST',
+                'resource' => '/api/v1/spotify/taste', 'created_at' => '2026-11-23 05:40:00',
+                'detail' => ['verb' => 'write', 'token_id' => 9, 'token_name' => 'Music Director', 'title' => 'secret'],
+            ],
+        ]);
+        self::assertCount(1, $signals);
+        self::assertSame(0, $signals[0]['page_id']);
+        self::assertSame('Music', $signals[0]['area']);
+        self::assertSame('write', $signals[0]['verb']);
+        self::assertSame('Music Director', $signals[0]['source']);
+        self::assertStringNotContainsString('secret', json_encode($signals, JSON_THROW_ON_ERROR));
     }
 
     public function testGraphAndAuditReadsAreNotTraced(): void
