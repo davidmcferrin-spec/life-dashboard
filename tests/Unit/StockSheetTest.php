@@ -8,7 +8,11 @@ use Dashboard\Api\V1\ApiRunner;
 use Dashboard\Api\V1\Scope;
 use Dashboard\Config;
 use Dashboard\DB\Database;
+use Dashboard\Settings\PreferenceService;
 use Dashboard\Stock\GoogleSheetClient;
+use Dashboard\Stock\StockRepository;
+use Dashboard\Stock\StockService;
+use Dashboard\Support\HttpClient;
 use Dashboard\Stock\SheetException;
 use Dashboard\Stock\SheetFreshness;
 use Dashboard\Stock\SheetGrid;
@@ -320,6 +324,128 @@ final class StockSheetTest extends TestCase
         self::assertContains('stock_sheet', $allow);
         $this->expectException(ForbiddenException::class);
         Scope::auditEntityAllow(['money:read'], 'stock_sheet');
+    }
+
+    public function testConnectedSheetReplacesTheDefaultSymbolList(): void
+    {
+        $settings = new ArraySheetSettings();
+        $settings->users[4] = [
+            'configured' => true,
+            'spreadsheet_id' => '1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            'account' => ['client_email' => 'a@test.iam.gserviceaccount.com', 'private_key' => 'key'],
+        ];
+        $store = new MemorySheetStore();
+        $watch = [[
+            'symbol' => 'SPY', 'name' => 'S&P', 'role' => 'Benchmark', 'price' => 635.54, 'change' => -4.1, 'change_pct' => -0.2,
+        ]];
+        for ($i = 1; $i <= 11; $i++) {
+            $watch[] = [
+                'symbol' => 'T' . $i, 'name' => 'Ticker ' . $i, 'role' => 'Watch', 'price' => 10 + $i, 'change' => -1, 'change_pct' => -0.5,
+            ];
+        }
+        $watch[] = [
+            'symbol' => 'NXST', 'name' => 'Nexstar', 'role' => 'Watch', 'price' => 180.2, 'change' => 1.1, 'change_pct' => 0.6,
+        ];
+        $commodities = [[
+            'symbol' => 'GLD', 'name' => 'Gold', 'role' => 'Benchmark', 'price' => 412, 'change' => 1.2, 'change_pct' => 0.29, 'proxy_for' => 'Gold spot',
+        ]];
+        for ($i = 1; $i <= 11; $i++) {
+            $commodities[] = [
+                'symbol' => 'C' . $i, 'name' => 'Proxy ' . $i, 'role' => 'Watch', 'price' => 20 + $i, 'change' => 0.2, 'change_pct' => 0.1,
+            ];
+        }
+        $store->replace(4, $watch, $commodities, [[
+            'date' => '2027-01-15', 'ticker' => 'AAPL', 'amount' => 1000, 'shares' => 2, 'price' => 500,
+        ]], [
+            'last_synced_at' => '2026-11-23 15:00:00',
+            'last_attempt_at' => '2026-11-23 15:00:00',
+        ]);
+        $db = new class extends Database {
+            public function __construct()
+            {
+            }
+
+            public function fetchAll(string $sql, array $params = []): array
+            {
+                throw new \RuntimeException($sql);
+            }
+
+            public function fetchOne(string $sql, array $params = []): ?array
+            {
+                throw new \RuntimeException($sql);
+            }
+
+            public function execute(string $sql, array $params = []): int
+            {
+                throw new \RuntimeException($sql);
+            }
+
+            public function fetchScalar(string $sql, array $params = []): mixed
+            {
+                throw new \RuntimeException($sql);
+            }
+        };
+        $service = new StockService(new StockRepository($db), new PreferenceService($db), new HttpClient(), $settings, $store);
+        $payload = $service->listPayload(4);
+
+        self::assertSame('sheet', $payload['source']);
+        self::assertCount(count($watch) + count($commodities), $payload['symbols']);
+        self::assertGreaterThan(10, count($payload['symbols']));
+        self::assertGreaterThan(10, $payload['max_symbols']);
+        self::assertNotSame(StockService::defaultSymbols(), array_column($payload['symbols'], 'symbol'));
+        $nxst = null;
+        foreach ($payload['symbols'] as $row) {
+            if ($row['symbol'] === 'NXST') {
+                $nxst = $row;
+            }
+        }
+        self::assertNotNull($nxst);
+        self::assertEqualsWithDelta(180.2, $nxst['price'], 0.00001);
+        self::assertEqualsWithDelta(1.1, $nxst['change_amount'], 0.00001);
+        self::assertEqualsWithDelta(0.6, $nxst['change_percent'], 0.00001);
+        self::assertSame('2026-11-23 15:00:00', $nxst['last_refreshed']);
+        self::assertSame('watchlist', $nxst['group']);
+        self::assertCount(count($watch), $payload['watchlist']);
+        self::assertCount(count($commodities), $payload['commodities']);
+        self::assertSame('AAPL', $payload['play_account'][0]['ticker']);
+        $widget = array_column($payload['widget_symbols'], 'symbol');
+        self::assertSame(['SPY', 'GLD'], $widget);
+        self::assertLessThanOrEqual(StockService::widgetMaxSymbols(), count($widget));
+        self::assertTrue($payload['sheet']['configured']);
+
+        try {
+            $service->listPayload(9);
+            self::fail('An unconfigured sheet should use the manual symbol list.');
+        } catch (\RuntimeException) {
+            self::assertTrue(true);
+        }
+    }
+
+    public function testSheetConnectionLivesInSettings(): void
+    {
+        require_once VIEWS_DIR . '/settings/_nav.php';
+        $groups = \settings_nav_groups(false);
+        self::assertSame(['Stocks sheet', '/settings/stock-sheet'], $groups['Connections']['stock-sheet']);
+
+        $page = (string) file_get_contents(VIEWS_DIR . '/stocks.php');
+        self::assertStringNotContainsString('service_account_json', $page);
+        self::assertStringNotContainsString('id="stocks-sheet-settings"', $page);
+        self::assertStringContainsString('href="/settings/stock-sheet"', $page);
+        self::assertStringContainsString('id="stocks-watchlist"', $page);
+        self::assertStringContainsString('id="stocks-play"', $page);
+
+        $settings = (string) file_get_contents(VIEWS_DIR . '/settings/stock-sheet.php');
+        self::assertStringContainsString('name="service_account_json"', $settings);
+        self::assertStringContainsString('name="spreadsheet_id"', $settings);
+        self::assertStringContainsString('action="/settings/stock-sheet/refresh"', $settings);
+        self::assertStringContainsString('name="_csrf"', $settings);
+        self::assertStringNotContainsString('value="<?= e($sheetSettings[\'key_hint\']', $settings);
+
+        $routes = (string) file_get_contents(ROOT_DIR . '/public/index.php');
+        self::assertStringContainsString("'/settings/stock-sheet'", $routes);
+        self::assertStringContainsString("'/settings/stock-sheet/refresh'", $routes);
+        self::assertStringContainsString("'entity' => 'stock_sheet'", $routes);
+        self::assertSame("<?php\n\ndeclare(strict_types=1);\n\nredirect('/stocks');\n", (string) file_get_contents(VIEWS_DIR . '/settings/stocks.php'));
     }
 
     public function testJobAndTimerAreWired(): void

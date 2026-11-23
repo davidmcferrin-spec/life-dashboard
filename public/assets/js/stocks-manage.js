@@ -10,6 +10,7 @@
     let maxWidgetSymbols = 10;
     let holdings = [];
     let quotes = [];
+    let sheetSource = false;
 
     function esc(value) {
         return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -104,6 +105,13 @@
         const pct = Number(ratio) * 100;
         const sign = pct > 0 ? '+' : '';
         return sign + pct.toFixed(digits) + '%';
+    }
+
+    function dayPoints(value) {
+        if (value == null || !Number.isFinite(Number(value))) return null;
+        const pct = Number(value);
+        const sign = pct > 0 ? '+' : '';
+        return sign + pct.toFixed(2) + '%';
     }
 
     function statCard(label, value, cls) {
@@ -264,18 +272,21 @@
         const body = rows.map((row) => {
             const position = row.position;
             const quote = row.quote;
-            const asset = position ? (position.name || position.symbol) : '—';
+            const fromSheet = quote && quote.source === 'sheet';
+            const asset = position ? (position.name || position.symbol) : (quote && quote.name ? quote.name : '—');
             const shareText = position ? shares(position.quantity) : '—';
-            const price = position && position.mark != null ? position.mark : null;
+            const price = position && position.mark != null ? position.mark : (quote && quote.price != null ? quote.price : null);
             const value = position ? position.market_value : null;
             const ratio = position ? position.return_ratio : null;
-            const tone = ratio < 0 ? 'is-down' : (ratio > 0 ? 'is-up' : '');
+            const move = !position && quote ? dayPoints(quote.change_percent) : null;
+            const toneValue = ratio != null ? ratio : (quote && quote.change_percent != null ? quote.change_percent : null);
+            const tone = toneValue < 0 ? 'is-down' : (toneValue > 0 ? 'is-up' : '');
             const items = [];
             if (position && position.manual) {
                 items.push({ act: 'edit', label: 'Edit holding' });
                 items.push({ act: 'remove-position', label: 'Remove holding' });
             }
-            if (quote) {
+            if (quote && !fromSheet) {
                 items.push({ act: 'pin', label: quote.pin_to_dashboard ? 'Unpin from dashboard' : 'Pin to dashboard' });
                 items.push({ act: 'remove-symbol', label: 'Remove symbol' });
             }
@@ -285,7 +296,7 @@
             return '<tr data-filter="' + esc(filter) + '" data-symbol="' + esc(row.symbol) + '" data-position="' + esc(position ? position.id : '') + '" data-watch="' + esc(quote ? quote.id : '') + '"><td>'
                 + esc(asset) + '</td><td class="fin-symbol">' + esc(row.symbol) + '</td><td class="fin-num">' + esc(shareText) + '</td><td class="fin-num">'
                 + esc(price == null ? '—' : dashMoney(price)) + '</td><td class="fin-num">' + esc(dashMoney(value)) + '</td><td class="fin-num ' + tone + '">'
-                + esc(signedPct(ratio, 1) || '—') + '</td><td class="fin-actions">' + menu + '</td></tr>';
+                + esc(signedPct(ratio, 1) || move || '—') + '</td><td class="fin-actions">' + menu + '</td></tr>';
         }).join('');
         list.innerHTML = '<div class="fin-table-wrap"><table class="fin-table"><thead><tr><th>Asset</th><th>Symbol</th><th class="fin-num">Shares</th><th class="fin-num">Price</th><th class="fin-num">Value</th><th class="fin-num">Return</th><th></th></tr></thead><tbody>'
             + body + '</tbody></table></div>';
@@ -314,11 +325,12 @@
         }
         maxSymbols = stockRes.data.max_symbols ?? 10;
         maxWidgetSymbols = stockRes.data.max_widget_symbols ?? 10;
+        sheetSource = stockRes.data.source === 'sheet';
         quotes = stockRes.data.symbols || [];
         const score = scoreRes.scorecard || {};
         holdings = score.positions || [];
         const openBtn = document.getElementById('stocks-add-open');
-        if (openBtn) openBtn.disabled = quotes.length >= maxSymbols;
+        if (openBtn) openBtn.disabled = sheetSource || quotes.length >= maxSymbols;
         paintStats(score);
         paintChart(score);
         paintAccounts(accountRes.accounts || []);

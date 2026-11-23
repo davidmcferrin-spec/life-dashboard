@@ -351,15 +351,16 @@ async function loadStocksWidget() {
 
         root.dataset.ready = '1';
         root.innerHTML = `<div class="space-y-1">${symbols.map(s => {
-            const price = s.price != null ? s.price.toFixed(2) : '—';
+            const hasQuote = s.price != null;
             const chg = s.change_amount;
             const pct = s.change_percent;
-            const hasQuote = s.price != null;
-            const up = hasQuote && chg >= 0;
-            const color = !hasQuote ? 'quote-flat' : (up ? 'quote-up' : 'quote-down');
-            const chgStr = hasQuote
-                ? `${chg >= 0 ? '+' : ''}${chg.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`
-                : 'awaiting cron';
+            const hasMove = hasQuote && chg != null && pct != null;
+            const price = hasQuote ? Number(s.price).toFixed(2) : '—';
+            const up = hasMove && Number(chg) >= 0;
+            const color = !hasMove ? 'quote-flat' : (up ? 'quote-up' : 'quote-down');
+            const chgStr = hasMove
+                ? `${Number(chg) >= 0 ? '+' : ''}${Number(chg).toFixed(2)} (${Number(pct) >= 0 ? '+' : ''}${Number(pct).toFixed(2)}%)`
+                : (hasQuote ? '—' : 'awaiting cron');
             return `
                 <div class="stock-line mono text-sm min-w-0">
                     <span class="text-primary font-medium truncate flex-shrink-0">${esc(s.symbol)}</span>

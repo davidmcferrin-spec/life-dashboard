@@ -146,23 +146,10 @@ $finIcon = static function (string $name): void {
                     <h2 id="stocks-sheet-title">Watchlist, commodities, and play account</h2>
                 </div>
             </div>
-            <button type="button" class="btn" id="stocks-sheet-refresh">Pull sheet</button>
         </header>
         <p class="fin-note">Pulled from the Stocks sheet. The sheet is read only. These rows are quotes and recorded buys, separate from the portfolio above.</p>
         <p id="stocks-sheet-status" class="fin-status" role="status">Loading the sheet…</p>
-        <form id="stocks-sheet-settings" class="space-y-3">
-            <label class="block ld-field">
-                <span>Spreadsheet id</span>
-                <input name="spreadsheet_id" class="input w-full" maxlength="120" spellcheck="false" autocomplete="off" value="1Z00dgU3HUvIuXq4UPJeF0QPzoE8iWdx9AVWM7O92V9o">
-            </label>
-            <label class="block ld-field">
-                <span>Service account JSON</span>
-                <textarea name="service_account_json" class="input w-full" rows="4" spellcheck="false" autocomplete="off" placeholder="Paste the JSON key. Leave blank to keep the saved key."></textarea>
-            </label>
-            <p class="fin-note">The key and the spreadsheet id are stored encrypted. The key is not shown again.</p>
-            <button type="submit" class="btn">Save sheet connection</button>
-            <p id="stocks-sheet-settings-error" class="ld-field-error hidden" role="alert"></p>
-        </form>
+        <p id="stocks-sheet-setup" class="fin-note" hidden><a href="/settings/stock-sheet">Connect the Google Sheet</a></p>
     </section>
 
     <section class="fin-card" aria-labelledby="stocks-watch-title">

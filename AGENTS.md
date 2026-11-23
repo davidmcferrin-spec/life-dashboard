@@ -29,7 +29,7 @@ More detail is in `README.md`. Cloud-agent setup is in `.cursor/CLOUD.md`.
 
 Bank balances use Plaid. Keys are not environment variables. On the [Plaid dashboard](https://dashboard.plaid.com/developers/keys), create a key for Sandbox while trying the connection, then Development or Production when the institution should be the real one. On Money, enter the client id, the secret, and that environment, then click Link and sign in at the bank. Map each Plaid account onto a dashboard account before Refresh. The access token stays encrypted and is not shown again. `cron/sync_plaid.php` (`lifedash-job plaid`) repeats the sync every 3 hours.
 
-The Stocks page also pulls a Google Sheet (Watchlist, Commodities, Play Account). The sheet is read-only. On Stocks, paste a service-account JSON key and the spreadsheet id. Both stay encrypted, and the key is masked. Until the key is saved, sync reports `configured: false` and skips. `cron/sync_stock_sheet.php` (`lifedash-job stocksheet`) runs on weekdays from 8:30 through 15:30 America/Chicago. Scopes are the existing `stocks:read` and `stocks:write`.
+The Stocks page also pulls a Google Sheet (Watchlist, Commodities, Play Account). The sheet is read-only. On Settings → Stocks sheet, paste a service-account JSON key and the spreadsheet id. Both stay encrypted, and the key is masked. Until the key is saved, sync reports `configured: false` and skips. When it is connected, `GET /stocks` returns the full sheet instead of the seeded symbol list. `cron/sync_stock_sheet.php` (`lifedash-job stocksheet`) runs on weekdays from 8:30 through 15:30 America/Chicago. Scopes are the existing `stocks:read` and `stocks:write`.
 
 ## MCP
 

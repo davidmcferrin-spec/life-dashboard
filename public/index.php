@@ -1569,6 +1569,51 @@ $router->get('/settings/audit', function () use ($auth): void {
     require VIEWS_DIR . '/settings/audit.php';
 });
 
+$router->get('/settings/stock-sheet', function () use ($auth, $lifedash): void {
+    $user = $auth->requireAuth();
+    $sheetPage = $lifedash->sheets->page((int) $user['id']);
+    $sheetSettings = $sheetPage['settings'];
+    $sheetSync = $sheetPage['sync'];
+    require VIEWS_DIR . '/settings/stock-sheet.php';
+});
+
+$router->post('/settings/stock-sheet', function () use ($auth, $db, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    try {
+        $lifedash->sheets->saveSettings($userId, [
+            'spreadsheet_id'       => (string) ($_POST['spreadsheet_id'] ?? ''),
+            'service_account_json' => (string) ($_POST['service_account_json'] ?? ''),
+        ]);
+        (new \Dashboard\Audit\AuditLog($db))->record($userId, 'user', null, 'POST', '/settings/stock-sheet', [
+            'entity' => 'stock_sheet',
+        ]);
+        $_SESSION['settings_flash'] = 'Stocks sheet saved.';
+    } catch (\Dashboard\Support\ValidationException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/stock-sheet');
+});
+
+$router->post('/settings/stock-sheet/refresh', function () use ($auth, $db, $lifedash): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    $result = $lifedash->sheets->refresh($userId);
+    (new \Dashboard\Audit\AuditLog($db))->record($userId, 'user', null, 'POST', '/settings/stock-sheet/refresh', [
+        'entity' => 'stock_sheet',
+    ]);
+    if (empty($result['configured'])) {
+        $_SESSION['settings_flash'] = 'Save a service account key first.';
+    } elseif (!empty($result['ok'])) {
+        $_SESSION['settings_flash'] = 'Sheet pulled.';
+    } else {
+        $_SESSION['settings_flash'] = (string) ($result['sync']['sync_error'] ?? 'The sheet was not pulled.');
+    }
+    redirect('/settings/stock-sheet');
+});
+
 $router->get('/settings/health', function () use ($auth, $db): void {
     $user = $auth->requireAdmin();
     $wearables = (new \Dashboard\Health\HealthSettings($db))->view();
