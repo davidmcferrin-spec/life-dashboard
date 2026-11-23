@@ -85,7 +85,25 @@ SPOTIFY_TOOLS: list[dict[str, Any]] = [
     _tool(
         "get_taste_profile",
         "The taste profile document, including dislikes (tracks, artists, and titles to keep off playlists). "
+        "do_not_use lists tracks marked thumbs down on the playlist page, and those URIs are also included in dislikes.tracks. "
+        "Leave do_not_use tracks off future playlists. Editing the profile does not remove do_not_use. A thumbs up on the playlist page does. "
         + TASTE + " Requires spotify:read.",
+    ),
+    _tool(
+        "list_track_ratings",
+        "Ratings from the playlist page: track URI, playlist id, up or down, timestamp, and source. "
+        "source is user. A down rating means not for playlists. Requires spotify:read.",
+        {
+            "playlist_id": {"type": "integer"},
+            "rating": {"type": "string", "description": "up or down"},
+            "limit": {"type": "integer", "description": "1 to 500. Default 100."},
+        },
+    ),
+    _tool(
+        "get_disliked_tracks",
+        "Tracks marked thumbs down on the playlist page. This is the do-not-use list for future playlists. "
+        "Spotify has no public dislike endpoint, so the list stays on the dashboard. Requires spotify:read.",
+        {"limit": {"type": "integer", "description": "1 to 2000. Default 2000."}},
     ),
     _tool("list_spotify_prompts", "Playlist prompt library. Requires spotify:read."),
     _tool(
@@ -440,6 +458,24 @@ def resolve_spotify(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
     if name == "get_taste_profile":
         _empty(name, args)
         return "GET", "/api/v1/spotify/taste", None
+    if name == "list_track_ratings":
+        _unknown(name, args, {"playlist_id", "rating", "limit"})
+        query: dict[str, Any] = {}
+        if "playlist_id" in args and args["playlist_id"] is not None:
+            query["playlist_id"] = _id(args, "playlist_id")
+        if "rating" in args and args["rating"] is not None:
+            if args["rating"] not in {"up", "down"}:
+                raise ValueError("rating must be up or down.")
+            query["rating"] = args["rating"]
+        limit = _limit(args, 500)
+        if limit is not None:
+            query["limit"] = limit
+        return "GET", "/api/v1/spotify/ratings" + (("?" + urlencode(query)) if query else ""), None
+    if name == "get_disliked_tracks":
+        _unknown(name, args, {"limit"})
+        limit = _limit(args, 2000)
+        query = {"limit": limit} if limit is not None else {}
+        return "GET", "/api/v1/spotify/dislikes" + (("?" + urlencode(query)) if query else ""), None
     if name == "list_spotify_prompts":
         _empty(name, args)
         return "GET", "/api/v1/spotify/prompts", None
@@ -627,6 +663,15 @@ def _id(args: dict[str, Any], key: str) -> int:
     value = args.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise ValueError(f"{key} must be an id.")
+    return value
+
+
+def _limit(args: dict[str, Any], cap: int) -> int | None:
+    if "limit" not in args or args.get("limit") is None:
+        return None
+    value = args["limit"]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1 or value > cap:
+        raise ValueError(f"limit must be from 1 to {cap}.")
     return value
 
 

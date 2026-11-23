@@ -144,6 +144,45 @@ final class SpotifyApi
             return $this->svc()->library()->addTracks($u, $this->id($p), $body['uris'] ?? null, $body['position'] ?? null, $this->by(), $this->trackMeta($body));
         }, 200, true));
         $r->post('/api/v1/spotify/playlists/{id}/tracks/remove', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->removeTracks($u, $this->id($p), $this->runner->body()['uris'] ?? null, $this->by()), 200, true));
+        $r->post('/api/v1/spotify/playlists/{id}/rate', fn (array $p) => $this->run(fn (int $u) => $this->rate($u, $this->id($p)), 200, true));
+        $r->get('/api/v1/spotify/ratings', fn () => $this->run(function (int $u): array {
+            $playlistId = null;
+            $playlist = $this->query('playlist_id');
+            if ($playlist !== null) {
+                if (!ctype_digit($playlist)) {
+                    throw ValidationException::withFields(['playlist_id' => 'Expected a playlist id.']);
+                }
+                $playlistId = (int) $playlist;
+            }
+            $limit = 100;
+            $rawLimit = $this->query('limit');
+            if ($rawLimit !== null) {
+                if (!ctype_digit($rawLimit) || (int) $rawLimit < 1 || (int) $rawLimit > 500) {
+                    throw ValidationException::withFields(['limit' => 'limit must be from 1 to 500.']);
+                }
+                $limit = (int) $rawLimit;
+            }
+            return ['ratings' => $this->svc()->library()->ratings($u, $playlistId, $this->query('rating'), $limit)];
+        }));
+        $r->get('/api/v1/spotify/dislikes', fn () => $this->run(function (int $u): array {
+            $limit = null;
+            $raw = $this->query('limit');
+            if ($raw !== null) {
+                if (!ctype_digit($raw) || (int) $raw < 1 || (int) $raw > 2000) {
+                    throw ValidationException::withFields(['limit' => 'limit must be from 1 to 2000.']);
+                }
+                $limit = (int) $raw;
+            }
+            return ['tracks' => $this->svc()->library()->dislikedTracks($u, $limit)];
+        }));
+        $r->post('/api/v1/spotify/likes', fn () => $this->run(function (int $u): array {
+            $enabled = $this->runner->body()['enabled'] ?? false;
+            if (!is_bool($enabled)) {
+                throw ValidationException::withFields(['enabled' => 'enabled must be true or false.']);
+            }
+            $this->svc()->setLikeOnThumbsUp($u, $enabled);
+            return ['enabled' => $enabled];
+        }, 200, true));
         $r->post('/api/v1/spotify/playlists/{id}/tracks/reorder', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->reorderTracks($u, $this->id($p), $this->runner->body(), $this->by()), 200, true));
         $r->post('/api/v1/spotify/playlists/{id}/tracks/replace', fn (array $p) => $this->run(fn (int $u) => $this->svc()->library()->replaceTracks($u, $this->id($p), $this->runner->body()['uris'] ?? null, $this->by()), 200, true));
         $r->post('/api/v1/spotify/discard', fn () => $this->run(fn (int $u) => [
@@ -296,6 +335,52 @@ final class SpotifyApi
                 return $this->svc()->playback()->command($u, $action, $body);
             }, 200, true));
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function rate(int $userId, int $playlistId): array
+    {
+        $body = $this->runner->body();
+        $requested = null;
+        if (array_key_exists('save_liked', $body)) {
+            if (!is_bool($body['save_liked'])) {
+                throw ValidationException::withFields(['save_liked' => 'save_liked must be true or false.']);
+            }
+            $requested = $body['save_liked'];
+        }
+        $result = $this->svc()->library()->rateTrack(
+            $userId,
+            $playlistId,
+            $body['uri'] ?? null,
+            (string) ($body['rating'] ?? ''),
+            $this->by(),
+            [
+                'name' => $body['name'] ?? null,
+                'artists' => $body['artists'] ?? null,
+            ]
+        );
+        if (!empty($result['should_push'])) {
+            try {
+                $result['push'] = $this->svc()->sync()->push($userId, $playlistId);
+            } catch (SpotifyException $e) {
+                $result['push'] = ['ok' => false, 'staged' => true, 'error' => $e->getMessage()];
+            }
+        }
+        unset($result['should_push']);
+        if (SpotifyLibrary::shouldSaveLiked((string) $result['rating'], $requested, $this->svc()->likeOnThumbsUp($userId))) {
+            try {
+                $changed = $this->svc()->playback()->library($userId, [(string) $result['track_uri']], true);
+                $this->svc()->library()->rememberSaved($userId, $changed['tracks']);
+                $result['saved_liked'] = true;
+            } catch (SpotifyException $e) {
+                $result['saved_liked'] = false;
+                $result['like_error'] = $e->getMessage();
+            }
+        }
+        $result['summary'] = SpotifyLibrary::ratingSummary($result);
+        return $result;
     }
 
     private function catalog(): MusicLibrary

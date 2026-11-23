@@ -12,6 +12,9 @@ final class SpotifyService
 {
     public const PLAYER_PREF = 'spotify_player';
 
+    /** Off until the person turns it on. Thumbs up then also saves to Liked Songs. */
+    public const LIKE_ON_THUMBS_UP = 'spotify_like_on_thumbs_up';
+
     public function __construct(
         private readonly Database $db,
         private readonly SpotifyAccount $account,
@@ -71,6 +74,7 @@ final class SpotifyService
     {
         $status = $this->account->status($userId);
         $status['player_enabled'] = $this->playerEnabled($userId);
+        $status['like_on_thumbs_up'] = $this->likeOnThumbsUp($userId);
         $status['redirect_uri'] = SpotifyAccount::redirectUri();
         return $status;
     }
@@ -83,6 +87,16 @@ final class SpotifyService
     public function setPlayerEnabled(int $userId, bool $enabled): void
     {
         $this->prefs->set($userId, self::PLAYER_PREF, $enabled ? '1' : '0');
+    }
+
+    public function likeOnThumbsUp(int $userId): bool
+    {
+        return $this->prefs->get($userId, self::LIKE_ON_THUMBS_UP, '0') === '1';
+    }
+
+    public function setLikeOnThumbsUp(int $userId, bool $enabled): void
+    {
+        $this->prefs->set($userId, self::LIKE_ON_THUMBS_UP, $enabled ? '1' : '0');
     }
 
     /**

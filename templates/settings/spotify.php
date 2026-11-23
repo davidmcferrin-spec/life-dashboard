@@ -73,6 +73,22 @@ require __DIR__ . '/_shell-top.php';
                 <?php endif; ?>
             </section>
 
+            <section class="settings-block space-y-3 mb-4">
+                <h2 class="section-title">Thumbs up</h2>
+                <p class="text-sm text-muted">
+                    When this is on, a thumbs up also saves the track to Spotify Liked Songs.
+                    A thumbs down stays on this dashboard. It means the track is not for your playlists.
+                </p>
+                <form method="post" action="/settings/spotify/likes" class="space-y-3">
+                    <input type="hidden" name="_csrf" value="<?= e(csrfToken()) ?>">
+                    <label class="text-sm flex items-center gap-2">
+                        <input type="checkbox" name="enabled" value="1"<?= !empty($spotify['like_on_thumbs_up']) ? ' checked' : '' ?>>
+                        Save thumbs up to Liked Songs
+                    </label>
+                    <button type="submit" class="btn">Save</button>
+                </form>
+            </section>
+
             <section class="settings-block space-y-3">
                 <h2 class="section-title">Player</h2>
                 <p class="text-sm text-muted">

@@ -251,6 +251,12 @@
     color: var(--accent);
 }
 
+.music-rate {
+    display: inline-flex;
+    gap: 4px;
+    white-space: nowrap;
+}
+
 .music-form {
     display: flex;
     flex-direction: column;

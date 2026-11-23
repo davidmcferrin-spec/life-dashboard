@@ -607,7 +607,19 @@ final class MixtapeLibrary
         $raw = $this->db->fetchScalar('SELECT body FROM spotify_taste_profile WHERE user_id = ?', [$userId]);
         $body = is_string($raw) ? json_decode($raw, true) : [];
         $dislikes = is_array($body) ? ($body['dislikes'] ?? []) : [];
-        return TasteProfile::dislikes($dislikes);
+        $lists = TasteProfile::dislikes($dislikes);
+        // Thumbs-down rows stay out of a build even when the taste JSON was not rewritten.
+        $rows = $this->db->fetchAll(
+            'SELECT track_uri FROM spotify_disliked_tracks WHERE user_id = ? ORDER BY id',
+            [$userId]
+        );
+        foreach ($rows as $row) {
+            $uri = (string) $row['track_uri'];
+            if (!in_array($uri, $lists['tracks'], true)) {
+                $lists['tracks'][] = $uri;
+            }
+        }
+        return $lists;
     }
 
     private static function outsideFlag(mixed $value): bool
