@@ -150,7 +150,7 @@ final class BrainMapTest extends TestCase
             ],
         ]);
 
-        self::assertCount(2, $signals);
+        self::assertCount(3, $signals);
         self::assertSame(5, $signals[0]['page_id']);
         self::assertSame('read', $signals[0]['verb']);
         self::assertSame('user', $signals[0]['actor']);
@@ -158,6 +158,9 @@ final class BrainMapTest extends TestCase
         self::assertSame(3, $signals[1]['page_id']);
         self::assertSame('write', $signals[1]['verb']);
         self::assertSame('Grok', $signals[1]['source']);
+        self::assertSame(0, $signals[2]['page_id']);
+        self::assertSame('Money', $signals[2]['area']);
+        self::assertSame('read', $signals[2]['verb']);
         $json = json_encode($signals, JSON_THROW_ON_ERROR);
         self::assertStringNotContainsString('Secret', $json);
         self::assertStringNotContainsString('Nope', $json);

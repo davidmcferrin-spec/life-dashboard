@@ -183,7 +183,7 @@ final class PageService
                     GREATEST(updated_at, COALESCE(last_opened_at, updated_at)) AS activity_at
              FROM pages
              WHERE user_id = ? AND archived_at IS NULL
-             ORDER BY activity_at DESC, id DESC
+             ORDER BY activity_at DESC, COALESCE(last_opened_at, TIMESTAMP '1970-01-01') DESC, updated_at DESC, id DESC
              LIMIT {$limit}",
             [$userId]
         );
