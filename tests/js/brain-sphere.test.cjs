@@ -43,6 +43,19 @@ test('one cloud per folder and domains for loose pages', () => {
     assert.equal(loose.label, 'C');
 });
 
+test('bare timestamps are utc and music activity finds the music folder', () => {
+    const at = sphere.updatedMs('2026-11-23 05:40:00');
+    const now = Date.parse('2026-11-23T05:41:00Z');
+    assert.ok(Math.abs(now - at - 60000) < 1500);
+    const node = sphere.activityNode([
+        { id: 1, title: 'Home', folder: '01 David', updated_at: '2026-11-23 01:00:00' },
+        { id: 2, title: 'Taste', folder: 'Music', updated_at: '2026-11-22 01:00:00' },
+        { id: 3, title: 'Old playlist', folder: 'Music', updated_at: '2026-11-20 01:00:00' },
+    ], 'Music');
+    assert.equal(node.id, 2);
+    assert.equal(sphere.activityNode([{ id: 9, title: 'Notes', folder: 'Work' }], 'Music'), null);
+});
+
 test('projects and recent filters keep the project type', () => {
     const now = Date.parse('2026-10-23T20:00:00Z');
     assert.equal(sphere.passesFilter({ kind: 'project', updated_at: '2026-10-01 00:00:00' }, 'projects', now), true);
@@ -157,6 +170,8 @@ test('graph screen keeps the figma controls and spells vault correctly', () => {
     assert.match(mesh, /meshGrabPivot/);
     assert.match(mesh, /meshLoadPrefs/);
     assert.match(mesh, /is-idle/);
+    assert.match(mesh, /is-live/);
+    assert.match(mesh, /pullLive/);
     assert.doesNotMatch(mesh, /meshIdle/);
     const css = fs.readFileSync(path.join(__dirname, '../../public/assets/css/brain-mesh.css'), 'utf8');
     assert.match(css, /--scene-perspective/);

@@ -102,7 +102,9 @@ final class AuditLog
     }
 
     /**
-     * Recent page reads and writes for the brain mesh. Titles stay out.
+     * Recent user and agent actions for the brain mesh.
+     * Page rows and dashboard rows (Spotify, todos, stocks) both stay.
+     * Titles stay out of this query; callers decide what to copy.
      *
      * @return list<array<string, mixed>>
      */
@@ -114,7 +116,6 @@ final class AuditLog
              FROM audit_events
              WHERE user_id = ?
                AND actor IN ('ai', 'user')
-               AND (resource LIKE 'page:%' OR resource LIKE '%/pages/%')
              ORDER BY id DESC
              LIMIT {$limit}",
             [$userId]

@@ -1052,6 +1052,13 @@
     animation-play-state: paused;
 }
 
+.brain-screen-page .brain-canvas.is-live ~ .node-panel .node-signal i,
+.brain-screen-page .brain-canvas.is-live ~ .node-panel .node-mark > i,
+.brain-screen-page .brain-canvas.is-live .access-source,
+.brain-screen-page .brain-canvas.is-live .neural-link.is-firing > i {
+    animation-play-state: running;
+}
+
 .brain-help-btn {
     align-items: center;
     background: rgba(7, 13, 14, 0.92);

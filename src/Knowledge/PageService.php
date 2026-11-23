@@ -169,9 +169,9 @@ final class PageService
     }
 
     /**
-     * Pages opened from the vault, newest first.
-     * When nothing has been opened yet, fall back to recently updated pages
-     * so the sidebar and the recent_pages tool are not empty.
+     * Vault Recent: the later of an edit and an open, newest first.
+     * A bot edit counts even when nobody has opened the page. Archived pages stay out.
+     * A title that still says "(archived)" is left as written; archived_at is the flag.
      *
      * @return list<array<string, mixed>>
      */
@@ -179,16 +179,14 @@ final class PageService
     {
         $limit = max(1, min(50, $limit));
         $rows = $this->db->fetchAll(
-            "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at, last_opened_at
+            "SELECT id, title, slug, kind, folder_id, parent_id, favorited_at, updated_at, updated_by, archived_at, last_opened_at,
+                    GREATEST(updated_at, COALESCE(last_opened_at, updated_at)) AS activity_at
              FROM pages
-             WHERE user_id = ? AND archived_at IS NULL AND last_opened_at IS NOT NULL
-             ORDER BY last_opened_at DESC, id DESC
+             WHERE user_id = ? AND archived_at IS NULL
+             ORDER BY activity_at DESC, id DESC
              LIMIT {$limit}",
             [$userId]
         );
-        if ($rows === []) {
-            return $this->recent($userId, $limit);
-        }
         return array_map(fn (array $row): array => $this->brief($row), $rows);
     }
 

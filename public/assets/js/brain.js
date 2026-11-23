@@ -790,16 +790,19 @@
             didExpand = true;
         }
         renderTree();
-        if (optional('brain-pins')) {
-            Promise.all([
-                api.get('/pages/favorites').catch(() => ({ pages: [] })),
-                api.get('/pages/recent').catch(() => ({ pages: [] })),
-            ]).then((pair) => {
-                favorites = pair[0].pages || [];
-                recents = pair[1].pages || [];
-                paintPins();
-            }).catch(() => {});
-        }
+        if (optional('brain-pins')) refreshPins();
+    }
+
+    function refreshPins() {
+        if (!optional('brain-pins') || document.hidden) return Promise.resolve();
+        return Promise.all([
+            api.get('/pages/favorites').catch(() => ({ pages: [] })),
+            api.get('/pages/recent').catch(() => ({ pages: [] })),
+        ]).then((pair) => {
+            favorites = pair[0].pages || [];
+            recents = pair[1].pages || [];
+            paintPins();
+        }).catch(() => {});
     }
 
     function walkExpand(folder) {
@@ -828,7 +831,9 @@
         };
         if (!brief) pages.unshift(summary);
         else Object.assign(brief, summary);
-        if (optional('brain-quick')) api.post('/pages/' + id + '/open', {}).catch(() => {});
+        if (optional('brain-quick')) {
+            api.post('/pages/' + id + '/open', {}).then(() => refreshPins()).catch(() => {});
+        }
         show(res.page);
         setTreeOpen(false);
         // Opening another note starts in preview. Autosave and move keep the Edit toggle.
@@ -1663,6 +1668,12 @@
                 delete link.dataset.held;
             }
         });
+    }
+
+    if (typeof setInterval === 'function') {
+        setInterval(() => {
+            if (!document.hidden) refreshPins();
+        }, 45000);
     }
 
     const open = Number(shell.dataset.openPage || 0);

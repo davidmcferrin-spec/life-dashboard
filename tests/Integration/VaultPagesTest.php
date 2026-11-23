@@ -108,6 +108,7 @@ final class VaultPagesTest extends PgsqlTestCase
             'title' => 'Sample',
             'body' => "Real [[Home]]\n```\n[[Fence Only]]\n```\n",
         ]);
+        self::assertSame('Sample', $this->pages->opened($this->user, 5)[0]['title']);
         $before = (string) $this->db->fetchScalar('SELECT body FROM pages WHERE id = ?', [(int) $codePage['id']]);
         $revisions = (int) $this->db->fetchScalar(
             'SELECT COUNT(*) FROM page_revisions WHERE page_id = ?',

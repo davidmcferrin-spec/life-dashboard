@@ -45,6 +45,16 @@ final class AgentPresenceTest extends TestCase
             'detail' => ['token_name' => 'Reader', 'title' => 'Pack list'],
         ]);
         self::assertSame('Vault: write_page', $vault['label']);
+
+        $music = AgentPresence::describe([
+            'actor' => 'ai',
+            'tool' => 'update_taste_profile',
+            'action' => 'POST',
+            'resource' => '/api/v1/spotify/taste',
+            'detail' => ['token_name' => 'Music Director'],
+        ]);
+        self::assertSame('Music', $music['area']);
+        self::assertSame('Music: update_taste_profile', $music['label']);
         self::assertStringNotContainsString('Pack', json_encode($vault, JSON_THROW_ON_ERROR));
     }
 

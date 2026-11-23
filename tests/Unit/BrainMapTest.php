@@ -165,6 +165,23 @@ final class BrainMapTest extends TestCase
         self::assertArrayNotHasKey('resource', $signals[0]);
     }
 
+    public function testDashboardWritesKeepAnAreaWithoutAPage(): void
+    {
+        $signals = BrainActivity::signals([
+            [
+                'id' => 4925, 'actor' => 'ai', 'tool' => 'update_taste_profile', 'action' => 'POST',
+                'resource' => '/api/v1/spotify/taste', 'created_at' => '2026-11-23 05:40:00',
+                'detail' => ['verb' => 'write', 'token_id' => 9, 'token_name' => 'Music Director', 'title' => 'secret'],
+            ],
+        ]);
+        self::assertCount(1, $signals);
+        self::assertSame(0, $signals[0]['page_id']);
+        self::assertSame('Music', $signals[0]['area']);
+        self::assertSame('write', $signals[0]['verb']);
+        self::assertSame('Music Director', $signals[0]['source']);
+        self::assertStringNotContainsString('secret', json_encode($signals, JSON_THROW_ON_ERROR));
+    }
+
     public function testGraphAndAuditReadsAreNotTraced(): void
     {
         self::assertTrue(ApiRunner::isMetaRead('/api/v1/pages/graph'));

@@ -210,6 +210,56 @@
         return kept.concat(rest.slice(0, cap - kept.length));
     }
 
+    const AREA_HINTS = {
+        Music: ['music', 'spotify'],
+        Money: ['money'],
+        Todos: ['todo', 'to-do', 'todos'],
+        Stocks: ['stock', 'stocks'],
+        Investing: ['invest', 'stock'],
+        Vault: ['vault'],
+        Habits: ['habit'],
+        Trips: ['travel', 'trip'],
+        Health: ['health'],
+        Briefs: ['brief', 'digest'],
+        Digest: ['digest'],
+        Handoffs: ['handoff'],
+        Videos: ['video'],
+        Findings: ['finding'],
+        Widgets: ['widget'],
+        Life: ['life'],
+        Reddit: ['reddit'],
+        Flights: ['flight'],
+        Packages: ['package'],
+        Bookmarks: ['bookmark'],
+        Search: ['search'],
+    };
+
+    function activityNode(nodes, area) {
+        const hints = AREA_HINTS[area] || [String(area || '').toLowerCase()];
+        let best = null;
+        let bestScore = 0;
+        (nodes || []).forEach((node) => {
+            const folder = String(node.folder || '').toLowerCase();
+            const title = String(node.title || '').toLowerCase();
+            let score = 0;
+            hints.forEach((hint) => {
+                const needle = String(hint || '').toLowerCase();
+                if (!needle) return;
+                if (folder === needle) score = Math.max(score, 8);
+                else if (title === needle) score = Math.max(score, 7);
+                else if (folder.indexOf(needle) !== -1) score = Math.max(score, 5);
+                else if (title.indexOf(needle) !== -1) score = Math.max(score, 4);
+            });
+            if (score < 1) return;
+            const newer = best && String(node.updated_at || '') > String(best.updated_at || '');
+            if (score > bestScore || (score === bestScore && newer)) {
+                best = node;
+                bestScore = score;
+            }
+        });
+        return best;
+    }
+
     function neighborIds(edges, id) {
         const out = [];
         (edges || []).forEach((edge) => {
@@ -486,6 +536,7 @@
         capNodes,
         capLinks,
         neighborIds,
+        activityNode,
         clusterRadius,
         labelClearance,
         layoutWorld,

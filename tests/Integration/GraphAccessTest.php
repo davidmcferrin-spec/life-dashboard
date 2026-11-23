@@ -59,12 +59,21 @@ final class GraphAccessTest extends PgsqlTestCase
             TokenStamp::detail(3, 'Grok', 'write', ['title' => 'Home'])
         );
         $audit->record($user, 'ai', 'list_transactions', 'GET', '/api/v1/money/transactions', ['title' => 'skip']);
+        $audit->record(
+            $user,
+            'ai',
+            'update_taste_profile',
+            'POST',
+            '/api/v1/spotify/taste',
+            TokenStamp::detail(9, 'Music Director', 'write')
+        );
 
         $signals = $pages->graphAccess($user, 20);
-        self::assertCount(2, $signals);
+        self::assertCount(4, $signals);
         $json = json_encode($signals, JSON_THROW_ON_ERROR);
         self::assertStringNotContainsString('Flight', $json);
         self::assertStringNotContainsString('Home', $json);
+        self::assertStringNotContainsString('skip', $json);
         $verbs = [];
         foreach ($signals as $row) {
             $verbs[$row['page_id']] = $row['verb'];
@@ -75,5 +84,15 @@ final class GraphAccessTest extends PgsqlTestCase
         $sources = array_column($signals, 'source');
         self::assertContains('You', $sources);
         self::assertContains('Grok', $sources);
+        $music = null;
+        foreach ($signals as $row) {
+            if (($row['area'] ?? '') === 'Music') {
+                $music = $row;
+            }
+        }
+        self::assertNotNull($music);
+        self::assertSame(0, $music['page_id']);
+        self::assertSame('write', $music['verb']);
+        self::assertSame('Music Director', $music['source']);
     }
 }

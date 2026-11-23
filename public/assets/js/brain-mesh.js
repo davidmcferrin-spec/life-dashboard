@@ -64,6 +64,7 @@
     let userMoved = false;
     let presenceAfter = 0;
     let rateEvents = [];
+    let liveFeed = [];
     let fires = [];
     let firesMarked = false;
     const seenFire = new Set();
@@ -527,7 +528,9 @@
         if (writesEl) writesEl.textContent = row ? firing.formatRate(row.writes) : '\u2014';
         if (activityEl) activityEl.textContent = row ? row.activity + '%' : '\u2014';
         if (meterEl) meterEl.style.width = row ? row.activity + '%' : '0';
-        if (updatedEl) updatedEl.textContent = updatedLabel(node.updated_at, now);
+        const touched = latestTouch(node.id);
+        const stamp = touched && parseUtc(touched) > parseUtc(node.updated_at) ? touched : node.updated_at;
+        if (updatedEl) updatedEl.textContent = updatedLabel(stamp, now);
         const neighbors = sphere.neighborIds(graph.edges || [], node.id);
         if (linksEl) linksEl.textContent = neighbors.length + ' items';
         if (openEl) openEl.href = '/brain?page=' + encodeURIComponent(node.id);
@@ -541,20 +544,55 @@
         }
         if (markEl) markEl.className = 'node-mark' + (strength > 0 ? ' access-' + latest.verb : '');
         if (firingEl) {
-            const sig = neighbors.slice().sort((a, b) => a - b).join(',');
+            const rows = firingRows(neighbors);
+            const sig = rows.map((row) => row.sig).join('|');
             if (firingEl.dataset.sig !== sig) {
                 firingEl.dataset.sig = sig;
-                const byId = new Map((graph.nodes || []).map((item) => [item.id, item]));
-                firingEl.innerHTML = neighbors.map((id) => {
-                    const linked = byId.get(id);
-                    if (!linked) return '';
-                    const linkedType = sphere.designType(linked.kind);
-                    const live = latestFire(id, now);
-                    const state = live && firing.firingStrength(now - live.born) > 0 ? live.verb : linkedType;
-                    return '<button type="button" data-select="' + id + '"><i class="type-' + linkedType + '"></i><span>' + esc(linked.title || 'Untitled') + '<small>' + esc(sphere.typeLabel(linked.kind)) + ' · ' + esc(String(state)) + '</small></span>' + icon('brain-icon-chevron') + '</button>';
+                firingEl.innerHTML = rows.map((row) => {
+                    const select = row.pageId ? ' data-select="' + row.pageId + '"' : '';
+                    return '<button type="button"' + select + '><i class="type-' + row.type + '"></i><span>' + esc(row.title) + '<small>' + esc(row.detail) + '</small></span>' + icon('brain-icon-chevron') + '</button>';
                 }).join('');
             }
         }
+    }
+
+    function latestTouch(pageId) {
+        let best = '';
+        let bestMs = 0;
+        liveFeed.forEach((item) => {
+            if (item.pageId !== pageId) return;
+            const at = parseUtc(item.at);
+            if (at > bestMs) {
+                bestMs = at;
+                best = item.at;
+            }
+        });
+        return best;
+    }
+
+    function firingRows(neighbors) {
+        if (liveFeed.length) {
+            return liveFeed.slice(0, 12).map((item) => ({
+                sig: item.id + '@' + item.at + ':' + item.verb,
+                pageId: item.pageId || 0,
+                type: item.kind || 'note',
+                title: item.title || item.area || 'Dashboard',
+                detail: (item.source || 'Agent') + ' · ' + (item.verb === 'write' ? 'write' : 'read') + ' · ' + updatedLabel(item.at, Date.now()),
+            }));
+        }
+        const byId = new Map((graph.nodes || []).map((item) => [item.id, item]));
+        return neighbors.map((id) => {
+            const linked = byId.get(id);
+            if (!linked) return null;
+            const linkedType = sphere.designType(linked.kind);
+            return {
+                sig: 'link:' + id,
+                pageId: id,
+                type: linkedType,
+                title: linked.title || 'Untitled',
+                detail: sphere.typeLabel(linked.kind),
+            };
+        }).filter(Boolean);
     }
 
     function latestFire(pageId, now) {
@@ -836,8 +874,9 @@
     function rememberFire(id, pageId, verb, source, at) {
         const now = Date.now();
         if (!id || seenFire.has(id)) return;
+        const age = now - at;
         if (!firing.isFresh(at, now) || !pageId) {
-            if (id) seenFire.add(id);
+            if (id && age > firing.FRESH_MS) seenFire.add(id);
             return;
         }
         seenFire.add(id);
@@ -850,36 +889,72 @@
         });
     }
 
+    function targetFor(event) {
+        const pageId = Number(event.page_id) || 0;
+        const page = pageId ? nodeById(pageId) : null;
+        if (page) {
+            return {
+                pageId: page.id,
+                title: page.title || 'Untitled',
+                kind: sphere.designType(page.kind),
+            };
+        }
+        const area = String(event.area || '');
+        const node = area ? sphere.activityNode(graph.nodes || [], area) : null;
+        if (node) {
+            return {
+                pageId: node.id,
+                title: node.title || area,
+                kind: sphere.designType(node.kind),
+            };
+        }
+        return { pageId: 0, title: area || 'Dashboard', kind: 'note' };
+    }
+
     function ingestLive(presenceEvents, accessEvents) {
         const nextRates = [];
+        const feed = [];
         (accessEvents || []).forEach((event) => {
-            const pageId = Number(event.page_id) || 0;
-            if (!pageId) return;
-            nextRates.push({
-                pageId: pageId,
+            if (event.actor !== 'user' && event.actor !== 'ai') return;
+            const target = targetFor(event);
+            const atMs = parseUtc(event.at);
+            if (target.pageId) {
+                nextRates.push({
+                    pageId: target.pageId,
+                    verb: event.verb === 'write' ? 'write' : 'read',
+                    atMs: atMs,
+                });
+            }
+            feed.push({
+                id: Number(event.id) || 0,
+                pageId: target.pageId,
+                area: String(event.area || ''),
                 verb: event.verb === 'write' ? 'write' : 'read',
-                atMs: parseUtc(event.at),
+                source: event.source || (event.actor === 'user' ? 'You' : 'Agent'),
+                at: event.at || '',
+                title: target.title,
+                kind: target.kind,
             });
         });
         rateEvents = nextRates;
+        liveFeed = feed;
         const presenceById = new Map();
         (presenceEvents || []).forEach((event) => {
             const id = Number(event.id) || 0;
             if (id > presenceAfter) presenceAfter = id;
             if (id) presenceById.set(id, event);
         });
-        (accessEvents || []).forEach((event) => {
-            if (event.actor !== 'user' && event.actor !== 'ai') return;
-            const id = Number(event.id) || 0;
-            const hit = presenceById.get(id);
-            const source = (hit && hit.agent) || event.source || (event.actor === 'user' ? 'You' : 'Agent');
-            rememberFire(id, Number(event.page_id) || 0, event.verb, source, parseUtc(event.at));
+        feed.forEach((item) => {
+            const hit = presenceById.get(item.id);
+            const source = (hit && hit.agent) || item.source;
+            rememberFire(item.id, item.pageId, item.verb, source, parseUtc(item.at));
         });
         const alive = firingIds();
         const needs = alive.some((id) => !placements.has(id));
         if (needs) renderWorld();
         else updateFires(Date.now());
         if (fires.length) kick();
+        settleClasses(!cameraApi.meshSettled(display, target) || dragging);
         renderPanel();
     }
 
@@ -920,8 +995,10 @@
     }
 
     function settleClasses(moving) {
+        const live = fires.length > 0;
         stage.classList.toggle('is-moving', moving);
-        stage.classList.toggle('is-idle', !moving);
+        stage.classList.toggle('is-live', live);
+        stage.classList.toggle('is-idle', !moving && !live);
     }
 
     function kick() {
@@ -1320,6 +1397,56 @@
         }, 80);
     });
 
+    let ws = null;
+    let attempt = 0;
+    let reconnectTimer = null;
+
+    function scheduleReconnect() {
+        clearTimeout(reconnectTimer);
+        const base = Math.min(30000, 1000 * 2 ** Math.min(attempt, 5));
+        attempt += 1;
+        reconnectTimer = setTimeout(connectLive, base);
+    }
+
+    function connectLive() {
+        clearTimeout(reconnectTimer);
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+        api.get('/realtime/token').then((ticket) => {
+            const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            try {
+                ws = new WebSocket(scheme + '//' + location.host + ticket.url);
+            } catch (err) {
+                scheduleReconnect();
+                return;
+            }
+            ws.addEventListener('open', () => {
+                ws.send(JSON.stringify({ type: 'auth', token: ticket.token }));
+            });
+            ws.addEventListener('message', (msg) => {
+                let evt;
+                try {
+                    evt = JSON.parse(msg.data);
+                } catch (err) {
+                    return;
+                }
+                if (evt.type === 'ready') {
+                    attempt = 0;
+                    return;
+                }
+                if (evt.type === 'event' && evt.table === 'audit_events') pullLive();
+                else if (evt.type === 'event' && evt.table === 'pages') {
+                    if (!paused && !document.hidden) load().catch(() => {});
+                } else if (evt.type === 'resync') pullLive();
+            });
+            ws.addEventListener('close', () => {
+                ws = null;
+                scheduleReconnect();
+            });
+        }).catch(() => {
+            scheduleReconnect();
+        });
+    }
+
     function startTimers() {
         if (!pollTimer) {
             pollTimer = setInterval(() => {
@@ -1329,6 +1456,7 @@
             }, POLL_MS);
         }
         if (!presenceTimer) presenceTimer = setInterval(pullLive, PRESENCE_MS);
+        connectLive();
     }
 
     applyCamera();
