@@ -25,6 +25,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
                 <h2 class="brain-tree-title">Vault</h2>
             </div>
             <div class="brain-tree-actions">
+                <button type="button" id="brain-drawer-hide" class="brain-icon-btn" title="Hide notes" aria-label="Hide notes" aria-controls="brain-tree-pane" aria-expanded="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/panel-left.svg'); ?></button>
                 <button type="button" id="brain-new" class="brain-icon-btn" title="New note" aria-label="New note"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/plus.svg'); ?></button>
             </div>
         </header>
@@ -46,6 +47,9 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
         <template id="brain-icon-ellipsis"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/ellipsis.svg'); ?></template>
         <template id="brain-icon-x"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/x.svg'); ?></template>
     </aside>
+    <div id="brain-drawer-resize" class="brain-drawer-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-label="Resize notes" aria-valuemin="168" aria-valuemax="520" aria-valuenow="230" aria-controls="brain-tree-pane" title="Drag to resize. Double-click or Enter to reset.">
+        <span class="brain-drawer-grip" aria-hidden="true"><?php readfile(__DIR__ . '/../public/assets/vendor/lucide/grip-vertical.svg'); ?></span>
+    </div>
     <section class="brain-stage is-preview">
         <header class="brain-note-head">
             <div class="brain-note-title">
@@ -164,6 +168,7 @@ $openPage      = isset($_GET['page']) ? (int) $_GET['page'] : 0;
 
 <?php require __DIR__ . '/partials/appearance-scripts.php'; ?>
 <script src="/assets/js/brain-pins.js?v=<?= e($assetVer) ?>"></script>
+<script src="/assets/js/brain-drawer.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/lifedash-api.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-markdown.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/brain-blocks.js?v=<?= e($assetVer) ?>"></script>

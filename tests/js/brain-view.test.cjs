@@ -776,13 +776,36 @@ test('the vault tree uses guides, chevrons, and kind marks', async () => {
     assert.equal(rows.find((row) => row.dataset.treeKey === 'folder:2').dataset.parentKey, 'folder:1');
     assert.equal(rows.find((row) => row.dataset.treeKey === 'page:9').dataset.parentKey, 'folder:2');
     assert.equal(rows.find((row) => row.dataset.treeKey === 'page:8').dataset.parentKey, 'folder:1');
-    assert.equal(rows.find((row) => row.dataset.treeKey === 'page:7').dataset.parentKey, '');
+    assert.equal(rows.find((row) => row.dataset.treeKey === 'folder:1').dataset.parentKey, 'root');
+    assert.equal(rows.find((row) => row.dataset.treeKey === 'page:7').dataset.parentKey, 'root');
+    const rootRow = rows.find((row) => row.dataset.treeKey === 'root');
+    const rootWrap = rootRow.closest('.brain-root');
+    assert.equal(rootWrap.classList.contains('brain-folder'), true);
+    assert.equal(ui.tree.children.length, 1);
+    assert.equal(ui.tree.children[0], rootWrap);
+    assert.equal(rootRow.attrs['aria-expanded'], 'true');
+    assert.match(rootRow.querySelector('[data-toggle-root]').attrs['aria-label'], /Collapse Root/);
+    const rootGroup = rootWrap.querySelector('.brain-folder-children');
+    assert.equal(rootGroup.querySelector('.brain-folder-branch') !== null, true);
+    assert.equal(rootGroup.classList.contains('is-collapsed'), false);
+    assert.equal(rootWrap.contains(rows.find((row) => row.dataset.treeKey === 'folder:1')), true);
+    assert.equal(rootWrap.contains(rows.find((row) => row.dataset.treeKey === 'page:7')), true);
     const nestedGroup = rows.find((row) => row.dataset.treeKey === 'folder:2').closest('.brain-folder').querySelector('.brain-folder-children');
     const projectGroup = rows.find((row) => row.dataset.treeKey === 'folder:1').closest('.brain-folder').querySelector('.brain-folder-children');
     assert.equal(nestedGroup.classList.contains('brain-folder-children'), true);
     assert.equal(projectGroup.classList.contains('brain-folder-children'), true);
     assert.equal(nestedGroup.hidden, false);
     assert.equal(nestedGroup.classList.contains('is-collapsed'), false);
+
+    const rootToggle = rootRow.querySelector('[data-toggle-root]');
+    await rootToggle.dispatch('click');
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'folder:1'), false);
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:7'), false);
+    assert.equal(rootRow.attrs['aria-expanded'], 'false');
+    assert.match(rootToggle.attrs['aria-label'], /Expand Root/);
+    await rootToggle.dispatch('click');
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:7'), true);
+    assert.equal(rootRow.attrs['aria-expanded'], 'true');
 });
 
 test('vault tree keys move, expand, and open without scrolling', async () => {
@@ -855,6 +878,28 @@ test('vault tree keys move, expand, and open without scrolling', async () => {
     assertPreview(ui, '# Hello');
     assert.equal(ui.title.value, 'Home');
 
+    const root = treeRows(ui.tree).find((row) => row.dataset.treeKey === 'root');
+    root.focus();
+    await root.dispatch('keydown', { key: 'ArrowLeft' });
+    assert.equal(focusedRow(ui.tree).dataset.treeKey, 'root');
+    assert.equal(focusedRow(ui.tree).attrs['aria-expanded'], 'false');
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'folder:1'), false);
+    assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:7'), false);
+    await press(ui.tree, 'ArrowRight');
+    assert.equal(focusedRow(ui.tree).dataset.treeKey, 'root');
+    assert.equal(focusedRow(ui.tree).attrs['aria-expanded'], 'true');
+    await press(ui.tree, 'ArrowRight');
+    assert.equal(focusedRow(ui.tree).dataset.treeKey, 'folder:1');
+    await press(ui.tree, 'ArrowLeft');
+    await press(ui.tree, 'ArrowLeft');
+    assert.equal(focusedRow(ui.tree).dataset.treeKey, 'root');
+    const enterOnRoot = await press(ui.tree, 'Enter');
+    assert.equal(enterOnRoot.defaultPrevented, true);
+    assert.equal(focusedRow(ui.tree).attrs['aria-expanded'], 'false');
+    assert.equal(ui.title.value, 'Home');
+    await press(ui.tree, ' ');
+    assert.equal(focusedRow(ui.tree).attrs['aria-expanded'], 'true');
+
     const project = ui.tree.querySelectorAll('[data-folder-pick]').find((node) => node.dataset.folderPick === '1');
     await project.dispatch('click');
     await flush();
@@ -892,6 +937,9 @@ test('collapse all closes every folder and tree rows keep hover actions', async 
     const projects = treeRows(ui.tree).find((row) => row.dataset.treeKey === 'folder:1');
     assert.equal(projects.attrs['aria-expanded'], 'false');
     assert.equal(treeRows(ui.tree).some((row) => row.dataset.treeKey === 'page:7'), true);
+    const rootRow = treeRows(ui.tree).find((row) => row.dataset.treeKey === 'root');
+    assert.equal(rootRow.attrs['aria-expanded'], 'true');
+    assert.equal(rootRow.closest('.brain-root').querySelector('.brain-folder-children').classList.contains('is-collapsed'), false);
 });
 
 test('create note posts the title and the folder from the tree row', async () => {
