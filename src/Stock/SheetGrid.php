@@ -120,6 +120,62 @@ final class SheetGrid
         return (float) $text;
     }
 
+    /**
+     * History is one formula in a long table. A blank symbol in the middle is a
+     * reload gap, so parsing continues. Null means the tab was empty or unread.
+     * An empty list means the headers were there and no bar had a symbol and a date.
+     *
+     * @param list<list<mixed>> $grid
+     * @return list<array<string, mixed>>|null
+     */
+    public static function history(array $grid): ?array
+    {
+        if ($grid === []) {
+            return null;
+        }
+        $header = array_shift($grid);
+        if (!is_array($header)) {
+            return null;
+        }
+        $index = self::index($header, [
+            'symbol' => ['symbol', 'ticker'],
+            'date'   => ['date'],
+            'open'   => ['open'],
+            'high'   => ['high'],
+            'low'    => ['low'],
+            'close'  => ['close'],
+            'volume' => ['volume'],
+        ]);
+        if (!isset($index['symbol'], $index['date'], $index['close'])) {
+            throw SheetException::make('History is missing Symbol, Date, or Close.');
+        }
+        $out = [];
+        foreach ($grid as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $symbol = self::symbol(self::text(self::raw($row, $index['symbol'])));
+            if ($symbol === null) {
+                continue;
+            }
+            $date = self::date(self::raw($row, $index['date']));
+            if ($date === null) {
+                continue;
+            }
+            $out[] = [
+                'symbol' => $symbol,
+                'date'   => $date,
+                'open'   => self::number(self::raw($row, $index['open'] ?? null)),
+                'high'   => self::number(self::raw($row, $index['high'] ?? null)),
+                'low'    => self::number(self::raw($row, $index['low'] ?? null)),
+                'close'  => self::number(self::raw($row, $index['close'])),
+                'volume' => self::number(self::raw($row, $index['volume'] ?? null)),
+            ];
+        }
+
+        return $out;
+    }
+
     public static function date(mixed $value): ?string
     {
         if ($value === null || $value === '') {

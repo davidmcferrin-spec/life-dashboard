@@ -229,6 +229,8 @@
 .fin-chart svg {
     display: block;
     height: 180px;
+    max-width: 100%;
+    min-width: 0;
     width: 100%;
 }
 
@@ -242,6 +244,58 @@
 .fin-chart-area {
     fill: color-mix(in srgb, var(--accent) 22%, transparent);
     stroke: none;
+}
+
+.fin-chart.is-down .fin-chart-line {
+    stroke: var(--danger);
+}
+
+.fin-chart.is-down .fin-chart-area {
+    fill: color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.fin-ranges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.fin-range {
+    background: transparent;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+}
+
+.fin-range[aria-selected="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent-border);
+    color: var(--text);
+}
+
+.fin-symbol-focus {
+    background: none;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0;
+    text-align: left;
+}
+
+.fin-symbol-focus:hover,
+.fin-symbol-focus:focus-visible {
+    color: var(--accent);
+}
+
+.fin-table tr.is-focused td {
+    background: var(--accent-soft);
 }
 
 .fin-axis {

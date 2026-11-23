@@ -64,7 +64,8 @@
             const thesis = row.thesis ? esc(row.thesis) : '—';
             const proxy = commodity ? '<td>' + esc(row.proxy_for || '—') + '</td>' : '';
             const off = commodity ? '' : '<td class="fin-num ' + tone(row.pct_off_52w) + '">' + esc(points(row.pct_off_52w)) + '</td>';
-            return '<tr title="' + esc(extra) + '"><td>' + esc(row.role || '—') + '</td><td class="fin-symbol">' + esc(row.symbol) + '</td><td>'
+            return '<tr title="' + esc(extra) + '"><td>' + esc(row.role || '—') + '</td><td class="fin-symbol"><button type="button" class="fin-symbol-focus" data-focus-symbol="'
+                + esc(row.symbol) + '" data-focus-name="' + esc(row.name || row.symbol) + '">' + esc(row.symbol) + '</button></td><td>'
                 + esc(row.name || '—') + '</td>' + proxy + '<td class="fin-num">' + esc(money(row.price, row.currency)) + '</td><td class="fin-num '
                 + tone(row.change) + '">' + esc(money(row.change, row.currency)) + '</td><td class="fin-num ' + tone(row.change_pct) + '">'
                 + esc(points(row.change_pct)) + '</td>' + off + '<td>' + thesis + '</td><td>' + esc(row.last_reviewed || '—') + '</td></tr>';
@@ -76,8 +77,9 @@
         if (!rows.length) {
             return empty('No play-account buys', 'The sheet is empty until those rows are added.');
         }
-        const body = rows.map((row) => '<tr><td>' + esc(row.date) + '</td><td class="fin-symbol">' + esc(row.ticker)
-            + '</td><td class="fin-num">' + esc(money(row.amount, 'USD')) + '</td><td class="fin-num">' + esc(plain(row.shares, 4))
+        const body = rows.map((row) => '<tr><td>' + esc(row.date) + '</td><td class="fin-symbol"><button type="button" class="fin-symbol-focus" data-focus-symbol="'
+            + esc(row.ticker) + '" data-focus-name="' + esc(row.ticker) + '">' + esc(row.ticker) + '</button></td><td class="fin-num">'
+            + esc(money(row.amount, 'USD')) + '</td><td class="fin-num">' + esc(plain(row.shares, 4))
             + '</td><td class="fin-num">' + esc(money(row.price, 'USD')) + '</td></tr>').join('');
         return '<div class="fin-table-wrap"><table class="fin-table"><thead><tr><th>Date</th><th>Ticker</th><th class="fin-num">Amount</th><th class="fin-num">Shares</th><th class="fin-num">Price</th></tr></thead><tbody>'
             + body + '</tbody></table></div>';
@@ -106,6 +108,7 @@
         if (watch) watch.innerHTML = quoteTable(page.watchlist || [], false);
         if (commodities) commodities.innerHTML = quoteTable(page.commodities || [], true);
         if (play) play.innerHTML = playTable(page.play_account || []);
+        if (window.StockChart) window.StockChart.mark();
     }
 
     async function load() {

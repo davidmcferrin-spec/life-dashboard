@@ -6,6 +6,8 @@ namespace Dashboard\Stock;
 
 use Dashboard\DB\Database;
 use Dashboard\Support\Clock;
+use DateTimeImmutable;
+use DateTimeZone;
 
 final class StockSheetSync
 {
@@ -101,6 +103,25 @@ final class StockSheetSync
     }
 
     /**
+     * Daily closes and the hourly Day series stored from the sheet.
+     * range limits the payload to one of day, week, month, or year.
+     *
+     * @return array<string, mixed>
+     */
+    public function history(int $userId, string $symbol, ?string $range = null): array
+    {
+        $symbol = StockChart::symbol($symbol);
+        $series = StockChart::series(
+            $symbol,
+            $this->store->bars($userId, $symbol),
+            $this->store->ticks($userId, $symbol),
+            $this->clock->timezone(),
+        );
+
+        return StockChart::pick($series, $range);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function snapshot(int $userId): array
@@ -182,10 +203,15 @@ final class StockSheetSync
             $watchlist = SheetGrid::watchlist($grids['Watchlist'] ?? []);
             $commodities = SheetGrid::commodities($grids['Commodities'] ?? []);
             $play = SheetGrid::play($grids['Play Account'] ?? []);
+            $bars = $this->historyBars($grids);
             $this->store->replace($userId, $watchlist, $commodities, $play, [
                 'last_synced_at'  => $stamp,
                 'last_attempt_at' => $stamp,
             ]);
+            if (is_array($bars)) {
+                $this->store->upsertBars($userId, $bars);
+            }
+            $this->store->snapshot($userId, array_merge($watchlist, $commodities), $this->hourBucket());
         } catch (SheetException $e) {
             $this->store->writeError($userId, SheetException::safe($e->getMessage()), $stamp);
 
@@ -209,5 +235,33 @@ final class StockSheetSync
             'ok'         => true,
             'status'     => $this->status($userId),
         ];
+    }
+
+    /**
+     * Null keeps the bars already stored: the tab was missing, unread, or not a History table.
+     * An array, including an empty one, is a real read and still does not delete older bars.
+     *
+     * @param array<string, mixed> $grids
+     * @return list<array<string, mixed>>|null
+     */
+    private function historyBars(array $grids): ?array
+    {
+        if (!array_key_exists('History', $grids) || !is_array($grids['History'])) {
+            return null;
+        }
+        try {
+            return SheetGrid::history($grids['History']);
+        } catch (SheetException) {
+            return null;
+        }
+    }
+
+    /** The Chicago hour of this sync. A later run in the same hour updates that point. */
+    private function hourBucket(): string
+    {
+        $local = $this->clock->now()->setTimezone($this->clock->timezone());
+        $bucket = new DateTimeImmutable($local->format('Y-m-d H:00:00'), $this->clock->timezone());
+
+        return $bucket->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
     }
 }
