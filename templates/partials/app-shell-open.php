@@ -61,6 +61,7 @@ $shellItems = [
     ['Investing', '/investing', 'trending-up'],
     ['Stocks', '/stocks', 'chart-column'],
     ['Wake', '/wake', 'server'],
+    ['Homelab', '/homelab', 'monitor'],
     ['Pantry', '/pantry', 'shopping-basket'],
     ['Meal Prep', '/pantry?view=meals', 'cooking-pot'],
     ['Vault', '/brain', 'book'],

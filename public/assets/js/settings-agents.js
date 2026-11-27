@@ -10,6 +10,12 @@
     const tokenRoot = document.getElementById('agent-tokens');
     const admin = tokenRoot.dataset.admin === '1';
     const areas = JSON.parse(tokenRoot.dataset.areas || '[]');
+    const homelabAreas = JSON.parse(tokenRoot.dataset.homelab || '[]');
+    const homelabScopeNames = new Set();
+    homelabAreas.forEach((area) => {
+        homelabScopeNames.add(area + ':read');
+        homelabScopeNames.add(area + ':write');
+    });
     const editModal = document.getElementById('agent-edit-modal');
     const deleteModal = document.getElementById('agent-delete-modal');
     const oauthModal = document.getElementById('oauth-edit-modal');
@@ -56,7 +62,7 @@
 
     function checksFor(scopes) {
         const set = new Set(scopes || []);
-        const rest = (scopes || []).filter((scope) => scope !== 'system:read' && scope !== 'system:deploy' && scope !== 'spotify:playback');
+        const rest = (scopes || []).filter((scope) => scope !== 'system:read' && scope !== 'system:deploy' && scope !== 'spotify:playback' && !homelabScopeNames.has(scope));
         const checks = {
             all: false,
             read: false,
@@ -167,6 +173,7 @@
             if (data.get('spotify_playback')) scopes.push('spotify:playback');
             if (data.get('system_read')) scopes.push('system:read');
             if (data.get('system_deploy')) scopes.push('system:deploy');
+            form.querySelectorAll('input[name="homelab_scope"]:checked').forEach((box) => scopes.push(box.value));
             const res = await api.post('/tokens', { name: String(data.get('name')), scopes });
             const token = res.token && res.token.token;
             if (!token) {
@@ -215,6 +222,7 @@
         form.elements.system_read.checked = checks.system_read;
         form.elements.system_deploy.checked = checks.system_deploy;
         if (form.elements.spotify_playback) form.elements.spotify_playback.checked = checks.spotify_playback === true;
+        applyHomelab(form, row.scopes);
         document.getElementById('agent-edit-current').textContent = 'Current scopes: ' + row.scopes.join(' ');
         document.getElementById('agent-edit-error').textContent = '';
         openModal(editModal);
@@ -256,7 +264,15 @@
         if (form.elements.spotify_playback && form.elements.spotify_playback.checked) scopes.push('spotify:playback');
         if (form.elements.system_read.checked) scopes.push('system:read');
         if (form.elements.system_deploy.checked) scopes.push('system:deploy');
+        form.querySelectorAll('input[name="homelab_scope"]:checked').forEach((box) => scopes.push(box.value));
         return scopes;
+    }
+
+    function applyHomelab(form, scopes) {
+        const set = new Set(scopes || []);
+        form.querySelectorAll('input[name="homelab_scope"]').forEach((box) => {
+            box.checked = set.has(box.value);
+        });
     }
 
     if (editModal) {
@@ -349,6 +365,7 @@
         form.elements.system_read.checked = checks.system_read;
         form.elements.system_deploy.checked = checks.system_deploy;
         if (form.elements.spotify_playback) form.elements.spotify_playback.checked = checks.spotify_playback === true;
+        applyHomelab(form, scopes);
         const current = scopes.length ? scopes.join(' ') : 'none';
         document.getElementById('oauth-edit-current').textContent = button.dataset.oauthLimited === '1'
             ? 'Current scopes: ' + current
@@ -369,7 +386,7 @@
 
     if (oauthModal) {
         bindExclusive(oauthModal);
-        oauthModal.querySelectorAll('[data-access], input[name="spotify_playback"], input[name="system_read"], input[name="system_deploy"]').forEach((box) => {
+        oauthModal.querySelectorAll('[data-access], input[name="spotify_playback"], input[name="system_read"], input[name="system_deploy"], input[name="homelab_scope"]').forEach((box) => {
             box.addEventListener('change', () => {
                 document.getElementById('oauth-edit').dataset.touched = '1';
             });

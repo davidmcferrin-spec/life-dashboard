@@ -37,6 +37,7 @@ from .board_tools import BOARD_TOOLS, resolve_board
 from .handoff_tools import HANDOFF_TOOLS, resolve_handoff
 from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .stock_sheet_tools import STOCK_SHEET_TOOLS, resolve_stock_sheet
+from .homelab_tools import HOMELAB_TOOLS, resolve_homelab
 from .wakehub_tools import WAKEHUB_TOOLS, resolve_wakehub
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
 from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
@@ -2710,6 +2711,7 @@ TOOLS.extend(HANDOFF_TOOLS)
 TOOLS.extend(BOARD_TOOLS)
 TOOLS.extend(STOCK_SHEET_TOOLS)
 TOOLS.extend(WAKEHUB_TOOLS)
+TOOLS.extend(HOMELAB_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -3703,6 +3705,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_wakehub(name, args)
     if mapped is not None:
         return mapped
+    mapped = resolve_homelab(name, args)
+    if mapped is not None:
+        return mapped
     if name == "list_digest_items":
         query = {}
         if args.get("product"):
@@ -3778,6 +3783,8 @@ OAUTH_AREAS = (
     "shopping", "calls", "pantry", "spotify", "ollama", "digest", "agents", "handoffs",
     "trips", "videos", "findings", "wakehub",
 )
+# Homelab scopes are explicit. read, write, and * do not grant them.
+HOMELAB_AREAS = ("sonarr", "radarr", "prowlarr", "qbittorrent", "unraid", "jellyfin", "plex")
 
 
 class RpcReply(dict[str, Any]):
@@ -3792,6 +3799,9 @@ def oauth_scopes() -> list[str]:
         scopes.append(f"{area}:read")
         scopes.append(f"{area}:write")
     scopes.append("spotify:playback")
+    for area in HOMELAB_AREAS:
+        scopes.append(f"{area}:read")
+        scopes.append(f"{area}:write")
     scopes.extend(["system:read", "system:deploy"])
     return scopes
 

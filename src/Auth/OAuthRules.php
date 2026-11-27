@@ -145,8 +145,8 @@ final class OAuthRules
         if (in_array($scope, $allowed, true)) {
             return true;
         }
-        // Read and write is stored as "*". It does not include system scopes.
-        if (in_array('*', $allowed, true) && !in_array($scope, Scope::EXPLICIT, true)) {
+        // Read and write is stored as "*". It does not include system scopes or homelab apps.
+        if (in_array('*', $allowed, true) && !in_array($scope, Scope::EXPLICIT, true) && !Scope::isHomelab($scope)) {
             return true;
         }
         if (str_ends_with($scope, ':read')) {
@@ -238,6 +238,10 @@ final class OAuthRules
         }
         // Playback is not implied by spotify:write. Consent has to list it on its own.
         $out[] = 'spotify:playback';
+        foreach (Scope::HOMELAB as $area) {
+            $out[] = $area . ':read';
+            $out[] = $area . ':write';
+        }
         if ($admin) {
             foreach (Scope::EXPLICIT as $scope) {
                 $out[] = $scope;

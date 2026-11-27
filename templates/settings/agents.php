@@ -111,6 +111,7 @@ require __DIR__ . '/_shell-top.php';
                     </p>
                 </div>
                 <?php endif; ?>
+                <?php require __DIR__ . '/_homelab-scopes.php'; ?>
                 <button type="submit" class="btn-primary">Create token</button>
                 <p id="agent-create-error" class="ld-field-error" role="alert"></p>
             </form>
@@ -175,7 +176,7 @@ require __DIR__ . '/_shell-top.php';
 
             <section class="settings-block mb-4">
                 <h2 class="section-title">Tokens</h2>
-                <div id="agent-tokens" class="mt-2" data-admin="<?= (int) ($user['is_admin'] ?? 0) === 1 ? '1' : '0' ?>" data-areas="<?= e(json_encode(\Dashboard\Api\V1\Scope::AREAS, JSON_THROW_ON_ERROR)) ?>"><p class="empty-state mono text-xs">Loading…</p></div>
+                <div id="agent-tokens" class="mt-2" data-admin="<?= (int) ($user['is_admin'] ?? 0) === 1 ? '1' : '0' ?>" data-areas="<?= e(json_encode(\Dashboard\Api\V1\Scope::AREAS, JSON_THROW_ON_ERROR)) ?>" data-homelab="<?= e(json_encode(\Dashboard\Api\V1\Scope::HOMELAB, JSON_THROW_ON_ERROR)) ?>"><p class="empty-state mono text-xs">Loading…</p></div>
             </section>
 
             <section class="settings-block mb-4">
@@ -260,6 +261,7 @@ require __DIR__ . '/_shell-top.php';
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_read" value="1"> <span class="mono">system:read</span></label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_deploy" value="1"> <span class="mono">system:deploy</span></label>
                         </fieldset>
+                        <?php require __DIR__ . '/_homelab-scopes.php'; ?>
                         <p id="oauth-edit-current" class="text-muted text-xs mono"></p>
                         <p id="oauth-edit-error" class="ld-field-error" role="alert"></p>
                         <div class="flex flex-wrap gap-2">
@@ -298,6 +300,7 @@ require __DIR__ . '/_shell-top.php';
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_read" value="1"> <span class="mono">system:read</span></label>
                             <label class="flex items-center gap-2 text-sm text-primary"><input type="checkbox" name="system_deploy" value="1"> <span class="mono">system:deploy</span></label>
                         </fieldset>
+                        <?php require __DIR__ . '/_homelab-scopes.php'; ?>
                         <p id="agent-edit-current" class="text-muted text-xs mono"></p>
                         <p id="agent-edit-error" class="ld-field-error" role="alert"></p>
                         <div class="flex flex-wrap gap-2">

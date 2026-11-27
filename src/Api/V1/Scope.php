@@ -59,6 +59,12 @@ final class Scope
 
     public const STOCK_ENTITIES = ['stock_sheet'];
 
+    /**
+     * Homelab apps. Not implied by read, write, "*", or a full core token.
+     * An existing key stays as it was until someone adds these on AI connections.
+     */
+    public const HOMELAB = ['sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'unraid', 'jellyfin', 'plex'];
+
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
@@ -82,6 +88,13 @@ final class Scope
         'finding',
         'stock_sheet',
         'wake_hub',
+        'sonarr',
+        'radarr',
+        'prowlarr',
+        'qbittorrent',
+        'unraid',
+        'jellyfin',
+        'plex',
         'deploy',
     ];
 
@@ -112,6 +125,10 @@ final class Scope
                 $out[] = $scope;
                 continue;
             }
+            if (self::isHomelab($scope)) {
+                $out[] = $scope;
+                continue;
+            }
             if ($scope === 'spotify:playback') {
                 $out[] = $scope;
                 continue;
@@ -124,7 +141,7 @@ final class Scope
         if ($star) {
             $kept = array_values(array_filter(
                 $out,
-                static fn (string $scope): bool => in_array($scope, self::EXPLICIT, true)
+                static fn (string $scope): bool => in_array($scope, self::EXPLICIT, true) || self::isHomelab($scope)
             ));
             return array_values(array_unique(array_merge(['*'], $kept)));
         }
@@ -134,8 +151,22 @@ final class Scope
         return array_values(array_unique($out));
     }
 
+    public static function isHomelab(string $scope): bool
+    {
+        if (preg_match('/^([a-z]+):(read|write)$/', $scope, $m) !== 1) {
+            return false;
+        }
+
+        return in_array($m[1], self::HOMELAB, true);
+    }
+
     public static function forPath(string $path, bool $write): string
     {
+        foreach (self::HOMELAB as $area) {
+            if (str_contains($path, '/' . $area)) {
+                return $area . ($write ? ':write' : ':read');
+            }
+        }
         if (str_contains($path, '/spotify/playback')) {
             return 'spotify:playback';
         }
@@ -177,6 +208,18 @@ final class Scope
      */
     public static function allows(array $granted, string $required): bool
     {
+        if (self::isHomelab($required)) {
+            if (in_array($required, $granted, true)) {
+                return true;
+            }
+            if (str_ends_with($required, ':read')) {
+                $write = substr($required, 0, -5) . ':write';
+
+                return in_array($write, $granted, true);
+            }
+
+            return false;
+        }
         if (in_array($required, self::EXPLICIT, true)) {
             if (in_array($required, $granted, true)) {
                 return true;
@@ -265,6 +308,11 @@ final class Scope
         }
         if (self::allows($granted, 'wakehub:read')) {
             $allow = array_merge($allow, ['wake_hub']);
+        }
+        foreach (self::HOMELAB as $area) {
+            if (self::allows($granted, $area . ':read')) {
+                $allow[] = $area;
+            }
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);
