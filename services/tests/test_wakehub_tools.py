@@ -29,6 +29,17 @@ def test_wakehub_tools_resolve_to_rest():
     assert (method, path, body) == ("POST", "/api/v1/wakehub/devices/4/power", {"action": "on", "confirm": False, "method": "plug"})
 
 
+def test_composite_ids_keep_numeric_device_ids():
+    assert resolve("wake_hub_device_status", {"device_id": "amt:4"}) == ("GET", "/api/v1/wakehub/devices/amt:4/status", None)
+    assert resolve("wake_hub_device_status", {"device_id": 2}) == ("GET", "/api/v1/wakehub/devices/2/status", None)
+    method, path, body = resolve("wake_hub_power_action", {"device_id": "pdu:1:3", "action": "off", "confirm": True})
+    assert (method, path) == ("POST", "/api/v1/wakehub/devices/pdu:1:3/power")
+    assert body["confirm"] is True
+    method, path, body = resolve("wake_hub_power_action", {"device_id": "roku:6", "action": "on", "confirm": False})
+    assert path == "/api/v1/wakehub/devices/roku:6/power"
+    assert body["action"] == "on"
+
+
 def test_destructive_power_is_refused_without_confirm():
     for action in ("off", "cycle", "reboot", "shutdown"):
         try:

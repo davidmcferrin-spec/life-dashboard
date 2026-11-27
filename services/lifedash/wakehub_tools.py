@@ -11,27 +11,29 @@ from typing import Any
 _EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 _ACTIONS = ("on", "off", "cycle", "reboot", "shutdown")
 _DESTRUCTIVE = frozenset({"off", "cycle", "reboot", "shutdown"})
-_METHODS = ("auto", "wol", "pdu", "amt", "jetkvm", "plug", "ups")
+_METHODS = ("auto", "wol", "pdu", "amt", "jetkvm", "plug", "ups", "roku")
 
 WAKEHUB_TOOLS: list[dict[str, Any]] = [
     {
         "name": "wake_hub_list_devices",
         "description": (
-            "Machines saved in Wake Hub: name, host, whether each is enabled, and the last reachability probe. "
-            "Requires wakehub:read. When Wake Hub is not configured, or the host does not answer, the error says so. "
-            "The token is not returned."
+            "Everything Wake Hub can control: Wake-on-LAN devices, AMT, PDUs and their outlets, plugs, JetKVM, UPS, and Roku. "
+            "Each row has type, hub_id, and id. id is a composite such as amt:4 or pdu:1:3 so ids from different collections do not collide. "
+            "A bare number is still the Wake-on-LAN device with that id. "
+            "Requires wakehub:read. The error text is Wake Hub's own message when the hub answers. The token is not returned."
         ),
         "inputSchema": _EMPTY,
     },
     {
         "name": "wake_hub_device_status",
         "description": (
-            "Probe one Wake Hub device and return whether it answered. Requires wakehub:read. "
-            "When Wake Hub is not configured, or the host does not answer, the error says so."
+            "Read status for one Wake Hub target. device_id may be a number (a Wake-on-LAN device) or a composite id "
+            "such as amt:4, pdu:1, pdu:1:3, plug:2, jetkvm:1, ups:1, or roku:5. "
+            "Requires wakehub:read. The result includes sent, reachable, and elapsed_s when the hub sends them."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"device_id": {"type": "integer"}},
+            "properties": {"device_id": {"type": ["integer", "string"]}},
             "required": ["device_id"],
             "additionalProperties": False,
         },
@@ -40,11 +42,13 @@ WAKEHUB_TOOLS: list[dict[str, Any]] = [
         "name": "wake_hub_wake",
         "description": (
             "Send Wake-on-LAN for one device and wait until it answers or the device timeout ends. "
+            "device_id is a number or device:2. Other types use wake_hub_power_action with action on. "
+            "The result includes sent, reachable, and elapsed_s. A client timeout after the request was sent says the packet may already have been sent. "
             "Requires wakehub:write. The call is written to the audit log with this key, the device, and the action."
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {"device_id": {"type": "integer"}},
+            "properties": {"device_id": {"type": ["integer", "string"]}},
             "required": ["device_id"],
             "additionalProperties": False,
         },
@@ -52,15 +56,18 @@ WAKEHUB_TOOLS: list[dict[str, Any]] = [
     {
         "name": "wake_hub_power_action",
         "description": (
-            "Power one Wake Hub device: on, off, cycle, reboot, or shutdown. "
-            "method picks wol, pdu, amt, jetkvm, plug, or ups. Omit it for auto. "
+            "Power one Wake Hub target: on, off, cycle, reboot, or shutdown. "
+            "device_id is a number for a Wake-on-LAN device, or a composite id: amt:4, pdu:1:3, plug:2, jetkvm:1, ups:1, roku:5. "
+            "method (wol, pdu, amt, jetkvm, plug, ups, roku, or auto) applies to a device. Other types use their own hub endpoint. "
+            "A Roku accepts on and off. A plug or PDU outlet accepts on, off, and cycle. "
             "off, cycle, reboot, and shutdown are refused unless confirm is true. "
+            "The result includes sent, reachable, and elapsed_s when the hub sends them. "
             "Requires wakehub:write. The call is written to the audit log with this key, the device, and the action."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "device_id": {"type": "integer"},
+                "device_id": {"type": ["integer", "string"]},
                 "action": {"type": "string", "enum": list(_ACTIONS)},
                 "confirm": {"type": "boolean"},
                 "method": {"type": "string", "enum": list(_METHODS)},
@@ -109,12 +116,18 @@ def _empty(name: str, args: dict[str, Any]) -> None:
         raise ValueError(f"{name} takes no arguments.")
 
 
-def _device_id(args: dict[str, Any], name: str) -> int:
+def _device_id(args: dict[str, Any], name: str) -> str:
     if name != "wake_hub_power_action":
         unknown = set(args) - {"device_id"}
         if unknown:
             raise ValueError(f"{name} accepts only device_id.")
     device_id = args.get("device_id")
-    if isinstance(device_id, bool) or not isinstance(device_id, int) or device_id < 1:
-        raise ValueError("device_id must be a positive id.")
-    return device_id
+    if isinstance(device_id, bool):
+        raise ValueError("device_id must be a positive id or a target such as amt:4.")
+    if isinstance(device_id, int) and device_id >= 1:
+        return str(device_id)
+    if isinstance(device_id, str):
+        target = device_id.strip()
+        if target != "" and "/" not in target and " " not in target:
+            return target
+    raise ValueError("device_id must be a positive id or a target such as amt:4 or pdu:1:3.")
