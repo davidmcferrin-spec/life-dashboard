@@ -951,7 +951,7 @@ final class ExtendedApi
         ));
         $r->get('/api/v1/wakehub/devices', fn () => $this->run(fn (int $u) => $hub()->devices($u)));
         $r->get('/api/v1/wakehub/devices/{id}/status', fn (array $p) => $this->run(
-            fn (int $u) => $hub()->status($u, self::id($p))
+            fn (int $u) => $hub()->status($u, self::wakeTarget($p))
         ));
         $r->get('/api/v1/wakehub/devices/{id}/metrics', fn (array $p) => $this->run(
             fn (int $u) => $hub()->metrics($u, self::id($p))
@@ -959,7 +959,7 @@ final class ExtendedApi
         $r->post('/api/v1/wakehub/devices/{id}/wake', fn (array $p) => $this->run(function (int $u) use ($p, $hub, $stamp): array {
             $actor = $this->runner->actor();
 
-            return $hub()->wake($u, self::id($p), $actor->kind, $actor->tool, $stamp());
+            return $hub()->wake($u, self::wakeTarget($p), $actor->kind, $actor->tool, $stamp());
         }, 200, true));
         $r->post('/api/v1/wakehub/devices/{id}/power', fn (array $p) => $this->run(function (int $u) use ($p, $hub, $stamp): array {
             $body = $this->runner->body();
@@ -971,7 +971,7 @@ final class ExtendedApi
             $method = isset($body['method']) ? (string) $body['method'] : 'auto';
             $actor = $this->runner->actor();
 
-            return $hub()->power($u, self::id($p), $action, $confirm, $method, $actor->kind, $actor->tool, $stamp());
+            return $hub()->power($u, self::wakeTarget($p), $action, $confirm, $method, $actor->kind, $actor->tool, $stamp());
         }, 200, true));
     }
 
@@ -1407,6 +1407,16 @@ final class ExtendedApi
     }
 
     /** @param array<string, string> $params */
+    private static function wakeTarget(array $params): string
+    {
+        $raw = rawurldecode(trim((string) ($params['id'] ?? '')));
+        if ($raw === '' || str_contains($raw, '/') || str_contains($raw, '\\')) {
+            throw new NotFoundException('Not found.');
+        }
+
+        return $raw;
+    }
+
     private static function id(array $params): int
     {
         $id = filter_var($params['id'] ?? null, FILTER_VALIDATE_INT);

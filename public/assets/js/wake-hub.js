@@ -2,13 +2,39 @@
     'use strict';
 
     var DESTRUCTIVE = { off: 1, cycle: 1, reboot: 1, shutdown: 1 };
-    var ACTIONS = [
+    var FULL = [
         { action: 'on', label: 'On' },
         { action: 'off', label: 'Off' },
         { action: 'cycle', label: 'Cycle' },
         { action: 'reboot', label: 'Reboot' },
         { action: 'shutdown', label: 'Shutdown' }
     ];
+    var SWITCH = [
+        { action: 'on', label: 'On' },
+        { action: 'off', label: 'Off' },
+        { action: 'cycle', label: 'Cycle' }
+    ];
+    var ROKU = [
+        { action: 'on', label: 'On' },
+        { action: 'off', label: 'Off' }
+    ];
+
+    function actionsFor(type) {
+        if (type === 'roku') {
+            return ROKU;
+        }
+        if (type === 'plug' || type === 'outlet') {
+            return SWITCH;
+        }
+        if (type === 'pdu') {
+            return [];
+        }
+        return FULL;
+    }
+
+    function canWake(type) {
+        return !type || type === 'device';
+    }
 
     function destructive(action) {
         return Object.prototype.hasOwnProperty.call(DESTRUCTIVE, String(action || '').toLowerCase());
@@ -61,7 +87,9 @@
         destructive: destructive,
         confirmCopy: confirmCopy,
         errorText: errorText,
-        powerBody: powerBody
+        powerBody: powerBody,
+        actionsFor: actionsFor,
+        canWake: canWake
     };
 
     if (typeof document === 'undefined') {
@@ -138,16 +166,20 @@
         list.innerHTML = devices.map(function (device) {
             var reach = reachLabel(device.reachable);
             var disabled = device.enabled === false ? ' disabled' : '';
-            var buttons = '<button type="button" class="btn text-xs wake-hub-btn" data-wake="' + device.id + '"' + disabled + '>'
-                + icon('play') + '<span>Wake</span></button>';
-            ACTIONS.forEach(function (item) {
-                buttons += '<button type="button" class="btn text-xs wake-hub-btn" data-power="' + item.action + '" data-device="' + device.id + '" data-name="' + esc(device.name) + '"' + disabled + '>'
+            var target = encodeURIComponent(device.id);
+            var buttons = '';
+            if (canWake(device.type)) {
+                buttons += '<button type="button" class="btn text-xs wake-hub-btn" data-wake="' + esc(device.id) + '"' + disabled + '>'
+                    + icon('play') + '<span>Wake</span></button>';
+            }
+            actionsFor(device.type).forEach(function (item) {
+                buttons += '<button type="button" class="btn text-xs wake-hub-btn" data-power="' + item.action + '" data-device="' + esc(device.id) + '" data-name="' + esc(device.name) + '"' + disabled + '>'
                     + icon(item.action) + '<span>' + item.label + '</span></button>';
             });
-            return '<li class="wake-hub-row">'
+            return '<li class="wake-hub-row" data-target="' + esc(target) + '">'
                 + '<span class="wake-dot ' + reach.cls + '" title="' + reach.text + '"></span>'
                 + '<span class="wake-hub-name"><span class="wake-hub-title">' + esc(device.name) + '</span>'
-                + '<span class="wake-hub-host mono text-xs">' + esc(device.host || '') + '</span></span>'
+                + '<span class="wake-hub-host mono text-xs">' + esc(device.type || 'device') + (device.host ? ' · ' + esc(device.host) : '') + '</span></span>'
                 + '<span class="wake-hub-reach mono text-xs">' + reach.text + '</span>'
                 + '<span class="wake-hub-actions">' + buttons + '</span>'
                 + '</li>';
@@ -196,7 +228,7 @@
                 if (status) {
                     status.textContent = 'Sending wake…';
                 }
-                await post('/api/v1/wakehub/devices/' + wake.dataset.wake + '/wake', {});
+                await post('/api/v1/wakehub/devices/' + encodeURIComponent(wake.dataset.wake) + '/wake', {});
                 await load(host, 'Wake sent.');
                 return;
             } else {
@@ -228,7 +260,7 @@
                 if (status) {
                     status.textContent = 'Sending ' + action + '…';
                 }
-                await post('/api/v1/wakehub/devices/' + power.dataset.device + '/power', packed.body);
+                await post('/api/v1/wakehub/devices/' + encodeURIComponent(power.dataset.device) + '/power', packed.body);
                 await load(host, action + ' sent.');
                 return;
             }

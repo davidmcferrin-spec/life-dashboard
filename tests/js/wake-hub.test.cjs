@@ -41,6 +41,17 @@ test('confirm copy names the machine and the action', () => {
     assert.match(card.confirmCopy('', 'off'), /this machine/);
 });
 
+test('each hub type gets the actions that type accepts', () => {
+    const card = load();
+    assert.equal(card.canWake('device'), true);
+    assert.equal(card.canWake('roku'), false);
+    assert.equal(card.actionsFor('roku').map((item) => item.action).join(','), 'on,off');
+    assert.equal(card.actionsFor('plug').map((item) => item.action).join(','), 'on,off,cycle');
+    assert.equal(card.actionsFor('outlet').map((item) => item.action).join(','), 'on,off,cycle');
+    assert.equal(card.actionsFor('pdu').length, 0);
+    assert.equal(card.actionsFor('amt').some((item) => item.action === 'shutdown'), true);
+});
+
 test('errors name an unconfigured or unreachable hub', () => {
     const card = load();
     assert.match(card.errorText({ code: 'wakehub_unconfigured', error: 'Wake Hub is not configured.' }), /not configured/);

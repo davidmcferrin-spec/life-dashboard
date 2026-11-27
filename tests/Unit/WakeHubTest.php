@@ -16,6 +16,7 @@ use Dashboard\WakeHub\WakeHubClient;
 use Dashboard\WakeHub\WakeHubException;
 use Dashboard\WakeHub\WakeHubService;
 use Dashboard\WakeHub\WakeHubSettings;
+use Dashboard\WakeHub\WakeHubTarget;
 use PHPUnit\Framework\TestCase;
 
 final class WakeHubTest extends TestCase
@@ -71,7 +72,7 @@ final class WakeHubTest extends TestCase
     {
         $token = 'sekret-token-value';
         $calls = [];
-        $client = new WakeHubClient('http://hub.lan:9000', $token, null, function (string $method, string $url, ?string $body, array $headers, int $timeout) use (&$calls, $token): array {
+        $client = new WakeHubClient('http://hub.lan:9000', $token,  function (string $method, string $url, ?string $body, array $headers, int $timeout) use (&$calls, $token): array {
             $calls[] = [$method, $url, $body, $headers, $timeout];
             return [
                 'status' => 400,
@@ -79,34 +80,38 @@ final class WakeHubTest extends TestCase
             ];
         });
         try {
-            $client->devices();
+            $client->list('/api/v1/devices');
             self::fail('expected a hub error');
         } catch (WakeHubException $e) {
-            self::assertSame(422, $e->status);
+            self::assertSame(400, $e->status);
+            self::assertSame(400, $e->extra['hub_status']);
+            self::assertStringStartsWith('bad ', $e->getMessage());
             self::assertStringNotContainsString($token, $e->getMessage());
             self::assertStringContainsString('[redacted]', $e->getMessage());
         }
         self::assertSame('Bearer ' . $token, $calls[0][3]['Authorization']);
         self::assertStringNotContainsString($token, $calls[0][1]);
 
-        $denied = new WakeHubClient('http://hub.lan:9000', $token, null, static fn (): array => [
+        $denied = new WakeHubClient('http://hub.lan:9000', $token,  static fn (): array => [
             'status' => 401,
             'body'   => '{"error":{"code":"unauthorized","message":"Bearer token required"}}',
         ]);
         try {
-            $denied->devices();
+            $denied->list('/api/v1/devices');
             self::fail('expected a token rejection');
         } catch (WakeHubException $e) {
             self::assertSame(502, $e->status);
             self::assertSame('wakehub_unauthorized', $e->codeName);
+            self::assertSame(401, $e->extra['hub_status']);
+            self::assertSame('Bearer token required', $e->getMessage());
             self::assertStringNotContainsString($token, $e->getMessage());
         }
 
-        $down = new WakeHubClient('http://hub.lan:9000', $token, null, static function (): never {
+        $down = new WakeHubClient('http://hub.lan:9000', $token,  static function (): never {
             throw new \RuntimeException('HTTP request failed: GET http://hub.lan:9000/api/v1/devices');
         });
         try {
-            $down->wake(4);
+            $down->wake(\Dashboard\WakeHub\WakeHubTarget::parse(4));
             self::fail('expected an unreachable hub');
         } catch (WakeHubException $e) {
             self::assertSame('wakehub_unreachable', $e->codeName);
@@ -137,12 +142,12 @@ final class WakeHubTest extends TestCase
         } catch (WakeHubException $e) {
             self::assertSame('confirmation_required', $e->codeName);
             self::assertSame(409, $e->status);
-            self::assertSame(7, $e->extra['device_id']);
+            self::assertSame('device:7', $e->extra['device_id']);
         }
         self::assertSame(0, $calls);
         self::assertSame('wakehub.off', $db->audits[0]['action']);
         $detail = json_decode($db->audits[0]['detail'], true);
-        self::assertSame(7, $detail['device_id']);
+        self::assertSame('device:7', $detail['device_id']);
         self::assertSame('off', $detail['action']);
         self::assertSame('Ada', $detail['token_name']);
         self::assertFalse($detail['ok']);
@@ -165,6 +170,113 @@ final class WakeHubTest extends TestCase
             self::fail('another user is not configured');
         } catch (WakeHubException $e) {
             self::assertSame('wakehub_unconfigured', $e->codeName);
+        }
+    }
+
+    public function testInventoryCoversEveryCollectionAndKeepsNumericDeviceIds(): void
+    {
+        Config::overlay('APP_SECRET', 'unit-test-app-secret-value');
+        $db = new WakePrefMemory();
+        $settings = new WakeHubSettings($db);
+        $settings->save(1, ['base_url' => 'http://hub.lan:9000', 'token' => 'wake-token-not-in-the-clear-99']);
+        $calls = [];
+        $hub = new WakeHubService($db, new AuditLog($db), $settings, function (string $method, string $url, ?string $body, array $headers, int $timeout) use (&$calls): array {
+            $calls[] = [$method, parse_url($url, PHP_URL_PATH), $timeout];
+            $path = (string) parse_url($url, PHP_URL_PATH);
+            $lists = [
+                '/api/v1/devices' => [['id' => 2, 'name' => 'Home Desktop', 'host' => '10.0.0.4', 'enabled' => true, 'methods' => [['kind' => 'wol']]], ['id' => 3, 'name' => 'UNRAID', 'host' => '10.0.0.8', 'enabled' => true]],
+                '/api/v1/amt' => [['id' => 4, 'name' => 'Dev Workstation', 'host' => '192.168.0.243']],
+                '/api/v1/plugs' => [],
+                '/api/v1/jetkvm' => [],
+                '/api/v1/ups' => [],
+                '/api/v1/rokus' => [['id' => 6, 'name' => 'Bedroom TV', 'host' => '192.168.0.50'], ['id' => 7, 'name' => 'Office TV', 'host' => '192.168.0.51']],
+                '/api/v1/pdus' => [['id' => 1, 'name' => 'PDU 192.168.0.8', 'host' => '192.168.0.8', 'outlets' => [['number' => 1, 'name' => 'Tower']]]],
+            ];
+            if ($path === '/api/v1/amt/4/power' && $method === 'GET') {
+                return ['status' => 200, 'body' => '{"power_state":"on","name":"Dev Workstation"}'];
+            }
+            if ($path === '/api/v1/devices/2/status') {
+                return ['status' => 200, 'body' => '{"device_id":2,"reachable":false,"elapsed_s":30}'];
+            }
+            if ($path === '/api/v1/devices/2/power') {
+                return ['status' => 200, 'body' => '{"sent":true,"reachable":false,"elapsed_s":30.5,"name":"Home Desktop"}'];
+            }
+            if ($path === '/api/v1/rokus/6/power') {
+                return ['status' => 200, 'body' => '{"roku_id":6,"action":"on","ok":true,"name":"Bedroom TV"}'];
+            }
+            if (isset($lists[$path])) {
+                return ['status' => 200, 'body' => json_encode($lists[$path], JSON_THROW_ON_ERROR)];
+            }
+
+            return ['status' => 404, 'body' => '{"error":{"code":"not_found","message":"device 9 was not found"}}'];
+        });
+        $ids = array_column($hub->devices(1)['devices'], 'id');
+        self::assertContains('device:2', $ids);
+        self::assertContains('device:3', $ids);
+        self::assertContains('amt:4', $ids);
+        self::assertContains('pdu:1', $ids);
+        self::assertContains('pdu:1:1', $ids);
+        self::assertContains('roku:6', $ids);
+        self::assertContains('roku:7', $ids);
+
+        $missing = new WakeHubClient('http://hub.lan:9000', 'wake-token-not-in-the-clear-99',  static fn (): array => [
+            'status' => 404,
+            'body'   => '{"error":{"code":"not_found","message":"device 9 was not found"}}',
+        ]);
+        try {
+            $missing->statusOf(WakeHubTarget::parse(9));
+            self::fail('expected the hub message');
+        } catch (WakeHubException $e) {
+            self::assertSame(404, $e->status);
+            self::assertSame('not_found', $e->codeName);
+            self::assertSame('device 9 was not found', $e->getMessage());
+        }
+
+        $status = $hub->status(1, 'amt:4');
+        self::assertSame('amt:4', $status['device_id']);
+        self::assertSame('amt', $status['type']);
+        $numeric = $hub->status(1, 2);
+        self::assertSame('device:2', $numeric['device_id']);
+        self::assertFalse($numeric['reachable']);
+        self::assertSame(30, $numeric['elapsed_s']);
+
+        $powered = $hub->power(1, 2, 'on', false, 'wol', 'ai', 'wake_hub_power_action', []);
+        self::assertTrue($powered['sent']);
+        self::assertFalse($powered['reachable']);
+        self::assertSame(30.5, $powered['elapsed_s']);
+        $wakeTimeout = 0;
+        foreach ($calls as $call) {
+            if ($call[1] === '/api/v1/devices/2/power') {
+                $wakeTimeout = $call[2];
+            }
+        }
+        self::assertGreaterThan(300, $wakeTimeout);
+
+        $roku = $hub->power(1, 'roku:6', 'on', false, 'auto', 'ai', 'wake_hub_power_action', []);
+        self::assertSame('roku:6', $roku['device_id']);
+        try {
+            $hub->power(1, 'roku:6', 'reboot', true, 'auto', 'ai', 'wake_hub_power_action', []);
+            self::fail('a roku cannot reboot');
+        } catch (ValidationException $e) {
+            self::assertArrayHasKey('action', $e->fields());
+        }
+
+        $late = new WakeHubClient('http://hub.lan:9000', 'wake-token-not-in-the-clear-99',  static fn (): array => [
+            'status' => 0,
+            'sent'   => true,
+            'body'   => '',
+        ]);
+        try {
+            $late->wake(WakeHubTarget::parse(2));
+            self::fail('expected a timeout after the packet was sent');
+        } catch (WakeHubException $e) {
+            self::assertSame('wakehub_timeout', $e->codeName);
+            self::assertSame(504, $e->status);
+            self::assertStringContainsString('may already have been sent', $e->getMessage());
+            self::assertStringNotContainsString('unreachable', $e->getMessage());
+            self::assertArrayHasKey('sent', $e->extra);
+            self::assertArrayHasKey('reachable', $e->extra);
+            self::assertArrayHasKey('elapsed_s', $e->extra);
         }
     }
 

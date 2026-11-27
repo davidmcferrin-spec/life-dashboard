@@ -57,7 +57,7 @@ These frames use a fictional demo account. Nothing in them is from a live server
 - **Flight Watches** — OpenSky ADS-B (optional FlightAware); polls 24h before departure via cron
 - **Package Tracking** — direct UPS/FedEx/DHL APIs; USPS/Amazon/OnTrac/LaserShip link-only; cron every 2h
 - **System Status** — user-defined ping targets (HTTP/TCP)
-- **Wake Hub** — list, wake, and power machines through David's Wake Hub REST API. The base URL and token are saved under Settings → Wake Hub. The token stays encrypted. Wake Hub's default port is 8765, which is also this dashboard's MCP port, so one of them needs a different port when they share a host
+- **Wake Hub** — list, wake, and power Wake-on-LAN devices, AMT, PDUs, plugs, JetKVM, UPS, and Roku through David's Wake Hub REST API. The base URL and token are saved under Settings → Wake Hub. The token stays encrypted. Wake Hub's default port is 8765, which is also this dashboard's MCP port, so one of them needs a different port when they share a host
 - **Stocks** — Alpha Vantage quotes for a user watchlist (cron-cached)
 - **Cloud Clipboards** — multi-board plain text sync with Markdown preview; dashboard widget for pinned boards
 - **Cloud Files** — local file storage + optional Dropbox / S3 on clipboards **Files** tab
