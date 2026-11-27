@@ -67,6 +67,11 @@ final class HomelabRouteTest extends PgsqlTestCase
 
         $started = $this->dispatch('POST', '/api/v1/unraid/vms/vm:1/start');
         $this->assertJsonCode($started, 'homelab_unconfigured');
+
+        $settings = $this->dispatch('GET', '/api/v1/qbittorrent/settings');
+        $this->assertHomelabJson($settings);
+        self::assertSame(200, $settings->status);
+        self::assertSame('password', $settings->payload['settings']['auth'] ?? null);
     }
 
     private function assertJsonCode(CapturedResponse $response, string $code): void

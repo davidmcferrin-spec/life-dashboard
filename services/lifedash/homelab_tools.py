@@ -49,8 +49,13 @@ def _settings_schema(service: str) -> dict[str, Any]:
         "base_url": {"type": "string"},
     }
     if service == "qbittorrent":
+        props["auth"] = {"type": "string", "enum": ["token", "password", "none"]}
         props["username"] = {"type": "string"}
         props["password"] = {"type": "string"}
+        props["token"] = {"type": "string"}
+    elif service == "jellyfin":
+        props["api_key"] = {"type": "string"}
+        props["user"] = {"type": "string"}
     else:
         props["api_key"] = {"type": "string"}
     return _obj(props)
@@ -159,13 +164,13 @@ HOMELAB_TOOLS.extend(
             _obj({"query": {"type": "string"}}, ["query"]),
         ),
         _tool("prowlarr_apps", _d("prowlarr", "Prowlarr application sync status: Sonarr, Radarr, and any other connected app.")),
-        _tool("qbittorrent_settings", _d("qbittorrent", "Masked qBittorrent settings: enabled, base URL, username, and whether the password is saved.")),
+        _tool("qbittorrent_settings", _d("qbittorrent", "Masked qBittorrent settings: auth mode (token, password, or none), base URL, and whether the password or API token is saved.")),
         _tool(
             "qbittorrent_save_settings",
-            _d("qbittorrent", "Save qBittorrent WebUI settings. Leave password blank to keep the saved one.", True),
+            _d("qbittorrent", "Save qBittorrent settings. auth is token, password, or none. none skips login for a whitelist bypass. token is an API key for qBittorrent 5.2.0 or newer, sent as Authorization: Bearer. Leave password and token blank to keep the saved values.", True),
             _settings_schema("qbittorrent"),
         ),
-        _tool("qbittorrent_test", _d("qbittorrent", "Log in to qBittorrent and return its version.", True)),
+        _tool("qbittorrent_test", _d("qbittorrent", "Call qBittorrent and return its version. The error names the auth mode.", True)),
         _tool("qbittorrent_status", _d("qbittorrent", "qBittorrent version and transfer speeds.")),
         _tool(
             "qbittorrent_torrents",
@@ -215,7 +220,15 @@ for _service, _label in (("unraid", "Unraid"), ("jellyfin", "Jellyfin"), ("plex"
             _tool(f"{_service}_settings", _d(_service, f"Masked {_label} settings: enabled, base URL, and whether the secret is saved.")),
             _tool(
                 f"{_service}_save_settings",
-                _d(_service, f"Save {_label} settings. Leave api_key blank to keep the saved secret.", True),
+                _d(
+                    _service,
+                    (
+                        "Save Jellyfin settings. user is optional and matches a name from /Users; blank uses the first administrator. A trailing /web on the base URL is removed. Leave api_key blank to keep the saved secret."
+                        if _service == "jellyfin"
+                        else f"Save {_label} settings. Leave api_key blank to keep the saved secret."
+                    ),
+                    True,
+                ),
                 _settings_schema(_service),
             ),
             _tool(f"{_service}_test", _d(_service, f"Check that {_label} answers and return its version.", True)),
@@ -443,7 +456,12 @@ def resolve_homelab(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
 
 
 def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"enabled", "base_url", "username", "password"} if service == "qbittorrent" else {"enabled", "base_url", "api_key"}
+    if service == "qbittorrent":
+        allowed = {"enabled", "base_url", "auth", "username", "password", "token"}
+    elif service == "jellyfin":
+        allowed = {"enabled", "base_url", "api_key", "user"}
+    else:
+        allowed = {"enabled", "base_url", "api_key"}
     _only(f"{service}_save_settings", args, allowed)
     body: dict[str, Any] = {}
     if "enabled" in args:
@@ -455,7 +473,11 @@ def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("base_url must be a string.")
         body["base_url"] = args["base_url"]
     if service == "qbittorrent":
-        for key in ("username", "password"):
+        if "auth" in args:
+            if args["auth"] not in {"token", "password", "none"}:
+                raise ValueError("auth must be token, password, or none.")
+            body["auth"] = args["auth"]
+        for key in ("username", "password", "token"):
             if key in args:
                 if not isinstance(args[key], str):
                     raise ValueError(f"{key} must be a string.")
@@ -464,6 +486,10 @@ def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(args["api_key"], str):
             raise ValueError("api_key must be a string.")
         body["api_key"] = args["api_key"]
+    if service == "jellyfin" and "user" in args:
+        if not isinstance(args["user"], str):
+            raise ValueError("user must be a string.")
+        body["user"] = args["user"]
     return body
 
 

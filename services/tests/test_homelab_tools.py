@@ -97,3 +97,36 @@ def test_unraid_power_requires_confirm_and_encodes_ids():
     assert body["confirm"] is False
     assert resolve("plex_refresh", {"key": "2"}) == ("POST", "/api/v1/plex/libraries/2/refresh", {})
     assert "unraid:write" in __import__("lifedash.mcp_server", fromlist=["oauth_scopes"]).oauth_scopes()
+
+
+def test_qbittorrent_settings_accept_each_auth_mode():
+    method, path, body = resolve(
+        "qbittorrent_save_settings",
+        {"enabled": True, "base_url": "http://tower:8080", "auth": "none"},
+    )
+    assert (method, path) == ("POST", "/api/v1/qbittorrent/settings")
+    assert body == {"enabled": True, "base_url": "http://tower:8080", "auth": "none"}
+    method, path, body = resolve(
+        "qbittorrent_save_settings",
+        {"auth": "token", "token": "qbt_exampletokenvalue12345678"},
+    )
+    assert body["auth"] == "token"
+    assert body["token"] == "qbt_exampletokenvalue12345678"
+    method, path, body = resolve(
+        "qbittorrent_save_settings",
+        {"auth": "password", "username": "david", "password": "secret-value"},
+    )
+    assert body["auth"] == "password"
+    assert body["username"] == "david"
+    method, path, body = resolve(
+        "jellyfin_save_settings",
+        {"enabled": True, "base_url": "http://tower:8096", "user": "Ada"},
+    )
+    assert path == "/api/v1/jellyfin/settings"
+    assert body["user"] == "Ada"
+    try:
+        resolve("qbittorrent_save_settings", {"auth": "cookie"})
+    except ValueError as exc:
+        assert "auth" in str(exc)
+    else:
+        raise AssertionError("unknown auth was accepted")

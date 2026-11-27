@@ -78,6 +78,7 @@ final class HomelabTest extends TestCase
         $qbit = $settings->viewOne(1, 'qbittorrent');
         self::assertFalse($qbit['ready']);
         self::assertTrue($qbit['configured']);
+        self::assertSame('password', $qbit['auth']);
         self::assertSame('david', $qbit['username']);
         self::assertStringNotContainsString('qbit-password-value', (string) json_encode($qbit));
         self::assertSame($key, $settings->stored(1, 'sonarr')['api_key']);
@@ -110,6 +111,8 @@ final class HomelabTest extends TestCase
             self::assertSame(400, $e->extra['upstream_status']);
             self::assertStringNotContainsString($key, $e->getMessage());
             self::assertStringContainsString('[redacted]', $e->getMessage());
+            self::assertStringContainsString('HTTP 400', $e->getMessage());
+            self::assertStringContainsString('/api/v3/system/status', $e->getMessage());
         }
     }
 
@@ -163,12 +166,146 @@ final class HomelabTest extends TestCase
 
             return ['status' => 200, 'body' => ''];
         }, [], [$password]);
-        $result = (new Qbit($http, 'david', $password))->pause('abc:def');
+        $result = (new Qbit($http, 'password', 'david', $password))->pause('abc:def');
+        self::assertSame('http://tower.lan:8080', $calls[0][3]['Origin'] ?? '');
+        self::assertSame('http://tower.lan:8080/', $calls[0][3]['Referer'] ?? '');
         self::assertSame('pause', $result['action']);
         self::assertSame('abc:def', $result['hashes']);
         self::assertStringEndsWith('/api/v2/torrents/stop', (string) parse_url($calls[1][1], PHP_URL_PATH));
         self::assertStringEndsWith('/api/v2/torrents/pause', (string) parse_url($calls[2][1], PHP_URL_PATH));
         self::assertStringContainsString('hashes=abc%3Adef', (string) $calls[2][2]);
+    }
+
+    public function testQbitAuthModesSkipLoginAndNameTheFailure(): void
+    {
+        $noneCalls = [];
+        $none = new Http('http://tower.lan:8080/', function (string $method, string $url, ?string $body, array $headers) use (&$noneCalls): array {
+            $noneCalls[] = $url;
+            self::assertArrayNotHasKey('Cookie', $headers);
+            self::assertArrayNotHasKey('Authorization', $headers);
+            self::assertSame('http://tower.lan:8080', $headers['Origin'] ?? '');
+
+            return ['status' => 403, 'body' => 'Forbidden'];
+        }, [], []);
+        try {
+            (new Qbit($none, 'none'))->status();
+            self::fail('a 403 must be reported');
+        } catch (HomelabException $e) {
+            self::assertSame(
+                'qBittorrent (auth: none) returned 403 Forbidden for /api/v2/app/version: login required or this server\'s IP is not in the bypass whitelist',
+                $e->getMessage()
+            );
+        }
+        self::assertCount(1, $noneCalls);
+        self::assertStringNotContainsString('/auth/login', $noneCalls[0]);
+
+        $token = 'qbt_exampletokenvalue12345678';
+        $tokenCalls = [];
+        $tokenHttp = new Http('http://tower.lan:8080', function (string $method, string $url, ?string $body, array $headers) use (&$tokenCalls, $token): array {
+            $tokenCalls[] = $url;
+            self::assertSame('Bearer ' . $token, $headers['Authorization'] ?? '');
+            self::assertArrayNotHasKey('Cookie', $headers);
+            if (str_contains($url, '/app/version')) {
+                return ['status' => 200, 'body' => 'v5.2.0'];
+            }
+
+            return ['status' => 200, 'body' => '{"dl_info_speed":1,"up_info_speed":2,"connection_status":"connected","dht_nodes":3}'];
+        }, [], [$token]);
+        $status = (new Qbit($tokenHttp, 'token', '', '', $token))->status();
+        self::assertSame('v5.2.0', $status['version']);
+        foreach ($tokenCalls as $url) {
+            self::assertStringNotContainsString('/auth/login', $url);
+        }
+
+        $portCookie = [];
+        $password = 'qbit-password-value';
+        $cookieHttp = new Http('http://tower.lan:8080', function (string $method, string $url, ?string $body, array $headers) use (&$portCookie, $password): array {
+            $portCookie[] = [$url, $headers];
+            if (str_contains($url, '/auth/login')) {
+                return ['status' => 200, 'body' => 'Ok.', 'headers' => ['set-cookie' => 'QBT_SID_8080=port-cookie; Path=/']];
+            }
+            self::assertSame('QBT_SID_8080=port-cookie', $headers['Cookie'] ?? '');
+            if (str_contains($url, '/app/version')) {
+                return ['status' => 200, 'body' => 'v4.6.0'];
+            }
+
+            return ['status' => 200, 'body' => '{"dl_info_speed":0,"up_info_speed":0,"connection_status":"connected","dht_nodes":0}'];
+        }, [], [$password]);
+        try {
+            (new Qbit($cookieHttp, 'password', 'david', $password))->status();
+        } catch (HomelabException) {
+            self::fail('a port-qualified session cookie must be reused');
+        }
+        self::assertStringContainsString('/auth/login', $portCookie[0][0]);
+
+        Config::overlay('APP_SECRET', 'unit-test-app-secret-value');
+        $db = new HomelabMemory();
+        $settings = new Settings($db);
+        $settings->save(1, 'qbittorrent', [
+            'enabled' => true,
+            'base_url' => 'http://tower.lan:8080',
+            'username' => 'david',
+            'password' => $password,
+        ]);
+        self::assertSame('password', $settings->stored(1, 'qbittorrent')['auth']);
+        $noneView = $settings->save(1, 'qbittorrent', [
+            'enabled' => true,
+            'base_url' => 'http://tower.lan:8080',
+            'auth' => 'none',
+            'password' => '',
+            'token' => '',
+        ]);
+        self::assertSame('none', $noneView['auth']);
+        self::assertTrue($noneView['ready']);
+        self::assertSame($password, $settings->stored(1, 'qbittorrent')['password']);
+        $tokenView = $settings->save(1, 'qbittorrent', [
+            'enabled' => true,
+            'base_url' => 'http://tower.lan:8080',
+            'auth' => 'token',
+            'token' => $token,
+        ]);
+        self::assertSame('token', $tokenView['auth']);
+        self::assertSame('5678', $tokenView['token_hint']);
+        self::assertStringNotContainsString($token, (string) json_encode($tokenView));
+        self::assertStringNotContainsString($password, (string) json_encode($tokenView));
+    }
+
+    public function testQbitLoginTreats204AndASessionCookieAsSuccess(): void
+    {
+        $password = 'qbit-password-value';
+        $calls = [];
+        $http = new Http('http://tower.lan:8080', function (string $method, string $url, ?string $body, array $headers) use (&$calls, $password): array {
+            $calls[] = $url;
+            if (str_contains($url, '/auth/login')) {
+                self::assertStringContainsString('username=admin', (string) $body);
+                self::assertStringNotContainsString($password, $url);
+
+                return ['status' => 204, 'body' => '', 'headers' => ['set-cookie' => 'QBT_SID_8080=port-cookie; Path=/']];
+            }
+            self::assertSame('QBT_SID_8080=port-cookie', $headers['Cookie'] ?? '');
+            if (str_contains($url, '/app/version')) {
+                return ['status' => 200, 'body' => 'v5.1.0'];
+            }
+
+            return ['status' => 200, 'body' => '{"dl_info_speed":0,"up_info_speed":0,"connection_status":"connected","dht_nodes":0}'];
+        }, [], [$password]);
+        $status = (new Qbit($http, 'password', 'admin', $password))->status();
+        self::assertSame('v5.1.0', $status['version']);
+        self::assertStringContainsString('/auth/login', $calls[0]);
+
+        $fails = new Http('http://tower.lan:8080', function (): array {
+            return ['status' => 200, 'body' => 'Fails.', 'headers' => ['set-cookie' => 'SID=ignored']];
+        }, [], [$password]);
+        try {
+            (new Qbit($fails, 'password', 'admin', $password))->status();
+            self::fail('Fails. is a rejected login');
+        } catch (HomelabException $e) {
+            self::assertStringContainsString('auth: password', $e->getMessage());
+            self::assertStringContainsString('200', $e->getMessage());
+            self::assertStringContainsString('/api/v2/auth/login', $e->getMessage());
+            self::assertStringContainsString('Fails.', $e->getMessage());
+            self::assertStringNotContainsString($password, $e->getMessage());
+        }
     }
 
     public function testDeleteIsRefusedBeforeTheAppIsCalled(): void

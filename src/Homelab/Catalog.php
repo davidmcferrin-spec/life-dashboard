@@ -46,7 +46,7 @@ final class Catalog
             'secret' => 'password',
             'secret_label' => 'Password',
             'username' => true,
-            'where' => 'qBittorrent → Tools → Options → Web UI. Use the WebUI username and password, and the URL including the port (often 8080). The dashboard logs in with that pair and keeps the cookie for the request. There is no API key.',
+            'where' => 'qBittorrent → Tools → Options → Web UI. Auth is none when this server is in the bypass whitelist (no login), password for the WebUI username and password, or token for the API key (qBittorrent 5.2.0 or newer, sent as Authorization: Bearer). The URL includes the port, often 8080.',
         ],
         'unraid' => [
             'label' => 'Unraid',
@@ -62,7 +62,7 @@ final class Catalog
             'secret' => 'api_key',
             'secret_label' => 'API key',
             'username' => false,
-            'where' => 'Jellyfin → Dashboard → API Keys. The base URL includes the port, often http://tower:8096. The dashboard sends the key as X-Emby-Token.',
+            'where' => 'Jellyfin → Dashboard → API Keys. The base URL is the server, often http://tower:8096, not the /web page. If Dashboard → Networking has a Base URL, add that path, for example http://tower:8096/jellyfin. A trailing /web is removed on save. Jellyfin user is optional: a name from the user list, or blank to use the first administrator. Jellyfin 10.11 wants Authorization: MediaBrowser Token. Older servers still accept X-Emby-Token.',
         ],
         'plex' => [
             'label' => 'Plex',

@@ -61,7 +61,7 @@ final class HomelabService
             'prowlarr' => (new Prowlarr($http))->status()['version'],
             'qbittorrent' => $this->qbit($userId, false)->status()['version'],
             'unraid' => (new Unraid($http))->status()['version'],
-            'jellyfin' => (new Jellyfin($http))->status()['version'],
+            'jellyfin' => $this->jellyfin($userId, $http)->status()['version'],
             'plex' => (new Plex($http))->status()['version'],
             default => '',
         };
@@ -369,7 +369,7 @@ final class HomelabService
      */
     public function jellyfinStatus(int $userId): array
     {
-        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->status();
+        return $this->jellyfin($userId)->status();
     }
 
     /**
@@ -377,7 +377,7 @@ final class HomelabService
      */
     public function jellyfinSessions(int $userId): array
     {
-        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->sessions();
+        return $this->jellyfin($userId)->sessions();
     }
 
     /**
@@ -385,7 +385,7 @@ final class HomelabService
      */
     public function jellyfinCounts(int $userId): array
     {
-        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->counts();
+        return $this->jellyfin($userId)->counts();
     }
 
     /**
@@ -393,7 +393,7 @@ final class HomelabService
      */
     public function jellyfinRecent(int $userId): array
     {
-        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->recent();
+        return $this->jellyfin($userId)->recent();
     }
 
     /**
@@ -401,7 +401,18 @@ final class HomelabService
      */
     public function jellyfinSearch(int $userId, string $term): array
     {
-        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->search($term);
+        return $this->jellyfin($userId)->search($term);
+    }
+
+    private function jellyfin(int $userId, ?Http $http = null): Jellyfin
+    {
+        $stored = $this->settings->stored($userId, 'jellyfin') ?? [];
+
+        return new Jellyfin(
+            $http ?? $this->open($userId, 'jellyfin', true),
+            (string) ($stored['user'] ?? ''),
+            (string) ($stored['api_key'] ?? ''),
+        );
     }
 
     /**
@@ -475,7 +486,13 @@ final class HomelabService
     {
         $stored = $this->settings->stored($userId, 'qbittorrent') ?? [];
 
-        return new Qbit($http, (string) ($stored['username'] ?? ''), (string) ($stored['password'] ?? ''));
+        return new Qbit(
+            $http,
+            Settings::qbitAuth($stored),
+            (string) ($stored['username'] ?? ''),
+            (string) ($stored['password'] ?? ''),
+            (string) ($stored['token'] ?? ''),
+        );
     }
 
     private function open(int $userId, string $service, bool $requireEnabled): Http
@@ -484,6 +501,12 @@ final class HomelabService
         $stored = $this->settings->stored($userId, $service);
         $secret = trim((string) ($stored[$meta['secret']] ?? ''));
         $url = trim((string) ($stored['base_url'] ?? ''));
+        if ($service === 'jellyfin') {
+            $url = Settings::withoutWebUi($url);
+        }
+        if ($service === 'qbittorrent') {
+            return $this->openQbit($stored, $url, $requireEnabled, $meta['label']);
+        }
         $usernameOk = !$meta['username'] || trim((string) ($stored['username'] ?? '')) !== '';
         if ($stored === null || $url === '' || $secret === '' || !$usernameOk) {
             throw new HomelabException(
@@ -502,16 +525,58 @@ final class HomelabService
         $headers = ['Accept' => 'application/json'];
         $redact = [$secret];
         $header = match ($service) {
-            'jellyfin' => 'X-Emby-Token',
             'plex' => 'X-Plex-Token',
-            'qbittorrent' => '',
+            'qbittorrent', 'jellyfin' => '',
             default => 'X-Api-Key',
         };
         if ($header !== '') {
             $headers[$header] = $secret;
         }
+        if ($service === 'jellyfin') {
+            // 10.11 ignores X-Emby-Token unless legacy auth is turned back on.
+            $headers['Authorization'] = Jellyfin::authorization($secret);
+        }
 
         return new Http($url, $this->transport, $headers, $redact);
+    }
+
+    /**
+     * @param array<string, mixed>|null $stored
+     */
+    private function openQbit(?array $stored, string $url, bool $requireEnabled, string $label): Http
+    {
+        $mode = Settings::qbitAuth(is_array($stored) ? $stored : []);
+        $username = trim((string) ($stored['username'] ?? ''));
+        $password = (string) ($stored['password'] ?? '');
+        $token = trim((string) ($stored['token'] ?? ''));
+        $ready = $url !== '' && match ($mode) {
+            'none' => true,
+            'token' => $token !== '',
+            default => $username !== '' && $password !== '',
+        };
+        if ($stored === null || !$ready) {
+            throw new HomelabException(
+                $label . ' is not configured. Save it under Settings → Homelab.',
+                'homelab_unconfigured',
+                409
+            );
+        }
+        if ($requireEnabled && empty($stored['enabled'])) {
+            throw new HomelabException(
+                $label . ' is turned off. Enable it under Settings → Homelab.',
+                'homelab_disabled',
+                409
+            );
+        }
+        $redact = [];
+        if ($password !== '') {
+            $redact[] = $password;
+        }
+        if ($token !== '') {
+            $redact[] = $token;
+        }
+
+        return new Http($url, $this->transport, ['Accept' => 'application/json'], $redact);
     }
 
     /**
