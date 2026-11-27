@@ -37,6 +37,7 @@ from .board_tools import BOARD_TOOLS, resolve_board
 from .handoff_tools import HANDOFF_TOOLS, resolve_handoff
 from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .stock_sheet_tools import STOCK_SHEET_TOOLS, resolve_stock_sheet
+from .wakehub_tools import WAKEHUB_TOOLS, resolve_wakehub
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
 from .spotify_tools import SPOTIFY_TOOLS, resolve_spotify
 
@@ -534,7 +535,17 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "write_page",
-        "description": "Create a vault page, or replace its title and body when page_id is set. This sends the whole body. To append, prepend, or edit one heading, use patch_page. Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026, or a unique folder name) places it. folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update. The result includes url. A page created at the root may include suggested_folder.",
+        "description": (
+            "Create a vault page, or replace its title and body when page_id is set. This sends the whole body. "
+            "For a log or changelog, use append_page so a concurrent line is not dropped. "
+            "To prepend or edit one heading, use patch_page. "
+            "Optional expected_updated_at or expected_version must match the page you read. "
+            "A mismatch is a stale_write error with the current version and updated_at, and the page is not overwritten. "
+            "Omit both to replace the page as before. "
+            "Body is Markdown; use [[wikilinks]]. folder_id or folder (a path like Travel/2026, or a unique folder name) places it. "
+            "folder_id null, or folder \"root\", is the root. Omitting both leaves the folder unchanged on update. "
+            "The result includes url and version. A page created at the root may include suggested_folder."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -544,8 +555,30 @@ TOOLS: list[dict[str, Any]] = [
                 "kind": {"type": "string"},
                 "folder_id": {"type": ["integer", "null"]},
                 "folder": {"type": "string"},
+                "expected_updated_at": {"type": "string"},
+                "expected_version": {"type": "integer"},
             },
             "required": ["title"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "append_page",
+        "description": (
+            "Add text to a vault page without replacing the rest of the body. "
+            "Use this for logs and changelogs when several bots write the same page. "
+            "The insert is locked on the server, so another append is not dropped, and a revision is saved like any other edit. "
+            "under_heading inserts at the end of that markdown section. Omit it to add the text at the end of the page. "
+            "Identify the page with page_id. Requires pages:write. The result includes url and version."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "integer"},
+                "text": {"type": "string"},
+                "under_heading": {"type": "string"},
+            },
+            "required": ["page_id", "text"],
             "additionalProperties": False,
         },
     },
@@ -556,7 +589,7 @@ TOOLS: list[dict[str, Any]] = [
             "mode is append, prepend, replace_section, or insert_section. "
             "heading is the markdown heading text for the section modes (a leading # is optional). "
             "position is start or end and applies to insert_section (default end, under the heading). "
-            "Identify the page with page_id, title, or slug. The result includes url."
+            "Identify the page with page_id, title, or slug. For a log or changelog line, use append_page instead. The result includes url."
         ),
         "inputSchema": {
             "type": "object",
@@ -2676,6 +2709,7 @@ TOOLS.extend(PLATFORM_TOOLS)
 TOOLS.extend(HANDOFF_TOOLS)
 TOOLS.extend(BOARD_TOOLS)
 TOOLS.extend(STOCK_SHEET_TOOLS)
+TOOLS.extend(WAKEHUB_TOOLS)
 TOOLS.extend([
     {
         "name": "list_digest_items",
@@ -3079,10 +3113,28 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if name == "page_version_diff":
         return "GET", f"/api/v1/pages/{int(args['page_id'])}/revisions/{int(args['version'])}", None
     if name == "write_page":
-        body = {k: args[k] for k in ("title", "body", "kind", "folder_id", "folder") if k in args}
+        body = {k: args[k] for k in ("title", "body", "kind", "folder_id", "folder", "expected_updated_at", "expected_version") if k in args}
+        if "expected_version" in body and (isinstance(body["expected_version"], bool) or not isinstance(body["expected_version"], int) or body["expected_version"] < 1):
+            raise ValueError("expected_version must be a positive integer.")
+        if "expected_updated_at" in body and (not isinstance(body["expected_updated_at"], str) or body["expected_updated_at"].strip() == ""):
+            raise ValueError("expected_updated_at must be the updated_at from the page you read.")
         if args.get("page_id"):
             return "POST", f"/api/v1/pages/{int(args['page_id'])}/update", body
         return "POST", "/api/v1/pages", body
+    if name == "append_page":
+        page_id = args.get("page_id")
+        text = args.get("text")
+        if isinstance(page_id, bool) or not isinstance(page_id, int) or page_id < 1:
+            raise ValueError("page_id must be a positive id.")
+        if not isinstance(text, str) or text.strip() == "":
+            raise ValueError("text is required.")
+        body = {"page_id": page_id, "text": text}
+        if "under_heading" in args:
+            heading = args["under_heading"]
+            if not isinstance(heading, str) or heading.strip() == "":
+                raise ValueError("under_heading must be the markdown heading text.")
+            body["under_heading"] = heading.strip()
+        return "POST", "/api/v1/pages/append", body
     if name == "patch_page":
         return "POST", "/api/v1/pages/patch", _patch_body(args)
     if name == "archive_page":
@@ -3648,6 +3700,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     mapped = resolve_stock_sheet(name, args)
     if mapped is not None:
         return mapped
+    mapped = resolve_wakehub(name, args)
+    if mapped is not None:
+        return mapped
     if name == "list_digest_items":
         query = {}
         if args.get("product"):
@@ -3721,7 +3776,7 @@ OAUTH_AREAS = (
     "metrics", "widgets", "life", "pages", "money", "invest", "search", "reddit",
     "bookmarks", "todos", "flights", "packages", "stocks", "clipboards", "audit",
     "shopping", "calls", "pantry", "spotify", "ollama", "digest", "agents", "handoffs",
-    "trips", "videos", "findings",
+    "trips", "videos", "findings", "wakehub",
 )
 
 

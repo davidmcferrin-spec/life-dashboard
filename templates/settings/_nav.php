@@ -44,6 +44,7 @@ if (!function_exists('settings_nav_groups')) {
                 'weather'    => ['Weather', '/settings/weather'],
                 'stocks'      => ['Stocks', '/settings/stocks'],
                 'stock-sheet' => ['Stocks sheet', '/settings/stock-sheet'],
+                'wake-hub'    => ['Wake Hub', '/settings/wake-hub'],
                 'feeds'      => ['News feeds', '/settings/feeds'],
                 'reddit'     => ['Reddit', '/settings/reddit'],
                 'spotify'    => ['Spotify', '/settings/spotify'],

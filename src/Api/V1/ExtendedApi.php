@@ -286,6 +286,10 @@ final class ExtendedApi
             $actor = $this->runner->actor();
             return ['page' => $this->svc->pages->patch($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
         }, 200, true));
+        $r->post('/api/v1/pages/append', fn () => $this->run(function (int $u): array {
+            $actor = $this->runner->actor();
+            return ['page' => $this->svc->pages->append($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
+        }, 200, true));
         $r->post('/api/v1/pages/archive', fn () => $this->run(function (int $u): array {
             $actor = $this->runner->actor();
             return ['page' => $this->svc->pages->archiveIdentified($u, $this->runner->body(), $actor->kind, $actor->tool, $this->runner->editorName())];
@@ -708,6 +712,7 @@ final class ExtendedApi
         }, 200, true));
 
         $this->registerStockSheet($r);
+        $this->registerWakeHub($r);
 
         $r->get('/api/v1/reddit/subs', fn () => $this->run(fn (int $u) => [
             'subs' => $this->svc->reddit->list($u),
@@ -919,6 +924,55 @@ final class ExtendedApi
         (new PlatformApi($this->runner, $this->svc))->register($r);
         (new HandoffApi($this->runner, $this->svc))->register($r);
         (new BoardApi($this->runner, $this->svc))->register($r);
+    }
+
+    private function registerWakeHub(Router $r): void
+    {
+        $hub = fn (): \Dashboard\WakeHub\WakeHubService => \Dashboard\WakeHub\WakeHubService::fromDatabase($this->svc->db);
+        $stamp = function (): array {
+            $actor = $this->runner->actor();
+            if ($actor->kind !== 'ai') {
+                return [];
+            }
+
+            return \Dashboard\Audit\TokenStamp::detail($this->runner->tokenId(), $this->runner->tokenName(), 'write');
+        };
+        $r->get('/api/v1/wakehub/settings', fn () => $this->run(fn (int $u) => [
+            'settings' => $hub()->view($u),
+        ]));
+        $r->post('/api/v1/wakehub/settings', fn () => $this->run(function (int $u) use ($hub): array {
+            return ['settings' => $hub()->save($u, $this->runner->body())];
+        }, 200, true));
+        $r->post('/api/v1/wakehub/test', fn () => $this->run(
+            fn (int $u) => $hub()->test($u),
+            200,
+            true,
+            'wakehub:read'
+        ));
+        $r->get('/api/v1/wakehub/devices', fn () => $this->run(fn (int $u) => $hub()->devices($u)));
+        $r->get('/api/v1/wakehub/devices/{id}/status', fn (array $p) => $this->run(
+            fn (int $u) => $hub()->status($u, self::id($p))
+        ));
+        $r->get('/api/v1/wakehub/devices/{id}/metrics', fn (array $p) => $this->run(
+            fn (int $u) => $hub()->metrics($u, self::id($p))
+        ));
+        $r->post('/api/v1/wakehub/devices/{id}/wake', fn (array $p) => $this->run(function (int $u) use ($p, $hub, $stamp): array {
+            $actor = $this->runner->actor();
+
+            return $hub()->wake($u, self::id($p), $actor->kind, $actor->tool, $stamp());
+        }, 200, true));
+        $r->post('/api/v1/wakehub/devices/{id}/power', fn (array $p) => $this->run(function (int $u) use ($p, $hub, $stamp): array {
+            $body = $this->runner->body();
+            $action = (string) ($body['action'] ?? '');
+            $confirm = $body['confirm'] ?? false;
+            if (!is_bool($confirm)) {
+                throw ValidationException::withFields(['confirm' => 'confirm must be true or false.']);
+            }
+            $method = isset($body['method']) ? (string) $body['method'] : 'auto';
+            $actor = $this->runner->actor();
+
+            return $hub()->power($u, self::id($p), $action, $confirm, $method, $actor->kind, $actor->tool, $stamp());
+        }, 200, true));
     }
 
     private function registerStockSheet(Router $r): void

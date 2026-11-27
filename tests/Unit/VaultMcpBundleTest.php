@@ -125,6 +125,10 @@ final class VaultMcpBundleTest extends TestCase
         self::assertSame('pages:read', Scope::forPath('/api/v1/pages/lookup', false));
         self::assertSame('pages:read', Scope::forPath('/api/v1/pages/folders/contents', false));
         self::assertSame('pages:write', Scope::forPath('/api/v1/pages/patch', true));
+        self::assertSame('pages:write', Scope::forPath('/api/v1/pages/append', true));
+        self::assertSame('wakehub:read', Scope::forPath('/api/v1/wakehub/devices', false));
+        self::assertSame('wakehub:write', Scope::forPath('/api/v1/wakehub/devices/3/wake', true));
+        self::assertSame('wakehub:write', Scope::forPath('/api/v1/wakehub/devices/3/power', true));
         self::assertSame('pages:write', Scope::forPath('/api/v1/pages/archive', true));
         self::assertSame('pages:write', Scope::forPath('/api/v1/pages/unarchive', true));
     }
@@ -135,6 +139,8 @@ final class VaultMcpBundleTest extends TestCase
         foreach ([
             'read_page',
             'patch_page',
+            'append_page',
+            'stale_write',
             'archive_page',
             'unarchive_page',
             'list_folder_contents',

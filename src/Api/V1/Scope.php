@@ -23,7 +23,7 @@ final class Scope
         'metrics', 'widgets', 'life', 'pages', 'money', 'invest', 'search', 'reddit',
         'bookmarks', 'todos', 'flights', 'packages', 'stocks', 'clipboards', 'audit', 'shopping', 'calls', 'pantry',
         'spotify', 'ollama', 'digest', 'agents', 'health', 'home', 'mail', 'handoffs',
-        'trips', 'videos', 'findings',
+        'trips', 'videos', 'findings', 'wakehub',
     ];
 
     public const MONEY_ENTITIES = [
@@ -81,6 +81,7 @@ final class Scope
         'video',
         'finding',
         'stock_sheet',
+        'wake_hub',
         'deploy',
     ];
 
@@ -261,6 +262,9 @@ final class Scope
         }
         if (self::allows($granted, 'stocks:read')) {
             $allow = array_merge($allow, self::STOCK_ENTITIES);
+        }
+        if (self::allows($granted, 'wakehub:read')) {
+            $allow = array_merge($allow, ['wake_hub']);
         }
         if (self::allows($granted, 'system:read')) {
             $allow = array_merge($allow, self::SYSTEM_ENTITIES);

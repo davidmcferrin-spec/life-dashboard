@@ -312,6 +312,9 @@ $ldMenuItem = static function (string $action, string $icon, string $label, bool
 <?php if ($hasAny('legacy.flights', 'legacy.packages', 'legacy.pings', 'legacy.stocks')): ?>
 <script src="/assets/js/widgets.js?v=<?= e($assetVer) ?>"></script>
 <?php endif; ?>
+<?php if ($hasAny('legacy.wakehub')): ?>
+<script src="/assets/js/wake-hub.js?v=<?= e($assetVer) ?>"></script>
+<?php endif; ?>
 <?php if ($hasAny('legacy.todos')): ?>
 <script src="/assets/js/todo-due.js?v=<?= e($assetVer) ?>"></script>
 <script src="/assets/js/todo-widget.js?v=<?= e($assetVer) ?>"></script>

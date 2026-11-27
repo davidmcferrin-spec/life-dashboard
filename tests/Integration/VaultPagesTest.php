@@ -6,6 +6,7 @@ namespace Dashboard\Tests\Integration;
 
 use Dashboard\Audit\AuditLog;
 use Dashboard\Knowledge\PageService;
+use Dashboard\Support\ConflictException;
 use Dashboard\Support\ValidationException;
 
 final class VaultPagesTest extends PgsqlTestCase
@@ -152,5 +153,60 @@ final class VaultPagesTest extends PgsqlTestCase
         $this->pages->archive($this->user, (int) $child['id']);
         $lifted = $this->pages->get($this->user, (int) $grand['id']);
         self::assertSame((int) $home['id'], $lifted['parent_id']);
+    }
+
+    public function testAppendKeepsConcurrentLinesAndStaleWriteDoesNotOverwrite(): void
+    {
+        $page = $this->pages->create($this->user, [
+            'title' => 'Vault Changelog',
+            'body'  => "# Log\n\n- first\n",
+        ]);
+        $id = (int) $page['id'];
+        $readVersion = (int) $page['version'];
+        $first = $this->pages->append($this->user, [
+            'page_id'       => $id,
+            'text'          => '- bot a',
+            'under_heading' => 'Log',
+        ], 'ai', 'append_page', 'Ada');
+        $second = $this->pages->append($this->user, [
+            'page_id'       => $id,
+            'text'          => '- bot b',
+            'under_heading' => 'Log',
+        ], 'ai', 'append_page', 'Bea');
+        self::assertStringContainsString('- first', $second['body']);
+        self::assertStringContainsString('- bot a', $second['body']);
+        self::assertStringContainsString('- bot b', $second['body']);
+        self::assertGreaterThan((int) $first['version'], (int) $second['version']);
+        $revisions = (int) $this->db->fetchScalar('SELECT COUNT(*) FROM page_revisions WHERE page_id = ?', [$id]);
+        self::assertSame(3, $revisions);
+
+        try {
+            $this->pages->update($this->user, $id, [
+                'body'             => 'replaced the log',
+                'expected_version' => $readVersion,
+            ], 'ai', 'write_page', 'Ada');
+            self::fail('a stale version must not overwrite the page');
+        } catch (ConflictException $e) {
+            self::assertSame('stale_write', $e->codeName);
+            self::assertSame((int) $second['version'], $e->extra['version']);
+            self::assertSame($second['updated_at'], $e->extra['updated_at']);
+        }
+        $kept = $this->pages->get($this->user, $id);
+        self::assertStringContainsString('- bot b', $kept['body']);
+        self::assertStringNotContainsString('replaced the log', $kept['body']);
+
+        $matched = $this->pages->update($this->user, $id, [
+            'body'                => $kept['body'] . "\n- kept\n",
+            'expected_version'    => $kept['version'],
+            'expected_updated_at' => $kept['updated_at'],
+        ], 'ai', 'write_page', 'Ada');
+        self::assertStringContainsString('- bot a', $matched['body']);
+        self::assertStringContainsString('- kept', $matched['body']);
+
+        $tail = $this->pages->append($this->user, ['page_id' => $id, 'text' => '- end'], 'ai', 'append_page', 'Ada');
+        self::assertStringContainsString("- kept\n\n- end", $tail['body']);
+
+        $replaced = $this->pages->update($this->user, $id, ['body' => 'whole body']);
+        self::assertSame('whole body', $replaced['body']);
     }
 }
