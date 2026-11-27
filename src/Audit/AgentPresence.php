@@ -30,6 +30,7 @@ final class AgentPresence
         ['Flights', ['/flight']],
         ['Packages', ['/package']],
         ['Stocks', ['/stock']],
+        ['Wake Hub', ['/wakehub', 'wake_hub', 'wakehub.']],
         ['Clipboards', ['/clipboard']],
         ['Search', ['/search']],
         ['Local AI', ['/ollama', 'ollama_']],

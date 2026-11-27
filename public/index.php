@@ -293,6 +293,11 @@ $router->get('/stocks', function () use ($auth): void {
     require VIEWS_DIR . '/stocks.php';
 });
 
+$router->get('/wake', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    require VIEWS_DIR . '/wake.php';
+});
+
 $router->get('/settings/stocks', function () use ($auth): void {
     $auth->requireAuth();
     redirect('/stocks');
@@ -1612,6 +1617,46 @@ $router->post('/settings/stock-sheet/refresh', function () use ($auth, $db, $lif
         $_SESSION['settings_flash'] = (string) ($result['sync']['sync_error'] ?? 'The sheet was not pulled.');
     }
     redirect('/settings/stock-sheet');
+});
+
+$router->get('/settings/wake-hub', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    $wakeSettings = (new \Dashboard\WakeHub\WakeHubSettings($db))->view((int) $user['id']);
+    require VIEWS_DIR . '/settings/wake-hub.php';
+});
+
+$router->post('/settings/wake-hub', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    try {
+        (new \Dashboard\WakeHub\WakeHubSettings($db))->save($userId, [
+            'base_url' => (string) ($_POST['base_url'] ?? ''),
+            'token'    => (string) ($_POST['token'] ?? ''),
+        ]);
+        (new \Dashboard\Audit\AuditLog($db))->record($userId, 'user', null, 'POST', '/settings/wake-hub', [
+            'entity' => 'wake_hub',
+        ]);
+        $_SESSION['settings_flash'] = 'Wake Hub saved.';
+    } catch (\Dashboard\Support\ValidationException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/wake-hub');
+});
+
+$router->post('/settings/wake-hub/test', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    try {
+        $result = \Dashboard\WakeHub\WakeHubService::fromDatabase($db)->test($userId);
+        $_SESSION['settings_flash'] = 'Connected. ' . (int) $result['devices'] . ' devices.';
+    } catch (\Dashboard\WakeHub\WakeHubException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    } catch (\Dashboard\Support\ValidationException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/wake-hub');
 });
 
 $router->get('/settings/health', function () use ($auth, $db): void {

@@ -13,10 +13,12 @@ use Dashboard\Auth\OAuthRules;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Support\PublicUrl;
 use Dashboard\Money\AccountNumberGuard;
+use Dashboard\Support\ConflictException;
 use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\UnauthorizedException;
 use Dashboard\Support\ValidationException;
+use Dashboard\WakeHub\WakeHubException;
 
 /**
  * Session (CSRF on writes) or Authorization: Bearer. Bearer writes are actor "ai".
@@ -126,6 +128,10 @@ final class ApiRunner
         } catch (ValidationException $e) {
             $this->auditDeployFailure($e->getMessage());
             jsonResponse(['error' => $e->getMessage(), 'fields' => $e->fields()], 422);
+        } catch (ConflictException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, 409);
+        } catch (WakeHubException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
         }
     }
 
@@ -151,6 +157,10 @@ final class ApiRunner
             jsonResponse(['error' => $e->getMessage()], 404);
         } catch (ValidationException $e) {
             jsonResponse(['error' => $e->getMessage(), 'fields' => $e->fields()], 422);
+        } catch (ConflictException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, 409);
+        } catch (WakeHubException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
         }
     }
 
@@ -324,6 +334,15 @@ final class ApiRunner
                 $extra['entity_id'] = $id;
             }
         }
+        if ($entity === 'wake_hub') {
+            if (isset($payload['device_id']) && is_numeric($payload['device_id'])) {
+                $extra['device_id'] = (int) $payload['device_id'];
+            }
+            $action = $payload['action'] ?? null;
+            if (is_string($action) && preg_match('/^[a-z_]{1,32}$/', $action) === 1) {
+                $extra['action'] = $action;
+            }
+        }
         if ($this->actor()->kind !== 'ai') {
             return $extra;
         }
@@ -451,6 +470,7 @@ final class ApiRunner
             '/brief'                => 'brief',
             '/handoffs'             => 'handoff',
             '/stocks/sheet'         => 'stock_sheet',
+            '/wakehub'              => 'wake_hub',
             '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {
@@ -472,7 +492,7 @@ final class ApiRunner
                 return (int) $row['id'];
             }
         }
-        foreach (['debt_id', 'account_id', 'sinking_fund_id', 'todo_id', 'entity_id', 'id'] as $key) {
+        foreach (['debt_id', 'account_id', 'sinking_fund_id', 'todo_id', 'entity_id', 'device_id', 'id'] as $key) {
             if (isset($payload[$key]) && is_numeric($payload[$key]) && (int) $payload[$key] > 0) {
                 return (int) $payload[$key];
             }
@@ -482,6 +502,9 @@ final class ApiRunner
 
     public static function entityIdFromPath(string $path): ?int
     {
+        if (preg_match('#/wakehub/devices/(\d+)\b#', $path, $m) === 1) {
+            return (int) $m[1];
+        }
         if (preg_match('#/(?:debts|accounts|transactions|sinking-funds|bills|envelopes|payments|inflows|benefit-pots|plaid/items|plaid/accounts|items|categories|habits|lists|calls|contacts|lots|products|recipes|components|playlists|prompts|medications|appointments|handoffs|trips|videos|findings|digests)/(\d+)\b#', $path, $m) === 1) {
             return (int) $m[1];
         }

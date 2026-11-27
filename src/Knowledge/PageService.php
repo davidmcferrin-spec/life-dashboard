@@ -8,6 +8,7 @@ use Dashboard\Audit\AuditLog;
 use Dashboard\DB\Database;
 use Dashboard\Ollama\OllamaClient;
 use Dashboard\Ollama\OllamaSettings;
+use Dashboard\Support\ConflictException;
 use Dashboard\Support\HttpClient;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\ValidationException;
@@ -222,6 +223,7 @@ final class PageService
         $page['backlinks'] = $this->backlinks($userId, $id);
         $page['links'] = $this->outgoing($userId, $id);
         $page['revisions'] = $this->revisions($userId, $id);
+        $page['version'] = isset($page['revisions'][0]['version']) ? (int) $page['revisions'][0]['version'] : 0;
         $page['breadcrumbs'] = $this->breadcrumbs($userId, $page['folder_id']);
         $page['parents'] = $this->ancestors($userId, $page['parent_id']);
         $page['children'] = $this->childRows($userId, $id);
@@ -270,6 +272,30 @@ final class PageService
      */
     public function update(int $userId, int $id, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
     {
+        $checked = $this->expectation($input);
+        $run = function () use ($userId, $id, $input, $actor, $tool, $editor, $checked): array {
+            if ($checked !== null) {
+                $this->lockPage($userId, $id);
+                $this->assertFresh($userId, $id, $checked);
+            }
+
+            return $this->commitUpdate($userId, $id, $input, $actor, $tool, $editor, $checked === null);
+        };
+        $saved = $checked !== null ? $this->db->transaction($run) : $run();
+        if ($checked !== null && $saved['changed']) {
+            $page = $saved['page'];
+            $this->maybeEmbed($userId, (int) $page['id'], (string) $page['title'], (string) $page['body']);
+        }
+
+        return $saved['page'];
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{page: array<string, mixed>, changed: bool}
+     */
+    private function commitUpdate(int $userId, int $id, array $input, string $actor, ?string $tool, ?string $editor, bool $embed): array
+    {
         $page = $this->get($userId, $id);
         $oldTitle = (string) $page['title'];
         $title = array_key_exists('title', $input) ? $this->cleanTitle($input['title']) : $oldTitle;
@@ -284,7 +310,7 @@ final class PageService
             $page = $this->get($userId, $id);
         }
         if ($title === $page['title'] && $kind === $page['kind'] && $body === $page['body']) {
-            return $page;
+            return ['page' => $page, 'changed' => false];
         }
         $editor = $this->editorLabel($editor, $actor);
         $version = (int) $this->db->fetchScalar('SELECT COALESCE(MAX(version), 0) + 1 FROM page_revisions WHERE page_id = ?', [$id]);
@@ -299,9 +325,11 @@ final class PageService
             $this->renameIncoming($userId, $id, $oldTitle, $title, $actor, $tool);
         }
         $this->relink($userId);
-        $this->maybeEmbed($userId, $id, $title, $body);
+        if ($embed) {
+            $this->maybeEmbed($userId, $id, $title, $body);
+        }
         $this->audit->record($userId, $actor, $tool, 'page.update', 'page:' . $id, ['title' => $title]);
-        return $this->get($userId, $id);
+        return ['page' => $this->get($userId, $id), 'changed' => true];
     }
 
     /**
@@ -522,6 +550,47 @@ final class PageService
             isset($input['position']) ? (string) $input['position'] : 'end'
         );
         return $this->update($userId, (int) $page['id'], ['body' => $body], $actor, $tool, $editor);
+    }
+
+    /**
+     * Insert text under a heading, or at the end, while the page row is locked.
+     *
+     * @param array<string, mixed> $input
+     * @return array<string, mixed>
+     */
+    public function append(int $userId, array $input, string $actor = 'user', ?string $tool = null, ?string $editor = null): array
+    {
+        $page = $this->find(
+            $userId,
+            $this->optionalPageId($input),
+            $this->optionalString($input, 'title'),
+            $this->optionalString($input, 'slug')
+        );
+        $id = (int) $page['id'];
+        $text = (string) ($input['text'] ?? '');
+        $heading = $input['under_heading'] ?? $input['heading'] ?? null;
+        $heading = $heading === null ? null : trim((string) $heading);
+        if ($heading === '') {
+            $heading = null;
+        }
+        $saved = $this->db->transaction(function () use ($userId, $id, $text, $heading, $actor, $tool, $editor): array {
+            $locked = $this->lockPage($userId, $id);
+            $body = PagePatch::apply(
+                (string) $locked['body'],
+                $heading === null ? 'append' : 'insert_section',
+                $text,
+                $heading,
+                'end'
+            );
+
+            return $this->commitUpdate($userId, $id, ['body' => $body], $actor, $tool, $editor, false);
+        });
+        if ($saved['changed']) {
+            $written = $saved['page'];
+            $this->maybeEmbed($userId, (int) $written['id'], (string) $written['title'], (string) $written['body']);
+        }
+
+        return $saved['page'];
     }
 
     /**
@@ -1374,6 +1443,101 @@ final class PageService
              )',
             [$userId]
         );
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     * @return array{version: int|null, updated_at: string|null}|null
+     */
+    private function expectation(array $input): ?array
+    {
+        $hasVersion = array_key_exists('expected_version', $input) && $input['expected_version'] !== null && $input['expected_version'] !== '';
+        $hasStamp = array_key_exists('expected_updated_at', $input) && $input['expected_updated_at'] !== null && $input['expected_updated_at'] !== '';
+        if (!$hasVersion && !$hasStamp) {
+            return null;
+        }
+        $version = null;
+        if ($hasVersion) {
+            $raw = $input['expected_version'];
+            $digits = is_int($raw) || (is_string($raw) && preg_match('/^[1-9][0-9]*$/', $raw) === 1);
+            if (!$digits) {
+                throw ValidationException::withFields(['expected_version' => 'expected_version must be a positive integer.']);
+            }
+            $version = (int) $raw;
+        }
+        $stamp = null;
+        if ($hasStamp) {
+            $stamp = trim((string) $input['expected_updated_at']);
+            if ($stamp === '' || strlen($stamp) > 40) {
+                throw ValidationException::withFields(['expected_updated_at' => 'expected_updated_at must be the updated_at from the page you read.']);
+            }
+        }
+
+        return ['version' => $version, 'updated_at' => $stamp];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function lockPage(int $userId, int $id): array
+    {
+        $lock = $this->db->driver() === 'pgsql' ? ' FOR UPDATE' : '';
+        $row = $this->db->fetchOne(
+            'SELECT * FROM pages WHERE id = ? AND user_id = ?' . $lock,
+            [$id, $userId]
+        );
+        if ($row === null) {
+            throw new NotFoundException('Page not found.');
+        }
+
+        return $row;
+    }
+
+    /**
+     * @param array{version: int|null, updated_at: string|null} $expected
+     */
+    private function assertFresh(int $userId, int $id, array $expected): void
+    {
+        $row = $this->db->fetchOne('SELECT updated_at FROM pages WHERE id = ? AND user_id = ?', [$id, $userId]);
+        if ($row === null) {
+            throw new NotFoundException('Page not found.');
+        }
+        $version = $this->currentVersion($id);
+        $updated = (string) $row['updated_at'];
+        $versionOk = $expected['version'] === null || $expected['version'] === $version;
+        $stampOk = $expected['updated_at'] === null || $this->sameStamp($updated, $expected['updated_at']);
+        if ($versionOk && $stampOk) {
+            return;
+        }
+        throw new ConflictException(
+            'This page changed since you read it. Current version is ' . $version . ' (' . $updated . '). Read it again. Nothing was written.',
+            'stale_write',
+            ['version' => $version, 'updated_at' => $updated]
+        );
+    }
+
+    private function currentVersion(int $id): int
+    {
+        return (int) $this->db->fetchScalar(
+            'SELECT COALESCE(MAX(version), 0) FROM page_revisions WHERE page_id = ?',
+            [$id]
+        );
+    }
+
+    private function sameStamp(string $stored, string $expected): bool
+    {
+        $norm = static function (string $value): string {
+            $value = trim($value);
+            $value = str_replace('T', ' ', $value);
+            $value = rtrim($value, 'Zz');
+            $value = preg_replace('/\.\d+/', '', $value) ?? $value;
+
+            return substr($value, 0, 19);
+        };
+        $left = $norm($stored);
+        $right = $norm($expected);
+
+        return $left !== '' && $left === $right;
     }
 
     private function addRevision(int $userId, int $pageId, int $version, string $title, string $body): void
