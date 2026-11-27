@@ -167,7 +167,14 @@ final class WakeHubClient
             set_time_limit($timeout + self::TIMEOUT_CONNECT + 5);
         }
         $url = $this->baseUrl . $path;
-        $encoded = $body === null ? null : json_encode($body, JSON_THROW_ON_ERROR);
+        // An empty PHP list encodes as []. FastAPI rejects that where it expects {}.
+        if ($body === null) {
+            $encoded = null;
+        } elseif ($body === []) {
+            $encoded = '{}';
+        } else {
+            $encoded = json_encode($body, JSON_THROW_ON_ERROR);
+        }
         $headers = [
             'Authorization' => 'Bearer ' . $this->token,
             'Accept'        => 'application/json',

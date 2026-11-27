@@ -7,6 +7,7 @@ and is not an argument of these tools.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import quote
 
 _EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
 _ACTIONS = ("on", "off", "cycle", "reboot", "shutdown")
@@ -85,10 +86,10 @@ def resolve_wakehub(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
         return "GET", "/api/v1/wakehub/devices", None
     if name == "wake_hub_device_status":
         device_id = _device_id(args, name)
-        return "GET", f"/api/v1/wakehub/devices/{device_id}/status", None
+        return "GET", "/api/v1/wakehub/devices/" + _target_path(device_id) + "/status", None
     if name == "wake_hub_wake":
         device_id = _device_id(args, name)
-        return "POST", f"/api/v1/wakehub/devices/{device_id}/wake", {}
+        return "POST", "/api/v1/wakehub/devices/" + _target_path(device_id) + "/wake", {}
     if name == "wake_hub_power_action":
         unknown = set(args) - {"device_id", "action", "confirm", "method"}
         if unknown:
@@ -107,8 +108,13 @@ def resolve_wakehub(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
             if not isinstance(method, str) or method not in _METHODS:
                 raise ValueError("method must be auto, wol, pdu, amt, jetkvm, plug, or ups.")
             body["method"] = method
-        return "POST", f"/api/v1/wakehub/devices/{device_id}/power", body
+        return "POST", "/api/v1/wakehub/devices/" + _target_path(device_id) + "/power", body
     return None
+
+
+def _target_path(device_id: str) -> str:
+    # A colon in amt:2 makes PHP parse_url() reject the path, so the segment is encoded.
+    return quote(device_id, safe="")
 
 
 def _empty(name: str, args: dict[str, Any]) -> None:
