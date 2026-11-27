@@ -33,6 +33,9 @@ final class Settings
         $url = array_key_exists('base_url', $input)
             ? self::baseUrl((string) $input['base_url'], $enabled)
             : trim((string) ($current['base_url'] ?? ''));
+        if ($service === 'qbittorrent') {
+            return $this->saveQbit($userId, $input, $all, $current, $enabled, $url);
+        }
         $secretName = $meta['secret'];
         $secret = array_key_exists($secretName, $input) ? (string) $input[$secretName] : '';
         if (trim($secret) === '') {
@@ -87,7 +90,7 @@ final class Settings
     public function viewOne(int $userId, string $service): array
     {
         $meta = Catalog::get($service);
-        $stored = $this->stored($userId, $service);
+        $stored = $this->stored($userId, $service) ?? [];
         $secret = (string) ($stored[$meta['secret']] ?? '');
         $hint = $secret !== '' ? SecretMask::hint($secret) : '';
         $url = trim((string) ($stored['base_url'] ?? ''));
@@ -111,8 +114,34 @@ final class Settings
         if ($meta['username']) {
             $view['username'] = trim((string) ($stored['username'] ?? ''));
         }
+        if ($service === 'qbittorrent') {
+            $mode = self::qbitAuth(is_array($stored) ? $stored : []);
+            $token = (string) ($stored['token'] ?? '');
+            $view['auth'] = $mode;
+            $view['token_hint'] = $token !== '' ? SecretMask::hint($token) : '';
+            $configured = $url !== '' && match ($mode) {
+                'none' => true,
+                'token' => $token !== '',
+                default => trim((string) ($stored['username'] ?? '')) !== '' && $secret !== '',
+            };
+            $view['configured'] = $configured;
+            $view['ready'] = $configured && (bool) ($stored['enabled'] ?? false);
+        }
 
         return $view;
+    }
+
+    public static function qbitAuth(array $stored): string
+    {
+        $raw = strtolower(trim((string) ($stored['auth'] ?? '')));
+        if ($raw === '') {
+            return 'password';
+        }
+        if ($raw !== 'token' && $raw !== 'password' && $raw !== 'none') {
+            throw ValidationException::withFields(['auth' => 'auth must be token, password, or none.']);
+        }
+
+        return $raw;
     }
 
     /**
@@ -130,6 +159,61 @@ final class Settings
         }
 
         return $row;
+    }
+
+    /**
+     * @param array<string, mixed> $all
+     * @param array<string, mixed> $current
+     * @return array<string, mixed>
+     */
+    private function saveQbit(int $userId, array $input, array $all, array $current, bool $enabled, string $url): array
+    {
+        $mode = array_key_exists('auth', $input) && trim((string) $input['auth']) !== ''
+            ? self::qbitAuth(['auth' => $input['auth']])
+            : self::qbitAuth($current);
+        $username = array_key_exists('username', $input)
+            ? trim((string) $input['username'])
+            : trim((string) ($current['username'] ?? ''));
+        if (strlen($username) > 80) {
+            throw ValidationException::withFields(['username' => 'That username is too long.']);
+        }
+        $password = $this->keptSecret($input, $current, 'password', 'Password');
+        $token = $this->keptSecret($input, $current, 'token', 'API token');
+        if ($enabled && $url === '') {
+            throw ValidationException::withFields(['base_url' => 'Enter the qBittorrent base URL.']);
+        }
+        if ($enabled && $mode === 'password' && ($username === '' || $password === '')) {
+            $field = $username === '' ? 'username' : 'password';
+            throw ValidationException::withFields([$field => 'Enter the qBittorrent username and password.']);
+        }
+        if ($enabled && $mode === 'token' && $token === '') {
+            throw ValidationException::withFields(['token' => 'Enter the qBittorrent API token.']);
+        }
+        $all['qbittorrent'] = [
+            'enabled' => $enabled,
+            'base_url' => $url,
+            'auth' => $mode,
+            'username' => $username,
+            'password' => $password,
+            'token' => $token,
+        ];
+        $this->writeAll($userId, $all);
+
+        return $this->viewOne($userId, 'qbittorrent');
+    }
+
+    /**
+     * A blank secret field keeps the saved value. A new value replaces it.
+     *
+     * @param array<string, mixed> $input
+     * @param array<string, mixed> $current
+     */
+    private function keptSecret(array $input, array $current, string $field, string $label): string
+    {
+        if (!array_key_exists($field, $input) || trim((string) $input[$field]) === '') {
+            return (string) ($current[$field] ?? '');
+        }
+        return self::secret((string) $input[$field], $field, $label);
     }
 
     public static function baseUrl(string $raw, bool $required): string
@@ -189,7 +273,7 @@ final class Settings
         if ($secret === '' || strlen($secret) > 500 || str_contains($secret, "\n") || str_contains($secret, "\r")) {
             throw ValidationException::withFields([$field => 'Enter the ' . strtolower($label) . '.']);
         }
-        if ($field === 'api_key' && preg_match('/\s/', $secret) === 1) {
+        if (($field === 'api_key' || $field === 'token') && preg_match('/\s/', $secret) === 1) {
             throw ValidationException::withFields([$field => 'That API key is not valid.']);
         }
 

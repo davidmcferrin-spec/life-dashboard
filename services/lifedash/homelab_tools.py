@@ -49,8 +49,10 @@ def _settings_schema(service: str) -> dict[str, Any]:
         "base_url": {"type": "string"},
     }
     if service == "qbittorrent":
+        props["auth"] = {"type": "string", "enum": ["token", "password", "none"]}
         props["username"] = {"type": "string"}
         props["password"] = {"type": "string"}
+        props["token"] = {"type": "string"}
     else:
         props["api_key"] = {"type": "string"}
     return _obj(props)
@@ -159,13 +161,13 @@ HOMELAB_TOOLS.extend(
             _obj({"query": {"type": "string"}}, ["query"]),
         ),
         _tool("prowlarr_apps", _d("prowlarr", "Prowlarr application sync status: Sonarr, Radarr, and any other connected app.")),
-        _tool("qbittorrent_settings", _d("qbittorrent", "Masked qBittorrent settings: enabled, base URL, username, and whether the password is saved.")),
+        _tool("qbittorrent_settings", _d("qbittorrent", "Masked qBittorrent settings: auth mode (token, password, or none), base URL, and whether the password or API token is saved.")),
         _tool(
             "qbittorrent_save_settings",
-            _d("qbittorrent", "Save qBittorrent WebUI settings. Leave password blank to keep the saved one.", True),
+            _d("qbittorrent", "Save qBittorrent settings. auth is token, password, or none. none skips login for a whitelist bypass. token is an API key for qBittorrent 5.2.0 or newer, sent as Authorization: Bearer. Leave password and token blank to keep the saved values.", True),
             _settings_schema("qbittorrent"),
         ),
-        _tool("qbittorrent_test", _d("qbittorrent", "Log in to qBittorrent and return its version.", True)),
+        _tool("qbittorrent_test", _d("qbittorrent", "Call qBittorrent and return its version. The error names the auth mode.", True)),
         _tool("qbittorrent_status", _d("qbittorrent", "qBittorrent version and transfer speeds.")),
         _tool(
             "qbittorrent_torrents",
@@ -443,7 +445,7 @@ def resolve_homelab(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
 
 
 def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"enabled", "base_url", "username", "password"} if service == "qbittorrent" else {"enabled", "base_url", "api_key"}
+    allowed = {"enabled", "base_url", "auth", "username", "password", "token"} if service == "qbittorrent" else {"enabled", "base_url", "api_key"}
     _only(f"{service}_save_settings", args, allowed)
     body: dict[str, Any] = {}
     if "enabled" in args:
@@ -455,7 +457,11 @@ def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("base_url must be a string.")
         body["base_url"] = args["base_url"]
     if service == "qbittorrent":
-        for key in ("username", "password"):
+        if "auth" in args:
+            if args["auth"] not in {"token", "password", "none"}:
+                raise ValueError("auth must be token, password, or none.")
+            body["auth"] = args["auth"]
+        for key in ("username", "password", "token"):
             if key in args:
                 if not isinstance(args[key], str):
                     raise ValueError(f"{key} must be a string.")

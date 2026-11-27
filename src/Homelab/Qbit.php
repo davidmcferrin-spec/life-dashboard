@@ -8,17 +8,21 @@ use Dashboard\Support\ValidationException;
 
 /**
  * qBittorrent WebUI API v2.
- * Login is a form post that returns an SID cookie. qBittorrent 5 renamed pause and resume
- * to stop and start, so a 404 falls back to the older names.
+ * CSRF protection compares Origin or Referer with the Host header, so both are sent.
+ * The session cookie is whatever Set-Cookie names (SID or QBT_SID_<port>).
+ * qBittorrent 5 renamed pause and resume to stop and start; a 404 falls back.
+ * API keys (Authorization: Bearer) need 5.2.0 / WebAPI 2.14.1 and skip the cookie login.
  */
 final class Qbit
 {
-    private bool $loggedIn = false;
+    private bool $ready = false;
 
     public function __construct(
         private readonly Http $http,
-        private readonly string $username,
-        private readonly string $password,
+        private readonly string $mode = 'password',
+        private readonly string $username = '',
+        private readonly string $password = '',
+        private readonly string $token = '',
     ) {}
 
     /**
@@ -26,20 +30,21 @@ final class Qbit
      */
     public function status(): array
     {
-        $this->login();
-        $version = trim($this->http->call('GET', '/api/v2/app/version', null, [], 8, 'application/json')['body'], " \t\n\r\0\x0B\"");
-        $info = $this->http->json('GET', '/api/v2/transfer/info');
-        if (array_is_list($info)) {
-            throw new HomelabException('qBittorrent returned an unexpected transfer info.', 'homelab_invalid', 502);
-        }
+        return $this->go(function (): array {
+            $version = trim($this->http->call('GET', '/api/v2/app/version', null, [], 8, 'application/json')['body'], " \t\n\r\0\x0B\"");
+            $info = $this->http->json('GET', '/api/v2/transfer/info');
+            if (array_is_list($info)) {
+                throw new HomelabException('qBittorrent returned an unexpected transfer info.', 'homelab_invalid', 502);
+            }
 
-        return [
-            'version' => $version,
-            'download_speed' => Servarr::intish($info['dl_info_speed'] ?? 0),
-            'upload_speed' => Servarr::intish($info['up_info_speed'] ?? 0),
-            'connection' => (string) ($info['connection_status'] ?? ''),
-            'dht' => Servarr::intish($info['dht_nodes'] ?? 0),
-        ];
+            return [
+                'version' => $version,
+                'download_speed' => Servarr::intish($info['dl_info_speed'] ?? 0),
+                'upload_speed' => Servarr::intish($info['up_info_speed'] ?? 0),
+                'connection' => (string) ($info['connection_status'] ?? ''),
+                'dht' => Servarr::intish($info['dht_nodes'] ?? 0),
+            ];
+        });
     }
 
     /**
@@ -47,43 +52,44 @@ final class Qbit
      */
     public function torrents(string $filter, string $category, string $hashes): array
     {
-        $this->login();
-        $query = [];
-        if ($filter !== '') {
-            $query['filter'] = self::filter($filter);
-        }
-        if ($category !== '') {
-            $query['category'] = $category;
-        }
-        if ($hashes !== '') {
-            $query['hashes'] = $hashes;
-        }
-        $payload = $this->http->json('GET', '/api/v2/torrents/info', null, $query);
-        if (!array_is_list($payload)) {
-            throw new HomelabException('qBittorrent returned an unexpected torrent list.', 'homelab_invalid', 502);
-        }
-        $items = [];
-        foreach ($payload as $row) {
-            if (!is_array($row)) {
-                continue;
+        return $this->go(function () use ($filter, $category, $hashes): array {
+            $query = [];
+            if ($filter !== '') {
+                $query['filter'] = self::filter($filter);
             }
-            $items[] = [
-                'hash' => (string) ($row['hash'] ?? ''),
-                'name' => (string) ($row['name'] ?? ''),
-                'state' => (string) ($row['state'] ?? ''),
-                'progress' => is_numeric($row['progress'] ?? null) ? (float) $row['progress'] : 0.0,
-                'size' => Servarr::intish($row['size'] ?? 0),
-                'download_speed' => Servarr::intish($row['dlspeed'] ?? 0),
-                'upload_speed' => Servarr::intish($row['upspeed'] ?? 0),
-                'category' => (string) ($row['category'] ?? ''),
-                'eta' => Servarr::intish($row['eta'] ?? 0),
-            ];
-            if (count($items) >= 80) {
-                break;
+            if ($category !== '') {
+                $query['category'] = $category;
             }
-        }
+            if ($hashes !== '') {
+                $query['hashes'] = $hashes;
+            }
+            $payload = $this->http->json('GET', '/api/v2/torrents/info', null, $query);
+            if (!array_is_list($payload)) {
+                throw new HomelabException('qBittorrent returned an unexpected torrent list.', 'homelab_invalid', 502);
+            }
+            $items = [];
+            foreach ($payload as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $items[] = [
+                    'hash' => (string) ($row['hash'] ?? ''),
+                    'name' => (string) ($row['name'] ?? ''),
+                    'state' => (string) ($row['state'] ?? ''),
+                    'progress' => is_numeric($row['progress'] ?? null) ? (float) $row['progress'] : 0.0,
+                    'size' => Servarr::intish($row['size'] ?? 0),
+                    'download_speed' => Servarr::intish($row['dlspeed'] ?? 0),
+                    'upload_speed' => Servarr::intish($row['upspeed'] ?? 0),
+                    'category' => (string) ($row['category'] ?? ''),
+                    'eta' => Servarr::intish($row['eta'] ?? 0),
+                ];
+                if (count($items) >= 80) {
+                    break;
+                }
+            }
 
-        return ['items' => $items];
+            return ['items' => $items];
+        });
     }
 
     /**
@@ -91,23 +97,24 @@ final class Qbit
      */
     public function categories(): array
     {
-        $this->login();
-        $payload = $this->http->json('GET', '/api/v2/torrents/categories');
-        if (array_is_list($payload)) {
-            throw new HomelabException('qBittorrent returned an unexpected category list.', 'homelab_invalid', 502);
-        }
-        $items = [];
-        foreach ($payload as $row) {
-            if (!is_array($row)) {
-                continue;
+        return $this->go(function (): array {
+            $payload = $this->http->json('GET', '/api/v2/torrents/categories');
+            if (array_is_list($payload)) {
+                throw new HomelabException('qBittorrent returned an unexpected category list.', 'homelab_invalid', 502);
             }
-            $items[] = [
-                'name' => (string) ($row['name'] ?? ''),
-                'save_path' => (string) ($row['savePath'] ?? ''),
-            ];
-        }
+            $items = [];
+            foreach ($payload as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $items[] = [
+                    'name' => (string) ($row['name'] ?? ''),
+                    'save_path' => (string) ($row['savePath'] ?? ''),
+                ];
+            }
 
-        return ['items' => $items];
+            return ['items' => $items];
+        });
     }
 
     /**
@@ -115,7 +122,7 @@ final class Qbit
      */
     public function pause(string $hashes): array
     {
-        return $this->verb($hashes, 'stop', 'pause', 'pause');
+        return $this->go(fn (): array => $this->verb($hashes, 'stop', 'pause', 'pause'));
     }
 
     /**
@@ -123,7 +130,7 @@ final class Qbit
      */
     public function resume(string $hashes): array
     {
-        return $this->verb($hashes, 'start', 'resume', 'resume');
+        return $this->go(fn (): array => $this->verb($hashes, 'start', 'resume', 'resume'));
     }
 
     /**
@@ -131,10 +138,11 @@ final class Qbit
      */
     public function recheck(string $hashes): array
     {
-        $this->login();
-        $this->http->form('POST', '/api/v2/torrents/recheck', ['hashes' => $hashes]);
+        return $this->go(function () use ($hashes): array {
+            $this->http->form('POST', '/api/v2/torrents/recheck', ['hashes' => $hashes]);
 
-        return ['hashes' => $hashes, 'action' => 'recheck'];
+            return ['hashes' => $hashes, 'action' => 'recheck'];
+        });
     }
 
     /**
@@ -142,13 +150,14 @@ final class Qbit
      */
     public function delete(string $hashes, bool $deleteFiles): array
     {
-        $this->login();
-        $this->http->form('POST', '/api/v2/torrents/delete', [
-            'hashes' => $hashes,
-            'deleteFiles' => $deleteFiles ? 'true' : 'false',
-        ]);
+        return $this->go(function () use ($hashes, $deleteFiles): array {
+            $this->http->form('POST', '/api/v2/torrents/delete', [
+                'hashes' => $hashes,
+                'deleteFiles' => $deleteFiles ? 'true' : 'false',
+            ]);
 
-        return ['hashes' => $hashes, 'deleted' => true, 'delete_files' => $deleteFiles];
+            return ['hashes' => $hashes, 'deleted' => true, 'delete_files' => $deleteFiles];
+        });
     }
 
     /**
@@ -167,14 +176,15 @@ final class Qbit
         if (strlen($category) > 80 || str_contains($category, "\n")) {
             throw ValidationException::withFields(['category' => 'That category name is not valid.']);
         }
-        $this->login();
-        $fields = ['urls' => $urls];
-        if ($category !== '') {
-            $fields['category'] = $category;
-        }
-        $this->http->form('POST', '/api/v2/torrents/add', $fields, [], 20);
+        return $this->go(function () use ($urls, $category): array {
+            $fields = ['urls' => $urls];
+            if ($category !== '') {
+                $fields['category'] = $category;
+            }
+            $this->http->form('POST', '/api/v2/torrents/add', $fields, [], 20);
 
-        return ['added' => true, 'category' => $category];
+            return ['added' => true, 'category' => $category];
+        });
     }
 
     public static function filter(string $filter): string
@@ -217,7 +227,7 @@ final class Qbit
      */
     private function verb(string $hashes, string $current, string $legacy, string $action): array
     {
-        $this->login();
+        $this->prepare();
         try {
             $this->http->form('POST', '/api/v2/torrents/' . $current, ['hashes' => $hashes]);
         } catch (HomelabException $e) {
@@ -230,29 +240,116 @@ final class Qbit
         return ['hashes' => $hashes, 'action' => $action];
     }
 
-    private function login(): void
+    /**
+     * @template T
+     * @param callable(): T $fn
+     * @return T
+     */
+    private function go(callable $fn): mixed
     {
-        if ($this->loggedIn) {
+        try {
+            $this->prepare();
+
+            return $fn();
+        } catch (HomelabException $e) {
+            throw $this->wrap($e);
+        }
+    }
+
+    private function prepare(): void
+    {
+        if ($this->ready) {
             return;
         }
-        $response = $this->http->form('POST', '/api/v2/auth/login', [
-            'username' => $this->username,
-            'password' => $this->password,
-        ]);
+        $origin = $this->http->origin();
+        // CSRF protection treats a missing Origin and Referer as a cross-site call.
+        $this->http->withHeader('Origin', $origin);
+        $this->http->withHeader('Referer', $origin . '/');
+        if ($this->mode === 'none') {
+            $this->ready = true;
+
+            return;
+        }
+        if ($this->mode === 'token') {
+            $this->http->withHeader('Authorization', 'Bearer ' . $this->token);
+            $this->ready = true;
+
+            return;
+        }
+        $this->login();
+        $this->ready = true;
+    }
+
+    private function login(): void
+    {
+        try {
+            $response = $this->http->form('POST', '/api/v2/auth/login', [
+                'username' => $this->username,
+                'password' => $this->password,
+            ]);
+        } catch (HomelabException $e) {
+            throw $this->wrap($e);
+        }
         $body = trim($response['body']);
         if (strcasecmp($body, 'Ok.') !== 0) {
             throw new HomelabException(
-                'qBittorrent rejected the username or password.',
+                self::failure($this->mode, $response['status'], $body !== '' ? $body : 'Fails.'),
                 'homelab_unauthorized',
                 502,
-                ['upstream_status' => $response['status']]
+                ['upstream_status' => $response['status'], 'auth' => $this->mode]
             );
         }
-        $sid = Http::cookieValue($response['headers'], 'SID');
-        if ($sid === '') {
-            throw new HomelabException('qBittorrent did not return a session cookie.', 'homelab_unauthorized', 502);
+        $cookie = Http::sessionCookie($response['headers']);
+        if ($cookie === '') {
+            throw new HomelabException(
+                self::failure($this->mode, $response['status'], 'no session cookie'),
+                'homelab_unauthorized',
+                502,
+                ['upstream_status' => $response['status'], 'auth' => $this->mode]
+            );
         }
-        $this->http->withCookie('SID=' . $sid);
-        $this->loggedIn = true;
+        $this->http->withCookie($cookie);
+    }
+
+    private function wrap(HomelabException $e): HomelabException
+    {
+        if ($e->codeName === 'homelab_unreachable' || $e->codeName === 'homelab_timeout' || $e->codeName === 'homelab_invalid') {
+            return $e;
+        }
+        if (str_starts_with($e->getMessage(), 'qBittorrent (auth:')) {
+            return $e;
+        }
+        $status = (int) ($e->extra['upstream_status'] ?? 0);
+        if ($status === 0) {
+            return $e;
+        }
+
+        return new HomelabException(
+            self::failure($this->mode, $status, $e->getMessage()),
+            $e->codeName,
+            $e->status,
+            $e->extra + ['auth' => $this->mode]
+        );
+    }
+
+    public static function failure(string $mode, int $status, string $returned): string
+    {
+        $phrase = match ($status) {
+            200 => 'OK',
+            401 => 'Unauthorized',
+            403 => 'Forbidden',
+            404 => 'Not Found',
+            default => 'HTTP ' . $status,
+        };
+        $detail = trim($returned);
+        $generic = $detail === ''
+            || strcasecmp($detail, 'Forbidden') === 0
+            || strcasecmp($detail, 'Unauthorized') === 0
+            || str_starts_with($detail, 'The service returned HTTP');
+        if ($generic && $status === 403 && $mode === 'none') {
+            $detail = 'login required or this server\'s IP is not in the bypass whitelist';
+        }
+
+        return 'qBittorrent (auth: ' . $mode . ') returned ' . $status . ' ' . $phrase . ($detail !== '' ? ': ' . $detail : '');
     }
 }

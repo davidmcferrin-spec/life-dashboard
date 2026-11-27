@@ -51,6 +51,11 @@ final class Http
         $this->cookie = $cookie;
     }
 
+    public function withHeader(string $name, string $value): void
+    {
+        $this->headers[$name] = $value;
+    }
+
     public function origin(): string
     {
         $host = $this->host;
@@ -180,6 +185,23 @@ final class Http
         }
 
         return rawurldecode($match[1]);
+    }
+
+    /**
+     * qBittorrent names the session cookie SID, or QBT_SID_<port> when the port is part of the name.
+     * The client has to send the name the server set, not a name it assumed.
+     */
+    public static function sessionCookie(array $headers): string
+    {
+        $raw = (string) ($headers['set-cookie'] ?? '');
+        if ($raw === '') {
+            return '';
+        }
+        if (preg_match('/(?:^|[\r\n,])\s*((?:QBT_)?SID(?:_\d+)?)=([^;\s]+)/i', $raw, $match) !== 1) {
+            return '';
+        }
+
+        return $match[1] . '=' . $match[2];
     }
 
     /**

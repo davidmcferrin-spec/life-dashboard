@@ -657,6 +657,18 @@
         });
     }
 
+    document.querySelectorAll('[data-qbit-auth]').forEach(function (select) {
+        var rootNode = select.closest('form') || document;
+        function apply() {
+            var mode = select.value;
+            rootNode.querySelectorAll('[data-qbit-field]').forEach(function (field) {
+                field.hidden = field.getAttribute('data-qbit-field') !== mode;
+            });
+        }
+        select.addEventListener('change', apply);
+        apply();
+    });
+
     document.querySelectorAll('[data-homelab="page"]').forEach(wirePage);
     document.querySelectorAll('[data-homelab="card"]').forEach(wireCard);
 }(typeof globalThis !== 'undefined' ? globalThis : this));

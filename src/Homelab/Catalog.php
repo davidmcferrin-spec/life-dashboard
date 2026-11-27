@@ -46,7 +46,7 @@ final class Catalog
             'secret' => 'password',
             'secret_label' => 'Password',
             'username' => true,
-            'where' => 'qBittorrent → Tools → Options → Web UI. Use the WebUI username and password, and the URL including the port (often 8080). The dashboard logs in with that pair and keeps the cookie for the request. There is no API key.',
+            'where' => 'qBittorrent → Tools → Options → Web UI. Auth is none when this server is in the bypass whitelist (no login), password for the WebUI username and password, or token for the API key (qBittorrent 5.2.0 or newer, sent as Authorization: Bearer). The URL includes the port, often 8080.',
         ],
         'unraid' => [
             'label' => 'Unraid',

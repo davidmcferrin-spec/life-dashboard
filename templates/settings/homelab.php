@@ -14,7 +14,7 @@ $settingsMainClass = 'settings-main homelab-settings-main';
 require __DIR__ . '/_shell-top.php';
 ?>
             <?php $pageEyebrow = 'Connections'; $pageHeading = 'Homelab'; require __DIR__ . '/../partials/page-heading.php'; ?>
-            <p class="platform-lead">The dashboard calls each app on the LAN by the URL you enter. API keys and the qBittorrent password are stored encrypted and are not shown again. Leave a secret blank to keep the saved one. Nothing here is read from an environment file.</p>
+            <p class="platform-lead">The dashboard calls each app on the LAN by the URL you enter. API keys, the qBittorrent password, and the qBittorrent API token are stored encrypted and are not shown again. Leave a secret blank to keep the saved one. Nothing here is read from an environment file.</p>
             <p class="text-sm text-muted mb-4"><a class="nav-link" href="/homelab">Open the homelab page</a></p>
             <div class="homelab-settings">
                 <?php foreach ($homelabSettings as $service => $row): ?>
@@ -43,6 +43,36 @@ require __DIR__ . '/_shell-top.php';
                             <label class="settings-label" for="homelab-<?= e((string) $service) ?>-url">Base URL</label>
                             <input class="input" id="homelab-<?= e((string) $service) ?>-url" name="base_url" autocomplete="off" spellcheck="false" inputmode="url" placeholder="http://host:port" value="<?= e((string) ($row['base_url'] ?? '')) ?>">
                         </div>
+                        <?php if ($service === 'qbittorrent'): ?>
+                        <?php
+                            $auth = (string) ($row['auth'] ?? 'password');
+                            $tokenHint = (string) ($row['token_hint'] ?? '');
+                            $tokenPlaceholder = $tokenHint === '' ? 'Paste the API token' : ($tokenHint === 'set' ? 'Saved. Leave blank to keep it.' : 'Saved · ' . $tokenHint . '. Leave blank to keep it.');
+                        ?>
+                        <div class="settings-field">
+                            <label class="settings-label" for="homelab-qbittorrent-auth">Auth</label>
+                            <select class="input" id="homelab-qbittorrent-auth" name="auth" data-qbit-auth>
+                                <option value="none"<?= $auth === 'none' ? ' selected' : '' ?>>No login (whitelist)</option>
+                                <option value="password"<?= $auth === 'password' ? ' selected' : '' ?>>Username and password</option>
+                                <option value="token"<?= $auth === 'token' ? ' selected' : '' ?>>API token (5.2.0+)</option>
+                            </select>
+                        </div>
+                        <div class="settings-field" data-qbit-field="password"<?= $auth === 'password' ? '' : ' hidden' ?>>
+                            <label class="settings-label" for="homelab-qbittorrent-user">Username</label>
+                            <input class="input" id="homelab-qbittorrent-user" name="username" autocomplete="off" spellcheck="false" value="<?= e((string) ($row['username'] ?? '')) ?>">
+                        </div>
+                        <div class="settings-field" data-qbit-field="password"<?= $auth === 'password' ? '' : ' hidden' ?>>
+                            <label class="settings-label" for="homelab-qbittorrent-secret">Password</label>
+                            <input class="input" id="homelab-qbittorrent-secret" name="password" type="password" spellcheck="false" autocomplete="new-password" placeholder="<?= e($placeholder) ?>">
+                            <p class="secret-field-hint"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/lock-keyhole.svg'); ?>Encrypted<?php if ($hint !== ''): ?> <span class="secret-field-mask"><?= e($hint === 'set' ? '••••••••' : '•••••••• ' . $hint) ?></span><?php endif; ?></p>
+                        </div>
+                        <div class="settings-field" data-qbit-field="token"<?= $auth === 'token' ? '' : ' hidden' ?>>
+                            <label class="settings-label" for="homelab-qbittorrent-token">API token</label>
+                            <input class="input" id="homelab-qbittorrent-token" name="token" type="password" spellcheck="false" autocomplete="new-password" placeholder="<?= e($tokenPlaceholder) ?>">
+                            <p class="secret-field-hint"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/lock-keyhole.svg'); ?>Encrypted<?php if ($tokenHint !== ''): ?> <span class="secret-field-mask"><?= e($tokenHint === 'set' ? '••••••••' : '•••••••• ' . $tokenHint) ?></span><?php endif; ?></p>
+                            <p class="text-xs text-muted">qBittorrent 5.2.0 or newer. Preferences, Web UI, API Key. Sent as Authorization: Bearer.</p>
+                        </div>
+                        <?php else: ?>
                         <?php if (array_key_exists('username', $row)): ?>
                         <div class="settings-field">
                             <label class="settings-label" for="homelab-<?= e((string) $service) ?>-user">Username</label>
@@ -54,6 +84,7 @@ require __DIR__ . '/_shell-top.php';
                             <input class="input" id="homelab-<?= e((string) $service) ?>-secret" name="<?= e((string) ($row['secret_name'] ?? 'api_key')) ?>" type="password" spellcheck="false" autocomplete="new-password" placeholder="<?= e($placeholder) ?>">
                             <p class="secret-field-hint"><?php readfile(__DIR__ . '/../../public/assets/vendor/lucide/lock-keyhole.svg'); ?>Encrypted<?php if ($hint !== ''): ?> <span class="secret-field-mask"><?= e($hint === 'set' ? '••••••••' : '•••••••• ' . $hint) ?></span><?php endif; ?></p>
                         </div>
+                        <?php endif; ?>
                         <button type="submit" class="btn-primary">Save</button>
                     </form>
                     <form method="post" action="/settings/homelab/<?= e((string) $service) ?>/test" class="mt-3">
@@ -63,4 +94,5 @@ require __DIR__ . '/_shell-top.php';
                 </section>
                 <?php endforeach; ?>
             </div>
+<script src="/assets/js/homelab.js?v=<?= e($assetVer ?? '1') ?>"></script>
 <?php require __DIR__ . '/_shell-bottom.php'; ?>

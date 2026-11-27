@@ -475,7 +475,13 @@ final class HomelabService
     {
         $stored = $this->settings->stored($userId, 'qbittorrent') ?? [];
 
-        return new Qbit($http, (string) ($stored['username'] ?? ''), (string) ($stored['password'] ?? ''));
+        return new Qbit(
+            $http,
+            Settings::qbitAuth($stored),
+            (string) ($stored['username'] ?? ''),
+            (string) ($stored['password'] ?? ''),
+            (string) ($stored['token'] ?? ''),
+        );
     }
 
     private function open(int $userId, string $service, bool $requireEnabled): Http
@@ -484,6 +490,9 @@ final class HomelabService
         $stored = $this->settings->stored($userId, $service);
         $secret = trim((string) ($stored[$meta['secret']] ?? ''));
         $url = trim((string) ($stored['base_url'] ?? ''));
+        if ($service === 'qbittorrent') {
+            return $this->openQbit($stored, $url, $requireEnabled, $meta['label']);
+        }
         $usernameOk = !$meta['username'] || trim((string) ($stored['username'] ?? '')) !== '';
         if ($stored === null || $url === '' || $secret === '' || !$usernameOk) {
             throw new HomelabException(
@@ -512,6 +521,45 @@ final class HomelabService
         }
 
         return new Http($url, $this->transport, $headers, $redact);
+    }
+
+    /**
+     * @param array<string, mixed>|null $stored
+     */
+    private function openQbit(?array $stored, string $url, bool $requireEnabled, string $label): Http
+    {
+        $mode = Settings::qbitAuth(is_array($stored) ? $stored : []);
+        $username = trim((string) ($stored['username'] ?? ''));
+        $password = (string) ($stored['password'] ?? '');
+        $token = trim((string) ($stored['token'] ?? ''));
+        $ready = $url !== '' && match ($mode) {
+            'none' => true,
+            'token' => $token !== '',
+            default => $username !== '' && $password !== '',
+        };
+        if ($stored === null || !$ready) {
+            throw new HomelabException(
+                $label . ' is not configured. Save it under Settings → Homelab.',
+                'homelab_unconfigured',
+                409
+            );
+        }
+        if ($requireEnabled && empty($stored['enabled'])) {
+            throw new HomelabException(
+                $label . ' is turned off. Enable it under Settings → Homelab.',
+                'homelab_disabled',
+                409
+            );
+        }
+        $redact = [];
+        if ($password !== '') {
+            $redact[] = $password;
+        }
+        if ($token !== '') {
+            $redact[] = $token;
+        }
+
+        return new Http($url, $this->transport, ['Accept' => 'application/json'], $redact);
     }
 
     /**
