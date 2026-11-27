@@ -54,7 +54,7 @@ final class HomelabRouteTest extends PgsqlTestCase
 
         $series = $this->dispatch('POST', '/api/v1/sonarr/series/12:8/delete');
         self::assertSame(422, $series->status);
-        $this->assertJson($series);
+        $this->assertHomelabJson($series);
 
         $numeric = $this->dispatch('POST', '/api/v1/sonarr/series/12/delete');
         $this->assertJsonCode($numeric, 'confirmation_required');
@@ -62,11 +62,11 @@ final class HomelabRouteTest extends PgsqlTestCase
 
     private function assertJsonCode(CapturedResponse $response, string $code): void
     {
-        $this->assertJson($response);
+        $this->assertHomelabJson($response);
         self::assertSame($code, $response->payload['code'] ?? null, json_encode($response->payload) . ' HTTP ' . $response->status);
     }
 
-    private function assertJson(CapturedResponse $response): void
+    private function assertHomelabJson(CapturedResponse $response): void
     {
         self::assertIsArray($response->payload);
         $encoded = json_encode($response->payload);
