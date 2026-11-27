@@ -60,6 +60,9 @@ final class HomelabService
             'sonarr', 'radarr' => (new Servarr($service, $http))->status()['version'],
             'prowlarr' => (new Prowlarr($http))->status()['version'],
             'qbittorrent' => $this->qbit($userId, false)->status()['version'],
+            'unraid' => (new Unraid($http))->status()['version'],
+            'jellyfin' => (new Jellyfin($http))->status()['version'],
+            'plex' => (new Plex($http))->status()['version'],
             default => '',
         };
 
@@ -287,6 +290,175 @@ final class HomelabService
      * @param array<string, mixed> $stamp
      * @return array<string, mixed>
      */
+    /**
+     * @return array<string, mixed>
+     */
+    public function unraidStatus(int $userId): array
+    {
+        return (new Unraid($this->open($userId, 'unraid', true)))->status();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function unraidDisks(int $userId): array
+    {
+        return (new Unraid($this->open($userId, 'unraid', true)))->disks();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function unraidDocker(int $userId): array
+    {
+        return (new Unraid($this->open($userId, 'unraid', true)))->containers();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function unraidVms(int $userId): array
+    {
+        return (new Unraid($this->open($userId, 'unraid', true)))->vms();
+    }
+
+    /**
+     * @param array<string, mixed> $stamp
+     * @return array<string, mixed>
+     */
+    public function unraidDockerAct(int $userId, string $action, string $id, bool $confirm, string $actor, ?string $tool, array $stamp): array
+    {
+        $needs = $action === 'stop' || $action === 'restart';
+        $because = ucfirst($action) . ' on this container needs confirm set to true.';
+
+        return $this->write($userId, $actor, $tool, 'unraid', 'docker_' . $action, $id, $needs, $confirm, $because, $stamp, function (Http $http) use ($action, $id): array {
+            return (new Unraid($http))->container($action, $id);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $stamp
+     * @return array<string, mixed>
+     */
+    public function unraidVmAct(int $userId, string $action, string $id, bool $confirm, string $actor, ?string $tool, array $stamp): array
+    {
+        $needs = $action === 'stop';
+        $because = 'Stopping this VM needs confirm set to true.';
+
+        return $this->write($userId, $actor, $tool, 'unraid', 'vm_' . $action, $id, $needs, $confirm, $because, $stamp, function (Http $http) use ($action, $id): array {
+            return (new Unraid($http))->vm($action, $id);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $stamp
+     * @return array<string, mixed>
+     */
+    public function unraidArray(int $userId, string $state, bool $confirm, string $actor, ?string $tool, array $stamp): array
+    {
+        $needs = strtoupper($state) === 'STOP';
+        $because = 'Stopping the array needs confirm set to true.';
+
+        return $this->write($userId, $actor, $tool, 'unraid', 'array_' . strtolower($state), 'array', $needs, $confirm, $because, $stamp, function (Http $http) use ($state): array {
+            return (new Unraid($http))->arrayState($state);
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function jellyfinStatus(int $userId): array
+    {
+        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->status();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function jellyfinSessions(int $userId): array
+    {
+        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->sessions();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function jellyfinCounts(int $userId): array
+    {
+        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->counts();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function jellyfinRecent(int $userId): array
+    {
+        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->recent();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function jellyfinSearch(int $userId, string $term): array
+    {
+        return (new Jellyfin($this->open($userId, 'jellyfin', true)))->search($term);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function plexStatus(int $userId): array
+    {
+        return (new Plex($this->open($userId, 'plex', true)))->status();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function plexSessions(int $userId): array
+    {
+        return (new Plex($this->open($userId, 'plex', true)))->sessions();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function plexLibraries(int $userId): array
+    {
+        return (new Plex($this->open($userId, 'plex', true)))->libraries();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function plexRecent(int $userId): array
+    {
+        return (new Plex($this->open($userId, 'plex', true)))->recent();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function plexSearch(int $userId, string $query): array
+    {
+        return (new Plex($this->open($userId, 'plex', true)))->search($query);
+    }
+
+    /**
+     * @param array<string, mixed> $stamp
+     * @return array<string, mixed>
+     */
+    public function plexRefresh(int $userId, string $key, string $actor, ?string $tool, array $stamp): array
+    {
+        return $this->write($userId, $actor, $tool, 'plex', 'refresh', $key, false, false, '', $stamp, function (Http $http) use ($key): array {
+            return (new Plex($http))->refresh($key);
+        });
+    }
+
+    /**
+     * @param array<string, mixed> $stamp
+     * @return array<string, mixed>
+     */
     public function torrentAdd(int $userId, string $urls, string $category, string $actor, ?string $tool, array $stamp): array
     {
         return $this->write($userId, $actor, $tool, 'qbittorrent', 'add', 'add', false, false, '', $stamp, function (Http $http) use ($userId, $urls, $category): array {
@@ -328,12 +500,15 @@ final class HomelabService
             );
         }
         $headers = ['Accept' => 'application/json'];
-        $redact = [];
-        if ($meta['secret'] === 'api_key') {
-            $headers['X-Api-Key'] = $secret;
-            $redact[] = $secret;
-        } else {
-            $redact[] = $secret;
+        $redact = [$secret];
+        $header = match ($service) {
+            'jellyfin' => 'X-Emby-Token',
+            'plex' => 'X-Plex-Token',
+            'qbittorrent' => '',
+            default => 'X-Api-Key',
+        };
+        if ($header !== '') {
+            $headers[$header] = $secret;
         }
 
         return new Http($url, $this->transport, $headers, $redact);

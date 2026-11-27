@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 _EMPTY = {"type": "object", "properties": {}, "additionalProperties": False}
-_SERVICES = ("sonarr", "radarr", "prowlarr", "qbittorrent")
+_SERVICES = ("sonarr", "radarr", "prowlarr", "qbittorrent", "unraid", "jellyfin", "plex")
 _FILTERS = (
     "all",
     "downloading",
@@ -209,6 +209,76 @@ HOMELAB_TOOLS.extend(
 )
 
 
+for _service, _label in (("unraid", "Unraid"), ("jellyfin", "Jellyfin"), ("plex", "Plex")):
+    HOMELAB_TOOLS.extend(
+        [
+            _tool(f"{_service}_settings", _d(_service, f"Masked {_label} settings: enabled, base URL, and whether the secret is saved.")),
+            _tool(
+                f"{_service}_save_settings",
+                _d(_service, f"Save {_label} settings. Leave api_key blank to keep the saved secret.", True),
+                _settings_schema(_service),
+            ),
+            _tool(f"{_service}_test", _d(_service, f"Check that {_label} answers and return its version.", True)),
+        ]
+    )
+
+HOMELAB_TOOLS.extend(
+    [
+        _tool("unraid_status", _d("unraid", "Unraid array state, version, CPU, memory, and boot time. The official API field os.uptime is the boot time.")),
+        _tool("unraid_disks", _d("unraid", "Unraid data disks, parity disks, cache disks, temperatures, and parity-check status. Sizes are kilobytes, as the API reports them.")),
+        _tool("unraid_docker", _d("unraid", "Docker containers on Unraid: id, name, image, and state. ids contain a colon.")),
+        _tool("unraid_vms", _d("unraid", "Virtual machines on Unraid and their state.")),
+        _tool(
+            "unraid_docker_action",
+            _d("unraid", "Start, stop, or restart one Unraid container. stop and restart are refused unless confirm is true. Reboot and shutdown of the server are not in the official API.", True),
+            _obj(
+                {"id": {"type": "string"}, "action": {"type": "string", "enum": ["start", "stop", "restart"]}, "confirm": {"type": "boolean"}},
+                ["id", "action", "confirm"],
+            ),
+        ),
+        _tool(
+            "unraid_vm_action",
+            _d("unraid", "Start or stop one Unraid VM. stop is refused unless confirm is true.", True),
+            _obj(
+                {"id": {"type": "string"}, "action": {"type": "string", "enum": ["start", "stop"]}, "confirm": {"type": "boolean"}},
+                ["id", "action", "confirm"],
+            ),
+        ),
+        _tool(
+            "unraid_array",
+            _d("unraid", "Start or stop the Unraid array. STOP is refused unless confirm is true. Stopping the array does not power off the server.", True),
+            _obj(
+                {"state": {"type": "string", "enum": ["START", "STOP"]}, "confirm": {"type": "boolean"}},
+                ["state", "confirm"],
+            ),
+        ),
+        _tool("jellyfin_status", _d("jellyfin", "Jellyfin server name, version, and id.")),
+        _tool("jellyfin_sessions", _d("jellyfin", "Jellyfin sessions and what is playing now.")),
+        _tool("jellyfin_counts", _d("jellyfin", "Jellyfin library counts.")),
+        _tool("jellyfin_recent", _d("jellyfin", "Items recently added to Jellyfin.")),
+        _tool(
+            "jellyfin_search",
+            _d("jellyfin", "Search the Jellyfin library."),
+            _obj({"term": {"type": "string"}}, ["term"]),
+        ),
+        _tool("plex_status", _d("plex", "Plex server name, version, and machine id.")),
+        _tool("plex_sessions", _d("plex", "Active Plex sessions.")),
+        _tool("plex_libraries", _d("plex", "Plex library sections and item counts.")),
+        _tool("plex_recent", _d("plex", "Items recently added on Plex.")),
+        _tool(
+            "plex_search",
+            _d("plex", "Search the Plex server."),
+            _obj({"query": {"type": "string"}}, ["query"]),
+        ),
+        _tool(
+            "plex_refresh",
+            _d("plex", "Refresh one Plex library section. key comes from plex_libraries.", True),
+            _obj({"key": {"type": "string"}}, ["key"]),
+        ),
+    ]
+)
+
+
 def resolve_homelab(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str, Any] | None] | None:
     if name in {f"{service}_settings" for service in _SERVICES}:
         _empty(name, args)
@@ -301,6 +371,67 @@ def resolve_homelab(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
                 raise ValueError("category must be a string.")
             body["category"] = args["category"]
         return "POST", "/api/v1/qbittorrent/torrents/add", body
+    if name == "unraid_status":
+        _empty(name, args)
+        return "GET", "/api/v1/unraid/status", None
+    if name == "unraid_disks":
+        _empty(name, args)
+        return "GET", "/api/v1/unraid/disks", None
+    if name == "unraid_docker":
+        _empty(name, args)
+        return "GET", "/api/v1/unraid/docker", None
+    if name == "unraid_vms":
+        _empty(name, args)
+        return "GET", "/api/v1/unraid/vms", None
+    if name == "unraid_docker_action":
+        return "POST", "/api/v1/unraid/docker/" + _target(args, name, {"id", "action", "confirm"}) + "/" + _power_action(args, ("start", "stop", "restart"), ("stop", "restart")), {"confirm": args["confirm"] is True}
+    if name == "unraid_vm_action":
+        return "POST", "/api/v1/unraid/vms/" + _target(args, name, {"id", "action", "confirm"}) + "/" + _power_action(args, ("start", "stop"), ("stop",)), {"confirm": args["confirm"] is True}
+    if name == "unraid_array":
+        _only(name, args, {"state", "confirm"})
+        state = args.get("state")
+        if state not in ("START", "STOP"):
+            raise ValueError("state must be START or STOP.")
+        if not isinstance(args.get("confirm"), bool):
+            raise ValueError("confirm must be true or false.")
+        if state == "STOP" and args["confirm"] is not True:
+            raise ValueError("Stopping the array needs confirm set to true.")
+        return "POST", "/api/v1/unraid/array", {"state": state, "confirm": args["confirm"]}
+    if name == "jellyfin_status":
+        _empty(name, args)
+        return "GET", "/api/v1/jellyfin/status", None
+    if name == "jellyfin_sessions":
+        _empty(name, args)
+        return "GET", "/api/v1/jellyfin/sessions", None
+    if name == "jellyfin_counts":
+        _empty(name, args)
+        return "GET", "/api/v1/jellyfin/counts", None
+    if name == "jellyfin_recent":
+        _empty(name, args)
+        return "GET", "/api/v1/jellyfin/recent", None
+    if name == "jellyfin_search":
+        term = _text(args, "term", name)
+        return "GET", "/api/v1/jellyfin/search?term=" + quote(term, safe=""), None
+    if name == "plex_status":
+        _empty(name, args)
+        return "GET", "/api/v1/plex/status", None
+    if name == "plex_sessions":
+        _empty(name, args)
+        return "GET", "/api/v1/plex/sessions", None
+    if name == "plex_libraries":
+        _empty(name, args)
+        return "GET", "/api/v1/plex/libraries", None
+    if name == "plex_recent":
+        _empty(name, args)
+        return "GET", "/api/v1/plex/recent", None
+    if name == "plex_search":
+        query = _text(args, "query", name)
+        return "GET", "/api/v1/plex/search?query=" + quote(query, safe=""), None
+    if name == "plex_refresh":
+        key = _text(args, "key", name)
+        if not key.replace("_", "").replace("-", "").replace(".", "").isalnum():
+            raise ValueError("key must be a library section id.")
+        return "POST", "/api/v1/plex/libraries/" + quote(key, safe="") + "/refresh", {}
     if name == "qbittorrent_delete":
         torrent = _hash(args.get("hash"))
         confirm, delete_files = _destructive(name, args, {"hash", "confirm", "delete_files"})
@@ -402,6 +533,25 @@ def _query(args: dict[str, Any], keys: tuple[str, ...]) -> str:
     if not picked:
         return ""
     return "?" + urlencode(picked)
+
+
+def _target(args: dict[str, Any], name: str, allowed: set[str]) -> str:
+    _only(name, args, allowed)
+    if not isinstance(args.get("confirm"), bool):
+        raise ValueError("confirm must be true or false.")
+    value = args.get("id")
+    if not isinstance(value, str) or value.strip() == "" or "/" in value or " " in value:
+        raise ValueError("id must be the Unraid id, such as server:container.")
+    return quote(value.strip(), safe="")
+
+
+def _power_action(args: dict[str, Any], allowed: tuple[str, ...], destructive: tuple[str, ...]) -> str:
+    action = args.get("action")
+    if not isinstance(action, str) or action not in allowed:
+        raise ValueError("action must be " + " or ".join(allowed) + ".")
+    if action in destructive and args.get("confirm") is not True:
+        raise ValueError(f"{action} needs confirm set to true.")
+    return action
 
 
 def _hash(value: Any) -> str:

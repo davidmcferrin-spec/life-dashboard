@@ -30,7 +30,7 @@ final class HomelabRouteTest extends PgsqlTestCase
         $user = (int) $this->db->lastInsertId();
         $this->svc = new Services($this->db, new Clock('America/Chicago', new DateTimeImmutable('2026-11-27 16:00:00', new DateTimeZone('UTC'))));
         $scopes = [];
-        foreach (['sonarr', 'radarr', 'prowlarr', 'qbittorrent'] as $area) {
+        foreach (\Dashboard\Homelab\Catalog::ids() as $area) {
             $scopes[] = $area . ':read';
             $scopes[] = $area . ':write';
         }
@@ -58,6 +58,15 @@ final class HomelabRouteTest extends PgsqlTestCase
 
         $numeric = $this->dispatch('POST', '/api/v1/sonarr/series/12/delete');
         $this->assertJsonCode($numeric, 'confirmation_required');
+
+        $docker = $this->dispatch('POST', '/api/v1/unraid/docker/srv:abc/stop');
+        $this->assertJsonCode($docker, 'confirmation_required');
+
+        $encoded = $this->dispatch('POST', '/api/v1/unraid/docker/srv%3Aabc/restart');
+        $this->assertJsonCode($encoded, 'confirmation_required');
+
+        $started = $this->dispatch('POST', '/api/v1/unraid/vms/vm:1/start');
+        $this->assertJsonCode($started, 'homelab_unconfigured');
     }
 
     private function assertJsonCode(CapturedResponse $response, string $code): void

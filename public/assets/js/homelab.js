@@ -206,11 +206,95 @@
         })));
     }
 
+    function renderUnraid(data) {
+        var disks = ((data.disks && data.disks.disks) || []).concat((data.disks && data.disks.parities) || [], (data.disks && data.disks.caches) || []);
+        var parity = (data.disks && data.disks.parity) || {};
+        var containers = (data.docker && data.docker.items) || [];
+        var vms = (data.vms && data.vms.items) || [];
+        var status = data.status || {};
+        var mem = status.memory_percent == null ? '' : Math.round(status.memory_percent) + '%';
+        var cpu = status.cpu_percent == null ? '' : Math.round(status.cpu_percent) + '%';
+        return block('Host', '<p class="text-sm">' + esc(status.cpu || '') + ' · CPU ' + esc(cpu) + ' · memory ' + esc(mem) + '</p>')
+            + block('Disks', '<p class="text-xs text-muted">Parity ' + esc(parity.status || '') + '</p>' + table([
+                { key: 'name', label: 'Disk' },
+                { key: 'temp', label: 'Temp', hide: true },
+                { key: 'status', label: 'Status' }
+            ], disks.map(function (row) {
+                return { name: esc(row.name || row.device), temp: row.temp_c == null ? '' : esc(row.temp_c + ' C'), status: esc(row.status) };
+            })))
+            + block('Containers', table([
+                { key: 'name', label: 'Name' },
+                { key: 'state', label: 'State' },
+                { key: 'actions', label: '' }
+            ], containers.map(function (row) {
+                var buttons = '<span class="homelab-actions">'
+                    + '<button type="button" class="btn text-xs" data-unraid="start" data-kind="docker" data-id="' + esc(row.id) + '">Start</button>'
+                    + '<button type="button" class="btn text-xs" data-unraid="stop" data-kind="docker" data-id="' + esc(row.id) + '" data-label="' + esc(row.name) + '">Stop</button>'
+                    + '<button type="button" class="btn text-xs" data-unraid="restart" data-kind="docker" data-id="' + esc(row.id) + '" data-label="' + esc(row.name) + '">Restart</button>'
+                    + '</span>';
+                return { name: esc(row.name), state: esc(row.state), actions: buttons };
+            })))
+            + block('VMs', table([
+                { key: 'name', label: 'Name' },
+                { key: 'state', label: 'State' },
+                { key: 'actions', label: '' }
+            ], vms.map(function (row) {
+                var buttons = '<span class="homelab-actions">'
+                    + '<button type="button" class="btn text-xs" data-unraid="start" data-kind="vm" data-id="' + esc(row.id) + '">Start</button>'
+                    + '<button type="button" class="btn text-xs" data-unraid="stop" data-kind="vm" data-id="' + esc(row.id) + '" data-label="' + esc(row.name) + '">Stop</button>'
+                    + '</span>';
+                return { name: esc(row.name), state: esc(row.state), actions: buttons };
+            })));
+    }
+
+    function renderJellyfin(data) {
+        var sessions = (data.sessions && data.sessions.items) || [];
+        var recent = (data.recent && data.recent.items) || [];
+        var counts = data.counts || {};
+        return block('Now playing', table([
+            { key: 'user', label: 'User' },
+            { key: 'title', label: 'Title' },
+            { key: 'device', label: 'Device', hide: true }
+        ], sessions.filter(function (row) { return row.playing; }).map(function (row) {
+            return { user: esc(row.user), title: esc(row.now_playing), device: esc(row.device) };
+        }))) + block('Library', '<p class="text-sm">Movies ' + esc(counts.movie || 0) + ' · Series ' + esc(counts.series || 0) + ' · Episodes ' + esc(counts.episode || 0) + '</p>')
+            + block('Recently added', table([{ key: 'name', label: 'Title' }, { key: 'type', label: 'Type' }], recent.map(function (row) {
+                return { name: esc(row.name), type: esc(row.type) };
+            })));
+    }
+
+    function renderPlex(data) {
+        var sessions = (data.sessions && data.sessions.items) || [];
+        var recent = (data.recent && data.recent.items) || [];
+        var libraries = (data.libraries && data.libraries.items) || [];
+        return block('Sessions', table([
+            { key: 'title', label: 'Title' },
+            { key: 'user', label: 'User' }
+        ], sessions.map(function (row) {
+            return { title: esc(row.title), user: esc(row.user) };
+        }))) + block('Libraries', table([
+            { key: 'title', label: 'Section' },
+            { key: 'count', label: 'Count', hide: true },
+            { key: 'actions', label: '' }
+        ], libraries.map(function (row) {
+            return {
+                title: esc(row.title),
+                count: esc(row.count == null ? '' : row.count),
+                actions: '<button type="button" class="btn text-xs" data-plex-refresh="' + esc(row.key) + '">Refresh</button>'
+            };
+        }))) + block('Recently added', table([{ key: 'title', label: 'Title' }, { key: 'type', label: 'Type' }], recent.map(function (row) {
+            return { title: esc(row.title), type: esc(row.type) };
+        })));
+    }
+
     var reads = {
         sonarr: ['status', 'queue', 'calendar', 'missing', 'library', 'health'],
         radarr: ['status', 'queue', 'calendar', 'missing', 'library', 'health'],
         prowlarr: ['status', 'indexers', 'health', 'apps'],
-        qbittorrent: ['status', 'torrents']
+        qbittorrent: ['status', 'torrents'],
+        unraid: ['status', 'disks', 'docker', 'vms'],
+        jellyfin: ['status', 'sessions', 'counts', 'recent'],
+        plex: ['status', 'sessions', 'libraries', 'recent']
     };
 
     function pathFor(service, part) {
@@ -218,6 +302,13 @@
             return '/api/v1/' + service + '/' + (service === 'sonarr' ? 'series' : 'movies');
         }
         if (part === 'torrents') return '/api/v1/qbittorrent/torrents';
+        if (part === 'docker') return '/api/v1/unraid/docker';
+        if (part === 'vms') return '/api/v1/unraid/vms';
+        if (part === 'disks') return '/api/v1/unraid/disks';
+        if (part === 'sessions') return '/api/v1/' + service + '/sessions';
+        if (part === 'counts') return '/api/v1/jellyfin/counts';
+        if (part === 'recent') return '/api/v1/' + service + '/recent';
+        if (part === 'libraries') return '/api/v1/plex/libraries';
         if (part === 'indexers') return '/api/v1/prowlarr/indexers';
         if (part === 'apps') return '/api/v1/prowlarr/apps';
         return '/api/v1/' + service + '/' + part;
@@ -242,6 +333,15 @@
         if (service === 'qbittorrent') {
             statusEl.textContent = (status.version || 'connected') + ' · down ' + bytes(status.download_speed) + '/s · up ' + bytes(status.upload_speed) + '/s';
             body.innerHTML = renderQbit(data);
+        } else if (service === 'unraid') {
+            statusEl.textContent = (status.hostname || 'Unraid') + ' ' + (status.version || '') + (status.array ? ' · array ' + status.array : '');
+            body.innerHTML = renderUnraid(data);
+        } else if (service === 'jellyfin') {
+            statusEl.textContent = (status.name || 'Jellyfin') + ' ' + (status.version || '');
+            body.innerHTML = renderJellyfin(data);
+        } else if (service === 'plex') {
+            statusEl.textContent = (status.name || 'Plex') + ' ' + (status.version || '');
+            body.innerHTML = renderPlex(data);
         } else if (service === 'prowlarr') {
             statusEl.textContent = (status.app || 'Prowlarr') + ' ' + (status.version || '');
             body.innerHTML = renderProwlarr(data);
@@ -330,6 +430,34 @@
         }
     }
 
+    async function runUnraid(button) {
+        var action = button.getAttribute('data-unraid');
+        var kind = button.getAttribute('data-kind');
+        var id = button.getAttribute('data-id');
+        var panel = button.closest('[data-panel]');
+        var body = {};
+        try {
+            if (action === 'stop' || action === 'restart') {
+                var noun = kind === 'vm' ? 'VM' : 'container';
+                var ok = await ask(action === 'restart' ? 'Restart' : 'Stop', (action === 'restart' ? 'Restart ' : 'Stop ') + (button.getAttribute('data-label') || noun) + '?', action === 'restart' ? 'Restart' : 'Stop');
+                if (ok === null) {
+                    noteOn(button, 'Confirmation is not available.');
+                    return;
+                }
+                if (ok !== true) {
+                    noteOn(button, 'Not sent.');
+                    return;
+                }
+                body = { confirm: true };
+            }
+            var path = kind === 'vm' ? '/api/v1/unraid/vms/' : '/api/v1/unraid/docker/';
+            await postJson(path + encodeURIComponent(id) + '/' + action, body);
+            if (panel) loadPanel(panel);
+        } catch (err) {
+            noteOn(button, err.message || 'Unraid did not answer.');
+        }
+    }
+
     async function runQbit(qbit) {
         var hash = qbit.getAttribute('data-hash');
         var verb = qbit.getAttribute('data-qbit');
@@ -411,9 +539,25 @@
                 return;
             }
             var qbit = event.target.closest('[data-qbit]');
-            if (!qbit) return;
+            if (qbit) {
+                event.preventDefault();
+                runQbit(qbit);
+                return;
+            }
+            var unraid = event.target.closest('[data-unraid]');
+            if (unraid) {
+                event.preventDefault();
+                runUnraid(unraid);
+                return;
+            }
+            var refresh = event.target.closest('[data-plex-refresh]');
+            if (!refresh) return;
             event.preventDefault();
-            runQbit(qbit);
+            postJson('/api/v1/plex/libraries/' + encodeURIComponent(refresh.getAttribute('data-plex-refresh')) + '/refresh', {}).then(function () {
+                noteOn(refresh, 'Library refresh started.');
+            }).catch(function (err) {
+                noteOn(refresh, err.message || 'Plex did not answer.');
+            });
         });
         page.querySelectorAll('[data-add]').forEach(function (form) {
             form.addEventListener('submit', function (event) {
@@ -459,6 +603,26 @@
                 });
             });
         }
+        function wireSearch(root, formSel, url, field, hitsSel) {
+            var form = root.querySelector(formSel);
+            if (!form) return;
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                var value = form.querySelector('[name="' + field + '"]').value;
+                getJson(url + encodeURIComponent(value)).then(function (payload) {
+                    form.querySelector(hitsSel).innerHTML = table([
+                        { key: 'title', label: 'Title' },
+                        { key: 'type', label: 'Type' }
+                    ], (payload.items || []).map(function (row) {
+                        return { title: esc(row.name || row.title), type: esc(row.type) };
+                    }));
+                }).catch(function (err) {
+                    form.querySelector(hitsSel).textContent = err.message || '';
+                });
+            });
+        }
+        wireSearch(page, '[data-jellyfin-search]', '/api/v1/jellyfin/search?term=', 'term', '[data-jellyfin-hits]');
+        wireSearch(page, '[data-plex-search]', '/api/v1/plex/search?query=', 'query', '[data-plex-hits]');
         var addTorrent = page.querySelector('[data-qbit-add]');
         if (addTorrent) {
             addTorrent.addEventListener('submit', function (event) {

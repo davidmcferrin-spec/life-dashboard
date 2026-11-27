@@ -48,6 +48,30 @@ final class Catalog
             'username' => true,
             'where' => 'qBittorrent → Tools → Options → Web UI. Use the WebUI username and password, and the URL including the port (often 8080). The dashboard logs in with that pair and keeps the cookie for the request. There is no API key.',
         ],
+        'unraid' => [
+            'label' => 'Unraid',
+            'icon' => 'server',
+            'secret' => 'api_key',
+            'secret_label' => 'API key',
+            'username' => false,
+            'where' => 'Unraid 7 → Settings → Management Access → API Keys. Create a key. The base URL is the server origin, often http://tower. The dashboard calls the official GraphQL API at /graphql with the x-api-key header. Reboot and shutdown are not in that API.',
+        ],
+        'jellyfin' => [
+            'label' => 'Jellyfin',
+            'icon' => 'play',
+            'secret' => 'api_key',
+            'secret_label' => 'API key',
+            'username' => false,
+            'where' => 'Jellyfin → Dashboard → API Keys. The base URL includes the port, often http://tower:8096. The dashboard sends the key as X-Emby-Token.',
+        ],
+        'plex' => [
+            'label' => 'Plex',
+            'icon' => 'play-square',
+            'secret' => 'api_key',
+            'secret_label' => 'API token',
+            'username' => false,
+            'where' => 'Plex Web → Settings → Account, then open an XML page for this server (or watch a request in the browser network panel). Copy the X-Plex-Token value. The base URL is the server, often http://tower:32400.',
+        ],
     ];
 
     /**

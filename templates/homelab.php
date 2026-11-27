@@ -13,7 +13,7 @@ $homelabJson = json_encode($homelabServices, JSON_THROW_ON_ERROR | JSON_HEX_TAG 
 <?php require __DIR__ . '/partials/app-shell-open.php'; ?>
 <main class="dash-main homelab-page py-6 platform-page">
     <?php $pageEyebrow = 'LAN'; $pageHeading = 'Homelab'; require __DIR__ . '/partials/page-heading.php'; ?>
-    <p class="platform-lead">Sonarr, Radarr, Prowlarr, and qBittorrent on the Unraid server. Deletes ask before they run. File deletes say so in the question.</p>
+    <p class="platform-lead">Sonarr, Radarr, Prowlarr, qBittorrent, Unraid, Jellyfin, and Plex. Deletes, and anything that stops a container, a VM, or the array, ask before they run.</p>
     <div data-homelab="page">
         <div class="homelab-tabs" role="tablist">
             <?php $first = true; foreach ($homelabServices as $service => $meta): ?>
@@ -62,7 +62,29 @@ $homelabJson = json_encode($homelabServices, JSON_THROW_ON_ERROR | JSON_HEX_TAG 
                 </div>
                 <div data-prowlarr-hits></div>
             </form>
-            <?php else: ?>
+            <?php elseif ($service === 'jellyfin'): ?>
+            <form class="homelab-add platform-card" data-jellyfin-search>
+                <h3 class="section-title">Search</h3>
+                <div class="homelab-add-grid">
+                    <label class="settings-field">Title
+                        <input class="input" name="term" autocomplete="off">
+                    </label>
+                    <button type="submit" class="btn">Search</button>
+                </div>
+                <div data-jellyfin-hits></div>
+            </form>
+            <?php elseif ($service === 'plex'): ?>
+            <form class="homelab-add platform-card" data-plex-search>
+                <h3 class="section-title">Search</h3>
+                <div class="homelab-add-grid">
+                    <label class="settings-field">Title
+                        <input class="input" name="query" autocomplete="off">
+                    </label>
+                    <button type="submit" class="btn">Search</button>
+                </div>
+                <div data-plex-hits></div>
+            </form>
+            <?php elseif ($service === 'qbittorrent'): ?>
             <form class="homelab-add platform-card" data-qbit-add>
                 <h3 class="section-title">Add a torrent</h3>
                 <div class="homelab-add-grid">

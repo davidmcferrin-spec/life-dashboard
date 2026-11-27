@@ -3784,7 +3784,7 @@ OAUTH_AREAS = (
     "trips", "videos", "findings", "wakehub",
 )
 # Homelab scopes are explicit. read, write, and * do not grant them.
-HOMELAB_AREAS = ("sonarr", "radarr", "prowlarr", "qbittorrent")
+HOMELAB_AREAS = ("sonarr", "radarr", "prowlarr", "qbittorrent", "unraid", "jellyfin", "plex")
 
 
 class RpcReply(dict[str, Any]):

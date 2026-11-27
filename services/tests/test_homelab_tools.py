@@ -73,3 +73,27 @@ def test_destructive_homelab_tools_require_confirm():
     assert path == "/api/v1/sonarr/series/9/delete"
     assert body["confirm"] is True
     assert body["delete_files"] is False
+
+
+def test_unraid_power_requires_confirm_and_encodes_ids():
+    try:
+        resolve("unraid_docker_action", {"id": "srv:abc", "action": "stop", "confirm": False})
+    except ValueError as exc:
+        assert "confirm" in str(exc)
+    else:
+        raise AssertionError("stop was sent")
+    try:
+        resolve("unraid_array", {"state": "STOP", "confirm": False})
+    except ValueError as exc:
+        assert "confirm" in str(exc)
+    else:
+        raise AssertionError("array stop was sent")
+    method, path, body = resolve("unraid_docker_action", {"id": "srv:abc", "action": "restart", "confirm": True})
+    assert method == "POST"
+    assert path == "/api/v1/unraid/docker/srv%3Aabc/restart"
+    assert body["confirm"] is True
+    method, path, body = resolve("unraid_vm_action", {"id": "vm:1", "action": "start", "confirm": False})
+    assert path == "/api/v1/unraid/vms/vm%3A1/start"
+    assert body["confirm"] is False
+    assert resolve("plex_refresh", {"key": "2"}) == ("POST", "/api/v1/plex/libraries/2/refresh", {})
+    assert "unraid:write" in __import__("lifedash.mcp_server", fromlist=["oauth_scopes"]).oauth_scopes()

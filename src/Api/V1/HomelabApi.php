@@ -8,6 +8,7 @@ use Dashboard\Homelab\Catalog;
 use Dashboard\Homelab\HomelabService;
 use Dashboard\Homelab\Qbit;
 use Dashboard\Homelab\Servarr;
+use Dashboard\Homelab\Unraid;
 use Dashboard\Router\Router;
 use Dashboard\Support\ValidationException;
 use Dashboard\Tracking\Services;
@@ -32,6 +33,9 @@ final class HomelabApi
         $this->servarr($r, 'radarr');
         $this->prowlarr($r);
         $this->qbit($r);
+        $this->unraid($r);
+        $this->jellyfin($r);
+        $this->plex($r);
     }
 
     private function settings(Router $r, string $service): void
@@ -155,6 +159,59 @@ final class HomelabApi
                 $actor->tool,
                 $this->stamp()
             );
+        }, 200, true));
+    }
+
+    private function unraid(Router $r): void
+    {
+        $r->get('/api/v1/unraid/status', fn () => $this->run(fn (int $u): array => $this->hub()->unraidStatus($u)));
+        $r->get('/api/v1/unraid/disks', fn () => $this->run(fn (int $u): array => $this->hub()->unraidDisks($u)));
+        $r->get('/api/v1/unraid/docker', fn () => $this->run(fn (int $u): array => $this->hub()->unraidDocker($u)));
+        $r->get('/api/v1/unraid/vms', fn () => $this->run(fn (int $u): array => $this->hub()->unraidVms($u)));
+        foreach (['start', 'stop', 'restart'] as $action) {
+            $r->post('/api/v1/unraid/docker/{id}/' . $action, fn (array $p) => $this->run(function (int $u) use ($p, $action): array {
+                $body = $this->runner->body();
+                $actor = $this->runner->actor();
+
+                return $this->hub()->unraidDockerAct($u, $action, Unraid::target(self::segment($p, 'id')), self::confirm($body), $actor->kind, $actor->tool, $this->stamp());
+            }, 200, true));
+        }
+        foreach (['start', 'stop'] as $action) {
+            $r->post('/api/v1/unraid/vms/{id}/' . $action, fn (array $p) => $this->run(function (int $u) use ($p, $action): array {
+                $body = $this->runner->body();
+                $actor = $this->runner->actor();
+
+                return $this->hub()->unraidVmAct($u, $action, Unraid::target(self::segment($p, 'id')), self::confirm($body), $actor->kind, $actor->tool, $this->stamp());
+            }, 200, true));
+        }
+        $r->post('/api/v1/unraid/array', fn () => $this->run(function (int $u): array {
+            $body = $this->runner->body();
+            $actor = $this->runner->actor();
+
+            return $this->hub()->unraidArray($u, (string) ($body['state'] ?? ''), self::confirm($body), $actor->kind, $actor->tool, $this->stamp());
+        }, 200, true));
+    }
+
+    private function jellyfin(Router $r): void
+    {
+        $r->get('/api/v1/jellyfin/status', fn () => $this->run(fn (int $u): array => $this->hub()->jellyfinStatus($u)));
+        $r->get('/api/v1/jellyfin/sessions', fn () => $this->run(fn (int $u): array => $this->hub()->jellyfinSessions($u)));
+        $r->get('/api/v1/jellyfin/counts', fn () => $this->run(fn (int $u): array => $this->hub()->jellyfinCounts($u)));
+        $r->get('/api/v1/jellyfin/recent', fn () => $this->run(fn (int $u): array => $this->hub()->jellyfinRecent($u)));
+        $r->get('/api/v1/jellyfin/search', fn () => $this->run(fn (int $u): array => $this->hub()->jellyfinSearch($u, (string) ($_GET['term'] ?? ''))));
+    }
+
+    private function plex(Router $r): void
+    {
+        $r->get('/api/v1/plex/status', fn () => $this->run(fn (int $u): array => $this->hub()->plexStatus($u)));
+        $r->get('/api/v1/plex/sessions', fn () => $this->run(fn (int $u): array => $this->hub()->plexSessions($u)));
+        $r->get('/api/v1/plex/libraries', fn () => $this->run(fn (int $u): array => $this->hub()->plexLibraries($u)));
+        $r->get('/api/v1/plex/recent', fn () => $this->run(fn (int $u): array => $this->hub()->plexRecent($u)));
+        $r->get('/api/v1/plex/search', fn () => $this->run(fn (int $u): array => $this->hub()->plexSearch($u, (string) ($_GET['query'] ?? ''))));
+        $r->post('/api/v1/plex/libraries/{key}/refresh', fn (array $p) => $this->run(function (int $u) use ($p): array {
+            $actor = $this->runner->actor();
+
+            return $this->hub()->plexRefresh($u, self::segment($p, 'key'), $actor->kind, $actor->tool, $this->stamp());
         }, 200, true));
     }
 

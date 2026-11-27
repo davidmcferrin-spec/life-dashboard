@@ -63,7 +63,7 @@ final class Scope
      * Homelab apps. Not implied by read, write, "*", or a full core token.
      * An existing key stays as it was until someone adds these on AI connections.
      */
-    public const HOMELAB = ['sonarr', 'radarr', 'prowlarr', 'qbittorrent'];
+    public const HOMELAB = ['sonarr', 'radarr', 'prowlarr', 'qbittorrent', 'unraid', 'jellyfin', 'plex'];
 
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
@@ -92,6 +92,9 @@ final class Scope
         'radarr',
         'prowlarr',
         'qbittorrent',
+        'unraid',
+        'jellyfin',
+        'plex',
         'deploy',
     ];
 
