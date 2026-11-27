@@ -101,13 +101,15 @@ class Router
 
     private function currentPath(): string
     {
-        $uri  = $_SERVER['REQUEST_URI'] ?? '/';
-        $path = parse_url($uri, PHP_URL_PATH) ?? '/';
-        return '/' . trim($path, '/') ?: '/';
+        return \Dashboard\Support\ApiFault::path();
     }
 
     private function notFound(): void
     {
+        if (\Dashboard\Support\ApiFault::isApi()) {
+            \Dashboard\Support\ApiFault::json(404, 'Not found.');
+            return;
+        }
         http_response_code(404);
         $pageTitle = 'Page not found';
         $themePref = 'jarvis';

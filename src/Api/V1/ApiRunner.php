@@ -194,8 +194,7 @@ final class ApiRunner
         $this->principalKind = null;
         $this->principalId = null;
         $this->editorName = null;
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-        $path = is_string($path) ? $path : '/';
+        $path = \Dashboard\Support\ApiFault::path();
         $bearer = self::bearerToken();
         $tool = self::toolHeader();
 
@@ -527,9 +526,7 @@ final class ApiRunner
 
     public static function safePath(): string
     {
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-        $path = is_string($path) ? $path : '/';
-        return mb_substr(AccountNumberGuard::redact($path) ?? $path, 0, 160);
+        return mb_substr(AccountNumberGuard::redact(\Dashboard\Support\ApiFault::path()) ?? \Dashboard\Support\ApiFault::path(), 0, 160);
     }
 
     /**

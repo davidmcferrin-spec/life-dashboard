@@ -87,6 +87,11 @@ set_exception_handler(function (\Throwable $e) use ($debug): void {
         exit(1);
     }
 
+    if (\Dashboard\Support\ApiFault::isApi()) {
+        \Dashboard\Support\ApiFault::json(500, 'Server error.');
+        return;
+    }
+
     if ($debug) {
         http_response_code(500);
         echo '<pre>' . htmlspecialchars($msg) . "\n\n" . htmlspecialchars($e->getTraceAsString()) . '</pre>';
@@ -243,7 +248,7 @@ function validateCsrf(): void
 
     $origin = \Dashboard\Support\RequestOrigin::rejectMessage();
     if ($origin !== null || $expected === '' || !hash_equals($expected, $token)) {
-        $path   = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+        $path   = \Dashboard\Support\ApiFault::path();
         $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
         $message = $origin ?? 'Invalid CSRF token. Refresh the page and try again.';
 

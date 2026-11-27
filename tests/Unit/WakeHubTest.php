@@ -10,6 +10,9 @@ use Dashboard\Audit\AgentPresence;
 use Dashboard\Audit\AuditLog;
 use Dashboard\Config;
 use Dashboard\DB\Database;
+use Dashboard\Router\Router;
+use Dashboard\Support\ApiFault;
+use Dashboard\Support\CapturedResponse;
 use Dashboard\Support\ValidationException;
 use Dashboard\WakeHub\WakeHubActions;
 use Dashboard\WakeHub\WakeHubClient;
@@ -277,6 +280,89 @@ final class WakeHubTest extends TestCase
             self::assertArrayHasKey('sent', $e->extra);
             self::assertArrayHasKey('reachable', $e->extra);
             self::assertArrayHasKey('elapsed_s', $e->extra);
+        }
+    }
+
+    public function testWakeSendsAnEmptyObject(): void
+    {
+        $body = null;
+        $client = new WakeHubClient('http://hub.lan:9000', 'wake-token-not-in-the-clear-99', function (string $method, string $url, ?string $sent) use (&$body): array {
+            $body = $sent;
+            return ['status' => 200, 'body' => '{"sent":true,"reachable":false,"elapsed_s":1,"name":"Home Desktop"}'];
+        });
+        $result = $client->wake(WakeHubTarget::parse('device:4'));
+        self::assertSame('{}', $body);
+        self::assertTrue($result['sent']);
+        self::assertFalse($result['reachable']);
+        self::assertSame(1, $result['elapsed_s']);
+    }
+
+    public function testRouterAcceptsCompositeTargets(): void
+    {
+        $saved = [
+            'REQUEST_METHOD' => $_SERVER['REQUEST_METHOD'] ?? null,
+            'REQUEST_URI' => $_SERVER['REQUEST_URI'] ?? null,
+        ];
+        $cases = [
+            ['GET', '/api/v1/wakehub/devices/amt:2/status', 'amt:2'],
+            ['GET', '/api/v1/wakehub/devices/amt%3A2/status', 'amt%3A2'],
+            ['POST', '/api/v1/wakehub/devices/pdu:1:3/power', 'pdu:1:3'],
+            ['POST', '/api/v1/wakehub/devices/device:4/wake', 'device:4'],
+            ['GET', '/api/v1/wakehub/devices/2/status', '2'],
+        ];
+        try {
+            foreach ($cases as [$method, $uri, $id]) {
+                $_SERVER['REQUEST_METHOD'] = $method;
+                $_SERVER['REQUEST_URI'] = $uri;
+                $seen = null;
+                $router = new Router();
+                $router->get('/api/v1/wakehub/devices/{id}/status', function (array $params) use (&$seen): void {
+                    $seen = $params['id'];
+                });
+                $router->post('/api/v1/wakehub/devices/{id}/power', function (array $params) use (&$seen): void {
+                    $seen = $params['id'];
+                });
+                $router->post('/api/v1/wakehub/devices/{id}/wake', function (array $params) use (&$seen): void {
+                    $seen = $params['id'];
+                });
+                $router->dispatch();
+                self::assertSame($id, $seen, $uri);
+            }
+        } finally {
+            foreach ($saved as $key => $value) {
+                if ($value === null) {
+                    unset($_SERVER[$key]);
+                } else {
+                    $_SERVER[$key] = $value;
+                }
+            }
+        }
+    }
+
+    public function testApiFailuresAreJson(): void
+    {
+        $saved = $_SERVER['REQUEST_URI'] ?? null;
+        $_SERVER['REQUEST_URI'] = '/api/v1/wakehub/devices/amt:2/status';
+        $capture = getenv('LIFEDASH_TEST_CAPTURE');
+        putenv('LIFEDASH_TEST_CAPTURE=1');
+        try {
+            self::assertTrue(ApiFault::isApi());
+            ApiFault::json(500, 'Server error.');
+            self::fail('expected a JSON error');
+        } catch (CapturedResponse $response) {
+            self::assertSame(500, $response->status);
+            self::assertSame(['error' => 'Server error.'], $response->payload);
+        } finally {
+            if ($saved === null) {
+                unset($_SERVER['REQUEST_URI']);
+            } else {
+                $_SERVER['REQUEST_URI'] = $saved;
+            }
+            if ($capture === false) {
+                putenv('LIFEDASH_TEST_CAPTURE');
+            } else {
+                putenv('LIFEDASH_TEST_CAPTURE=' . $capture);
+            }
         }
     }
 
