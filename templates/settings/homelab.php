@@ -73,6 +73,12 @@ require __DIR__ . '/_shell-top.php';
                             <p class="text-xs text-muted">qBittorrent 5.2.0 or newer. Preferences, Web UI, API Key. Sent as Authorization: Bearer.</p>
                         </div>
                         <?php else: ?>
+                        <?php if ($service === 'jellyfin'): ?>
+                        <div class="settings-field">
+                            <label class="settings-label" for="homelab-jellyfin-user">Jellyfin user</label>
+                            <input class="input" id="homelab-jellyfin-user" name="user" autocomplete="off" spellcheck="false" placeholder="Optional. Blank uses the first administrator." value="<?= e((string) ($row['user'] ?? '')) ?>">
+                        </div>
+                        <?php endif; ?>
                         <?php if (array_key_exists('username', $row)): ?>
                         <div class="settings-field">
                             <label class="settings-label" for="homelab-<?= e((string) $service) ?>-user">Username</label>

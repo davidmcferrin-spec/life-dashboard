@@ -53,6 +53,9 @@ def _settings_schema(service: str) -> dict[str, Any]:
         props["username"] = {"type": "string"}
         props["password"] = {"type": "string"}
         props["token"] = {"type": "string"}
+    elif service == "jellyfin":
+        props["api_key"] = {"type": "string"}
+        props["user"] = {"type": "string"}
     else:
         props["api_key"] = {"type": "string"}
     return _obj(props)
@@ -217,7 +220,15 @@ for _service, _label in (("unraid", "Unraid"), ("jellyfin", "Jellyfin"), ("plex"
             _tool(f"{_service}_settings", _d(_service, f"Masked {_label} settings: enabled, base URL, and whether the secret is saved.")),
             _tool(
                 f"{_service}_save_settings",
-                _d(_service, f"Save {_label} settings. Leave api_key blank to keep the saved secret.", True),
+                _d(
+                    _service,
+                    (
+                        "Save Jellyfin settings. user is optional and matches a name from /Users; blank uses the first administrator. A trailing /web on the base URL is removed. Leave api_key blank to keep the saved secret."
+                        if _service == "jellyfin"
+                        else f"Save {_label} settings. Leave api_key blank to keep the saved secret."
+                    ),
+                    True,
+                ),
                 _settings_schema(_service),
             ),
             _tool(f"{_service}_test", _d(_service, f"Check that {_label} answers and return its version.", True)),
@@ -445,7 +456,12 @@ def resolve_homelab(name: str, args: dict[str, Any]) -> tuple[str, str, dict[str
 
 
 def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
-    allowed = {"enabled", "base_url", "auth", "username", "password", "token"} if service == "qbittorrent" else {"enabled", "base_url", "api_key"}
+    if service == "qbittorrent":
+        allowed = {"enabled", "base_url", "auth", "username", "password", "token"}
+    elif service == "jellyfin":
+        allowed = {"enabled", "base_url", "api_key", "user"}
+    else:
+        allowed = {"enabled", "base_url", "api_key"}
     _only(f"{service}_save_settings", args, allowed)
     body: dict[str, Any] = {}
     if "enabled" in args:
@@ -470,6 +486,10 @@ def _settings_body(service: str, args: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(args["api_key"], str):
             raise ValueError("api_key must be a string.")
         body["api_key"] = args["api_key"]
+    if service == "jellyfin" and "user" in args:
+        if not isinstance(args["user"], str):
+            raise ValueError("user must be a string.")
+        body["user"] = args["user"]
     return body
 
 

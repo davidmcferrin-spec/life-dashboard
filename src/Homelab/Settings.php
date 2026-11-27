@@ -36,6 +36,9 @@ final class Settings
         if ($service === 'qbittorrent') {
             return $this->saveQbit($userId, $input, $all, $current, $enabled, $url);
         }
+        if ($service === 'jellyfin') {
+            $url = self::withoutWebUi($url);
+        }
         $secretName = $meta['secret'];
         $secret = array_key_exists($secretName, $input) ? (string) $input[$secretName] : '';
         if (trim($secret) === '') {
@@ -48,6 +51,15 @@ final class Settings
             'base_url' => $url,
             $secretName => $secret,
         ];
+        if ($service === 'jellyfin') {
+            $user = array_key_exists('user', $input)
+                ? trim((string) $input['user'])
+                : trim((string) ($current['user'] ?? ''));
+            if (strlen($user) > 80 || str_contains($user, "\n")) {
+                throw ValidationException::withFields(['user' => 'That Jellyfin user is not valid.']);
+            }
+            $row['user'] = $user;
+        }
         if ($meta['username']) {
             $username = array_key_exists('username', $input)
                 ? trim((string) $input['username'])
@@ -113,6 +125,9 @@ final class Settings
         ];
         if ($meta['username']) {
             $view['username'] = trim((string) ($stored['username'] ?? ''));
+        }
+        if ($service === 'jellyfin') {
+            $view['user'] = trim((string) ($stored['user'] ?? ''));
         }
         if ($service === 'qbittorrent') {
             $mode = self::qbitAuth(is_array($stored) ? $stored : []);
@@ -265,6 +280,30 @@ final class Settings
         }
 
         return $origin . $path;
+    }
+
+    /** The web client lives at /web. That path is not the API root. */
+    public static function withoutWebUi(string $url): string
+    {
+        $parts = parse_url($url);
+        if (!is_array($parts) || !isset($parts['host'])) {
+            return $url;
+        }
+        $path = (string) ($parts['path'] ?? '');
+        $stripped = preg_replace('#/web(?:/index\.html)?$#i', '', $path);
+        if (!is_string($stripped)) {
+            return $url;
+        }
+        $stripped = rtrim($stripped, '/');
+        if ($stripped === $path) {
+            return $url;
+        }
+        $origin = ($parts['scheme'] ?? 'http') . '://' . $parts['host'];
+        if (isset($parts['port'])) {
+            $origin .= ':' . $parts['port'];
+        }
+
+        return $origin . $stripped;
     }
 
     public static function secret(string $raw, string $field, string $label): string

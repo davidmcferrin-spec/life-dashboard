@@ -118,6 +118,12 @@ def test_qbittorrent_settings_accept_each_auth_mode():
     )
     assert body["auth"] == "password"
     assert body["username"] == "david"
+    method, path, body = resolve(
+        "jellyfin_save_settings",
+        {"enabled": True, "base_url": "http://tower:8096", "user": "Ada"},
+    )
+    assert path == "/api/v1/jellyfin/settings"
+    assert body["user"] == "Ada"
     try:
         resolve("qbittorrent_save_settings", {"auth": "cookie"})
     except ValueError as exc:

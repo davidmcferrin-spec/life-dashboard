@@ -291,21 +291,15 @@ final class Qbit
             throw $this->wrap($e);
         }
         $body = trim($response['body']);
-        if (strcasecmp($body, 'Ok.') !== 0) {
-            throw new HomelabException(
-                self::failure($this->mode, $response['status'], $body !== '' ? $body : 'Fails.'),
-                'homelab_unauthorized',
-                502,
-                ['upstream_status' => $response['status'], 'auth' => $this->mode]
-            );
-        }
+        $status = $response['status'];
         $cookie = Http::sessionCookie($response['headers']);
-        if ($cookie === '') {
+        // Newer qBittorrent answers 204 with an empty body and the session cookie. Older builds answer 200 Ok.
+        if (strcasecmp($body, 'Fails.') === 0 || $status === 401 || $status === 403 || $cookie === '' || $status < 200 || $status >= 300) {
             throw new HomelabException(
-                self::failure($this->mode, $response['status'], 'no session cookie'),
+                self::failure($this->mode, $status, $body !== '' ? $body : ($cookie === '' ? 'no session cookie' : 'Fails.'), '/api/v2/auth/login'),
                 'homelab_unauthorized',
                 502,
-                ['upstream_status' => $response['status'], 'auth' => $this->mode]
+                ['upstream_status' => $status, 'path' => '/api/v2/auth/login', 'auth' => $this->mode]
             );
         }
         $this->http->withCookie($cookie);
@@ -325,23 +319,30 @@ final class Qbit
         }
 
         return new HomelabException(
-            self::failure($this->mode, $status, $e->getMessage()),
+            self::failure($this->mode, $status, $e->getMessage(), (string) ($e->extra['path'] ?? '')),
             $e->codeName,
             $e->status,
             $e->extra + ['auth' => $this->mode]
         );
     }
 
-    public static function failure(string $mode, int $status, string $returned): string
+    public static function failure(string $mode, int $status, string $returned, string $path = ''): string
     {
         $phrase = match ($status) {
             200 => 'OK',
+            204 => 'No Content',
             401 => 'Unauthorized',
             403 => 'Forbidden',
             404 => 'Not Found',
             default => 'HTTP ' . $status,
         };
         $detail = trim($returned);
+        if (preg_match('/^HTTP ' . $status . ' (\S+)(?:: (.*))?$/s', $detail, $match) === 1) {
+            if ($path === '') {
+                $path = $match[1];
+            }
+            $detail = trim((string) ($match[2] ?? ''));
+        }
         $generic = $detail === ''
             || strcasecmp($detail, 'Forbidden') === 0
             || strcasecmp($detail, 'Unauthorized') === 0
@@ -349,7 +350,8 @@ final class Qbit
         if ($generic && $status === 403 && $mode === 'none') {
             $detail = 'login required or this server\'s IP is not in the bypass whitelist';
         }
+        $where = $path !== '' ? ' for ' . $path : '';
 
-        return 'qBittorrent (auth: ' . $mode . ') returned ' . $status . ' ' . $phrase . ($detail !== '' ? ': ' . $detail : '');
+        return 'qBittorrent (auth: ' . $mode . ') returned ' . $status . ' ' . $phrase . $where . ($detail !== '' ? ': ' . $detail : '');
     }
 }

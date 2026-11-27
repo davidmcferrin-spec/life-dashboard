@@ -83,13 +83,24 @@ final class Http
         if ($response['body'] === '') {
             return [];
         }
+        $requestPath = $this->prefix . self::encodePath($path);
         try {
             $decoded = json_decode($response['body'], true, 512, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
-            throw new HomelabException('The service returned a response that was not JSON.', 'homelab_invalid', 502);
+            throw new HomelabException(
+                'The service returned a response that was not JSON. HTTP ' . $response['status'] . ' ' . $requestPath,
+                'homelab_invalid',
+                502,
+                ['upstream_status' => $response['status'], 'path' => $requestPath]
+            );
         }
         if (!is_array($decoded)) {
-            throw new HomelabException('The service returned a response that was not JSON.', 'homelab_invalid', 502);
+            throw new HomelabException(
+                'The service returned a response that was not JSON. HTTP ' . $response['status'] . ' ' . $requestPath,
+                'homelab_invalid',
+                502,
+                ['upstream_status' => $response['status'], 'path' => $requestPath]
+            );
         }
 
         return $decoded;
@@ -114,7 +125,8 @@ final class Http
         if ($timeout > 20) {
             set_time_limit($timeout + self::CONNECT_SECONDS + 5);
         }
-        $urlPath = $this->prefix . self::encodePath($path);
+        $requestPath = $this->prefix . self::encodePath($path);
+        $urlPath = $requestPath;
         if ($query !== []) {
             $urlPath .= '?' . http_build_query($query);
         }
@@ -140,18 +152,18 @@ final class Http
         }
         if ($status === 401 || $status === 403) {
             throw new HomelabException(
-                $this->snippet($raw, $status),
+                $this->httpError($status, $requestPath, $raw),
                 'homelab_unauthorized',
                 502,
-                ['upstream_status' => $status]
+                ['upstream_status' => $status, 'path' => $requestPath]
             );
         }
         if ($status >= 400) {
             throw new HomelabException(
-                $this->snippet($raw, $status),
+                $this->httpError($status, $requestPath, $raw),
                 'homelab_error',
                 $status >= 500 ? 502 : 422,
-                ['upstream_status' => $status]
+                ['upstream_status' => $status, 'path' => $requestPath]
             );
         }
 
@@ -379,6 +391,17 @@ final class Http
             'homelab_unreachable',
             502
         );
+    }
+
+    private function httpError(int $status, string $path, string $raw): string
+    {
+        $detail = $this->snippet($raw, $status);
+        $message = 'HTTP ' . $status . ' ' . $path;
+        if ($detail !== '' && !str_starts_with($detail, 'The service returned HTTP')) {
+            $message .= ': ' . $detail;
+        }
+
+        return $this->redactText($message);
     }
 
     private function snippet(string $raw, int $status): string

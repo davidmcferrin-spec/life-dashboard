@@ -1686,6 +1686,7 @@ $router->post('/settings/homelab/{service}', function (array $p) use ($auth, $db
             'password' => (string) ($_POST['password'] ?? ''),
             'auth' => (string) ($_POST['auth'] ?? ''),
             'token' => (string) ($_POST['token'] ?? ''),
+            'user' => (string) ($_POST['user'] ?? ''),
         ]);
         (new \Dashboard\Audit\AuditLog($db))->record($userId, 'user', null, 'POST', '/settings/homelab/' . $service, [
             'entity' => $service,

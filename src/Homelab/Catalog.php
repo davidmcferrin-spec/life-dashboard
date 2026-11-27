@@ -62,7 +62,7 @@ final class Catalog
             'secret' => 'api_key',
             'secret_label' => 'API key',
             'username' => false,
-            'where' => 'Jellyfin → Dashboard → API Keys. The base URL includes the port, often http://tower:8096. The dashboard sends the key as X-Emby-Token.',
+            'where' => 'Jellyfin → Dashboard → API Keys. The base URL is the server, often http://tower:8096, not the /web page. If Dashboard → Networking has a Base URL, add that path, for example http://tower:8096/jellyfin. A trailing /web is removed on save. Jellyfin user is optional: a name from the user list, or blank to use the first administrator. Jellyfin 10.11 wants Authorization: MediaBrowser Token. Older servers still accept X-Emby-Token.',
         ],
         'plex' => [
             'label' => 'Plex',
