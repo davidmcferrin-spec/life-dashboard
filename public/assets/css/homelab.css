@@ -1,0 +1,66 @@
+.homelab-page { margin-inline: auto; width: min(100%, 72rem); }
+.homelab-settings { display: grid; gap: 1rem; }
+.homelab-setting .section-title,
+.homelab-head .section-title { align-items: center; display: flex; gap: 0.45rem; }
+.homelab-setting .ld-w-icon svg,
+.homelab-head .ld-w-icon svg { display: block; height: 18px; width: 18px; }
+.homelab-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.homelab-tab {
+    background: transparent;
+    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    border-radius: 999px;
+    color: inherit;
+    cursor: pointer;
+    padding: 0.35rem 0.8rem;
+}
+.homelab-tab.is-active { border-color: var(--settings-accent, var(--accent, #7dcea0)); }
+.homelab-panel.is-hidden { display: none; }
+.homelab-split { display: grid; gap: 1rem; margin-top: 1rem; }
+.homelab-block { min-width: 0; }
+.homelab-block h3 { margin: 0 0 0.4rem; }
+.homelab-table { border-collapse: collapse; width: 100%; }
+.homelab-table th,
+.homelab-table td { padding: 0.35rem 0.45rem; text-align: left; vertical-align: top; }
+.homelab-table th { color: var(--text-secondary, inherit); font-weight: 500; }
+.homelab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 28rem; }
+.homelab-actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.homelab-add { margin-top: 1rem; }
+.homelab-add-grid { align-items: end; display: grid; gap: 0.75rem; }
+.homelab-card-list,
+.homelab-list { display: flex; flex-direction: column; gap: 0.35rem; list-style: none; margin: 0; padding: 0; }
+.homelab-card-list li,
+.homelab-row { display: flex; gap: 0.75rem; justify-content: space-between; min-width: 0; }
+.homelab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.homelab-version { color: var(--text-secondary, inherit); }
+.homelab-head { align-items: center; display: flex; justify-content: space-between; gap: 0.75rem; }
+.homelab-scope-grid { display: grid; gap: 0.35rem 1rem; margin-top: 0.4rem; }
+.homelab-scopes { border: 0; margin: 0.75rem 0 0; padding: 0; }
+
+@media (min-width: 720px) {
+    .homelab-add-grid { grid-template-columns: 1.4fr auto; }
+    .homelab-scope-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (min-width: 1100px) {
+    .homelab-settings { grid-template-columns: 1fr 1fr; }
+    .homelab-split { grid-template-columns: 1.15fr 0.85fr; }
+    .homelab-card-list { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 1.25rem; }
+}
+
+@media (min-width: 1600px) {
+    .homelab-page { width: min(100%, 100rem); }
+    .settings-main.homelab-settings-main { max-width: 96rem; }
+    .homelab-add-grid { grid-template-columns: 1.4fr auto 1fr 1fr; }
+}
+
+@media (min-width: 2000px) {
+    .homelab-page { width: min(100%, 120rem); }
+    .settings-main.homelab-settings-main { max-width: 118rem; }
+    .homelab-settings { grid-template-columns: 1fr 1fr 1fr; }
+    .homelab-split { grid-template-columns: 1.2fr 1fr 0.9fr; }
+}
+
+@media (max-width: 699px) {
+    .homelab-table .homelab-hide-sm { display: none; }
+    .homelab-actions { flex-basis: 100%; }
+}

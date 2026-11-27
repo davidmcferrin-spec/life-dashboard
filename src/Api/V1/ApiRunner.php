@@ -18,6 +18,7 @@ use Dashboard\Support\ForbiddenException;
 use Dashboard\Support\NotFoundException;
 use Dashboard\Support\UnauthorizedException;
 use Dashboard\Support\ValidationException;
+use Dashboard\Homelab\HomelabException;
 use Dashboard\WakeHub\WakeHubException;
 
 /**
@@ -132,6 +133,8 @@ final class ApiRunner
             jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, 409);
         } catch (WakeHubException $e) {
             jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
+        } catch (HomelabException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
         }
     }
 
@@ -160,6 +163,8 @@ final class ApiRunner
         } catch (ConflictException $e) {
             jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, 409);
         } catch (WakeHubException $e) {
+            jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
+        } catch (HomelabException $e) {
             jsonResponse(['error' => $e->getMessage(), 'code' => $e->codeName] + $e->extra, $e->status);
         }
     }
@@ -470,6 +475,10 @@ final class ApiRunner
             '/handoffs'             => 'handoff',
             '/stocks/sheet'         => 'stock_sheet',
             '/wakehub'              => 'wake_hub',
+            '/qbittorrent'          => 'qbittorrent',
+            '/prowlarr'             => 'prowlarr',
+            '/sonarr'               => 'sonarr',
+            '/radarr'               => 'radarr',
             '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {

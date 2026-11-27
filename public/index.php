@@ -298,6 +298,12 @@ $router->get('/wake', function () use ($auth): void {
     require VIEWS_DIR . '/wake.php';
 });
 
+$router->get('/homelab', function () use ($auth): void {
+    $user = $auth->requireAuth();
+    $homelabServices = \Dashboard\Homelab\Catalog::SERVICES;
+    require VIEWS_DIR . '/homelab.php';
+});
+
 $router->get('/settings/stocks', function () use ($auth): void {
     $auth->requireAuth();
     redirect('/stocks');
@@ -1657,6 +1663,57 @@ $router->post('/settings/wake-hub/test', function () use ($auth, $db): void {
         $_SESSION['settings_flash'] = $e->getMessage();
     }
     redirect('/settings/wake-hub');
+});
+
+$router->get('/settings/homelab', function () use ($auth, $db): void {
+    $user = $auth->requireAuth();
+    $homelabSettings = (new \Dashboard\Homelab\Settings($db))->view((int) $user['id']);
+    require VIEWS_DIR . '/settings/homelab.php';
+});
+
+$router->post('/settings/homelab/{service}', function (array $p) use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    $service = (string) ($p['service'] ?? '');
+    try {
+        \Dashboard\Homelab\Catalog::get($service);
+        (new \Dashboard\Homelab\Settings($db))->save($userId, $service, [
+            'enabled' => $_POST['enabled'] ?? '0',
+            'base_url' => (string) ($_POST['base_url'] ?? ''),
+            'api_key' => (string) ($_POST['api_key'] ?? ''),
+            'username' => (string) ($_POST['username'] ?? ''),
+            'password' => (string) ($_POST['password'] ?? ''),
+        ]);
+        (new \Dashboard\Audit\AuditLog($db))->record($userId, 'user', null, 'POST', '/settings/homelab/' . $service, [
+            'entity' => $service,
+            'action' => 'settings',
+        ]);
+        $_SESSION['settings_flash'] = \Dashboard\Homelab\Catalog::label($service) . ' saved.';
+    } catch (\Dashboard\Support\ValidationException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/homelab');
+});
+
+$router->post('/settings/homelab/{service}/test', function (array $p) use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAuth();
+    $userId = (int) $user['id'];
+    $service = (string) ($p['service'] ?? '');
+    try {
+        $result = \Dashboard\Homelab\HomelabService::fromDatabase($db)->test($userId, $service);
+        $version = trim((string) ($result['version'] ?? ''));
+        $_SESSION['settings_flash'] = $result['label'] . ' is reachable' . ($version !== '' ? ' (' . $version . ').' : '.');
+        if (empty($result['enabled'])) {
+            $_SESSION['settings_flash'] .= ' It is turned off until you enable it.';
+        }
+    } catch (\Dashboard\Homelab\HomelabException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    } catch (\Dashboard\Support\ValidationException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/homelab');
 });
 
 $router->get('/settings/health', function () use ($auth, $db): void {

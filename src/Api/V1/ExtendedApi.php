@@ -713,6 +713,7 @@ final class ExtendedApi
 
         $this->registerStockSheet($r);
         $this->registerWakeHub($r);
+        (new HomelabApi($this->runner, $this->svc))->register($r);
 
         $r->get('/api/v1/reddit/subs', fn () => $this->run(fn (int $u) => [
             'subs' => $this->svc->reddit->list($u),

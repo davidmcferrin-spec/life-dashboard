@@ -37,6 +37,7 @@ final class Stylesheets
             '/assets/css/brain-map.css',
             '/assets/css/flights.css',
             '/assets/css/feature-widgets.css',
+            '/assets/css/homelab.css',
             '/assets/css/spotify-stage.css',
             '/assets/css/brain-mesh.css',
             '/assets/css/vault-editor.css',

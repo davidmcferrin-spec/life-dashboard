@@ -45,6 +45,7 @@ if (!function_exists('settings_nav_groups')) {
                 'stocks'      => ['Stocks', '/settings/stocks'],
                 'stock-sheet' => ['Stocks sheet', '/settings/stock-sheet'],
                 'wake-hub'    => ['Wake Hub', '/settings/wake-hub'],
+                'homelab'     => ['Homelab', '/settings/homelab'],
                 'feeds'      => ['News feeds', '/settings/feeds'],
                 'reddit'     => ['Reddit', '/settings/reddit'],
                 'spotify'    => ['Spotify', '/settings/spotify'],
@@ -84,6 +85,7 @@ if (!function_exists('settings_nav_groups')) {
     function settings_nav_page_links(): array
     {
         return [
+            ['Homelab', '/homelab'],
             ['Pantry', '/pantry'],
             ['Health', '/health'],
             ['Morning brief', '/brief'],
