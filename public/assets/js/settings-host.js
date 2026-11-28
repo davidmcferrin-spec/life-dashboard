@@ -108,14 +108,21 @@
         const alert = tunnel.alert || 'unknown';
         const reboot = snap.reboot_required || {};
         const failed = snap.failed_services || {};
+        const units = failed.available ? (failed.units || []).filter((unit) => unit && unit.unit) : [];
         const messages = [];
         if (alert === 'down') messages.push('Tunnel down.');
         else if (alert === 'degraded') messages.push('Tunnel degraded.');
         if (reboot.known && reboot.required) messages.push('Reboot required.');
-        if (failed.available && (failed.units || []).length) messages.push((failed.units || []).length + ' failed unit(s).');
-        banner.hidden = messages.length === 0;
-        banner.className = 'host-alert' + (alert === 'down' || reboot.required ? ' is-down' : (alert === 'degraded' ? ' is-degraded' : ''));
-        banner.innerHTML = '<p>' + esc(messages.join(' ')) + '</p>';
+        banner.hidden = messages.length === 0 && units.length === 0;
+        banner.className = 'host-alert' + (alert === 'down' || reboot.required || units.length ? ' is-down' : (alert === 'degraded' ? ' is-degraded' : ''));
+        let html = messages.length ? '<p>' + esc(messages.join(' ')) + '</p>' : '';
+        if (units.length) {
+            html += '<ul class="host-alert-units">' + units.map((unit) => {
+                const state = unit.state ? ' (' + unit.state + ')' : '';
+                return '<li>Failed service: ' + esc(unit.unit) + esc(state) + '</li>';
+            }).join('') + '</ul>';
+        }
+        banner.innerHTML = html;
     }
 
     function paintCpu() {

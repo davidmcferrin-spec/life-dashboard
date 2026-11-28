@@ -21,7 +21,7 @@ function element(extra) {
     }, extra);
 }
 
-function bootPage(withClient) {
+function bootPage(withClient, units) {
     const boot = {
         snapshot: {
             sampled_at: '2026-11-28T18:22:42Z',
@@ -40,7 +40,7 @@ function bootPage(withClient) {
             disks: [],
             network: [{ iface: 'enp1s0', rx_bps: 1000, tx_bps: 200 }],
             processes: { count: 120, top: [] },
-            failed_services: { available: true, units: [] },
+            failed_services: { available: true, units: units || [] },
             host: { os: 'Ubuntu 26.04 LTS', kernel: '6.12.0', hostname: 'ai-vault', uptime_seconds: 3600, boot_time: '2026-11-28T17:00:00Z' },
             updates: { checked: true, count: 0, security_count: 0, packages: [] },
             reboot_required: { known: true, required: false, packages: [] },
@@ -106,6 +106,19 @@ test('cards and the metric list paint from the boot json without the api client'
     assert.match(nodes['host-metric'].innerHTML, /CPU load \(1 min\)/);
     assert.match(nodes['host-metric'].innerHTML, /Temperature/);
     assert.match(nodes['host-subject'].innerHTML, /host/);
+});
+
+test('the banner names each failed systemd unit', async () => {
+    const { nodes } = bootPage(false, [
+        { unit: 'systemd-networkd-wait-online.service', state: 'failed' },
+        { unit: 'nginx.service', state: 'failed' },
+    ]);
+    const banner = nodes['host-alert'].innerHTML;
+    assert.equal(nodes['host-alert'].hidden, false);
+    assert.match(banner, /Failed service: systemd-networkd-wait-online\.service \(failed\)/);
+    assert.match(banner, /Failed service: nginx\.service \(failed\)/);
+    assert.equal(banner.includes('failed unit(s)'), false);
+    assert.equal((banner.match(/<li>/g) || []).length, 2);
 });
 
 test('the same boot still paints when the api client is present', async () => {
