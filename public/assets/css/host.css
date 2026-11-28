@@ -7,6 +7,16 @@
 .host-alert.is-degraded { background: color-mix(in srgb, var(--warn) 16%, transparent); border-color: var(--warn); }
 .host-alert.is-up { background: color-mix(in srgb, var(--ok) 12%, transparent); border-color: var(--ok); }
 .host-alert p { margin: 0; }
+.host-alert-units {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.host-alert p + .host-alert-units { margin-top: 6px; }
+.host-alert-units li { margin: 0; }
 .host-grid { display: grid; gap: 12px; grid-template-columns: 1fr; }
 .host-card {
     backdrop-filter: blur(16px);
