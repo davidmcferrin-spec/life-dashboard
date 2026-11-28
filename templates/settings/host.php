@@ -139,5 +139,10 @@ require __DIR__ . '/_shell-top.php';
                 </section>
             </form>
             <script type="application/json" id="host-boot"><?= json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES) ?></script>
-<script src="/assets/js/settings-host.js?v=<?= e($assetVer) ?>"></script>
-<?php require __DIR__ . '/_shell-bottom.php'; ?>
+<?php
+$settingsScripts = [
+    '/assets/js/lifedash-api.js?v=' . $assetVer,
+    '/assets/js/settings-host.js?v=' . $assetVer,
+];
+require __DIR__ . '/_shell-bottom.php';
+
