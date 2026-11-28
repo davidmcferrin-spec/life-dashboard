@@ -6,15 +6,18 @@ set -euo pipefail
 TOKEN_FILE=/etc/lifedash/cloudflared.token
 CONFIG=/etc/cloudflared/config.yml
 
+# Loopback metrics for the System page. The port is not published.
+METRICS_ADDR=127.0.0.1:20241
+
 if [[ -s $TOKEN_FILE ]]; then
     # The token stays in the environment. It is not a process argument.
     TUNNEL_TOKEN=$(tr -d '\r\n' < "$TOKEN_FILE")
     export TUNNEL_TOKEN
-    exec /usr/bin/cloudflared --no-autoupdate tunnel run
+    exec /usr/bin/cloudflared --no-autoupdate --metrics "$METRICS_ADDR" tunnel run
 fi
 
 if [[ -f $CONFIG ]]; then
-    exec /usr/bin/cloudflared --no-autoupdate --config "$CONFIG" tunnel run
+    exec /usr/bin/cloudflared --no-autoupdate --metrics "$METRICS_ADDR" --config "$CONFIG" tunnel run
 fi
 
 echo "lifedash-cloudflared: no tunnel token and no $CONFIG" >&2

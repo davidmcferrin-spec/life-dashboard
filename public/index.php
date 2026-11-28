@@ -556,6 +556,26 @@ $router->get('/settings/ollama', function () use ($auth, $db): void {
     require VIEWS_DIR . '/settings/ollama.php';
 });
 
+$router->get('/settings/host', function () use ($auth, $db): void {
+    $user = $auth->requireAdmin();
+    $monitor = new \Dashboard\Host\HostMonitor($db);
+    $host = $monitor->live(($_GET['fresh'] ?? '') === '1');
+    $hostOptions = $monitor->options();
+    require VIEWS_DIR . '/settings/host.php';
+});
+
+$router->post('/settings/host', function () use ($auth, $db): void {
+    validateCsrf();
+    $user = $auth->requireAdmin();
+    try {
+        (new \Dashboard\Host\HostMonitor($db))->saveOptions($_POST, (int) $user['id']);
+        $_SESSION['settings_flash'] = 'System settings saved.';
+    } catch (\InvalidArgumentException $e) {
+        $_SESSION['settings_flash'] = $e->getMessage();
+    }
+    redirect('/settings/host');
+});
+
 $router->get('/settings/system', function () use ($auth, $db): void {
     $user         = $auth->requireAdmin();
     $health       = new SystemHealthService();

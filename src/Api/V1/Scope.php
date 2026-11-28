@@ -68,7 +68,7 @@ final class Scope
     /** Privileged scopes. Present only when an admin put them on the token. */
     public const EXPLICIT = ['system:read', 'system:deploy'];
 
-    public const SYSTEM_ENTITIES = ['deploy'];
+    public const SYSTEM_ENTITIES = ['deploy', 'host'];
 
     public const AUDIT_ENTITIES = [
         'debt', 'account', 'transaction', 'budget', 'sinking_fund', 'bill', 'envelope', 'payday',
@@ -96,6 +96,7 @@ final class Scope
         'jellyfin',
         'plex',
         'deploy',
+        'host',
     ];
 
     /**

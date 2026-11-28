@@ -9,6 +9,8 @@ use Dashboard\Auth\OAuthClientEndpoint;
 use Dashboard\Auth\OAuthService;
 use Dashboard\Auth\PgOAuthStore;
 use Dashboard\Deploy\DeployService;
+use Dashboard\Host\HostMonitor;
+use Dashboard\Host\HostReadings;
 use Dashboard\Hermes\Chat;
 use Dashboard\Hermes\Gateway;
 use Dashboard\Hermes\PreferenceChatMemory;
@@ -70,6 +72,33 @@ final class ExtendedApi
             }
             return $this->deploy()->setMcpUpdates($b['enabled'], $u);
         }, 200, true, 'system:deploy'));
+        $r->get('/api/v1/system/host', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            return $this->host()->live(($_GET['fresh'] ?? '') === '1');
+        }, 200, false, 'system:read'));
+        $r->get('/api/v1/system/host/metrics', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            $host = $this->host();
+            return ['metrics' => $host->catalog($host->live())];
+        }, 200, false, 'system:read'));
+        $r->get('/api/v1/system/host/history', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            return $this->host()->history(
+                HostReadings::metric((string) ($_GET['metric'] ?? '')),
+                HostReadings::subject((string) ($_GET['subject'] ?? '')),
+                HostReadings::range((string) ($_GET['range'] ?? '')),
+            );
+        }, 200, false, 'system:read'));
+        $r->get('/api/v1/system/host/updates', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            $snap = $this->host()->live();
+            return ['updates' => $snap['updates'] ?? ['checked' => false, 'count' => null, 'security_count' => null, 'packages' => []]];
+        }, 200, false, 'system:read'));
+        $r->get('/api/v1/system/host/tunnel', fn () => $this->run(function (int $u): array {
+            $this->assertSystemAdmin($u);
+            $snap = $this->host()->live();
+            return ['tunnel' => $snap['tunnel'] ?? ['alert' => 'unknown']];
+        }, 200, false, 'system:read'));
         $r->post('/api/v1/system/deploy', fn () => $this->run(function (int $u): array {
             $this->assertSystemAdmin($u);
             $b = $this->runner->body();
@@ -1510,6 +1539,11 @@ final class ExtendedApi
             throw ValidationException::withFields(['page_id' => 'page_id must be a page id.']);
         }
         return (int) $raw;
+    }
+
+    private function host(): HostMonitor
+    {
+        return new HostMonitor($this->svc->db);
     }
 
     private function deploy(): DeployService

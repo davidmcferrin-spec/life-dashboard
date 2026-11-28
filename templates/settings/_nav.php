@@ -70,6 +70,7 @@ if (!function_exists('settings_nav_groups')) {
                 'setup'         => ['Setup', '/settings/setup'],
                 'ollama'        => ['Local AI', '/settings/ollama'],
                 'tunnel'        => ['Tunnel', '/settings/tunnel'],
+                'host'          => ['System', '/settings/host'],
                 'system'        => ['System health', '/settings/system'],
                 'cloud-storage' => ['Cloud file defaults', '/settings/cloud-storage'],
                 'users'         => ['Users', '/settings/users'],
