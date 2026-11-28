@@ -6,10 +6,36 @@
 (function () {
     const bootNode = document.getElementById('host-boot');
     const grid = document.getElementById('host-grid');
-    if (!bootNode || !grid || !window.LD) return;
+    if (!bootNode || !grid) return;
 
-    const esc = window.LD.esc;
-    const num = window.LD.fmt.number;
+    // Cards and the metric list come from the boot JSON. History requests
+    // use LD when lifedash-api.js has loaded. A missing client must not
+    // leave the cards blank.
+    function esc(value) {
+        if (window.LD && window.LD.esc) return window.LD.esc(value);
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function num(value, digits) {
+        if (window.LD && window.LD.fmt) return window.LD.fmt.number(value, digits);
+        if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
+        const d = Number.isInteger(digits) ? digits : 1;
+        return Number(value).toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 });
+    }
+
+    function duration(seconds) {
+        if (window.LD && window.LD.fmt) return window.LD.fmt.duration(seconds);
+        if (seconds === null || seconds === undefined) return '—';
+        const s = Math.max(0, Math.round(Number(seconds)));
+        const h = Math.floor(s / 3600);
+        const m = Math.floor((s % 3600) / 60);
+        if (h === 0 && m === 0) return s + 's';
+        return h > 0 ? h + 'h ' + String(m).padStart(2, '0') + 'm' : m + 'm';
+    }
     let boot = {};
     try {
         boot = JSON.parse(bootNode.textContent || '{}');
@@ -188,7 +214,7 @@
         return '<p class="host-sub">' + esc(host.os || 'OS unavailable') + '</p>'
             + row('Kernel', esc(host.kernel || 'unavailable'))
             + row('Host', esc(host.hostname || 'unavailable'))
-            + row('Uptime', host.uptime_seconds == null ? 'unavailable' : esc(window.LD.fmt.duration(host.uptime_seconds)))
+            + row('Uptime', host.uptime_seconds == null ? 'unavailable' : esc(duration(host.uptime_seconds)))
             + row('Boot', when)
             + row('Reboot required', esc(rebootText))
             + packages;
@@ -336,11 +362,12 @@
 
     async function loadHistory() {
         const host = document.getElementById('host-chart');
-        if (!host || !window.LD.api) return;
+        const api = window.LD && window.LD.api;
+        if (!host || !api) return;
         const ticket = ++historyRequest;
         host.innerHTML = '<p class="host-note">Loading…</p>';
         try {
-            const data = await window.LD.api.get('/system/host/history?metric=' + encodeURIComponent(metric) + '&subject=' + encodeURIComponent(subject) + '&range=' + encodeURIComponent(range));
+            const data = await api.get('/system/host/history?metric=' + encodeURIComponent(metric) + '&subject=' + encodeURIComponent(subject) + '&range=' + encodeURIComponent(range));
             if (ticket !== historyRequest) return;
             const points = data.points || [];
             if (!points.length) {
@@ -355,9 +382,10 @@
     }
 
     async function refresh(fresh) {
-        if (!window.LD.api) return;
+        const api = window.LD && window.LD.api;
+        if (!api) return;
         try {
-            snap = await window.LD.api.get('/system/host' + (fresh ? '?fresh=1' : ''));
+            snap = await api.get('/system/host' + (fresh ? '?fresh=1' : ''));
             paint();
         } catch (err) {
             const banner = document.getElementById('host-alert');
