@@ -37,6 +37,7 @@ from .board_tools import BOARD_TOOLS, resolve_board
 from .handoff_tools import HANDOFF_TOOLS, resolve_handoff
 from .platform_tools import PLATFORM_TOOLS, resolve_platform
 from .stock_sheet_tools import STOCK_SHEET_TOOLS, resolve_stock_sheet
+from .host_tools import HOST_TOOLS, resolve_host
 from .homelab_tools import HOMELAB_TOOLS, resolve_homelab
 from .wakehub_tools import WAKEHUB_TOOLS, resolve_wakehub
 from .ollama_tools import OLLAMA_TOOLS, resolve_ollama
@@ -2710,6 +2711,7 @@ TOOLS.extend(PLATFORM_TOOLS)
 TOOLS.extend(HANDOFF_TOOLS)
 TOOLS.extend(BOARD_TOOLS)
 TOOLS.extend(STOCK_SHEET_TOOLS)
+TOOLS.extend(HOST_TOOLS)
 TOOLS.extend(WAKEHUB_TOOLS)
 TOOLS.extend(HOMELAB_TOOLS)
 TOOLS.extend([
@@ -3700,6 +3702,9 @@ def resolve(name: str, arguments: dict[str, Any] | None) -> tuple[str, str, dict
     if mapped is not None:
         return mapped
     mapped = resolve_stock_sheet(name, args)
+    if mapped is not None:
+        return mapped
+    mapped = resolve_host(name, args)
     if mapped is not None:
         return mapped
     mapped = resolve_wakehub(name, args)

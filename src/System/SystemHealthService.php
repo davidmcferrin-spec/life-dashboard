@@ -92,6 +92,12 @@ class SystemHealthService
             'staleMinutes'  => 1800,
             'scheduleHint'  => 'Weekdays 8:30–15:30 America/Chicago',
         ],
+        'host' => [
+            'label'         => 'Host metrics',
+            'log'           => 'host.log',
+            'staleMinutes'  => 20,
+            'scheduleHint'  => 'Every 5 min',
+        ],
     ];
 
     private const TAIL_CHUNK_BYTES = 65536;

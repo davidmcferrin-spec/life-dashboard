@@ -1,0 +1,13 @@
+# host metrics every 5 min
+[Unit]
+Description=life-dashboard schedule: host (host metrics every 5 min)
+
+[Timer]
+OnCalendar=*:0/5
+Unit=lifedash-job@host.service
+Persistent=true
+RandomizedDelaySec=20s
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

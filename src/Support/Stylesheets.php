@@ -51,6 +51,7 @@ final class Stylesheets
             '/assets/css/platform.css',
             '/assets/css/handoffs.css',
             '/assets/css/boards.css',
+            '/assets/css/host.css',
         ];
     }
 

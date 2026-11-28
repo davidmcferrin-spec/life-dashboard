@@ -482,6 +482,7 @@ final class ApiRunner
             '/prowlarr'             => 'prowlarr',
             '/sonarr'               => 'sonarr',
             '/radarr'               => 'radarr',
+            '/system/host'          => 'host',
             '/system/deploy'        => 'deploy',
         ];
         foreach ($map as $fragment => $entity) {
